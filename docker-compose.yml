@@ -1,0 +1,92 @@
+# SAM 3.1 PPE Segmentation — Docker Compose
+#
+# GPU priority: ROCm (AMD) > CUDA (NVIDIA) > CPU (last resort)
+#
+# Usage:
+#   AMD ROCm:    docker compose --profile rocm up --build
+#   NVIDIA CUDA: docker compose --profile cuda up --build
+#   CPU:         docker compose --profile cpu up --build
+
+services:
+  # ---------------------------------------------------------------------------
+  # AMD ROCm (RX 7800 XT — primary target)
+  # ---------------------------------------------------------------------------
+  ppe-rocm:
+    profiles: ["rocm"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GPU_TYPE: rocm
+    container_name: ppe-segmentation-rocm
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./config:/app/config
+    environment:
+      - PYTHONPATH=/app/src:/app/sam3
+      - PYTHONUNBUFFERED=1
+      - HSA_ENABLE_DXG_DETECTION=1
+      - TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # NVIDIA CUDA
+  # ---------------------------------------------------------------------------
+  ppe-cuda:
+    profiles: ["cuda"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GPU_TYPE: cuda
+    container_name: ppe-segmentation-cuda
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./config:/app/config
+    environment:
+      - PYTHONPATH=/app/src:/app/sam3
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # CPU (last resort — no GPU available)
+  # ---------------------------------------------------------------------------
+  ppe-cpu:
+    profiles: ["", "cpu"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GPU_TYPE: cpu
+    container_name: ppe-segmentation-cpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./config:/app/config
+    environment:
+      - PYTHONPATH=/app/src:/app/sam3
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

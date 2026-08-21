@@ -1,0 +1,65 @@
+{
+  "model_key": "s_detect",
+  "baseline_mAP50": 0.5551223664292013,
+  "best_trial_mAP50": 0.4937,
+  "best_trial_idx": 2,
+  "best_params": {
+    "lr0": 0.005,
+    "imgsz": 960,
+    "cls_pw": 0.8,
+    "mosaic": 0.8,
+    "mixup": 0.1,
+    "copy_paste": 0.15,
+    "scale": 0.6,
+    "close_mosaic": 15
+  },
+  "improvement": -0.06142236642920129,
+  "all_trials": 3,
+  "improved": false,
+  "trial_results": [
+    {
+      "trial": 1,
+      "mAP50": 0.4358,
+      "params": {
+        "lr0": 0.01,
+        "imgsz": 640,
+        "cls_pw": 0.5,
+        "mosaic": 1.0,
+        "mixup": 0.0,
+        "copy_paste": 0.1,
+        "scale": 0.5,
+        "close_mosaic": 10
+      }
+    },
+    {
+      "trial": 2,
+      "mAP50": 0.4937,
+      "params": {
+        "lr0": 0.005,
+        "imgsz": 960,
+        "cls_pw": 0.8,
+        "mosaic": 0.8,
+        "mixup": 0.1,
+        "copy_paste": 0.15,
+        "scale": 0.6,
+        "close_mosaic": 15
+      }
+    },
+    {
+      "trial": 3,
+      "mAP50": null,
+      "params": {
+        "lr0": 0.002,
+        "imgsz": 640,
+        "cls_pw": 2.0,
+        "mosaic": 0.5,
+        "mixup": 0.2,
+        "copy_paste": 0.2,
+        "scale": 0.7,
+        "close_mosaic": 20
+      },
+      "error": "cls_pw=2.0 invalid"
+    }
+  ],
+  "note": "50-epoch trials cannot match 150-epoch baseline. Baseline weights retained."
+}

@@ -1,0 +1,58 @@
+\hfill \textbf {หน้า}\par \nobreak \vspace {4pt}
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ภาพรวมของชุดข้อมูล}}{20}{table.caption.4}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces จำนวน annotation แต่ละคลาสก่อน oversampling}}{21}{table.caption.5}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces \xpg@aux {}{thai}\ignorespaces การแบ่งข้อมูล Train/Validation/Test}}{22}{table.caption.6}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ประสิทธิภาพการ annotation ของ SAM 3.1 (optimized pipeline)}}{26}{table.caption.8}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces เปรียบเทียบ SAM 3.1 โหมด zero-shot กับ optimized annotation pipeline}}{27}{table.caption.9}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ส่วนประกอบเวลาของ SAM 3.1 optimized pipeline}}{28}{table.caption.10}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ผลการประเมินคุณภาพ annotation ของ SAM 3.1 (optimized)}}{29}{table.caption.11}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {5.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces โมเดลที่ใช้ในการทดลอง}}{31}{table.caption.12}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Training configuration}}{32}{table.caption.13}%
+\contentsline {table}{\numberline {5.3}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ผลการวัดโดยรวม (box metrics สำหรับทุกโมเดล, v4\_recipe)}}{35}{table.caption.16}%
+\contentsline {table}{\numberline {5.4}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Mask metrics สำหรับ segmentation models (v4\_recipe) — M = mask, ค่า mAP จาก epoch สุดท้ายใน results.csv}}{36}{table.caption.17}%
+\contentsline {table}{\numberline {5.5}{\ignorespaces \xpg@aux {}{thai}\ignorespaces mAP50 รายคลาส}}{37}{table.caption.19}%
+\contentsline {table}{\numberline {5.6}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Per-class Precision, Recall, mAP50 และ mAP50-95 ของทั้ง 4 โมเดล (v4\_recipe) — box metrics สำหรับทุกโมเดล}}{38}{table.caption.20}%
+\contentsline {table}{\numberline {5.7}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ผลการวัด computational efficiency (v4\_recipe) — Pre = preprocess, Infer = inference, Post = postprocess (SAM 3.1 แสดงทั้งโหมด zero-shot และ optimized)}}{41}{table.caption.24}%
+\contentsline {table}{\numberline {5.8}{\ignorespaces \xpg@aux {}{thai}\ignorespaces โมเดลบน Pareto frontier}}{42}{table.caption.26}%
+\contentsline {table}{\numberline {5.9}{\ignorespaces \xpg@aux {}{thai}\ignorespaces เกณฑ์การเลือกโมเดล}}{43}{table.caption.27}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {6.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Real-world dataset (ยังไม่ได้จัดเตรียม)}}{44}{table.caption.28}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ผลการวัดบน internal test vs real-world (ยังไม่ได้ประเมิน)}}{45}{table.caption.30}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {10.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Hardware, software และ experiment configuration}}{53}{table.caption.32}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {A.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Dataset statistics ทั้งหมด}}{58}{table.caption.34}%
+\contentsline {table}{\numberline {A.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Annotation count ก่อนและหลัง oversampling}}{58}{table.caption.35}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {B.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Training configuration เต็ม (Stage 1 vs Stage 2)}}{59}{table.caption.36}%
+\contentsline {table}{\numberline {B.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Augmentation configuration}}{60}{table.caption.37}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {C.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Complete evaluation results (B = box, M = mask)}}{61}{table.caption.38}%
+\contentsline {table}{\numberline {C.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Complete computational results (v4\_recipe) — Infer = model inference, Pre+Post = preprocess + postprocess (SAM 3.1 แสดงทั้งสองโหมด)}}{61}{table.caption.39}%
+\contentsline {table}{\numberline {C.3}{\ignorespaces \xpg@aux {}{thai}\ignorespaces SAM 3.1 detailed benchmark — zero-shot vs optimized}}{62}{table.caption.40}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {D.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces MLflow Run IDs}}{63}{table.caption.41}%
+\contentsline {table}{\numberline {D.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Model file paths}}{63}{table.caption.42}%
+\contentsline {table}{\numberline {D.3}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Pipeline scripts}}{64}{table.caption.43}%
+\contentsline {table}{\numberline {D.4}{\ignorespaces \xpg@aux {}{thai}\ignorespaces SAM 3.1 annotation experiment metadata (จาก experiments.db)}}{65}{table.caption.44}%
+\contentsline {table}{\numberline {D.5}{\ignorespaces \xpg@aux {}{thai}\ignorespaces SAM 3.1 categories และ prompts ที่ใช้}}{66}{table.caption.45}%
+\contentsline {table}{\numberline {D.6}{\ignorespaces \xpg@aux {}{thai}\ignorespaces V4\_recipe hyperparameters}}{67}{table.caption.46}%
+\contentsline {table}{\numberline {D.7}{\ignorespaces \xpg@aux {}{thai}\ignorespaces V4\_recipe ผล evaluate บน test set (92 ภาพ) — ค่า mAP50 ของ box สำหรับ detect และ box+mask รวมสำหรับ seg}}{68}{table.caption.47}%
+\contentsline {table}{\numberline {D.8}{\ignorespaces \xpg@aux {}{thai}\ignorespaces เปรียบเทียบ v4\_recipe กับ SGD baseline — v4\_recipe ต่ำกว่าทุกโมเดล}}{68}{table.caption.48}%
+\contentsline {table}{\numberline {D.9}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Per-class mAP50 บน test set — ทุกโมเดลทำ person ได้ดีที่สุด, boots แย่ที่สุด}}{69}{table.caption.49}%
+\contentsline {table}{\numberline {D.10}{\ignorespaces \xpg@aux {}{thai}\ignorespaces 10 failure cases ที่น่าสนใจที่สุด — ทั้งหมดเป็น crowded scenes ที่มี object เล็กจำนวนมาก}}{70}{table.caption.50}%
+\contentsline {table}{\numberline {D.11}{\ignorespaces \xpg@aux {}{thai}\ignorespaces เปรียบเทียบ PyTorch vs ONNX (ROCm GPU) บน test set 92 ภาพ — mAP50 แทบไม่ต่างกัน แต่ latency ONNX ช้ากว่า}}{72}{table.caption.52}%
+\contentsline {table}{\numberline {D.12}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Per-class mAP50 เปรียบเทียบ PyTorch vs ONNX (v4\_recipe) — ความแตกต่างต่อคลาสน้อยมาก ($\Delta < 0.07$ ทุกคลาส)}}{73}{table.caption.54}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {E.1}{\ignorespaces \xpg@aux {}{thai}\ignorespaces ผลการ inference บน blurred dataset (48 ภาพ) ด้วย ONNX — latency และจำนวน detection}}{75}{table.caption.55}%
+\contentsline {table}{\numberline {E.2}{\ignorespaces \xpg@aux {}{thai}\ignorespaces Class distribution ของ detection บน blurred dataset (48 ภาพ) ด้วย ONNX}}{75}{table.caption.56}%

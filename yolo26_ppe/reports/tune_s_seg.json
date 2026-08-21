@@ -1,0 +1,64 @@
+{
+  "model_key": "s_seg",
+  "baseline_mAP50": 0.5538018720743663,
+  "best_trial_mAP50": 0.4753,
+  "best_trial_idx": 3,
+  "best_params": {
+    "lr0": 0.002,
+    "imgsz": 640,
+    "cls_pw": 0.5,
+    "mosaic": 0.5,
+    "mixup": 0.2,
+    "copy_paste": 0.2,
+    "scale": 0.7,
+    "close_mosaic": 20
+  },
+  "improvement": -0.07850187207436626,
+  "all_trials": 3,
+  "improved": false,
+  "trial_results": [
+    {
+      "trial": 1,
+      "mAP50": 0.4259,
+      "params": {
+        "lr0": 0.01,
+        "imgsz": 640,
+        "cls_pw": 0.5,
+        "mosaic": 1.0,
+        "mixup": 0.0,
+        "copy_paste": 0.1,
+        "scale": 0.5,
+        "close_mosaic": 10
+      }
+    },
+    {
+      "trial": 2,
+      "mAP50": 0.4561,
+      "params": {
+        "lr0": 0.005,
+        "imgsz": 960,
+        "cls_pw": 0.8,
+        "mosaic": 0.8,
+        "mixup": 0.1,
+        "copy_paste": 0.15,
+        "scale": 0.6,
+        "close_mosaic": 15
+      }
+    },
+    {
+      "trial": 3,
+      "mAP50": 0.4753,
+      "params": {
+        "lr0": 0.002,
+        "imgsz": 640,
+        "cls_pw": 0.5,
+        "mosaic": 0.5,
+        "mixup": 0.2,
+        "copy_paste": 0.2,
+        "scale": 0.7,
+        "close_mosaic": 20
+      }
+    }
+  ],
+  "note": "50-epoch trials cannot match 150-epoch baseline. Baseline weights retained. imgsz=960 caused OOM (batch reduced to 8)."
+}

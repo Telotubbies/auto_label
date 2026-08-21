@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""Evaluate all 4 v4_recipe models on test set + find 10 interesting failure cases."""
+import sys, os, json, csv, shutil
+sys.path.insert(0, os.path.dirname(__file__))
+
+# Apply focal patch for consistency
+try:
+    import focal_patch
+except Exception:
+    pass
+
+from ultralytics import YOLO
+import torch
+import numpy as np
+from pathlib import Path
+from PIL import Image
+import cv2
+
+VERSION = "v4_recipe"
+BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe")
+OUT = BASE / "eval_results" / VERSION
+OUT.mkdir(parents=True, exist_ok=True)
+FAIL_DIR = OUT / "failure_cases"
+FAIL_DIR.mkdir(exist_ok=True)
+
+MODELS = {
+    "n_detect": {
+        "weights": BASE / f"models/yolo26n_detect_{VERSION}/run2_stage2/weights/best.pt",
+        "data": "/tmp/yolo_detect_data/data.yaml",
+        "task": "detect",
+    },
+    "s_detect": {
+        "weights": BASE / f"models/yolo26s_detect_{VERSION}/run2_stage2/weights/best.pt",
+        "data": "/tmp/yolo_detect_data/data.yaml",
+        "task": "detect",
+    },
+    "n_seg": {
+        "weights": BASE / f"models/yolo26n_seg_{VERSION}/run2_stage2/weights/best.pt",
+        "data": "/tmp/yolo_seg_data/data.yaml",
+        "task": "segment",
+    },
+    "s_seg": {
+        "weights": BASE / f"models/yolo26s_seg_{VERSION}/run2_stage2/weights/best.pt",
+        "data": "/tmp/yolo_seg_data/data.yaml",
+        "task": "segment",
+    },
+}
+
+NAMES = ["person", "helmet", "boots", "shoes", "harness"]
+
+def eval_model(key, cfg):
+    print(f"\n{'='*60}")
+    print(f"Evaluating: {key}")
+    print(f"{'='*60}")
+    model = YOLO(str(cfg["weights"]))
+    # Run validation on test split
+    results = model.val(
+        data=cfg["data"],
+        split="test",
+        imgsz=640,
+        batch=16,
+        conf=0.001,
+        iou=0.6,
+        device=0,
+        verbose=True,
+        save_json=False,
+        plots=True,
+        project=str(OUT / key),
+        name="test_eval",
+        exist_ok=True,
+    )
+    # Collect metrics
+    metrics = {}
+    try:
+        metrics["precision"] = float(results.box.mp)  # mean precision
+        metrics["recall"] = float(results.box.mr)
+        metrics["mAP50"] = float(results.box.mAP50)
+        metrics["mAP50-95"] = float(results.box.mAP50_95)
+    except Exception as e:
+        print(f"box metric error: {e}")
+    if cfg["task"] == "segment":
+        try:
+            metrics["mask_precision"] = float(results.seg.mp)
+            metrics["mask_recall"] = float(results.seg.mr)
+            metrics["mask_mAP50"] = float(results.seg.mAP50)
+            metrics["mask_mAP50-95"] = float(results.seg.mAP50_95)
+        except Exception as e:
+            print(f"seg metric error: {e}")
+    # Per-class
+    try:
+        names = results.names
+        per_class = {}
+        for i, n in names.items():
+            per_class[n] = {
+                "P": float(results.box.p[i]) if i < len(results.box.p) else None,
+                "R": float(results.box.r[i]) if i < len(results.box.r) else None,
+                "mAP50": float(results.box.ap50[i]) if i < len(results.box.ap50) else None,
+                "mAP50-95": float(results.box.ap[i]) if i < len(results.box.ap) else None,
+            }
+        metrics["per_class"] = per_class
+    except Exception as e:
+        print(f"per-class error: {e}")
+    # Model info
+    metrics["model_size_MB"] = cfg["weights"].stat().st_size / 1024**2
+    metrics["params"] = sum(p.numel() for p in model.model.parameters())
+    # Inference speed
+    try:
+        speed = results.speed
+        metrics["inference_ms"] = float(speed.get("inference", 0))
+        metrics["preprocess_ms"] = float(speed.get("preprocess", 0))
+        metrics["postprocess_ms"] = float(speed.get("postprocess", 0))
+    except Exception:
+        pass
+    print(f"Results: {json.dumps(metrics, indent=2, default=str)}")
+    return model, metrics
+
+def find_failures(key, cfg, model, top_n=10):
+    """Find interesting failure cases: missed (FN), small objects, low confidence."""
+    print(f"\n{'='*60}")
+    print(f"Finding failure cases: {key}")
+    print(f"{'='*60}")
+    test_dir = Path("/tmp/yolo_detect_data/images/test") if cfg["task"] == "detect" else Path("/tmp/yolo_seg_data/images/test")
+    label_dir = Path("/tmp/yolo_detect_data/labels/test") if cfg["task"] == "detect" else Path("/tmp/yolo_seg_data/labels/test")
+    if not test_dir.exists():
+        print(f"No test dir: {test_dir}")
+        return []
+    images = sorted(test_dir.glob("*.jpg")) + sorted(test_dir.glob("*.png"))
+    failures = []
+    for img_path in images:
+        label_path = label_dir / (img_path.stem + ".txt")
+        if not label_path.exists():
+            continue
+        # Read GT
+        gt_boxes = []
+        with open(label_path) as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    cls = int(parts[0])
+                    x, y, w, h = map(float, parts[1:5])
+                    gt_boxes.append({"cls": cls, "w": w, "h": h, "x": x, "y": y})
+        if not gt_boxes:
+            continue
+        # Smallest GT box (normalized)
+        min_wh = min(b["w"] * b["h"] for b in gt_boxes)
+        # Run prediction
+        try:
+            res = model.predict(str(img_path), imgsz=640, conf=0.25, iou=0.6, device=0, verbose=False)
+            preds = res[0]
+            n_pred = len(preds.boxes) if preds.boxes is not None else 0
+            # Confidence
+            if n_pred > 0:
+                confs = preds.boxes.conf.cpu().numpy()
+                max_conf = float(confs.max())
+                min_conf = float(confs.min())
+            else:
+                max_conf = 0.0
+                min_conf = 0.0
+            # Missed = GT - matched (rough: if n_pred < n_gt, likely missed)
+            n_missed = max(0, len(gt_boxes) - n_pred)
+            # Score: prioritize small objects + missed + low confidence
+            score = n_missed * 10 + (1 - max_conf) * 5 + (1 - min_wh) * 3
+            failures.append({
+                "image": str(img_path),
+                "stem": img_path.stem,
+                "n_gt": len(gt_boxes),
+                "n_pred": n_pred,
+                "n_missed": n_missed,
+                "max_conf": max_conf,
+                "min_gt_wh": min_wh,
+                "score": score,
+                "gt_classes": [b["cls"] for b in gt_boxes],
+            })
+        except Exception as e:
+            print(f"Error {img_path}: {e}")
+    # Sort by score descending
+    failures.sort(key=lambda x: x["score"], reverse=True)
+    top = failures[:top_n]
+    # Save visualizations
+    for i, f in enumerate(top):
+        img = cv2.imread(f["image"])
+        # Draw GT (green)
+        label_path = label_dir / (f["stem"] + ".txt")
+        H, W = img.shape[:2]
+        with open(label_path) as fp:
+            for line in fp:
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    cls = int(parts[0])
+                    x, y, w, h = map(float, parts[1:5])
+                    x1 = int((x - w/2) * W)
+                    y1 = int((y - h/2) * H)
+                    x2 = int((x + w/2) * W)
+                    y2 = int((y + h/2) * H)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(img, f"GT:{NAMES[cls]}", (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        # Draw predictions (red)
+        res = model.predict(f["image"], imgsz=640, conf=0.25, iou=0.6, device=0, verbose=False)
+        if res[0].boxes is not None:
+            boxes = res[0].boxes.xyxy.cpu().numpy()
+            confs = res[0].boxes.conf.cpu().numpy()
+            clss = res[0].boxes.cls.cpu().numpy().astype(int)
+            for (x1, y1, x2, y2), c, cl in zip(boxes, confs, clss):
+                cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
+                cv2.putText(img, f"{NAMES[cl]}:{c:.2f}", (int(x1), int(y2)+15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        out_path = FAIL_DIR / f"{key}_{i:02d}_{f['stem']}.jpg"
+        cv2.imwrite(str(out_path), img)
+        f["saved_to"] = str(out_path)
+    return top
+
+def main():
+    all_metrics = {}
+    all_failures = {}
+    for key, cfg in MODELS.items():
+        if not cfg["weights"].exists():
+            print(f"SKIP {key}: weights not found")
+            continue
+        model, metrics = eval_model(key, cfg)
+        all_metrics[key] = metrics
+        failures = find_failures(key, cfg, model, top_n=10)
+        all_failures[key] = failures
+        # Save per-model
+        with open(OUT / f"{key}_metrics.json", "w") as f:
+            json.dump(metrics, f, indent=2, default=str)
+        with open(OUT / f"{key}_failures.json", "w") as f:
+            json.dump(failures, f, indent=2, default=str)
+    # Summary
+    with open(OUT / "all_metrics.json", "w") as f:
+        json.dump(all_metrics, f, indent=2, default=str)
+    with open(OUT / "all_failures.json", "w") as f:
+        json.dump(all_failures, f, indent=2, default=str)
+    # Print summary table
+    print(f"\n{'='*80}")
+    print("SUMMARY: v4_recipe test set evaluation")
+    print(f"{'='*80}")
+    print(f"{'Model':<12} {'mAP50':>8} {'mAP50-95':>10} {'P':>8} {'R':>8} {'Size(MB)':>10} {'Params':>12} {'Inf(ms)':>8}")
+    for key, m in all_metrics.items():
+        print(f"{key:<12} {m.get('mAP50',0):>8.3f} {m.get('mAP50-95',0):>10.3f} {m.get('precision',0):>8.3f} {m.get('recall',0):>8.3f} {m.get('model_size_MB',0):>10.1f} {m.get('params',0):>12,} {m.get('inference_ms',0):>8.1f}")
+    print(f"\nFailure cases saved to: {FAIL_DIR}")
+    print(f"Metrics saved to: {OUT}")
+
+if __name__ == "__main__":
+    main()

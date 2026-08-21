@@ -1,0 +1,13 @@
+# PPE
+models/
+input/
+output/
+output_*/
+sam3_venv/
+__pycache__/
+*.pyc
+.git/
+.devin/
+*.egg-info/
+*.log
+experiments.db

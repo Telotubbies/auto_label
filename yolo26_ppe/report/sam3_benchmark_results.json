@@ -1,0 +1,61 @@
+{
+  "sam3_1": {
+    "avg_inference_ms": 2754.5571871425796,
+    "std_inference_ms": 471.13430880689396,
+    "fps": 0.3630347573351138,
+    "model_size_mb": 3340.488163948059,
+    "num_test_images": 92,
+    "predictions_sample": [
+      {
+        "image": "e0007.jpg",
+        "num_masks": 0,
+        "time_ms": 2644.583225250244
+      },
+      {
+        "image": "e0026.jpg",
+        "num_masks": 0,
+        "time_ms": 2577.895402908325
+      },
+      {
+        "image": "e0028.jpg",
+        "num_masks": 0,
+        "time_ms": 2579.268455505371
+      },
+      {
+        "image": "e0031.jpg",
+        "num_masks": 0,
+        "time_ms": 2612.7288341522217
+      },
+      {
+        "image": "e0033.jpg",
+        "num_masks": 0,
+        "time_ms": 2598.015546798706
+      },
+      {
+        "image": "e0045.jpg",
+        "num_masks": 0,
+        "time_ms": 2611.034393310547
+      },
+      {
+        "image": "e0047.jpg",
+        "num_masks": 0,
+        "time_ms": 2659.736394882202
+      },
+      {
+        "image": "e0072.jpg",
+        "num_masks": 0,
+        "time_ms": 2699.382781982422
+      },
+      {
+        "image": "e0081.jpg",
+        "num_masks": 0,
+        "time_ms": 4434.851169586182
+      },
+      {
+        "image": "e0082.jpg",
+        "num_masks": 0,
+        "time_ms": 2648.1690406799316
+      }
+    ]
+  }
+}

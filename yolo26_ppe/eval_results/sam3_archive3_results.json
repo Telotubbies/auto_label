@@ -1,0 +1,183 @@
+{
+  "dataset": "archive3_extract",
+  "n_images": 20,
+  "n_classes": 14,
+  "classes": [
+    "Fall-Detected",
+    "Gloves",
+    "Goggles",
+    "Hardhat",
+    "Ladder",
+    "Mask",
+    "NO-Gloves",
+    "NO-Goggles",
+    "NO-Hardhat",
+    "NO-Mask",
+    "NO-Safety Vest",
+    "Person",
+    "Safety Cone",
+    "Safety Vest"
+  ],
+  "sam3_prompts_used": [
+    "fallen person",
+    "gloves",
+    "goggles",
+    "hardhat",
+    "ladder",
+    "face mask",
+    "person",
+    "safety cone",
+    "safety vest"
+  ],
+  "sam3_prompt_map": {
+    "Fall-Detected": "fallen person",
+    "Gloves": "gloves",
+    "Goggles": "goggles",
+    "Hardhat": "hardhat",
+    "Ladder": "ladder",
+    "Mask": "face mask",
+    "Person": "person",
+    "Safety Cone": "safety cone",
+    "Safety Vest": "safety vest"
+  },
+  "config": {
+    "model": "sam3.1_multiplex.pt",
+    "resolution": 1008,
+    "confidence_threshold": 0.25,
+    "device": "cuda",
+    "n_sample": 20,
+    "seed": 42,
+    "visualization": false
+  },
+  "results": {
+    "overall": {
+      "precision": 0.063,
+      "recall": 0.2941,
+      "mAP50": 0.0418,
+      "mAP50-95": 0.0172,
+      "total_detections": 238,
+      "avg_latency_ms": 5590.23
+    },
+    "per_class": {
+      "Fall-Detected": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 1,
+        "n_pred": 15,
+        "tp": 0,
+        "fp": 15,
+        "fn": 1
+      },
+      "Gloves": {
+        "P": 0.0323,
+        "R": 1.0,
+        "mAP50": 0.1181,
+        "n_gt": 2,
+        "n_pred": 62,
+        "tp": 2,
+        "fp": 60,
+        "fn": 0
+      },
+      "Goggles": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 1,
+        "n_pred": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1
+      },
+      "Hardhat": {
+        "P": 0.3023,
+        "R": 0.4643,
+        "mAP50": 0.2161,
+        "n_gt": 28,
+        "n_pred": 43,
+        "tp": 13,
+        "fp": 30,
+        "fn": 15
+      },
+      "Ladder": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 0,
+        "n_pred": 1,
+        "tp": 0,
+        "fp": 1,
+        "fn": 0
+      },
+      "Mask": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 0,
+        "n_pred": 15,
+        "tp": 0,
+        "fp": 15,
+        "fn": 0
+      },
+      "Person": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 0,
+        "n_pred": 84,
+        "tp": 0,
+        "fp": 84,
+        "fn": 0
+      },
+      "Safety Cone": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 0,
+        "n_pred": 6,
+        "tp": 0,
+        "fp": 6,
+        "fn": 0
+      },
+      "Safety Vest": {
+        "P": 0.0,
+        "R": 0.0,
+        "mAP50": 0.0,
+        "n_gt": 0,
+        "n_pred": 12,
+        "tp": 0,
+        "fp": 12,
+        "fn": 0
+      }
+    },
+    "no_prompt_classes": {
+      "NO-Gloves": {
+        "n_gt": 5,
+        "n_pred": 0,
+        "note": "NO-* class: no zero-shot prompt possible"
+      },
+      "NO-Goggles": {
+        "n_gt": 5,
+        "n_pred": 0,
+        "note": "NO-* class: no zero-shot prompt possible"
+      },
+      "NO-Hardhat": {
+        "n_gt": 7,
+        "n_pred": 0,
+        "note": "NO-* class: no zero-shot prompt possible"
+      },
+      "NO-Mask": {
+        "n_gt": 2,
+        "n_pred": 0,
+        "note": "NO-* class: no zero-shot prompt possible"
+      },
+      "NO-Safety Vest": {
+        "n_gt": 0,
+        "n_pred": 0,
+        "note": "NO-* class: no zero-shot prompt possible"
+      }
+    }
+  },
+  "errors": [],
+  "n_errors": 0
+}
