@@ -1,0 +1,498 @@
+{
+  "model": "s_seg",
+  "n_images": 48,
+  "total_time_s": 6.12,
+  "avg_latency_ms": 127.5,
+  "class_order": [
+    "person",
+    "helmet",
+    "boots",
+    "shoes",
+    "harness"
+  ],
+  "results": [
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_1.jpg",
+      "n_det": 12,
+      "latency_ms": 135.4,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "boots": 6
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_2.jpg",
+      "n_det": 4,
+      "latency_ms": 134.0,
+      "classes": {
+        "person": 1,
+        "helmet": 2,
+        "boots": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_3.jpg",
+      "n_det": 7,
+      "latency_ms": 131.4,
+      "classes": {
+        "person": 3,
+        "helmet": 1,
+        "boots": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_4.jpg",
+      "n_det": 10,
+      "latency_ms": 121.3,
+      "classes": {
+        "person": 6,
+        "helmet": 2,
+        "boots": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_6.jpg",
+      "n_det": 12,
+      "latency_ms": 133.1,
+      "classes": {
+        "person": 4,
+        "helmet": 4,
+        "shoes": 4
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_7.jpg",
+      "n_det": 3,
+      "latency_ms": 125.3,
+      "classes": {
+        "person": 1,
+        "boots": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095645_C2c357edaaeacd91b936af2d55e35b510_U43688fbca9a6434503f6c33109afa94d_8.jpg",
+      "n_det": 12,
+      "latency_ms": 128.1,
+      "classes": {
+        "person": 3,
+        "helmet": 5,
+        "boots": 2,
+        "shoes": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095710_C2c357edaaeacd91b936af2d55e35b510_U157bc09a38310e2a5198b44a7e221c69_1.jpg",
+      "n_det": 11,
+      "latency_ms": 120.0,
+      "classes": {
+        "person": 4,
+        "helmet": 5,
+        "shoes": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095710_C2c357edaaeacd91b936af2d55e35b510_U157bc09a38310e2a5198b44a7e221c69_5.jpg",
+      "n_det": 3,
+      "latency_ms": 128.2,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "boots": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095710_C2c357edaaeacd91b936af2d55e35b510_U157bc09a38310e2a5198b44a7e221c69_6.jpg",
+      "n_det": 12,
+      "latency_ms": 123.1,
+      "classes": {
+        "person": 1,
+        "helmet": 4,
+        "boots": 6,
+        "shoes": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-095710_C2c357edaaeacd91b936af2d55e35b510_U157bc09a38310e2a5198b44a7e221c69_8.jpg",
+      "n_det": 3,
+      "latency_ms": 135.3,
+      "classes": {
+        "person": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-100530_C2c357edaaeacd91b936af2d55e35b510_U9755e40b13295e1927c1b4d04a8a995d_1.jpg",
+      "n_det": 18,
+      "latency_ms": 148.2,
+      "classes": {
+        "person": 7,
+        "helmet": 6,
+        "shoes": 5
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-100530_C2c357edaaeacd91b936af2d55e35b510_U9755e40b13295e1927c1b4d04a8a995d_2.jpg",
+      "n_det": 12,
+      "latency_ms": 129.5,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "shoes": 5
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-100530_C2c357edaaeacd91b936af2d55e35b510_U9755e40b13295e1927c1b4d04a8a995d_3.jpg",
+      "n_det": 12,
+      "latency_ms": 128.3,
+      "classes": {
+        "person": 5,
+        "helmet": 2,
+        "shoes": 5
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-100530_C2c357edaaeacd91b936af2d55e35b510_U9755e40b13295e1927c1b4d04a8a995d_4.jpg",
+      "n_det": 12,
+      "latency_ms": 124.3,
+      "classes": {
+        "person": 3,
+        "helmet": 5,
+        "shoes": 4
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-100530_C2c357edaaeacd91b936af2d55e35b510_U9755e40b13295e1927c1b4d04a8a995d_5.jpg",
+      "n_det": 8,
+      "latency_ms": 130.8,
+      "classes": {
+        "person": 1,
+        "helmet": 2,
+        "shoes": 5
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-100530_C2c357edaaeacd91b936af2d55e35b510_U9755e40b13295e1927c1b4d04a8a995d_6.jpg",
+      "n_det": 21,
+      "latency_ms": 125.4,
+      "classes": {
+        "person": 8,
+        "helmet": 4,
+        "shoes": 9
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-122501_C2c357edaaeacd91b936af2d55e35b510_U0c76625f525649a0580547198255fc0c_1.jpg",
+      "n_det": 25,
+      "latency_ms": 125.1,
+      "classes": {
+        "person": 8,
+        "helmet": 7,
+        "shoes": 10
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-122501_C2c357edaaeacd91b936af2d55e35b510_U0c76625f525649a0580547198255fc0c_2.jpg",
+      "n_det": 32,
+      "latency_ms": 124.7,
+      "classes": {
+        "person": 8,
+        "helmet": 11,
+        "shoes": 13
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-122501_C2c357edaaeacd91b936af2d55e35b510_U0c76625f525649a0580547198255fc0c_3.jpg",
+      "n_det": 4,
+      "latency_ms": 127.4,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "harness": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-122501_C2c357edaaeacd91b936af2d55e35b510_U0c76625f525649a0580547198255fc0c_4.jpg",
+      "n_det": 6,
+      "latency_ms": 137.6,
+      "classes": {
+        "helmet": 2,
+        "person": 1,
+        "harness": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-122501_C2c357edaaeacd91b936af2d55e35b510_U0c76625f525649a0580547198255fc0c_6.jpg",
+      "n_det": 23,
+      "latency_ms": 125.8,
+      "classes": {
+        "person": 6,
+        "helmet": 8,
+        "shoes": 9
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-132523_C2c357edaaeacd91b936af2d55e35b510_Ub32e042a86160ffaa278ca3e3159155e_1.jpg",
+      "n_det": 18,
+      "latency_ms": 121.3,
+      "classes": {
+        "person": 8,
+        "helmet": 8,
+        "shoes": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-132523_C2c357edaaeacd91b936af2d55e35b510_Ub32e042a86160ffaa278ca3e3159155e_5.jpg",
+      "n_det": 28,
+      "latency_ms": 119.8,
+      "classes": {
+        "person": 14,
+        "helmet": 11,
+        "shoes": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140252_C2c357edaaeacd91b936af2d55e35b510_Ua5453283cbba49a796c33239a44a5ba0_2.jpg",
+      "n_det": 7,
+      "latency_ms": 127.9,
+      "classes": {
+        "person": 2,
+        "helmet": 3,
+        "shoes": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_1.jpg",
+      "n_det": 20,
+      "latency_ms": 140.3,
+      "classes": {
+        "person": 7,
+        "helmet": 6,
+        "boots": 7
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_2.jpg",
+      "n_det": 33,
+      "latency_ms": 127.1,
+      "classes": {
+        "person": 12,
+        "helmet": 9,
+        "boots": 12
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_3.jpg",
+      "n_det": 25,
+      "latency_ms": 128.5,
+      "classes": {
+        "person": 12,
+        "helmet": 10,
+        "shoes": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_4.jpg",
+      "n_det": 36,
+      "latency_ms": 129.5,
+      "classes": {
+        "person": 21,
+        "helmet": 15
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_5.jpg",
+      "n_det": 19,
+      "latency_ms": 144.5,
+      "classes": {
+        "person": 5,
+        "helmet": 8,
+        "boots": 6
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_6.jpg",
+      "n_det": 32,
+      "latency_ms": 128.9,
+      "classes": {
+        "person": 26,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_7.jpg",
+      "n_det": 23,
+      "latency_ms": 128.2,
+      "classes": {
+        "person": 7,
+        "helmet": 8,
+        "boots": 8
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-140557_C2c357edaaeacd91b936af2d55e35b510_U11d338eb59a31231d04e8a1470a6b09e_8.jpg",
+      "n_det": 26,
+      "latency_ms": 125.1,
+      "classes": {
+        "person": 14,
+        "helmet": 9,
+        "boots": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153731_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_1.jpg",
+      "n_det": 18,
+      "latency_ms": 121.8,
+      "classes": {
+        "person": 8,
+        "helmet": 8,
+        "shoes": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153731_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_2.jpg",
+      "n_det": 8,
+      "latency_ms": 120.9,
+      "classes": {
+        "person": 6,
+        "helmet": 1,
+        "shoes": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153731_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_3.jpg",
+      "n_det": 29,
+      "latency_ms": 122.2,
+      "classes": {
+        "person": 11,
+        "helmet": 11,
+        "shoes": 7
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153806_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_1.jpg",
+      "n_det": 11,
+      "latency_ms": 123.7,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "harness": 4,
+        "shoes": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_10.jpg",
+      "n_det": 4,
+      "latency_ms": 122.4,
+      "classes": {
+        "person": 2,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_11.jpg",
+      "n_det": 8,
+      "latency_ms": 123.4,
+      "classes": {
+        "helmet": 1,
+        "person": 3,
+        "shoes": 4
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_12.jpg",
+      "n_det": 15,
+      "latency_ms": 125.6,
+      "classes": {
+        "person": 6,
+        "helmet": 3,
+        "shoes": 6
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_2.jpg",
+      "n_det": 4,
+      "latency_ms": 119.5,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "harness": 1,
+        "shoes": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_3.jpg",
+      "n_det": 17,
+      "latency_ms": 127.1,
+      "classes": {
+        "person": 5,
+        "helmet": 6,
+        "shoes": 6
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_4.jpg",
+      "n_det": 7,
+      "latency_ms": 120.8,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "harness": 5
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_5.jpg",
+      "n_det": 10,
+      "latency_ms": 127.6,
+      "classes": {
+        "person": 8,
+        "helmet": 1,
+        "harness": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_6.jpg",
+      "n_det": 8,
+      "latency_ms": 112.2,
+      "classes": {
+        "person": 4,
+        "helmet": 2,
+        "shoes": 1,
+        "harness": 1
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_7.jpg",
+      "n_det": 10,
+      "latency_ms": 133.0,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "harness": 1,
+        "shoes": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_8.jpg",
+      "n_det": 7,
+      "latency_ms": 132.4,
+      "classes": {
+        "person": 3,
+        "helmet": 1,
+        "shoes": 3
+      }
+    },
+    {
+      "image": "Copy of 2026-08-08_20260808-153835_C2c357edaaeacd91b936af2d55e35b510_U5bc37b74a66c3dca7f4165b9f1607432_9.jpg",
+      "n_det": 27,
+      "latency_ms": 126.3,
+      "classes": {
+        "person": 13,
+        "helmet": 5,
+        "shoes": 7,
+        "harness": 2
+      }
+    }
+  ]
+}

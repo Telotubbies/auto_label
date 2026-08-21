@@ -1,0 +1,13 @@
+{
+  "model_key": "s_seg",
+  "formats": {
+    "onnx": {
+      "path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26s_seg/run1/weights/best.onnx",
+      "size_mb": 41.99966
+    },
+    "torchscript": {
+      "path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26s_seg/run1/weights/best.torchscript",
+      "size_mb": 42.155697
+    }
+  }
+}

@@ -1,0 +1,5 @@
+name,task,size,weights_exists,weights_size_mb,run_id,mAP50B,mAP50_95B,precision,recall
+yolo26n_detect_v2,detect,n,True,5.408965,26235bfdb23d453b,0.70715,0.5027418221100699,0.828264292358142,0.6295233515027431
+yolo26s_detect_v2,detect,s,True,20.336517,6a7d087fbf0c4de2,0.80533,0.62161,0.8551474315277954,0.7490062940253169
+yolo26n_seg_v2,segment,n,True,25.291225,,,,,
+yolo26s_seg_v2,segment,s,False,0,,,,,

@@ -1,0 +1,10 @@
+{
+  "n_seg": {
+    "key": "n_seg",
+    "error": "No module named 'ultralytics'"
+  },
+  "s_seg": {
+    "key": "s_seg",
+    "error": "No module named 'ultralytics'"
+  }
+}

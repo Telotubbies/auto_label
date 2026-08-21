@@ -1,0 +1,86 @@
+{
+  "n_detect": {
+    "n_images": 48,
+    "avg_latency_ms": 33.7,
+    "std_latency_ms": 4.5,
+    "min_latency_ms": 28.9,
+    "max_latency_ms": 50.7,
+    "p95_latency_ms": 44.4,
+    "total_detections": 556,
+    "avg_det_per_img": 11.6,
+    "std_det_per_img": 8.4,
+    "min_det": 2,
+    "max_det": 33,
+    "class_distribution": {
+      "helmet": 197,
+      "person": 203,
+      "boots": 35,
+      "shoes": 110,
+      "harness": 11
+    },
+    "images_with_zero_det": 0
+  },
+  "s_detect": {
+    "n_images": 48,
+    "avg_latency_ms": 147.9,
+    "std_latency_ms": 369.9,
+    "min_latency_ms": 82.7,
+    "max_latency_ms": 2683.3,
+    "p95_latency_ms": 108.8,
+    "total_detections": 679,
+    "avg_det_per_img": 14.1,
+    "std_det_per_img": 10.2,
+    "min_det": 2,
+    "max_det": 47,
+    "class_distribution": {
+      "person": 233,
+      "helmet": 244,
+      "boots": 48,
+      "shoes": 142,
+      "harness": 12
+    },
+    "images_with_zero_det": 0
+  },
+  "n_seg": {
+    "n_images": 48,
+    "avg_latency_ms": 51.3,
+    "std_latency_ms": 4.1,
+    "min_latency_ms": 45.8,
+    "max_latency_ms": 64.4,
+    "p95_latency_ms": 58.5,
+    "total_detections": 660,
+    "avg_det_per_img": 13.8,
+    "std_det_per_img": 8.3,
+    "min_det": 2,
+    "max_det": 34,
+    "class_distribution": {
+      "person": 272,
+      "helmet": 209,
+      "boots": 37,
+      "shoes": 123,
+      "harness": 19
+    },
+    "images_with_zero_det": 0
+  },
+  "s_seg": {
+    "n_images": 48,
+    "avg_latency_ms": 127.5,
+    "std_latency_ms": 6.5,
+    "min_latency_ms": 112.2,
+    "max_latency_ms": 148.2,
+    "p95_latency_ms": 139.4,
+    "total_detections": 712,
+    "avg_det_per_img": 14.8,
+    "std_det_per_img": 9.2,
+    "min_det": 3,
+    "max_det": 36,
+    "class_distribution": {
+      "person": 286,
+      "helmet": 221,
+      "boots": 58,
+      "shoes": 127,
+      "harness": 20
+    },
+    "images_with_zero_det": 0
+  }
+}

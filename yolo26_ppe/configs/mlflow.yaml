@@ -1,0 +1,17 @@
+# MLflow config
+tracking_uri: sqlite:///yolo26_ppe/mlflow/mlflow.db
+artifact_root: yolo26_ppe/mlflow/mlruns
+experiment_name: yolo26_ppe
+host: 0.0.0.0
+port: 5000
+
+# Auto-logged by Ultralytics:
+# - Params: lr0, batch, epochs, imgsz, optimizer, augmentation, freeze, cls_pw
+# - Metrics (per epoch): mAP50, mAP50-95, precision, recall, box_loss, cls_loss
+# - Artifacts: best.pt, last.pt, confusion_matrix.png, PR_curve.png, results.csv
+
+# Custom logs (added in 03_train.py):
+# - dataset_size, train/val/test split, class_imbalance_ratio
+# - augment_level, noise_robust, lighting_robust
+# - gpu, runtime
+# - inference_ms, model_size_mb, params_M

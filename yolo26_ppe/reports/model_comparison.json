@@ -1,0 +1,40 @@
+[
+  {
+    "name": "yolo26n_detect_v2",
+    "task": "detect",
+    "size": "n",
+    "weights_exists": true,
+    "weights_size_mb": 5.408965,
+    "run_id": "26235bfdb23d453b",
+    "mAP50B": 0.70715,
+    "mAP50_95B": 0.5027418221100699,
+    "precision": 0.828264292358142,
+    "recall": 0.6295233515027431
+  },
+  {
+    "name": "yolo26s_detect_v2",
+    "task": "detect",
+    "size": "s",
+    "weights_exists": true,
+    "weights_size_mb": 20.336517,
+    "run_id": "6a7d087fbf0c4de2",
+    "mAP50B": 0.80533,
+    "mAP50_95B": 0.62161,
+    "precision": 0.8551474315277954,
+    "recall": 0.7490062940253169
+  },
+  {
+    "name": "yolo26n_seg_v2",
+    "task": "segment",
+    "size": "n",
+    "weights_exists": true,
+    "weights_size_mb": 25.291225
+  },
+  {
+    "name": "yolo26s_seg_v2",
+    "task": "segment",
+    "size": "s",
+    "weights_exists": false,
+    "weights_size_mb": 0
+  }
+]

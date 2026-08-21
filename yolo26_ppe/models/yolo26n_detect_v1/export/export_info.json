@@ -1,0 +1,13 @@
+{
+  "model_key": "n_detect",
+  "formats": {
+    "onnx": {
+      "path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26n_detect/run1/weights/best.onnx",
+      "size_mb": 9.951667
+    },
+    "torchscript": {
+      "path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26n_detect/run1/weights/best.torchscript",
+      "size_mb": 10.107945
+    }
+  }
+}

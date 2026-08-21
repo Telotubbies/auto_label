@@ -1,0 +1,8 @@
+# YOLO26 PPE detect dataset
+path: /mnt/e/02_Projects/auto_label/yolo26_ppe/data/yolo_detect
+train: images/train
+val: images/val
+test: images/test
+
+nc: 6
+names: ['person', 'helmet', 'boots', 'shoes', 'sandals', 'harness']

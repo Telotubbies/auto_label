@@ -1,0 +1,29 @@
+# PyTorch is installed separately (ROCm for AMD GPU, CUDA for NVIDIA, CPU fallback).
+# Do NOT include torch/torchvision here — install per hardware.
+#
+# WSL2 + AMD ROCm (RX 7800 XT):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.2
+#
+# NVIDIA CUDA:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#
+# CPU:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Web server (for service.py — optional, not needed for batch CLI)
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+
+# ML (non-torch)
+numpy==1.26.4
+pillow==12.3.0
+pycocotools==2.0.11
+
+# Visualization — OpenCV (replaces matplotlib, 10-50x faster for batch viz)
+opencv-python-headless==4.10.0.84
+
+# Config & utils
+PyYAML==6.0.3
+tqdm==4.70.0

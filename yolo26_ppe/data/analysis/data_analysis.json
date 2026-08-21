@@ -1,0 +1,57 @@
+{
+  "total_images": 480,
+  "splits": {
+    "train": 335,
+    "val": 95,
+    "test": 50
+  },
+  "before_balance": {
+    "person": 2271,
+    "helmet": 2693,
+    "shoes": 2407,
+    "boots": 802,
+    "harness": 102,
+    "sandals": 4
+  },
+  "after_balance_detect": {
+    "person": 2677,
+    "boots": 812,
+    "shoes": 2823,
+    "helmet": 3003,
+    "harness": 306,
+    "sandals": 56
+  },
+  "after_balance_segment": {
+    "person": 2677,
+    "boots": 812,
+    "shoes": 2823,
+    "helmet": 3003,
+    "harness": 306,
+    "sandals": 56
+  },
+  "class_names": [
+    "person",
+    "helmet",
+    "boots",
+    "shoes",
+    "sandals",
+    "harness"
+  ],
+  "imbalance_before": "2693:4 = 673:1",
+  "imbalance_after": "3003:56 = 53.6:1",
+  "oversample_targets": {
+    "sandals": 200,
+    "harness": 200,
+    "boots": 400
+  },
+  "oversample_log": {
+    "sandals": 30,
+    "harness": 114
+  },
+  "oversample_unique_images": {
+    "sandals": 3,
+    "harness": 57,
+    "boots": 548
+  },
+  "skipped_missing_images": 0
+}

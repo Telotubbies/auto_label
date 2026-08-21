@@ -1,0 +1,26 @@
+{
+  "n_detect": {
+    "onnx_path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26n_detect_v2/run1/weights/best.onnx",
+    "pt_size_mb": 5.158390998840332,
+    "onnx_size_mb": 9.613560676574707,
+    "pt_gpu_ms": 18.51468324661255
+  },
+  "s_detect": {
+    "onnx_path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26s_detect_v2/run1/weights/best.onnx",
+    "pt_size_mb": 19.394413948059082,
+    "onnx_size_mb": 36.66529178619385,
+    "pt_gpu_ms": 17.040553092956543
+  },
+  "n_seg": {
+    "onnx_path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26n_seg_v2/run1/weights/best.onnx",
+    "pt_size_mb": 6.275052070617676,
+    "onnx_size_mb": 10.904264450073242,
+    "pt_gpu_ms": 22.203245162963867
+  },
+  "s_seg": {
+    "onnx_path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26s_seg_v2/run1/weights/best.onnx",
+    "pt_size_mb": 22.312954902648926,
+    "onnx_size_mb": 40.19191551208496,
+    "pt_gpu_ms": 22.52126932144165
+  }
+}

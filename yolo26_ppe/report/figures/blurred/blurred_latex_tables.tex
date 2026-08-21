@@ -1,0 +1,32 @@
+\begin{table}[H]
+\centering
+\begin{tabular}{lrrrrrrr}
+\toprule
+\textbf{Model} & \textbf{Imgs} & \textbf{Avg lat} & \textbf{Std lat} & \textbf{Total det} & \textbf{Avg det/img} & \textbf{Zero-det} & \textbf{P95 lat} \\
+ &  & (ms) & (ms) &  &  & (imgs) & (ms) \\
+\midrule
+n_detect & 48 & 33.7 & 4.5 & 556 & 11.6 & 0 & 44.4 \\
+s_detect & 48 & 147.9 & 369.9 & 679 & 14.1 & 0 & 108.8 \\
+n_seg & 48 & 51.3 & 4.1 & 660 & 13.8 & 0 & 58.5 \\
+s_seg & 48 & 127.5 & 6.5 & 712 & 14.8 & 0 & 139.4 \\
+\bottomrule
+\end{tabular}
+\caption{ผลการ inference บน blurred dataset (48 ภาพ) ด้วย ONNX — latency และจำนวน detection}
+\label{tab:blurred_onnx_results}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Model} & \textbf{person} & \textbf{helmet} & \textbf{boots} & \textbf{shoes} & \textbf{harness} & \textbf{Total} \\
+\midrule
+n_detect & 203 & 197 & 35 & 110 & 11 & 556 \\
+s_detect & 233 & 244 & 48 & 142 & 12 & 679 \\
+n_seg & 272 & 209 & 37 & 123 & 19 & 660 \\
+s_seg & 286 & 221 & 58 & 127 & 20 & 712 \\
+\bottomrule
+\end{tabular}
+\caption{Class distribution ของ detection บน blurred dataset (48 ภาพ) ด้วย ONNX}
+\label{tab:blurred_class_dist}
+\end{table}

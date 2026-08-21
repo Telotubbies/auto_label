@@ -1,0 +1,30 @@
+# YOLO26 PPE — Augmentation config (medium-heavy)
+# Robustness: noise + lighting + occlusion
+# Reference: https://docs.ultralytics.com/guides/yolo26-training-recipe/
+
+# Color space — lighting robustness
+hsv_h: 0.02        # hue shift (color variation)
+hsv_s: 0.7         # saturation (bright/dim conditions)
+hsv_v: 0.5         # brightness (day/night/dusk)
+
+# Geometric
+degrees: 5.0       # slight rotation (camera tilt)
+translate: 0.15    # position shift
+scale: 0.6         # object size variation
+shear: 2.0         # slight shear
+perspective: 0.0   # no perspective (keep simple)
+fliplr: 0.5        # horizontal flip
+flipud: 0.0        # no vertical flip (PPE doesn't make sense upside down)
+
+# Mosaic + mixing
+mosaic: 0.8        # 4-image mosaic (strong regularization)
+mixup: 0.1         # light mixup
+copy_paste: 0.15   # copy-paste (helps rare classes: sandals, harness)
+close_mosaic: 10   # disable mosaic last 10 epochs (stabilize final convergence)
+
+# Occlusion robustness
+erasing: 0.3       # random erasing (simulate occlusion)
+
+# Albumentations (additional noise robustness)
+# Applied automatically by Ultralytics if albumentations installed
+# Includes: GaussNoise, RandomBrightnessContrast, CLAHE, etc.
