@@ -13,6 +13,9 @@ Usage:
   python pipeline_cli.py                          # interactive mode
   python pipeline_cli.py --sam --batch blurred    # direct mode
   python pipeline_cli.py --yolo --model nano_detection,small_detection
+  python pipeline_cli.py --version                # show version
+  python pipeline_cli.py --dry-run --yolo ...     # preview without executing
+  python pipeline_cli.py -v --sam ...             # verbose output
 """
 import argparse
 import os
@@ -20,6 +23,7 @@ import subprocess
 import sys
 import time
 from datetime import timedelta
+from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 
@@ -40,6 +44,34 @@ from rich.rule import Rule
 from rich import box
 from rich.layout import Layout
 from rich.padding import Padding
+
+# =============================================================================
+# Version
+# =============================================================================
+__version__ = "2.0.0"
+__app_name__ = "Auto-Label PPE Pipeline"
+
+# =============================================================================
+# Verbosity / Output Format Enums (production pattern)
+# =============================================================================
+
+class Verbosity(str, Enum):
+    QUIET = "quiet"
+    NORMAL = "normal"
+    VERBOSE = "verbose"
+    DEBUG = "debug"
+
+
+class OutputFormat(str, Enum):
+    TABLE = "table"
+    JSON = "json"
+    PLAIN = "plain"
+
+
+# Global state (set by global flags before any command runs)
+_verbosity = Verbosity.NORMAL
+_output_format = OutputFormat.TABLE
+_dry_run = False
 
 # =============================================================================
 # Config — all paths and model definitions (testable without GPU)
@@ -129,6 +161,42 @@ PROCESSING_DEVICES = {
         "desc": "CPU only — very slow, not recommended for training",
     },
 }
+
+# =============================================================================
+# Typed Exception Hierarchy (production pattern — raise, don't exit)
+# =============================================================================
+
+class PipelineError(Exception):
+    """Base exception for all pipeline errors."""
+    def __init__(self, message: str, hint: str = ""):
+        self.message = message
+        self.hint = hint
+        super().__init__(message)
+
+
+class ConfigError(PipelineError):
+    """Configuration or argument error."""
+
+
+class DatasetError(PipelineError):
+    """Dataset not found, empty, or invalid."""
+
+
+class DeviceError(PipelineError):
+    """GPU/device unavailable or incompatible."""
+
+
+class CheckpointError(PipelineError):
+    """SAM checkpoint or YOLO weights missing."""
+
+
+class TrainingError(PipelineError):
+    """Training execution failure."""
+
+
+class PredictionError(PipelineError):
+    """Inference execution failure."""
+
 
 # --- Training config defaults (Advanced mode can override) ---
 TRAINING_DEFAULTS = {
@@ -543,6 +611,28 @@ def render_error(msg: str, hint: str = ""):
     if hint:
         console.print(f"  [dim]💡 {hint}[/dim]")
     console.print()
+
+
+def render_error_panel(error: PipelineError):
+    """Render a typed PipelineError as a Rich panel (production pattern)."""
+    content = Table(show_header=False, show_edge=False, box=None, padding=(0, 1))
+    content.add_row("[red]Error[/red]", error.message)
+    if error.hint:
+        content.add_row("[cyan]Fix[/cyan]", error.hint)
+    console.print()
+    console.print(Panel(content, title="[red]❌ Pipeline Error[/red]",
+                        border_style="red", box=box.ROUNDED, padding=(1, 2)))
+    console.print()
+
+
+def handle_pipeline_error(error: PipelineError) -> int:
+    """Handle a PipelineError → render + return exit code. Never call sys.exit directly."""
+    render_error_panel(error)
+    if _verbosity == Verbosity.DEBUG:
+        import traceback
+        console.print("[dim]Traceback:[/dim]")
+        console.print(traceback.format_exc())
+    return 1
 
 
 def render_tip(msg: str):
@@ -1158,9 +1248,9 @@ def direct_mode(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Auto-Label PPE Pipeline — Production CLI",
+        description=f"{__app_name__} — Production CLI v{__version__}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Interactive mode (no args):
   python pipeline_cli.py
 
@@ -1168,11 +1258,33 @@ Direct mode:
   python pipeline_cli.py --sam --batch blurred,custom_capture_2026-08-14
   python pipeline_cli.py --yolo --model nano_detection,small_detection --stage 12
   python pipeline_cli.py --pred --batch blurred --model small_detection
+
+Global flags:
+  -v, --verbose    Increase output verbosity
+  -q, --quiet      Suppress non-essential output
+  --debug          Full tracebacks on error
+  --dry-run        Preview actions without executing
+  --format FMT     Output format: table, json, plain
+  -V, --version    Show version and exit
+
+Custom training (YOLO):
+  python pipeline_cli.py --yolo --model nano_detection \\
+    --device rocm --epochs 100 --batch-size 32 --optimizer AdamW --lr0 0.001
 """,
     )
+    # --- Global flags (processed before any command) ---
+    parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential output")
+    parser.add_argument("--debug", action="store_true", help="Full tracebacks on error")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without executing")
+    parser.add_argument("--format", choices=["table", "json", "plain"], default="table",
+                        help="Output format")
+    parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
+    # --- Mode selection ---
     parser.add_argument("--sam", action="store_const", dest="mode", const="sam")
     parser.add_argument("--yolo", action="store_const", dest="mode", const="yolo")
     parser.add_argument("--pred", action="store_const", dest="mode", const="pred")
+    # --- Mode-specific args ---
     parser.add_argument("--batch", help="dataset name(s), comma-separated")
     parser.add_argument("--model", help="model key(s), comma-separated")
     parser.add_argument("--stage", type=int, choices=[1, 2, 12], default=12, help="training stage")
@@ -1181,7 +1293,7 @@ Direct mode:
     parser.add_argument("--imgsz", type=int, default=640, help="image size")
     parser.add_argument("--device", default="0",
                         help="device: rocm, cuda, apple, cpu, or raw (0, 1, mps, cpu)")
-    # Custom training config (YOLO)
+    # --- Custom training config (YOLO) ---
     parser.add_argument("--epochs", type=int, default=None, help="override epochs (both stages)")
     parser.add_argument("--batch-size", type=int, default=None, help="override batch size")
     parser.add_argument("--workers", type=int, default=None, help="dataloader workers")
@@ -1193,6 +1305,25 @@ Direct mode:
     parser.add_argument("--prepare", action="store_true", help="YOLO: prepare dataset first")
     parser.add_argument("--copy-tmp", action="store_true", help="YOLO: copy datasets to /tmp")
     args = parser.parse_args()
+
+    # --- Handle --version (eager exit) ---
+    if args.version:
+        print(f"{__app_name__} v{__version__}")
+        sys.exit(0)
+
+    # --- Set global state from flags ---
+    global _verbosity, _output_format, _dry_run
+    if args.debug:
+        _verbosity = Verbosity.DEBUG
+    elif args.quiet:
+        _verbosity = Verbosity.QUIET
+    elif args.verbose:
+        _verbosity = Verbosity.VERBOSE
+    _output_format = OutputFormat(args.format)
+    _dry_run = args.dry_run
+
+    if _dry_run and _verbosity != Verbosity.QUIET:
+        console.print("\n  [yellow]🔍 DRY RUN — no actions will be executed[/yellow]\n")
 
     if args.mode:
         direct_mode(args)
@@ -1206,3 +1337,11 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         console.print("\n  [yellow]⛔ Cancelled by user.[/yellow]\n")
         sys.exit(130)
+    except PipelineError as e:
+        sys.exit(handle_pipeline_error(e))
+    except Exception as e:
+        if _verbosity == Verbosity.DEBUG:
+            raise
+        console.print(f"\n  [red]❌ Unexpected error: {e}[/red]")
+        console.print(f"  [dim]Run with --debug for full traceback.[/dim]\n")
+        sys.exit(1)
