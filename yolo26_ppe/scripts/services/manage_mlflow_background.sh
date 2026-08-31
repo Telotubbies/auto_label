@@ -10,12 +10,12 @@
 
 set -e
 
-TRACKING_URI="sqlite:////mnt/e/02_Projects/auto_label/yolo26_ppe/mlflow/mlflow.db"
-ARTIFACT_ROOT="/mnt/e/02_Projects/auto_label/yolo26_ppe/mlflow/artifacts"
+TRACKING_URI="sqlite:////mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/mlflow/backend/mlflow.db"
+ARTIFACT_ROOT="/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/mlflow/artifacts"
 PORT=5000
 HOST="0.0.0.0"
 PID_FILE="/tmp/mlflow_server.pid"
-LOG_FILE="/mnt/e/02_Projects/auto_label/yolo26_ppe/mlflow/server.log"
+LOG_FILE="/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/logs/mlflow_server.log"
 PYTHON="/opt/sam3_venv/bin/python3"
 
 mkdir -p "$(dirname "$LOG_FILE")"

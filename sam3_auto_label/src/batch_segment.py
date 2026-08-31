@@ -5,7 +5,7 @@ Features:
   - ETA estimation: ประเมินเวลาที่เหลือจากค่าเฉลี่ย
 
 Usage:
-    python src/batch_segment.py                          # use config/ppe.yaml
+    python src/batch_segment.py                          # use config/ppe_6class.yaml
     python src/batch_segment.py --resume                 # resume from checkpoint
     python src/batch_segment.py --fresh                  # start fresh (delete checkpoint)
     python src/batch_segment.py --threshold 0.5          # override threshold
@@ -96,7 +96,7 @@ def format_eta(seconds):
 
 def parse_args():
     p = argparse.ArgumentParser(description="SAM 3.1 batch segmentation")
-    p.add_argument("-c", "--config", default="config/ppe.yaml", help="path to YAML config")
+    p.add_argument("-c", "--config", default="config/ppe_6class.yaml", help="path to YAML config")
     p.add_argument("--threshold", type=float, help="override confidence threshold")
     p.add_argument("--resolution", type=int, help="override input resolution")
     p.add_argument("--device", choices=["auto", "cpu", "cuda", "rocm", "mps"], help="override device")

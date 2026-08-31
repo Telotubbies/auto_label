@@ -25,6 +25,7 @@ import os
 import sys
 import time
 import yaml
+import contextlib
 
 # ROCm env (must be before torch import)
 os.environ.setdefault("HSA_ENABLE_DXG_DETECTION", "1")
@@ -33,56 +34,76 @@ os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # MLflow setup
-MLFLOW_DB = os.path.join(BASE, "yolo26_ppe", "mlflow", "mlflow.db")
+MLFLOW_DB = os.path.join(BASE, "artifacts", "mlflow", "backend", "mlflow.db")
 os.environ["MLFLOW_TRACKING_URI"] = f"sqlite:///{MLFLOW_DB}"
 
 # Import focal patch BEFORE ultralytics YOLO — monkey-patches v8DetectionLoss
 # to use Focal Loss (gamma=1.5) instead of plain BCE.
-import focal_patch  # noqa: F401
+# Optional: if focal_patch.py is missing, training continues without Focal Loss.
+try:
+    import focal_patch  # noqa: F401
+    FOCAL_PATCH_AVAILABLE = True
+except ImportError:
+    FOCAL_PATCH_AVAILABLE = False
 
 from ultralytics import YOLO, settings
-import mlflow
+try:
+    import mlflow
+except Exception:
+    mlflow = None  # mlflow or its deps may fail due to version mismatches
 
-settings.update({"mlflow": True})
+try:
+    # Disable mlflow integration in ultralytics — our code handles mlflow separately
+    # This prevents ultralytics from importing mlflow internally (which may fail due to dep conflicts)
+    settings.update({"mlflow": False})
+except Exception:
+    pass  # MLflow settings not critical
 
-# Load augmentation config
-with open(os.path.join(BASE, "yolo26_ppe", "configs", "augmentation.yaml")) as f:
-    AUG_CFG = yaml.safe_load(f)
+# Load augmentation config (optional — fallback to empty dict if missing)
+_aug_cfg_path = os.path.join(BASE, "configs", "production_augmentation.yaml")
+if os.path.exists(_aug_cfg_path):
+    with open(_aug_cfg_path) as f:
+        AUG_CFG = yaml.safe_load(f)
+else:
+    AUG_CFG = {}
 
 VERSION = "v4_recipe"
+
+# Custom overrides set from CLI args (populated in main())
+_custom_overrides = {}
 
 # Use /tmp datasets for fast I/O (must be copied before running)
 DATA_DETECT = "/tmp/yolo_detect_data/data.yaml"
 DATA_SEG = "/tmp/yolo_seg_data/data.yaml"
 
-# Model configs — v4_recipe output dirs (separate from v2 baseline and v3 adamw)
+# Model configs — production output dirs (descriptive names)
 MODELS = {
-    "n_detect": {
+    "nano_detection": {
         "weights": "yolo26n.pt",
         "task": "detect",
         "data": DATA_DETECT,
-        "project": f"yolo26_ppe/models/yolo26n_detect_{VERSION}",
+        "project": f"yolo26_ppe/models/production/nano_detection",
         "batch": 64,       # n detect uses ~4GB at 32 → 64 ~8GB (plenty of headroom)
     },
-    "s_detect": {
+    "small_detection": {
         "weights": "yolo26s.pt",
         "task": "detect",
         "data": DATA_DETECT,
-        "project": f"yolo26_ppe/models/yolo26s_detect_{VERSION}",
+        "project": f"yolo26_ppe/models/production/small_detection",
         "batch": 48,       # s detect uses ~10GB at 32 → 48 ~15GB (tight but fits 16GB)
     },
-    "n_seg": {
+    "nano_segmentation": {
         "weights": "yolo26n-seg.pt",
         "task": "segment",
         "data": DATA_SEG,
-        "project": f"yolo26_ppe/models/yolo26n_seg_{VERSION}",
+        "project": f"yolo26_ppe/models/production/nano_segmentation",
         "batch": 16,       # parallel: n_seg stage2 ~6GB
     },
-    "s_seg": {
+    "small_segmentation": {
         "weights": "yolo26s-seg.pt",
         "task": "segment",
         "data": DATA_SEG,
-        "project": f"yolo26_ppe/models/yolo26s_seg_{VERSION}",
+        "project": f"yolo26_ppe/models/production/small_segmentation",
         "batch": 16,       # stable: 24 caused deadlock, 16 is safe
     },
 }
@@ -128,6 +149,8 @@ def get_stage1_args(batch):
     }
     # Augmentation from config
     args.update(AUG_CFG)
+    # Apply custom CLI overrides
+    args.update(_custom_overrides)
     return args
 
 # Stage 2 args — unfreeze all, low LR, reduced augmentation
@@ -183,16 +206,20 @@ def get_stage2_args(batch):
         "close_mosaic": 5,
         "erasing": 0.2,
     }
+    # Apply custom CLI overrides
+    args.update(_custom_overrides)
     return args
 
 
 def log_common_params(model_key, config, stage, args, gpu_name, data_stats):
     """Log common MLflow params for both stages."""
+    if mlflow is None:
+        return
     mlflow.log_param("model_key", model_key)
     mlflow.log_param("version", VERSION)
     mlflow.log_param("stage", stage)
     mlflow.log_param("task", config["task"])
-    model_size = "n" if "n_detect" in model_key or "n_seg" in model_key else "s"
+    model_size = "n" if "nano_detection" in model_key or "nano_segmentation" in model_key else "s"
     mlflow.log_param("model_size", model_size)
     mlflow.log_param("optimizer", "MuSGD")
     mlflow.log_param("seed", args.get("seed", 42))
@@ -233,24 +260,35 @@ def train_stage1(model_key, config):
     model = YOLO(config["weights"])
 
     # Read dataset stats
-    analysis_path = os.path.join(BASE, "yolo26_ppe", "data", "analysis", "data_analysis.json")
-    with open(analysis_path) as f:
-        data_stats = json.load(f)
+    analysis_path = os.path.join(BASE, "data", "dataset_analysis_reports", "data_analysis.json")
+    if not os.path.exists(analysis_path):
+        analysis_path = os.path.join(BASE, "data", "analysis", "data_analysis.json")  # old path
+    data_stats = {"total_images": 0}
+    if os.path.exists(analysis_path):
+        with open(analysis_path) as f:
+            data_stats = json.load(f)
 
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
-    if "CPU" in gpu_name:
+    device = _custom_overrides.get("device")
+    if device == "cpu":
+        gpu_name = "CPU (user-selected)"
+    elif device == "mps":
+        gpu_name = "Apple MPS"
+    elif "CPU" in gpu_name and not device:
         print("ERROR: GPU not available! Refusing to run on CPU.")
+        print("  Use --device cpu to force CPU mode.")
         sys.exit(1)
 
     project_abs = os.path.join(BASE, config["project"])
     data_abs = config["data"]  # already absolute (/tmp path)
 
     t0 = time.time()
-    with mlflow.start_run(run_name=f"{model_key}_stage1_{VERSION}"):
+    mlflow_ctx = mlflow.start_run(run_name=f"{model_key}_stage1_{VERSION}") if mlflow else contextlib.nullcontext()
+    with mlflow_ctx:
         results = model.train(
             data=data_abs,
             project=project_abs,
-            name="run1",
+            name="stage_1_initial_training",
             **args,
         )
         train_time = time.time() - t0
@@ -258,7 +296,7 @@ def train_stage1(model_key, config):
         try:
             log_common_params(model_key, config, 1, args, gpu_name, data_stats)
             mlflow.log_metric("train_time_seconds", train_time)
-            best_pt = os.path.join(project_abs, "run1", "weights", "best.pt")
+            best_pt = os.path.join(project_abs, "stage_1_initial_training", "weights", "best.pt")
             if os.path.exists(best_pt):
                 mlflow.log_metric("model_size_mb", os.path.getsize(best_pt) / 1e6)
             params = sum(p.numel() for p in model.model.parameters()) / 1e6
@@ -286,7 +324,7 @@ def train_stage1(model_key, config):
             print(f"  Inference timing warning: {e}")
 
     print(f"\n  Stage 1 training time: {train_time:.1f}s ({train_time/60:.1f} min)")
-    print(f"  Stage 1 weights: {project_abs}/run1/weights/best.pt")
+    print(f"  Stage 1 weights: {project_abs}/stage_1_initial_training/weights/best.pt")
 
     del model
     torch.cuda.empty_cache()
@@ -305,7 +343,7 @@ def train_stage2(model_key, config):
 
     os.environ["MLFLOW_EXPERIMENT_NAME"] = "yolo26_ppe_v4_recipe_stage2"
 
-    stage1_best = os.path.join(BASE, config["project"], "run1", "weights", "best.pt")
+    stage1_best = os.path.join(BASE, config["project"], "stage_1_initial_training", "weights", "best.pt")
     if not os.path.exists(stage1_best):
         print(f"  ERROR: Stage 1 best.pt not found: {stage1_best}")
         print(f"  Run stage 1 first.")
@@ -314,24 +352,35 @@ def train_stage2(model_key, config):
     args = get_stage2_args(config["batch"])
     model = YOLO(stage1_best)
 
-    analysis_path = os.path.join(BASE, "yolo26_ppe", "data", "analysis", "data_analysis.json")
-    with open(analysis_path) as f:
-        data_stats = json.load(f)
+    analysis_path = os.path.join(BASE, "data", "dataset_analysis_reports", "data_analysis.json")
+    if not os.path.exists(analysis_path):
+        analysis_path = os.path.join(BASE, "data", "analysis", "data_analysis.json")  # old path
+    data_stats = {"total_images": 0}
+    if os.path.exists(analysis_path):
+        with open(analysis_path) as f:
+            data_stats = json.load(f)
 
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
-    if "CPU" in gpu_name:
+    device = _custom_overrides.get("device")
+    if device == "cpu":
+        gpu_name = "CPU (user-selected)"
+    elif device == "mps":
+        gpu_name = "Apple MPS"
+    elif "CPU" in gpu_name and not device:
         print("ERROR: GPU not available! Refusing to run on CPU.")
+        print("  Use --device cpu to force CPU mode.")
         sys.exit(1)
 
     project_abs = os.path.join(BASE, config["project"])
     data_abs = config["data"]
 
     t0 = time.time()
-    with mlflow.start_run(run_name=f"{model_key}_stage2_{VERSION}"):
+    mlflow_ctx = mlflow.start_run(run_name=f"{model_key}_stage2_{VERSION}") if mlflow else contextlib.nullcontext()
+    with mlflow_ctx:
         results = model.train(
             data=data_abs,
             project=project_abs,
-            name="run2_stage2",
+            name="stage_2_final_fine_tuning",
             **args,
         )
         train_time = time.time() - t0
@@ -340,7 +389,7 @@ def train_stage2(model_key, config):
             log_common_params(model_key, config, 2, args, gpu_name, data_stats)
             mlflow.log_param("stage1_weights", stage1_best)
             mlflow.log_metric("stage2_train_time_seconds", train_time)
-            stage2_best = os.path.join(project_abs, "run2_stage2", "weights", "best.pt")
+            stage2_best = os.path.join(project_abs, "stage_2_final_fine_tuning", "weights", "best.pt")
             if os.path.exists(stage2_best):
                 mlflow.log_metric("stage2_model_size_mb", os.path.getsize(stage2_best) / 1e6)
                 mlflow.log_metric("stage1_model_size_mb", os.path.getsize(stage1_best) / 1e6)
@@ -369,7 +418,7 @@ def train_stage2(model_key, config):
             print(f"  Inference timing warning: {e}")
 
     print(f"\n  Stage 2 training time: {train_time:.1f}s ({train_time/60:.1f} min)")
-    print(f"  Stage 2 weights: {project_abs}/run2_stage2/weights/best.pt")
+    print(f"  Stage 2 weights: {project_abs}/stage_2_final_fine_tuning/weights/best.pt")
 
     del model
     torch.cuda.empty_cache()
@@ -382,35 +431,85 @@ def main():
                         help="Stage to run: 1=stage1 only, 2=stage2 only, 12=both (default)")
     parser.add_argument("--model", choices=["n", "s"], help="Model size (single model)")
     parser.add_argument("--task", choices=["detect", "segment"], help="Task (single model)")
+    # Custom training config overrides
+    parser.add_argument("--epochs", type=int, default=None, help="Override epochs (both stages)")
+    parser.add_argument("--batch", type=int, default=None, help="Override batch size")
+    parser.add_argument("--workers", type=int, default=None, help="Override dataloader workers")
+    parser.add_argument("--optimizer", choices=["SGD", "Adam", "AdamW", "RMSProp"], default=None,
+                        help="Override optimizer (default: SGD with momentum)")
+    parser.add_argument("--lr0", type=float, default=None, help="Override initial learning rate")
+    parser.add_argument("--imgsz", type=int, default=None, help="Override image size")
+    parser.add_argument("--device", default=None, help="Device: 0=GPU, cpu, mps (Apple)")
+    parser.add_argument("--patience", type=int, default=None, help="Override early stopping patience")
     args = parser.parse_args()
 
-    # Select models
+    # Apply overrides to model configs
+    if args.batch or args.workers or args.imgsz:
+        for cfg in MODELS.values():
+            if args.batch:
+                cfg["batch"] = args.batch
+            if args.imgsz:
+                cfg["imgsz"] = args.imgsz
+
+    # Apply overrides to stage args via global dict
+    global _custom_overrides
+    _custom_overrides = {
+        k: v for k, v in {
+            "epochs": args.epochs,
+            "workers": args.workers,
+            "optimizer": args.optimizer,
+            "lr0": args.lr0,
+            "imgsz": args.imgsz,
+            "patience": args.patience,
+            "device": args.device,
+        }.items() if v is not None
+    }
+
+    # Select models — map short names (n/s) to full keys (nano/small)
+    SIZE_MAP = {"n": "nano", "s": "small"}
     if args.model and args.task:
-        key = f"{args.model}_{'seg' if args.task == 'segment' else 'detect'}"
+        size_full = SIZE_MAP.get(args.model, args.model)
+        task_full = "segmentation" if args.task == "segment" else "detection"
+        key = f"{size_full}_{task_full}"
         if key not in MODELS:
             print(f"Unknown model: {key}")
+            print(f"  Available: {list(MODELS.keys())}")
             sys.exit(1)
         model_list = [(key, MODELS[key])]
     else:
         model_list = list(MODELS.items())
 
-    # Verify /tmp datasets exist
+    # Verify datasets exist — check both /tmp and direct paths
     for _, cfg in model_list:
-        if not os.path.exists(cfg["data"]):
-            print(f"ERROR: Dataset not found: {cfg['data']}")
-            print("Run dataset copy first:")
-            print("  cp -rL yolo26_ppe/data/yolo_detect_v2/* /tmp/yolo_detect_data/")
-            print("  cp -rL yolo26_ppe/data/yolo_segment_v2/* /tmp/yolo_seg_data/")
-            sys.exit(1)
+        data_path = cfg["data"]
+        if not os.path.exists(data_path):
+            # Try direct path fallback (BASE is yolo26_ppe/)
+            if "detect" in data_path:
+                fallback = os.path.join(BASE, "data", "yolo_detection_dataset_version_2", "data.yaml")
+            else:
+                fallback = os.path.join(BASE, "data", "yolo_segmentation_dataset_version_2", "data.yaml")
+            if os.path.exists(fallback):
+                print(f"  NOTE: {data_path} not found, using direct path: {fallback}")
+                cfg["data"] = fallback
+            else:
+                print(f"ERROR: Dataset not found: {data_path}")
+                print("Run dataset preparation first:")
+                print("  python scripts/pipeline/01_prepare_dataset.py")
+                sys.exit(1)
 
     print(f"\n{'#' * 70}")
     print(f"# Recipe: {VERSION}")
-    print(f"#   Focal Loss (fl_gamma=1.5)")
+    if FOCAL_PATCH_AVAILABLE:
+        print(f"#   Focal Loss (fl_gamma=1.5) — focal_patch loaded")
+    else:
+        print(f"#   Focal Loss: NOT available (focal_patch.py missing) — using standard BCE")
     print(f"#   Gradient Accumulation (nbs=64)")
     print(f"#   AMP (mixed precision)")
     print(f"#   Two-stage: Stage1 (freeze=10, lr0=0.01) → Stage2 (freeze=0, lr0=0.001)")
     print(f"#   Models: {[k for k, _ in model_list]}")
     print(f"#   Stage: {args.stage}")
+    if _custom_overrides:
+        print(f"#   Custom overrides: {_custom_overrides}")
     print(f"{'#' * 70}\n")
 
     for model_key, config in model_list:

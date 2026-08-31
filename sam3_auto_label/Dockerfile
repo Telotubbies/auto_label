@@ -62,8 +62,8 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY sam3/ ./sam3/
 
-# Model checkpoint is mounted at runtime: -v ./models:/app/models
-RUN mkdir -p /app/input /app/output /app/models/sam3
+# Model checkpoint is mounted at runtime: -v ./checkpoints:/app/checkpoints
+RUN mkdir -p /app/input /app/output /app/checkpoints
 
 # ROCm environment for RDNA3 (RX 7800 XT) — experimental attention kernels
 ENV HSA_ENABLE_DXG_DETECTION=1

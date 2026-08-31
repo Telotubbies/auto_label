@@ -110,7 +110,7 @@ class Config:
 
     @property
     def ckpt_path(self):
-        return os.path.join(self.base_dir, "models", "sam3", "sam3.1_multiplex.pt")
+        return os.path.join(self.base_dir, "checkpoints", "sam3.1_multiplex.pt")
 
     @property
     def bpe_path(self):

@@ -18,29 +18,29 @@ import cv2
 
 VERSION = "v4_recipe"
 BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe")
-OUT = BASE / "eval_results" / VERSION
+OUT = BASE / "artifacts" / "evaluation" / "yolo" / f"production_{VERSION}"
 OUT.mkdir(parents=True, exist_ok=True)
-FAIL_DIR = OUT / "failure_cases"
+FAIL_DIR = OUT / "all_failure_case_images"
 FAIL_DIR.mkdir(exist_ok=True)
 
 MODELS = {
-    "n_detect": {
-        "weights": BASE / f"models/yolo26n_detect_{VERSION}/run2_stage2/weights/best.pt",
+    "nano_detection": {
+        "weights": BASE / "models/production/nano_detection/stage_2_final_fine_tuning/weights/best.pt",
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
-    "s_detect": {
-        "weights": BASE / f"models/yolo26s_detect_{VERSION}/run2_stage2/weights/best.pt",
+    "small_detection": {
+        "weights": BASE / "models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt",
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
-    "n_seg": {
-        "weights": BASE / f"models/yolo26n_seg_{VERSION}/run2_stage2/weights/best.pt",
+    "nano_segmentation": {
+        "weights": BASE / "models/production/nano_segmentation/stage_2_final_fine_tuning/weights/best.pt",
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },
-    "s_seg": {
-        "weights": BASE / f"models/yolo26s_seg_{VERSION}/run2_stage2/weights/best.pt",
+    "small_segmentation": {
+        "weights": BASE / "models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt",
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },

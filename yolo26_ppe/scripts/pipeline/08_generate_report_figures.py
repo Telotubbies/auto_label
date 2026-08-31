@@ -15,7 +15,7 @@ import numpy as np
 import json
 from pathlib import Path
 
-OUT = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/report/figures")
+OUT = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/reports/source/figures")
 OUT.mkdir(parents=True, exist_ok=True)
 
 # ─── Global style ──────────────────────────────────────────────
@@ -41,10 +41,10 @@ plt.rcParams.update({
 
 # Consistent color palette (colorblind-safe, viridis-inspired)
 COLORS = {
-    'n_detect': '#440154',  # dark purple
-    's_detect': '#21918c',  # teal
-    'n_seg':    '#fde725',  # yellow
-    's_seg':    '#5ec962',  # green
+    'nano_detection': '#440154',  # dark purple
+    'small_detection': '#21918c',  # teal
+    'nano_segmentation':    '#fde725',  # yellow
+    'small_segmentation':    '#5ec962',  # green
 }
 CLASS_COLORS = {
     'person':  '#440154',
@@ -57,7 +57,7 @@ SAM_COLOR = '#e74c3c'  # red for SAM
 
 # ─── Data ──────────────────────────────────────────────────────
 # v4_recipe final results
-MODELS = ['n_detect', 's_detect', 'n_seg', 's_seg']
+MODELS = ['nano_detection', 'small_detection', 'nano_segmentation', 'small_segmentation']
 MODEL_LABELS = ['YOLO26n\ndetect', 'YOLO26s\ndetect', 'YOLO26n\nseg', 'YOLO26s\nseg']
 
 MAP50 = [0.585, 0.738, 0.464, 0.537]
@@ -204,7 +204,7 @@ def fig_latency_pt_vs_onnx():
 # ─── Figure 6: Blurred dataset class distribution ─────────────
 def fig_blurred_class_dist():
     # Load from JSON
-    stats_path = OUT / "blurred" / "blurred_aggregate_stats.json"
+    stats_path = OUT / "blur_robustness" / "blurred_aggregate_stats.json"
     if not stats_path.exists():
         print("SKIP blurred_class_dist: no stats")
         return
@@ -229,7 +229,7 @@ def fig_blurred_class_dist():
 
 # ─── Figure 7: Blurred latency with error bars ────────────────
 def fig_blurred_latency():
-    stats_path = OUT / "blurred" / "blurred_aggregate_stats.json"
+    stats_path = OUT / "blur_robustness" / "blurred_aggregate_stats.json"
     if not stats_path.exists():
         print("SKIP blurred_latency: no stats")
         return
@@ -258,11 +258,11 @@ def fig_blurred_latency():
 # ─── Figure 8: Training curves (if results.csv exists) ────────
 def fig_training_curves():
     import csv
-    csv_path = "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/yolo26s_detect_v4_recipe/results.csv"
+    csv_path = "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/production/small_detection/stage_2_final_fine_tuning/results.csv"
     if not Path(csv_path).exists():
         # Try alternate path
-        for p in Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/models").rglob("results.csv"):
-            if "s_detect" in str(p) and "v4" in str(p):
+        for p in Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/models/production").rglob("results.csv"):
+            if "small_detection" in str(p):
                 csv_path = str(p)
                 break
         else:
