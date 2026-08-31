@@ -5,20 +5,20 @@ import numpy as np
 from pathlib import Path
 import json
 
-BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/eval_results/v4_recipe")
+BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/evaluation/yolo/production_v4_recipe")
 OUT = BASE / "failure_montage"
 OUT.mkdir(exist_ok=True)
 
 # Load per-model failure lists (each sorted by failure score, descending)
 all_failures = {}
-for model in ["n_detect", "s_detect", "n_seg", "s_seg"]:
+for model in ["nano_detection", "small_detection", "nano_segmentation", "small_segmentation"]:
     fj = BASE / f"{model}_failures.json"
     if fj.exists():
         all_failures[model] = json.load(open(fj))
 
 # Selection: ensure all 4 models represented in 10 images.
 # Worst models get more slots: n_seg=3, n_detect=3, s_seg=2, s_detect=2
-quota = {"n_seg": 3, "n_detect": 3, "s_seg": 2, "s_detect": 2}
+quota = {"nano_segmentation": 3, "nano_detection": 3, "small_segmentation": 2, "small_detection": 2}
 
 selected = []
 for model, n in quota.items():
@@ -100,7 +100,7 @@ cv2.imwrite(str(out_path), grid, [cv2.IMWRITE_JPEG_QUALITY, 88])
 print(f"\nSaved combined: {out_path} ({grid.shape[1]}x{grid.shape[0]})")
 
 # Also save per-model montages (top 5 each) for reference
-for model in ["n_detect", "s_detect", "n_seg", "s_seg"]:
+for model in ["nano_detection", "small_detection", "nano_segmentation", "small_segmentation"]:
     items = all_failures.get(model, [])[:5]
     m_imgs = []
     for item in items:

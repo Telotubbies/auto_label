@@ -7,11 +7,11 @@ from pathlib import Path
 from skimage.color import lab2rgb, rgb2lab
 from sklearn.cluster import KMeans
 
-BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/onnx_inference/blurred")
-OUT = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/report/figures/blurred")
+BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_inference_results/blur_robustness")
+OUT = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/reports/source/figures/blur_robustness")
 OUT.mkdir(parents=True, exist_ok=True)
 
-MODELS = ["n_detect", "s_detect", "n_seg", "s_seg"]
+MODELS = ["nano_detection", "small_detection", "nano_segmentation", "small_segmentation"]
 CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
 
 # SAM-style colors

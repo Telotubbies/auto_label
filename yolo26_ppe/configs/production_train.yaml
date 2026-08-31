@@ -49,26 +49,26 @@ exist_ok: true
 
 # Models
 models:
-  n_detect:
+  nano_detection:
     weights: yolo26n.pt
     task: detect
-    data: yolo26_ppe/data/yolo_detect/data.yaml
-    project: yolo26_ppe/models/yolo26n_detect
+    data: yolo26_ppe/data/yolo_detection_dataset_version_2/data.yaml
+    project: yolo26_ppe/models/production/nano_detection
 
-  s_detect:
+  small_detection:
     weights: yolo26s.pt
     task: detect
-    data: yolo26_ppe/data/yolo_detect/data.yaml
-    project: yolo26_ppe/models/yolo26s_detect
+    data: yolo26_ppe/data/yolo_detection_dataset_version_2/data.yaml
+    project: yolo26_ppe/models/production/small_detection
 
-  n_seg:
+  nano_segmentation:
     weights: yolo26n-seg.pt
     task: segment
-    data: yolo26_ppe/data/yolo_segment/data.yaml
-    project: yolo26_ppe/models/yolo26n_seg
+    data: yolo26_ppe/data/yolo_segmentation_dataset_version_2/data.yaml
+    project: yolo26_ppe/models/production/nano_segmentation
 
-  s_seg:
+  small_segmentation:
     weights: yolo26s-seg.pt
     task: segment
-    data: yolo26_ppe/data/yolo_segment/data.yaml
-    project: yolo26_ppe/models/yolo26s_seg
+    data: yolo26_ppe/data/yolo_segmentation_dataset_version_2/data.yaml
+    project: yolo26_ppe/models/production/small_segmentation

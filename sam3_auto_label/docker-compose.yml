@@ -22,9 +22,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
-      - ./input:/app/input
-      - ./output:/app/output
+      - ./checkpoints:/app/checkpoints
+      - ../data/raw:/app/input
+      - ../data/sam_outputs_ground_truth:/app/output
       - ./config:/app/config
     environment:
       - PYTHONPATH=/app/src:/app/sam3
@@ -51,9 +51,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
-      - ./input:/app/input
-      - ./output:/app/output
+      - ./checkpoints:/app/checkpoints
+      - ../data/raw:/app/input
+      - ../data/sam_outputs_ground_truth:/app/output
       - ./config:/app/config
     environment:
       - PYTHONPATH=/app/src:/app/sam3
@@ -82,9 +82,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
-      - ./input:/app/input
-      - ./output:/app/output
+      - ./checkpoints:/app/checkpoints
+      - ../data/raw:/app/input
+      - ../data/sam_outputs_ground_truth:/app/output
       - ./config:/app/config
     environment:
       - PYTHONPATH=/app/src:/app/sam3

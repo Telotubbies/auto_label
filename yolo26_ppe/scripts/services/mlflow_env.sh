@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # MLflow production environment variables for yolo26_ppe pipeline.
 # Source this before running any training/eval/tune script:
-#   source /mnt/e/02_Projects/auto_label/yolo26_ppe/scripts/mlflow_env.sh
+#   source /mnt/e/02_Projects/auto_label/yolo26_ppe/scripts/services/mlflow_env.sh
 #
 # Or add to ~/.bashrc for persistence:
-#   echo 'source /mnt/e/02_Projects/auto_label/yolo26_ppe/scripts/mlflow_env.sh' >> ~/.bashrc
+#   echo 'source /mnt/e/02_Projects/auto_label/yolo26_ppe/scripts/services/mlflow_env.sh' >> ~/.bashrc
 
 # Tracking server (local production)
 export MLFLOW_TRACKING_URI="http://localhost:5000"
@@ -12,7 +12,7 @@ export MLFLOW_EXPERIMENT_NAME="yolo26_ppe_v2"
 export MLFLOW_REGISTRY_URI="http://localhost:5000"
 
 # Artifact location
-export MLFLOW_ARTIFACT_ROOT="/mnt/e/02_Projects/auto_label/yolo26_ppe/mlflow/artifacts"
+export MLFLOW_ARTIFACT_ROOT="/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/mlflow/artifacts"
 
 # Autologging (disabled — we log manually for full control)
 export MLFLOW_AUTOLOGGING="false"

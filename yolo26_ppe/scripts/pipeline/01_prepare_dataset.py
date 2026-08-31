@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Step 01b: Prepare YOLO data from combined_v2 dataset.
+"""Step 01: Prepare YOLO data from combined COCO dataset version 2.
 
-- Reads combined_v2/annotations.json (913 images, 5 classes)
+- Reads combined_coco_dataset_version_2/annotations.json (913 images, 5 classes)
 - Splits into train/val/test (80/10/10)
 - Converts to YOLO detection format (bbox)
 - Converts to YOLO segmentation format (polygon masks)
@@ -17,13 +17,13 @@ from collections import Counter
 import numpy as np
 
 BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe")
-COMBINED_DIR = BASE / "data" / "combined_v2"
+COMBINED_DIR = BASE / "data" / "combined_coco_dataset_version_2"
 ANN_PATH = COMBINED_DIR / "annotations.json"
 IMG_DIR = COMBINED_DIR / "images"
 
 # Output directories
-DET_DIR = BASE / "data" / "yolo_detect_v2"
-SEG_DIR = BASE / "data" / "yolo_segment_v2"
+DET_DIR = BASE / "data" / "yolo_detection_dataset_version_2"
+SEG_DIR = BASE / "data" / "yolo_segmentation_dataset_version_2"
 
 CLASS_NAMES = ["person", "helmet", "boots", "shoes", "harness"]
 # COCO category IDs in our dataset: 1=person, 2=helmet, 3=boots, 4=shoes, 5=harness
@@ -145,6 +145,29 @@ def main():
     }
 
     print(f"Split: train={len(splits['train'])}, val={len(splits['val'])}, test={len(splits['test'])}")
+
+    # Verify images directory exists
+    if not IMG_DIR.exists():
+        print(f"\nERROR: Images directory not found: {IMG_DIR}")
+        print(f"  The annotations.json references {len(images)} images, but the images/ folder is missing.")
+        print(f"  Expected location: {COMBINED_DIR}/images/")
+        print(f"  Please place the image files (e0001.jpg, s0001.jpg, etc.) in that directory.")
+        sys.exit(1)
+
+    # Count how many referenced images actually exist
+    missing_files = []
+    for img in images:
+        if not (IMG_DIR / img['file_name']).exists():
+            missing_files.append(img['file_name'])
+    if missing_files:
+        print(f"\nWARNING: {len(missing_files)} of {len(images)} images are missing from {IMG_DIR}")
+        print(f"  First 5 missing: {missing_files[:5]}")
+        if len(missing_files) == len(images):
+            print(f"\nERROR: ALL images are missing. Cannot proceed.")
+            sys.exit(1)
+        print(f"  Continuing with {len(images) - len(missing_files)} available images...\n")
+    else:
+        print(f"  All {len(images)} images found.\n")
 
     # Create directories
     for data_dir in [DET_DIR, SEG_DIR]:

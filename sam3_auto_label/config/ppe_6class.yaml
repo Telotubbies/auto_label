@@ -46,8 +46,10 @@ output:
   formats:
   - coco
   save_viz: true
-  input_dir: input
-  output_dir: output
+  # Absolute paths — auto-labeling flow: data/raw -> data/sam_outputs_ground_truth
+  # Override at runtime with --input / --output if processing a specific batch.
+  input_dir: /mnt/e/02_Projects/auto_label/data/raw
+  output_dir: /mnt/e/02_Projects/auto_label/data/sam_outputs_ground_truth
   viz_dpi: 150
   viz_figsize:
   - 10

@@ -15,11 +15,11 @@ from skimage.color import lab2rgb, rgb2lab
 from sklearn.cluster import KMeans
 
 # Paths
-ONNX_DIR = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/onnx_exports/v4_recipe")
-INPUT_DIR = Path("/mnt/e/02_Projects/auto_label/input/blurred")
-OUT_BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/onnx_inference/blurred")
+ONNX_DIR = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_models/production")
+INPUT_DIR = Path("/mnt/e/02_Projects/auto_label/data/raw/blurred")
+OUT_BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_inference_results/blur_robustness")
 
-MODELS = ["n_detect", "s_detect", "n_seg", "s_seg"]
+MODELS = ["nano_detection", "small_detection", "nano_segmentation", "small_segmentation"]
 # Class order from dataset (verified against ONNX metadata)
 CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
 
