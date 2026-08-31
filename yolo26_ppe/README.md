@@ -1,96 +1,116 @@
-# YOLO26 PPE Training Pipeline
+# YOLO26 PPE
 
-Train YOLO26 (n + s) for PPE detection and segmentation, compare with SAM 3.1.
+Training, evaluation, ONNX export, robustness testing, and reporting for five PPE classes:
 
-## Models
+`person`, `helmet`, `boots`, `shoes`, `harness`
 
-| Model | Task | Weights | Params |
-|-------|------|---------|--------|
-| yolo26n_detect | Detection (bbox) | yolo26n.pt | 2.6M |
-| yolo26s_detect | Detection (bbox) | yolo26s.pt | 10.0M |
-| yolo26n_seg | Instance Segmentation | yolo26n-seg.pt | 3.1M |
-| yolo26s_seg | Instance Segmentation | yolo26s-seg.pt | 11.5M |
+## Start here
 
-## Pipeline
+| Need | Location |
+|---|---|
+| Production models | `models/production/` |
+| Model selection guide | `models/README.md` |
+| Production training config | `configs/production_train.yaml` |
+| Current pipeline | `scripts/pipeline/` |
+| Test-set metrics | `artifacts/evaluation/yolo/production_v4_recipe/all_metrics.json` |
+| Production ONNX models | `artifacts/onnx_models/production/` |
+| Final PDF report | `reports/final/report.pdf` |
+| Historical experiments | `models/archive/` and `scripts/archive/` |
 
+## Production models
+
+Use only models under `models/production` for deployment, evaluation, export, or reporting.
+
+| Directory | Meaning | Production weight |
+|---|---|---|
+| `nano_detection` | Smallest bounding-box detector | `models/production/nano_detection/stage_2_final_fine_tuning/weights/best.pt` |
+| `small_detection` | Highest-accuracy bounding-box detector | `models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt` |
+| `nano_segmentation` | Smaller instance-segmentation model | `models/production/nano_segmentation/stage_2_final_fine_tuning/weights/best.pt` |
+| `small_segmentation` | Highest-accuracy instance-segmentation model | `models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt` |
+
+Each model has two training stages:
+
+- `stage_1_initial_training`: initial 150-epoch training from pretrained weights
+- `stage_2_final_fine_tuning`: final 50-epoch fine-tuning from stage 1; use its `best.pt`
+
+The `production` models are the former **v4_recipe** experiment. Versions 1–3 are historical experiments retained only for reproducibility.
+
+## Current pipeline
+
+Run scripts in numeric order:
+
+```text
+scripts/pipeline/
+├── 01_prepare_dataset.py
+├── 02_train_models.py
+├── 03_evaluate_models.py
+├── 04_export_and_evaluate_onnx.py
+├── 05_generate_failure_montage.py
+├── 06_run_blur_robustness.py
+├── 07_analyze_blur_robustness.py
+└── 08_generate_report_figures.py
 ```
-01_prepare_data.py   COCO → YOLO + balance + split 70/20/10
-03_train.py          Train 1 or all 4 models (MLflow tracked)
-04_evaluate.py       Eval on test set + confusion matrix
-05_tune.py           Hyperparameter tuning (if results poor)
-07_export.py         Export ONNX + TorchScript for production
-06_compare.py        Compare 4 YOLO + SAM 3.1 → report
-run_all.sh           Run entire pipeline
-```
 
-## Quick Start
+Other groups:
 
-```bash
-# WSL2 + AMD GPU
-export HSA_ENABLE_DXG_DETECTION=1
-export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
-cd /mnt/e/02_Projects/auto_label
+- `scripts/tools/`: standalone utilities
+- `scripts/services/`: MLflow foreground/background management
+- `scripts/archive/`: historical pipelines; do not use for the production workflow
 
-# Option 1: Run everything
-bash yolo26_ppe/scripts/run_all.sh
+## Directory map
 
-# Option 2: Step by step
-# Start MLflow server (terminal 1)
-bash yolo26_ppe/scripts/start_mlflow.sh
-
-# Train (terminal 2)
-/opt/sam3_venv/bin/python yolo26_ppe/scripts/03_train.py --all
-
-# Evaluate
-/opt/sam3_venv/bin/python yolo26_ppe/scripts/04_evaluate.py --all
-
-# Compare + report
-/opt/sam3_venv/bin/python yolo26_ppe/scripts/06_compare.py
-```
-
-## Data
-
-- **Source**: `dataset_combined/` (480 images, 8,279 annotations, COCO RLE)
-- **Split**: 335 train / 95 val / 50 test (stratified by source)
-- **Balance**: Oversampling sandals (6→200) and harness (86→200)
-- **Imbalance**: 673:1 → 10.5:1 after balance
-
-## Augmentation (medium-heavy)
-
-| Augment | Value | Purpose |
-|---------|-------|---------|
-| hsv_h/s/v | 0.02/0.7/0.5 | Lighting robustness |
-| degrees | 5.0 | Camera tilt |
-| scale | 0.6 | Object size variation |
-| mosaic | 0.8 | 4-image mix (regularization) |
-| copy_paste | 0.15 | Helps rare classes |
-| erasing | 0.3 | Occlusion robustness |
-| close_mosaic | 10 | Stabilize last 10 epochs |
-
-## MLflow
-
-- **UI**: http://localhost:5000
-- **Backend**: SQLite (`yolo26_ppe/mlflow/mlflow.db`)
-- **Artifacts**: `yolo26_ppe/mlflow/mlruns/`
-- **Auto-logged**: params, metrics (per epoch), artifacts (best.pt, plots)
-
-## Output
-
-```
+```text
 yolo26_ppe/
-├── data/
-│   ├── yolo_detect/        YOLO bbox format
-│   ├── yolo_segment/       YOLO polygon format
-│   └── analysis/           Class distribution + imbalance
+├── configs/                         # Production and MLflow configuration
+├── data/                            # Prepared training datasets
 ├── models/
-│   ├── yolo26n_detect/     best.pt + eval + export
-│   ├── yolo26s_detect/
-│   ├── yolo26n_seg/
-│   └── yolo26s_seg/
-├── mlflow/                 Tracking server data
+│   ├── production/                  # Models currently used
+│   ├── pretrained/                  # Upstream starting weights
+│   └── archive/                     # Historical model versions
+├── artifacts/
+│   ├── evaluation/                  # SAM and YOLO evaluation results
+│   ├── logs/                        # Training, tuning, report, and service logs
+│   ├── mlflow/                      # MLflow database and historical runs
+│   ├── onnx_models/                 # Exported ONNX models
+│   ├── onnx_inference_results/      # Predictions produced by ONNX models
+│   └── ultralytics_training_runs/   # Raw Ultralytics outputs
 ├── reports/
-│   ├── eval_all.json       All eval results
-│   └── comparison_report.md  YOLO vs SAM 3.1
-├── scripts/                All pipeline scripts
-└── configs/                train.yaml + augmentation.yaml + mlflow.yaml
+│   ├── final/                       # Final PDF
+│   ├── source/                      # LaTeX source, figures, and fonts
+│   ├── inputs/                      # JSON inputs used by the report
+│   ├── metrics/                     # JSON/CSV/Markdown summaries
+│   └── build/                       # XeLaTeX generated files and logs
+├── scripts/
+│   ├── pipeline/                    # Current production pipeline
+│   ├── tools/                       # Standalone utilities
+│   ├── services/                    # MLflow management
+│   └── archive/                     # Historical scripts
+├── docs/                            # Engineering notes and model documentation
+├── tests/
+└── .cache/                          # Test cache and coverage data
 ```
+
+## Dataset names
+
+| Directory | Meaning |
+|---|---|
+| `combined_coco_dataset_version_2` | Merged five-class COCO source dataset |
+| `yolo_detection_dataset_version_1` | Historical six-class detection dataset |
+| `yolo_detection_dataset_version_2` | Current five-class detection dataset |
+| `yolo_segmentation_dataset_version_1` | Historical six-class segmentation dataset |
+| `yolo_segmentation_dataset_version_2` | Current five-class segmentation dataset |
+| `dataset_analysis_reports` | Dataset distribution and integrity analysis |
+
+## Historical model versions
+
+| Directory | Meaning | Use in production? |
+|---|---|---|
+| `models/archive/version_1_initial_baseline` | First baseline and tuning trials | No |
+| `models/archive/version_2_improved_baseline` | Improved data preparation and longer training | No |
+| `models/archive/version_3_adamw_experiment` | Incomplete AdamW comparison | No |
+
+Report metrics must come from `artifacts/evaluation/yolo/production_v4_recipe/`.
+
+## Migration status
+
+The directory names are now organized for discoverability. Runtime path references inside Python, YAML, shell, Docker, and LaTeX files still need to be migrated before running the pipeline from this layout.

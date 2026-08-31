@@ -6,34 +6,32 @@ __pycache__/
 .pytest_cache/
 
 # Virtual environments
-sam3_venv/
+sam3_auto_label/.venv_windows/
 venv/
 .venv/
 
 # SAM 3.1 checkpoint (3.3GB — too large even for LFS, keep local only)
-models/sam3/sam3.1_multiplex.pt
+sam3_auto_label/checkpoints/sam3.1_multiplex.pt
 
-# SAM 3.1 — locked zip (password 2938), source excluded from repo
-sam3/
+# SAM 3.1 — locked source excluded from repo
+sam3_auto_label/sam3/
+sam3_auto_label/sam3_source_locked.zip
 
 # Source datasets (too large, keep local only)
-input/
+data/raw/
 
 # MLflow runs (auto-generated, not needed for handoff)
-mlruns/
-yolo26_ppe/mlruns/
-yolo26_ppe/mlflow/
+yolo26_ppe/artifacts/mlflow/
 
 # Ultralytics runs (auto-generated, duplicated in models/)
-runs/
-yolo26_ppe/runs/
+yolo26_ppe/artifacts/ultralytics_training_runs/
 
 # YOLO dataset images (large, keep labels/yaml only)
 yolo26_ppe/data/*/images/
-yolo26_ppe/data/combined_v2/images/
+yolo26_ppe/data/combined_coco_dataset_version_2/images/
 
 # Logs
-yolo26_ppe/logs/
+yolo26_ppe/artifacts/logs/
 *.log
 
 # Coverage
