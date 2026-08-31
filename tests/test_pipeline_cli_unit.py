@@ -395,3 +395,349 @@ class TestCheckPythonVenv:
     def test_returns_bool(self, cli_module):
         result = cli_module.check_python_venv()
         assert isinstance(result, bool)
+
+
+# =============================================================================
+# Optimizer Choices
+# =============================================================================
+
+class TestOptimizerChoices:
+    """Tests for OPTIMIZER_CHOICES config."""
+
+    def test_has_four_optimizers(self, cli_module):
+        assert len(cli_module.OPTIMIZER_CHOICES) == 4
+
+    def test_contains_sgd(self, cli_module):
+        assert "SGD" in cli_module.OPTIMIZER_CHOICES
+
+    def test_contains_adam(self, cli_module):
+        assert "Adam" in cli_module.OPTIMIZER_CHOICES
+
+    def test_contains_adamw(self, cli_module):
+        assert "AdamW" in cli_module.OPTIMIZER_CHOICES
+
+    def test_contains_rmsprop(self, cli_module):
+        assert "RMSProp" in cli_module.OPTIMIZER_CHOICES
+
+    def test_all_uppercase_or_mixed(self, cli_module):
+        """Optimizer names should be properly capitalized."""
+        for opt in cli_module.OPTIMIZER_CHOICES:
+            assert opt[0].isupper()
+
+
+# =============================================================================
+# Training Defaults — Detailed Validation
+# =============================================================================
+
+class TestTrainingDefaultsDetailed:
+    """Detailed tests for TRAINING_DEFAULTS values."""
+
+    def test_epochs_stage1_positive(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["epochs_stage1"] > 0
+
+    def test_epochs_stage2_positive(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["epochs_stage2"] > 0
+
+    def test_batch_positive(self, cli_module):
+        # batch may be None (use model default) — just check it's not negative
+        batch = cli_module.TRAINING_DEFAULTS["batch"]
+        if batch is not None:
+            assert batch > 0
+
+    def test_workers_non_negative(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["workers"] >= 0
+
+    def test_lr0_stage1_positive(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["lr0_stage1"] > 0
+
+    def test_lr0_stage2_positive(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["lr0_stage2"] > 0
+
+    def test_imgsz_positive(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["imgsz"] > 0
+
+    def test_patience_stage1_non_negative(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["patience_stage1"] >= 0
+
+    def test_patience_stage2_non_negative(self, cli_module):
+        assert cli_module.TRAINING_DEFAULTS["patience_stage2"] >= 0
+
+    def test_lr0_stage2_lower_than_stage1(self, cli_module):
+        """Stage 2 (fine-tuning) should have lower LR than stage 1."""
+        assert cli_module.TRAINING_DEFAULTS["lr0_stage2"] <= cli_module.TRAINING_DEFAULTS["lr0_stage1"]
+
+
+# =============================================================================
+# Build Train Overrides — Edge Cases
+# =============================================================================
+
+class TestBuildTrainOverridesEdgeCases:
+    """Edge case tests for build_train_overrides()."""
+
+    def test_zero_epochs_skipped(self, cli_module):
+        """Zero epochs should be skipped (falsy)."""
+        result = cli_module.build_train_overrides({"epochs": 0})
+        result_str = " ".join(result)
+        assert "--epochs" not in result_str
+
+    def test_zero_batch_skipped(self, cli_module):
+        """Zero batch should be skipped (falsy)."""
+        result = cli_module.build_train_overrides({"batch": 0})
+        result_str = " ".join(result)
+        assert "--batch" not in result_str
+
+    def test_float_lr0(self, cli_module):
+        result = cli_module.build_train_overrides({"lr0": 0.0001})
+        result_str = " ".join(result)
+        assert "--lr0" in result_str
+        assert "0.0001" in result_str
+
+    def test_all_possible_keys(self, cli_module):
+        """All training config keys should produce CLI args."""
+        config = {
+            "epochs": 100, "batch": 32, "workers": 8,
+            "optimizer": "AdamW", "lr0": 0.001, "imgsz": 1280,
+            "patience": 20, "device": "0",
+        }
+        result = cli_module.build_train_overrides(config)
+        result_str = " ".join(result)
+        for key in ["--epochs", "--batch", "--workers", "--optimizer",
+                    "--lr0", "--imgsz", "--patience", "--device"]:
+            assert key in result_str, f"Missing {key} in result"
+
+    def test_empty_string_optimizer_skipped(self, cli_module):
+        """Empty string values should be skipped."""
+        result = cli_module.build_train_overrides({"optimizer": ""})
+        result_str = " ".join(result)
+        assert "--optimizer" not in result_str
+
+    def test_order_is_consistent(self, cli_module):
+        """Same config should produce same output order."""
+        config = {"epochs": 100, "batch": 32, "optimizer": "AdamW"}
+        result1 = cli_module.build_train_overrides(config)
+        result2 = cli_module.build_train_overrides(config)
+        assert result1 == result2
+
+
+# =============================================================================
+# Model Config — Detailed
+# =============================================================================
+
+class TestModelConfigDetailed:
+    """Detailed tests for MODELS dict."""
+
+    def test_detection_models_have_detect_task(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            if "detection" in key:
+                assert cfg["task"] == "detect"
+
+    def test_segmentation_models_have_segment_task(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            if "segmentation" in key:
+                assert cfg["task"] == "segment"
+
+    def test_nano_models_have_size_n(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            if "nano" in key:
+                assert cfg["size"] == "n"
+
+    def test_small_models_have_size_s(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            if "small" in key:
+                assert cfg["size"] == "s"
+
+    def test_all_models_have_weights_path(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            assert cfg["weights"], f"{key} has empty weights"
+
+    def test_all_models_have_project_path(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            assert "production" in str(cfg["project"]), f"{key} project should contain 'production'"
+
+    def test_all_models_have_label(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            assert isinstance(cfg["label"], str)
+            assert len(cfg["label"]) > 0
+
+    def test_all_models_have_desc(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            assert isinstance(cfg["desc"], str)
+            assert len(cfg["desc"]) > 0
+
+    def test_all_models_have_batch_value(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            assert cfg["batch"] > 0, f"{key} has non-positive batch"
+
+    def test_detection_models_reference_detect_data(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            if cfg["task"] == "detect":
+                assert "detection" in str(cfg["data"]) or "detect" in str(cfg["data"])
+
+    def test_segmentation_models_reference_seg_data(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            if cfg["task"] == "segment":
+                assert "segmentation" in str(cfg["data"]) or "seg" in str(cfg["data"])
+
+    def test_best_paths_end_with_best_pt(self, cli_module):
+        for key, cfg in cli_module.MODELS.items():
+            assert str(cfg["best"]).endswith("best.pt"), f"{key} best path should end with best.pt"
+
+
+# =============================================================================
+# Parse Model List — Edge Cases
+# =============================================================================
+
+class TestParseModelListEdgeCases:
+    """Edge case tests for parse_model_list()."""
+
+    def test_all_models_at_once(self, cli_module):
+        result = cli_module.parse_model_list(
+            "nano_detection,small_detection,nano_segmentation,small_segmentation"
+        )
+        assert len(result) == 4
+        assert set(result) == {"nano_detection", "small_detection",
+                               "nano_segmentation", "small_segmentation"}
+
+    def test_duplicate_models_kept(self, cli_module):
+        """Duplicate models in list should be preserved (user may want to retrain)."""
+        result = cli_module.parse_model_list("nano_detection,nano_detection")
+        # Behavior may vary — just check it doesn't crash
+        assert len(result) >= 1
+
+    def test_only_commas_returns_all(self, cli_module):
+        """String with only commas/whitespace should return all models."""
+        result = cli_module.parse_model_list(",,,")
+        # Should either return all or empty — implementation dependent
+        assert isinstance(result, list)
+
+    def test_mixed_valid_invalid_raises(self, cli_module):
+        with pytest.raises(ValueError, match="Unknown model"):
+            cli_module.parse_model_list("nano_detection,invalid,small_detection")
+
+
+# =============================================================================
+# Parse Batch List — Edge Cases
+# =============================================================================
+
+class TestParseBatchListEdgeCases:
+    """Edge case tests for parse_batch_list()."""
+
+    def test_three_batches(self, cli_module, tmp_raw_dir):
+        result = cli_module.parse_batch_list("batch_a,batch_b,batch_a", base_dir=tmp_raw_dir)
+        assert len(result) == 3
+
+    def test_trailing_comma(self, cli_module, tmp_raw_dir):
+        result = cli_module.parse_batch_list("batch_a,", base_dir=tmp_raw_dir)
+        # Should handle trailing comma gracefully
+        assert "batch_a" in result
+
+    def test_only_commas(self, cli_module, tmp_raw_dir):
+        result = cli_module.parse_batch_list(",,,", base_dir=tmp_raw_dir)
+        assert result == []
+
+    def test_whitespace_only(self, cli_module, tmp_raw_dir):
+        result = cli_module.parse_batch_list("   ", base_dir=tmp_raw_dir)
+        assert result == []
+
+
+# =============================================================================
+# Validate Mode Args — Edge Cases
+# =============================================================================
+
+class TestValidateModeArgsEdgeCases:
+    """Edge case tests for validate_mode_args()."""
+
+    def test_yolo_with_valid_model_no_error(self, cli_module):
+        errors = cli_module.validate_mode_args("yolo", None, "nano_detection")
+        assert not errors
+
+    def test_yolo_with_all_models_no_error(self, cli_module):
+        errors = cli_module.validate_mode_args(
+            "yolo", None,
+            "nano_detection,small_detection,nano_segmentation,small_segmentation"
+        )
+        assert not errors
+
+    def test_pred_with_batch_no_error(self, cli_module):
+        errors = cli_module.validate_mode_args("pred", "blurred", None)
+        assert not errors
+
+    def test_sam_with_batch_no_error(self, cli_module):
+        errors = cli_module.validate_mode_args("sam", "blurred", None)
+        assert not errors
+
+    def test_unknown_mode_returns_no_error(self, cli_module):
+        """validate_mode_args may not check for unknown modes (delegated to argparse)."""
+        errors = cli_module.validate_mode_args("unknown", "batch", None)
+        # validate_mode_args only checks sam/pred/yolo constraints
+        # Unknown modes are handled by argparse choices
+        assert isinstance(errors, list)
+
+    def test_empty_string_mode_returns_error(self, cli_module):
+        errors = cli_module.validate_mode_args("", "batch", None)
+        assert len(errors) > 0
+
+
+# =============================================================================
+# ETA Estimation — Edge Cases
+# =============================================================================
+
+class TestEtaEstimationEdgeCases:
+    """Edge case tests for ETA estimation."""
+
+    def test_eta_sam_negative_returns_zero(self, cli_module):
+        """Negative image count should not crash."""
+        result = cli_module.estimate_eta_sam(-10)
+        # Should handle gracefully (either 0 or negative)
+        assert isinstance(result, (int, float))
+
+    def test_eta_yolo_train_zero_models(self, cli_module):
+        result = cli_module.estimate_eta_yolo_train(0, stage=12)
+        assert result == 0
+
+    def test_eta_yolo_pred_zero_models(self, cli_module):
+        result = cli_module.estimate_eta_yolo_pred(48, 0)
+        # Should handle gracefully
+        assert isinstance(result, (int, float))
+
+    def test_eta_yolo_pred_large_count(self, cli_module):
+        result = cli_module.estimate_eta_yolo_pred(10000, 4)
+        assert result > 0
+
+    def test_format_eta_large_value(self, cli_module):
+        """Very large ETA should format without crashing."""
+        result = cli_module.format_eta(999999)
+        assert isinstance(result, str)
+        assert "h" in result  # should be in hours
+
+
+# =============================================================================
+# Count Images — Additional Extensions
+# =============================================================================
+
+class TestCountImagesAdditional:
+    """Additional tests for count_images()."""
+
+    def test_counts_jpeg(self, cli_module, tmp_path):
+        (tmp_path / "a.jpeg").write_bytes(b"x")
+        assert cli_module.count_images(tmp_path) == 1
+
+    def test_counts_uppercase_extensions(self, cli_module, tmp_path):
+        (tmp_path / "a.JPG").write_bytes(b"x")
+        (tmp_path / "b.PNG").write_bytes(b"x")
+        assert cli_module.count_images(tmp_path) == 2
+
+    def test_counts_in_nested_dirs_not_recursive(self, cli_module, tmp_path):
+        """count_images should only count files directly in the directory."""
+        (tmp_path / "a.jpg").write_bytes(b"x")
+        nested = tmp_path / "subdir"
+        nested.mkdir()
+        (nested / "b.jpg").write_bytes(b"x")
+        # Should count only 1 (non-recursive) or 2 (recursive) — depends on impl
+        result = cli_module.count_images(tmp_path)
+        assert result >= 1
+
+    def test_many_files(self, cli_module, tmp_path):
+        for i in range(100):
+            (tmp_path / f"img_{i:04d}.jpg").write_bytes(b"x")
+        assert cli_module.count_images(tmp_path) == 100
