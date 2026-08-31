@@ -1222,6 +1222,19 @@ def direct_mode(args):
 
     render_plan_panel(args.mode, datasets, models, stage, eta_s, output_dirs)
 
+    # Dry-run: show plan only, don't execute
+    if _dry_run:
+        console.print("\n  [yellow]🔍 DRY RUN — execution skipped[/yellow]")
+        console.print("  [dim]Would execute:[/dim]")
+        if args.mode == "sam":
+            console.print(f"  [dim]  SAM batch_segment on: {datasets}[/dim]")
+        elif args.mode == "yolo":
+            console.print(f"  [dim]  YOLO train: {models}, stage={stage}, config={train_config}[/dim]")
+        else:
+            console.print(f"  [dim]  YOLO predict: {datasets}, {models}, conf={args.conf}, iou={args.iou}[/dim]")
+        console.print()
+        return
+
     console.print("  [bold cyan]🚀 Starting...[/bold cyan]\n")
     start_time = time.time()
 
@@ -1328,6 +1341,11 @@ Custom training (YOLO):
     if args.mode:
         direct_mode(args)
     else:
+        # Interactive mode requires a TTY
+        if not sys.stdin.isatty():
+            console.print("\n  [red]❌ Interactive mode requires a terminal (TTY).[/red]")
+            console.print("  [dim]Use --help to see available commands, or run in a real terminal.[/dim]\n")
+            sys.exit(1)
         interactive_mode()
 
 
