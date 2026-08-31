@@ -41,12 +41,14 @@ class TestHelpOutput:
         assert "--batch" in result.stdout
 
     def test_no_args_does_not_crash(self, cli_module):
-        """Running with no args should not crash immediately (enters interactive mode)."""
+        """Running with no args should not crash immediately (enters interactive mode).
+        Send Ctrl-C via stdin to exit gracefully."""
         result = subprocess.run(
             [sys.executable, str(CLI_PATH)],
-            input="\n\n\n\n\n\n\n\n",
-            capture_output=True, text=True, timeout=30,
+            input="\x03",  # Ctrl-C to exit interactive mode
+            capture_output=True, text=True, timeout=15,
         )
+        # Should produce some output (banner) before being interrupted
         assert len(result.stdout) > 0 or len(result.stderr) > 0
 
 
