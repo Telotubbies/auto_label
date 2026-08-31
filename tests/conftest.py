@@ -39,6 +39,7 @@ def make_mock_args(**overrides):
         resume=False,
         prepare=False,
         copy_tmp=False,
+        dry_run=False,
         input=None,
         output=None,
         epochs=None,
