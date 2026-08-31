@@ -21,14 +21,23 @@ COMBINED_DIR = BASE / "data" / "combined_coco_dataset_version_2"
 ANN_PATH = COMBINED_DIR / "annotations.json"
 IMG_DIR = COMBINED_DIR / "images"
 
+# Fallback to v1 dataset (has real images on disk)
+V1_DIR = Path("/mnt/e/02_Projects/auto_label/data/processed/combined_coco_dataset_version_1")
+V1_ANN_PATH = V1_DIR / "annotations.json"
+V1_IMG_DIR = V1_DIR / "images"
+
 # Output directories
 DET_DIR = BASE / "data" / "yolo_detection_dataset_version_2"
 SEG_DIR = BASE / "data" / "yolo_segmentation_dataset_version_2"
 
 CLASS_NAMES = ["person", "helmet", "boots", "shoes", "harness"]
-# COCO category IDs in our dataset: 1=person, 2=helmet, 3=boots, 4=shoes, 5=harness
+# COCO category IDs in v2 dataset: 1=person, 2=helmet, 3=boots, 4=shoes, 5=harness
 # YOLO class IDs: 0=person, 1=helmet, 2=boots, 3=shoes, 4=harness
 COCO_TO_YOLO = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4}
+
+# v1 dataset has 6 categories: 1=person, 2=helmet, 3=boots, 4=shoes, 5=sandals, 6=harness
+# Map sandals (5) → shoes (YOLO 3), harness (6) → harness (YOLO 4)
+COCO_TO_YOLO_V1 = {1: 0, 2: 1, 3: 2, 4: 3, 5: 3, 6: 4}
 
 SPLIT_RATIOS = {"train": 0.8, "val": 0.1, "test": 0.1}
 RANDOM_SEED = 42
@@ -112,6 +121,33 @@ def main():
     print("=" * 70)
     print("Preparing YOLO v2 data (detect + segment)")
     print("=" * 70)
+
+    # Try v2 first, fall back to v1 if v2 images are missing
+    global ANN_PATH, IMG_DIR, COCO_TO_YOLO
+    use_v1 = False
+
+    if not ANN_PATH.exists():
+        print(f"v2 annotations not found at {ANN_PATH}")
+        use_v1 = True
+    else:
+        # Check if v2 images exist
+        with open(ANN_PATH) as f:
+            test_data = json.load(f)
+        missing_count = sum(1 for img in test_data['images'] if not (IMG_DIR / img['file_name']).exists())
+        if missing_count == len(test_data['images']):
+            print(f"WARNING: All {missing_count} v2 images are missing.")
+            print(f"  Falling back to v1 dataset (has real images on disk).")
+            use_v1 = True
+
+    if use_v1:
+        if not V1_ANN_PATH.exists():
+            print(f"ERROR: Neither v2 nor v1 annotations found.")
+            sys.exit(1)
+        ANN_PATH = V1_ANN_PATH
+        IMG_DIR = V1_IMG_DIR
+        COCO_TO_YOLO = COCO_TO_YOLO_V1
+        print(f"Using v1 dataset: {V1_DIR}")
+        print(f"  (sandals merged into shoes, 6→5 classes)")
 
     # Load annotations
     with open(ANN_PATH) as f:
@@ -233,12 +269,14 @@ def main():
                         continue
 
             # Handle duplicate names from oversampling
-            base_name = file_name
+            # Flatten file_name (remove subdirectory prefix like "2026/" or "blurred/")
+            flat_name = os.path.basename(file_name)
+            base_name = flat_name
             if split == 'train' and split_img_ids.count(img_id) > 1:
                 # Add suffix for oversampled copies
                 idx = split_img_ids[:split_img_ids.index(img_id)].count(img_id)
                 if idx > 0:
-                    name_parts = os.path.splitext(file_name)
+                    name_parts = os.path.splitext(flat_name)
                     base_name = f"{name_parts[0]}_dup{idx}{name_parts[1]}"
 
             src_path = IMG_DIR / file_name
