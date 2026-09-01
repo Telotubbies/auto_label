@@ -2,8 +2,8 @@
   "model": "small_detection",
   "task": "detect",
   "n_images": 3,
-  "total_time_s": 6.03,
-  "avg_latency_ms": 2009.3,
+  "total_time_s": 0.13,
+  "avg_latency_ms": 43.7,
   "conf_threshold": 0.25,
   "iou_threshold": 0.45,
   "imgsz": 640,
@@ -18,7 +18,7 @@
     {
       "image": "706911.jpg",
       "n_det": 4,
-      "latency_ms": 3039.5,
+      "latency_ms": 86.1,
       "classes": {
         "person": 3,
         "shoes": 1
@@ -27,7 +27,7 @@
     {
       "image": "images (3).jpg",
       "n_det": 1,
-      "latency_ms": 1649.4,
+      "latency_ms": 24.0,
       "classes": {
         "person": 1
       }
@@ -35,7 +35,7 @@
     {
       "image": "images.jpg",
       "n_det": 12,
-      "latency_ms": 1339.1,
+      "latency_ms": 21.0,
       "classes": {
         "person": 5,
         "helmet": 1,

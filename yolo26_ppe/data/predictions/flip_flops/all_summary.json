@@ -1,10 +1,10 @@
 {
-  "small_detection": {
-    "model": "small_detection",
-    "task": "detect",
+  "nano_segmentation": {
+    "model": "nano_segmentation",
+    "task": "segment",
     "n_images": 3,
-    "total_time_s": 6.03,
-    "avg_latency_ms": 2009.3,
+    "total_time_s": 1.99,
+    "avg_latency_ms": 663.1,
     "conf_threshold": 0.25,
     "iou_threshold": 0.45,
     "imgsz": 640,
@@ -18,30 +18,28 @@
     "results": [
       {
         "image": "706911.jpg",
-        "n_det": 4,
-        "latency_ms": 3039.5,
+        "n_det": 7,
+        "latency_ms": 1915.8,
         "classes": {
-          "person": 3,
-          "shoes": 1
+          "person": 5,
+          "shoes": 2
         }
       },
       {
         "image": "images (3).jpg",
-        "n_det": 1,
-        "latency_ms": 1649.4,
-        "classes": {
-          "person": 1
-        }
+        "n_det": 0,
+        "latency_ms": 45.0,
+        "classes": {}
       },
       {
         "image": "images.jpg",
-        "n_det": 12,
-        "latency_ms": 1339.1,
+        "n_det": 9,
+        "latency_ms": 28.6,
         "classes": {
-          "person": 5,
-          "helmet": 1,
-          "boots": 2,
-          "shoes": 4
+          "person": 3,
+          "shoes": 3,
+          "helmet": 2,
+          "boots": 1
         }
       }
     ]

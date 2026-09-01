@@ -9,130 +9,130 @@
   ],
   "annotations": [
     {
-      "id": 702,
+      "id": 697,
       "image_id": 38,
       "category_id": 1,
       "bbox": [
-        1038.57,
-        314.53,
-        78.55,
-        177.94
+        1038.26,
+        314.78,
+        78.72,
+        177.72
       ],
-      "area": 9122,
+      "area": 9118,
       "iscrowd": 0,
       "segmentation": {
         "size": [
           1108,
           1477
         ],
-        "counts": "fcTS1<RR17I7L4M2hPOROil0o0oROZOnl0h0nRO]Onl0e0PSO^Onl0c0oROAol0`0nRODPm0>jROHTm0:fROKYm07`RO0]m0HeQOPO6O2\\1Rn0ClQO`1Rn0bNjQOa1Un0`1O1N101O1O1O001O01O1O0O2M3I6NTROTLVm0n3cROWL\\m0m3URO_Lim0W4F:M3O0O2N2O001O100O100000O001O1N2N3L3N2M3M4L3N3L4L4M3M5Kc0[O4K6K4L4L5I6M4K4K5M4L4M4J7I:F<UOVVU<"
+        "counts": "fcTS1<SR16H8L4M2hPOROil0o0oROZOnl0h0nRO]Onl0e0PSO^Onl0c0PSO@nl0a0nRODPm0>jROHTm0:fROKYm07`RO0]m0HeQOPO6O2\\1Rn0ClQO`1Rn0bNjQOa1Un0`1O1N101O1O1O001O01O1O0O2L4J5NTROTLVm0n3cROWL\\m0m3URO_Lim0W4F:M3O0O2N2O001O100O100000O001O1N2N3L3N2M3M4L3M4M3L4M3M5Kc0[O4K6K4L4L5I6M4K4K5M4L4M4J7I:F<UOVVU<"
       },
       "score": 0.953125
     },
     {
-      "id": 703,
+      "id": 698,
       "image_id": 38,
       "category_id": 1,
       "bbox": [
-        938.64,
-        345.28,
-        68.26,
-        181.37
+        938.41,
+        344.96,
+        68.42,
+        181.92
       ],
-      "area": 7538,
+      "area": 7540,
       "iscrowd": 0,
       "segmentation": {
         "size": [
           1108,
           1477
         ],
-        "counts": "n_io08ZR14L2M4M2O1N3N0O2fQOZOdj0h0[UOZObj0h0^UOXOaj0i0PTOYOWNKe04Sm0j0cSO6ROPOYm0l0]ROa14eM]m0m0XROg15^Mbm0_400O0010N10001000O001O1O1N3J5M4M2O1O1O010O1ON3J6M2O2N2N2M2O2M3O1I7K5K5M3L4M4K4M4K5L4K7Ha0A5L3M3L5mN]oNMiP1EWPOBRP15lYm?"
+        "counts": "n_io08ZR14L2M4M2O1N3N0O2fQOZOdj0h0[UOZObj0h0^UOXOaj0i0PTOYOWNKe04Sm0j0cSO6ROPOYm0l0]ROa14eM]m0m0XROg14_Mcm0^400O0010N10001000O010N2O1N3J5M4M2O1O1O010O1ON3J6M2O2N2N2M2O2M3O1I7K5K5M3L4M4K4M4K5L4K7Ha0A5L3M3L4K7dNWPOBRP15lYm?"
       },
       "score": 0.94921875
     },
     {
-      "id": 704,
+      "id": 699,
       "image_id": 38,
       "category_id": 2,
       "bbox": [
-        1072.59,
-        314.51,
-        29.66,
-        21.37
+        1072.56,
+        314.66,
+        29.69,
+        21.23
       ],
-      "area": 407,
+      "area": 406,
       "iscrowd": 0,
       "segmentation": {
         "size": [
           1108,
           1477
         ],
-        "counts": "jZYT18ZR13N1N2O001N20O010O010O10000O10000001O01O00001O1O1O101M4LX^e<"
+        "counts": "jZYT18ZR13N1N2O0O2O010O010O10O10000O10000001O01O00001O1O1O101M4LX^e<"
       },
       "score": 0.81640625
     },
     {
-      "id": 705,
+      "id": 700,
       "image_id": 38,
       "category_id": 2,
       "bbox": [
-        969.83,
-        344.76,
-        30.62,
-        19.83
+        969.85,
+        344.91,
+        30.6,
+        19.78
       ],
-      "area": 428,
+      "area": 427,
       "iscrowd": 0,
       "segmentation": {
         "size": [
           1108,
           1477
         ],
-        "counts": "\\miP14^R13M3N001N200O1000O0100000000O2O00001O001O0010O010O1O101M5KRiS`0"
+        "counts": "[miP15^R12M2O1O1N200O10O10O100000000O2O00001O001O0010O010O1O101M5KRiS`0"
       },
-      "score": 0.82421875
+      "score": 0.828125
     },
     {
-      "id": 706,
+      "id": 701,
       "image_id": 38,
       "category_id": 4,
       "bbox": [
-        943.8,
-        517.06,
-        18.79,
-        12.09
+        943.84,
+        516.9,
+        18.66,
+        12.34
       ],
-      "area": 159,
+      "area": 162,
       "iscrowd": 0,
       "segmentation": {
         "size": [
           1108,
           1477
         ],
-        "counts": "mPoo05^R12O0O101N10001O000O10000001M2M3N4N1O[bZa0"
+        "counts": "mPoo05^R12O0O101N10001O000O10000001M2M3O2N2O\\bZa0"
       },
       "score": 0.5234375
     },
     {
-      "id": 707,
+      "id": 702,
       "image_id": 38,
       "category_id": 4,
       "bbox": [
-        965.82,
-        514.5,
-        13.6,
-        9.8
+        965.86,
+        514.41,
+        13.48,
+        9.84
       ],
-      "area": 84,
+      "area": 86,
       "iscrowd": 0,
       "segmentation": {
         "size": [
           1108,
           1477
         ],
-        "counts": "ajfP14`R11N2O0O2O0000000O03Nh]k`0"
+        "counts": "ajfP14`R11N2O0O2O0000000O11Nj]k`0"
       },
-      "score": 0.453125
+      "score": 0.44921875
     }
   ],
   "categories": [

@@ -861,28 +861,34 @@ def interactive_mode():
                     f"Place images in subdirectories under {RAW_DIR}/<batch_name>/")
         sys.exit(1)
 
-    ds_choices = [
+    # Build choices: "All datasets" first, then individual datasets
+    all_choice = questionary.Choice(
+        f"All datasets   ({sum(c for _, c in datasets)} images total)",
+        value="__all__",
+    )
+    ds_choices = [all_choice] + [
         questionary.Choice(f"{name}   ({count} images)", value=name)
         for name, count in datasets
     ]
 
     if mode == "sam":
-        prompt = "Select datasets to auto-label  (SPACE to select multiple)"
+        prompt = "Select a dataset to auto-label"
     elif mode == "yolo":
-        prompt = "Select raw datasets to include in training  (SPACE to select multiple)"
+        prompt = "Select raw dataset to include in training"
     else:
-        prompt = "Select datasets for inference  (SPACE to select multiple)"
+        prompt = "Select a dataset for inference"
 
-    selected_datasets = questionary.checkbox(
-        f"{prompt}\n  Press ENTER to use all if none selected.",
+    selected = questionary.select(
+        f"{prompt}\n  Press ENTER to confirm your selection.",
         choices=ds_choices,
         style=QSTYLE,
     ).ask()
 
-    if not selected_datasets:
+    if selected == "__all__":
         selected_datasets = [name for name, _ in datasets]
         console.print(f"\n  [green]✓[/green] Selected: [bold]All datasets[/bold]")
     else:
+        selected_datasets = [selected]
         render_selection_summary(selected_datasets, "Selected datasets")
 
     # --- Step 3: Mode-specific options ---
@@ -896,7 +902,11 @@ def interactive_mode():
     if mode == "yolo":
         render_step(3, 5, "Select Models to Train")
 
-        model_choices = [
+        all_models_choice = questionary.Choice(
+            "All 4 models   —   Train everything",
+            value="__all__",
+        )
+        model_choices = [all_models_choice] + [
             questionary.Choice(
                 f"{MODELS[k]['label']}   —   {MODELS[k]['desc']}",
                 value=k,
@@ -904,17 +914,18 @@ def interactive_mode():
             for k in MODELS
         ]
 
-        selected_models = questionary.checkbox(
-            "Which models to train?\n  SPACE to toggle, ENTER to confirm (empty = all 4)",
+        selected = questionary.select(
+            "Which models to train?\n  Press ENTER to confirm your selection.",
             choices=model_choices,
             style=QSTYLE,
         ).ask()
 
-        if not selected_models:
+        if selected == "__all__":
             selected_models = list(MODELS.keys())
             console.print(f"\n  [green]✓[/green] Selected: [bold]All 4 models[/bold]")
         else:
-            render_selection_summary([MODELS[m]["label"] for m in selected_models], "Selected models")
+            selected_models = [selected]
+            render_selection_summary([MODELS[selected]["label"]], "Selected models")
 
         # Training stage
         console.print()
@@ -1025,7 +1036,11 @@ def interactive_mode():
     elif mode == "pred":
         render_step(3, 4, "Select Models for Inference")
 
-        model_choices = []
+        all_models_choice = questionary.Choice(
+            "All trained models",
+            value="__all__",
+        )
+        model_choices = [all_models_choice]
         for k in MODELS:
             trained = MODELS[k]["best"].exists()
             status = "[green]✓ trained[/green]" if trained else "[red]✗ not trained[/red]"
@@ -1036,20 +1051,21 @@ def interactive_mode():
                 )
             )
 
-        selected_models = questionary.checkbox(
-            "Which models to run?\n  SPACE to toggle, ENTER to confirm (empty = all available)",
+        selected = questionary.select(
+            "Which model to run?\n  Press ENTER to confirm your selection.",
             choices=model_choices,
             style=QSTYLE,
         ).ask()
 
-        if not selected_models:
+        if selected == "__all__":
             selected_models = [k for k in MODELS if MODELS[k]["best"].exists()]
             if not selected_models:
                 render_error("No trained models found!", "Train models first with --yolo mode")
                 sys.exit(1)
             console.print(f"\n  [green]✓[/green] Selected: [bold]All trained models ({len(selected_models)})[/bold]")
         else:
-            render_selection_summary([MODELS[m]["label"] for m in selected_models], "Selected models")
+            selected_models = [selected]
+            render_selection_summary([MODELS[selected]["label"]], "Selected models")
 
         # Advanced options
         console.print()
