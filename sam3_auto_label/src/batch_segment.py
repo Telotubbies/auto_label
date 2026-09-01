@@ -18,13 +18,14 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import timedelta
 from glob import glob
 
 from PIL import Image
 from tqdm import tqdm
 
-from config import load_config, Config
+from config import load_config, validate_config, Config
 from exporters import write_image_exports, finalize_exports
 from inference import (
     build_model,
@@ -50,11 +51,14 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def checkpoint_path(cfg: Config):
+    """Return the checkpoint path owned by the configured output directory."""
     return os.path.join(cfg.output_path, "checkpoint.json")
 
 
 def load_checkpoint(cfg: Config):
     """Load checkpoint. Returns dict with processed images or None."""
+    if not cfg.checkpoint.enabled:
+        return None
     path = checkpoint_path(cfg)
     if not os.path.exists(path):
         return None
@@ -68,6 +72,8 @@ def load_checkpoint(cfg: Config):
 
 def save_checkpoint(cfg: Config, ckpt: dict):
     """Save checkpoint atomically."""
+    if not cfg.checkpoint.enabled:
+        return
     path = checkpoint_path(cfg)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -76,6 +82,9 @@ def save_checkpoint(cfg: Config, ckpt: dict):
 
 
 def delete_checkpoint(cfg: Config):
+    """Delete checkpoint state only when checkpointing is enabled."""
+    if not cfg.checkpoint.enabled:
+        return
     path = checkpoint_path(cfg)
     if os.path.exists(path):
         os.remove(path)
@@ -123,15 +132,8 @@ def ask_resume(ckpt):
         print("  Please answer y or n")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def main():
-    args = parse_args()
-    cfg = load_config(args.config)
-
-    # CLI overrides
+def apply_cli_overrides(cfg: Config, args) -> None:
+    """Apply explicit CLI values and revalidate the effective configuration."""
     if args.threshold is not None:
         cfg.inference.confidence_threshold = args.threshold
     if args.resolution is not None:
@@ -142,6 +144,135 @@ def main():
         cfg.output.input_dir = args.input
     if args.output is not None:
         cfg.output.output_dir = args.output
+    validate_config(cfg)
+
+
+def should_resume_checkpoint(cfg: Config, args, checkpoint, interactive: bool) -> bool:
+    """Resolve resume policy with CLI intent taking precedence over config defaults."""
+    if not cfg.checkpoint.enabled or checkpoint is None or args.fresh:
+        return False
+    if args.resume:
+        return True
+    if interactive:
+        return ask_resume(checkpoint)
+    return cfg.checkpoint.auto_resume
+
+
+def export_image(cfg: Config, image, name, basename, image_info, annotations) -> None:
+    """Write every per-image artifact or raise an image-scoped export error."""
+    try:
+        save_coco(image_info, annotations, os.path.join(cfg.coco_path, f"{name}.json"), cfg)
+        write_image_exports(cfg, image_info, annotations)
+        if cfg.output.save_viz:
+            save_viz(image, name, annotations, os.path.join(cfg.viz_path, f"{name}.png"), cfg)
+    except Exception as exc:
+        raise RuntimeError(f"export failed for {basename}: {exc}") from exc
+
+
+@dataclass
+class BatchResults:
+    """Mutable run state committed only after durable per-image export."""
+
+    processed: dict
+    checkpoint: dict
+    tracker: ExperimentTracker
+    experiment_id: str | None
+    images: list
+    annotations: list
+    errors: list
+
+
+def complete_export(cfg: Config, future, result, state: BatchResults) -> bool:
+    """Commit an exported image to run state, or record its export failure."""
+    basename = result["image_info"]["file_name"]
+    try:
+        if future is not None:
+            future.result()
+    except Exception as exc:
+        log.error(f"failed: {basename} — {exc}")
+        state.errors.append({"image": basename, "error": str(exc)})
+        state.processed[basename] = {"time": 0, "annotations": 0, "error": str(exc)}
+        state.checkpoint["processed"] = state.processed
+        save_checkpoint(cfg, state.checkpoint)
+        return False
+
+    state.images.append(result["image_info"])
+    state.annotations.extend(result["annotations"])
+    state.processed[basename] = {
+        "time": round(result["elapsed"], 1),
+        "annotations": len(result["annotations"]),
+    }
+    state.checkpoint["processed"] = state.processed
+    save_checkpoint(cfg, state.checkpoint)
+    if state.experiment_id:
+        state.tracker.log_image_result(
+            state.experiment_id, basename, len(result["annotations"]), result["elapsed"],
+        )
+    log.info(
+        f"[OK] {basename}: {len(result['annotations'])} anns in {result['elapsed']:.1f}s"
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Combined output and resume reconstruction
+# ---------------------------------------------------------------------------
+
+def load_previous_results(cfg: Config, processed: dict):
+    """Reconstruct successful image and annotation records from the resume cache.
+
+    Entries previously recorded as errors and missing cache files are excluded so
+    combined exports never claim data that cannot be reconstructed.
+    """
+    all_images = []
+    all_annotations = []
+
+    for basename, info in processed.items():
+        if info.get("error"):
+            continue
+        name = os.path.splitext(basename)[0]
+        coco_path = os.path.join(cfg.coco_path, f"{name}.json")
+        if not os.path.exists(coco_path):
+            continue
+        with open(coco_path, "r", encoding="utf-8") as f:
+            coco = json.load(f)
+        all_images.extend(coco.get("images", []))
+        all_annotations.extend(coco.get("annotations", []))
+
+    return all_images, all_annotations
+
+
+def save_combined(cfg: Config, all_images, all_annotations, errors):
+    """Finalize configured dataset exports and persist a batch error report."""
+    finalize_exports(cfg, all_images, all_annotations)
+
+    if errors:
+        report = {
+            "summary": {"total": len(all_images), "errors": len(errors)},
+            "errors": errors,
+        }
+        with open(os.path.join(cfg.output_path, "errors.json"), "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+
+def rebuild_combined(cfg: Config, processed: dict):
+    """Rebuild final exports exclusively from durable per-image cache files."""
+    all_images, all_annotations = load_previous_results(cfg, processed)
+    save_combined(cfg, all_images, all_annotations, [])
+    log.info(f"rebuilt: {len(all_images)} images, {len(all_annotations)} annotations")
+
+
+# ---------------------------------------------------------------------------
+# Application orchestration
+# ---------------------------------------------------------------------------
+
+def main():
+    """Run one configured batch and return a process-compatible exit code."""
+    args = parse_args()
+    cfg = load_config(args.config)
+
+    # CLI overrides
+    apply_cli_overrides(cfg, args)
 
     log.info("=" * 60)
     log.info("SAM 3.1 batch segmentation")
@@ -169,7 +300,7 @@ def main():
 
     if not image_files:
         log.warning("no images found. exiting.")
-        return
+        return 0
 
     total_images = len(image_files)
     log.info(f"found {total_images} image(s)")
@@ -185,23 +316,16 @@ def main():
         delete_checkpoint(cfg)
         ckpt = None
         log.info("starting fresh (checkpoint deleted)")
-    elif args.resume:
-        if ckpt is None:
+    else:
+        do_resume = should_resume_checkpoint(cfg, args, ckpt, sys.stdin.isatty())
+        if args.resume and ckpt is None:
             log.info("no checkpoint found, starting fresh")
-        else:
-            do_resume = True
+        elif do_resume:
             log.info("resuming from checkpoint")
-    elif ckpt is not None:
-        # Interactive prompt
-        if sys.stdin.isatty():
-            do_resume = ask_resume(ckpt)
-            if not do_resume:
-                delete_checkpoint(cfg)
-                ckpt = None
-        else:
-            # Non-interactive: auto-resume
-            do_resume = True
-            log.info("checkpoint found, auto-resuming (use --fresh to restart)")
+        elif ckpt is not None:
+            delete_checkpoint(cfg)
+            ckpt = None
+            log.info("checkpoint found but auto-resume is disabled, starting fresh")
 
     # Initialize checkpoint
     if do_resume and ckpt is not None:
@@ -229,7 +353,7 @@ def main():
         log.info("all images already processed. rebuilding combined outputs...")
         # Rebuild combined COCO from per-image files
         rebuild_combined(cfg, processed)
-        return
+        return 0
 
     # Estimate time
     if processed:
@@ -259,6 +383,10 @@ def main():
         all_images, all_annotations = load_previous_results(cfg, processed)
         ann_id = max(a["id"] for a in all_annotations) + 1 if all_annotations else 1
 
+    state = BatchResults(
+        processed, ckpt, tracker, exp_id, all_images, all_annotations, errors,
+    )
+
     # Build index map for O(1) lookup (avoid O(n^2) with .index())
     image_id_map = {path: i + 1 for i, path in enumerate(image_files)}
 
@@ -276,6 +404,7 @@ def main():
     use_pipeline = getattr(cfg.inference, "pipeline_export", True)
     export_executor = ThreadPoolExecutor(max_workers=1) if use_pipeline else None
     export_future = None  # tracks the in-progress export task
+    export_result = None
 
     def load_image(path):
         """Load and convert image in background thread."""
@@ -283,16 +412,6 @@ def main():
             return Image.open(path).convert("RGB")
         except Exception:
             return None
-
-    def export_image(image, name, basename, image_info, annotations, img_path):
-        """Save all per-image outputs (runs in background thread)."""
-        try:
-            save_coco(image_info, annotations, os.path.join(cfg.coco_path, f"{name}.json"), cfg)
-            write_image_exports(cfg, image_info, annotations)
-            if cfg.output.save_viz:
-                save_viz(image, name, annotations, os.path.join(cfg.viz_path, f"{name}.png"), cfg)
-        except Exception as e:
-            log.error(f"export failed: {basename} — {e}")
 
     # Prime the pipeline: start loading the first image
     pending_iter = iter(pending)
@@ -335,40 +454,32 @@ def main():
                 "width": W,
                 "height": H,
             }
-            all_images.append(image_info)
-            all_annotations.extend(annotations)
-
             # Pipeline: wait for PREVIOUS export (should be done — it ran
             # during this image's GPU inference), then start exporting
             # current image in background for next iteration's GPU to overlap.
             # When pipeline disabled: export synchronously (GPU waits for CPU).
+            if export_result is not None:
+                complete_export(cfg, export_future, export_result, state)
+                export_future = None
+                export_result = None
+
+            elapsed = time.time() - t1
+            current_result = {
+                "image_info": image_info,
+                "annotations": annotations,
+                "elapsed": elapsed,
+            }
             if use_pipeline:
-                if export_future is not None:
-                    export_future.result()
                 export_future = export_executor.submit(
-                    export_image, image, name, basename, image_info, annotations, img_path,
+                    export_image, cfg, image, name, basename, image_info, annotations,
                 )
+                export_result = current_result
             else:
-                export_image(image, name, basename, image_info, annotations, img_path)
+                export_image(cfg, image, name, basename, image_info, annotations)
+                complete_export(cfg, None, current_result, state)
 
             # Free image memory — export thread has its own reference
             del image
-
-            elapsed = time.time() - t1
-
-            # Update checkpoint
-            processed[basename] = {
-                "time": round(elapsed, 1),
-                "annotations": len(annotations),
-            }
-            ckpt["processed"] = processed
-            save_checkpoint(cfg, ckpt)
-
-            # Track in experiment DB
-            if exp_id:
-                tracker.log_image_result(
-                    exp_id, basename, len(annotations), elapsed,
-                )
 
             # ETA update
             times = [v.get("time", 0) for v in processed.values() if v.get("time")]
@@ -381,9 +492,11 @@ def main():
                     "ETA": format_eta(eta),
                 })
 
-            log.info(f"[OK] {basename}: {len(annotations)} anns in {elapsed:.1f}s")
-
         except Exception as e:
+            if export_result is not None:
+                complete_export(cfg, export_future, export_result, state)
+                export_future = None
+                export_result = None
             log.error(f"failed: {basename} — {e}")
             errors.append({"image": basename, "error": str(e)})
             # Still mark as processed (with error) so we don't retry forever
@@ -395,8 +508,8 @@ def main():
     prefetch_executor.shutdown(wait=False)
 
     # Wait for the last export to finish before saving combined outputs
-    if export_future is not None:
-        export_future.result()
+    if export_result is not None:
+        complete_export(cfg, export_future, export_result, state)
     if export_executor is not None:
         export_executor.shutdown(wait=True)
 
@@ -430,50 +543,12 @@ def main():
     log.info("=" * 60)
 
     # Clean checkpoint on success
-    if not errors:
+    if cfg.checkpoint.enabled and not errors and cfg.checkpoint.clear_on_success:
         delete_checkpoint(cfg)
         log.info("checkpoint cleared (all done, no errors)")
 
-
-def load_previous_results(cfg: Config, processed: dict):
-    """Load previously processed results from per-image COCO files."""
-    all_images = []
-    all_annotations = []
-
-    for basename, info in processed.items():
-        if info.get("error"):
-            continue
-        name = os.path.splitext(basename)[0]
-        coco_path = os.path.join(cfg.coco_path, f"{name}.json")
-        if not os.path.exists(coco_path):
-            continue
-        with open(coco_path, "r", encoding="utf-8") as f:
-            coco = json.load(f)
-        all_images.extend(coco.get("images", []))
-        all_annotations.extend(coco.get("annotations", []))
-
-    return all_images, all_annotations
-
-
-def save_combined(cfg: Config, all_images, all_annotations, errors):
-    """Save combined dataset exports."""
-    finalize_exports(cfg, all_images, all_annotations)
-
-    if errors:
-        report = {
-            "summary": {"total": len(all_images), "errors": len(errors)},
-            "errors": errors,
-        }
-        with open(os.path.join(cfg.output_path, "errors.json"), "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-
-
-def rebuild_combined(cfg: Config, processed: dict):
-    """Rebuild combined outputs from per-image files (when all already done)."""
-    all_images, all_annotations = load_previous_results(cfg, processed)
-    save_combined(cfg, all_images, all_annotations, [])
-    log.info(f"rebuilt: {len(all_images)} images, {len(all_annotations)} annotations")
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

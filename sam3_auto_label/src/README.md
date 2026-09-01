@@ -6,7 +6,7 @@
 
 | ไฟล์ | หน้าที่ | หมายเหตุ |
 |------|--------|---------|
-| `config.py` | load + validate YAML config, dataclass สำหรับ Category/Inference/Annotation/Output | จุดเริ่มต้น — ทุกไฟล์อื่น import จากที่นี่ |
+| `config.py` | read YAML → parse typed dataclass → validate config | จุดเริ่มต้น — ทุกไฟล์อื่น import จากที่นี่ |
 | `inference.py` | สร้างโมเดล SAM 3.1, segment ภาพเดียว, export COCO/mask/viz | จัดการ device (CUDA > ROCm > MPS > CPU), GPU ops |
 | `batch_segment.py` | รัน batch segmentation ทุกภาพใน folder, checkpoint/resume, ETA | CLI entry point — `python src/batch_segment.py` |
 | `exporters.py` | export annotation เป็น 11 ฟอร์แมต (COCO, YOLO, VOC, LabelMe, CVAT, ...) | เลือกฟอร์แมตผ่าน `output.formats` ใน config |
@@ -52,6 +52,8 @@ CLI flags:
 - `--fresh` — เริ่มใหม่ ลบ checkpoint
 - `--threshold <float>` — override confidence threshold
 - `--config <path>` — ระบุ config file (default: `config/ppe_6class.yaml`)
+
+ค่า `checkpoint.enabled`, `checkpoint.auto_resume`, และ `checkpoint.clear_on_success` มีผลกับการทำงานของ checkpoint โดยตรง การ export ภาพต้องสำเร็จก่อนจึงจะบันทึกภาพนั้นว่า processed และ batch จะคืน exit code ที่ไม่ใช่ศูนย์เมื่อมีภาพที่ประมวลผลหรือ export ไม่สำเร็จ
 
 ## exporters.py
 
