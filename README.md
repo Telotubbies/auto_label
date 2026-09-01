@@ -1,6 +1,6 @@
 # Auto-Label PPE Pipeline
 
-ระบบสร้างฉลากอัตโนมัติ (auto-labeling) และฝึกโมเดลตรวจจับอุปกรณ์ความปลอดภัยส่วนบุคคล (PPE) ด้วย **SAM 3.1** และ **YOLO26**
+ระบบสร้างground truth และฝึกโมเดลตรวจจับอุปกรณ์ความปลอดภัยส่วนบุคคล (PPE) ด้วย **SAM 3.1** และ **YOLO26**
 
 โปรเจกต์นี้เป็น pipeline ครบวงจร ตั้งแต่รับภาพดิบ → สร้าง annotation → ฝึกโมเดล → ประเมินผล → export ONNX → สร้างรายงาน ออกแบบให้คนทำต่อเข้าใจง่ายและรันซ้ำได้
 
@@ -41,14 +41,6 @@ auto_label/
 ```bash
 # interactive mode — เมนูเลือก dataset/mode/model
 ./run_pipeline.sh
-
-# direct mode
-./run_pipeline.sh --sam --batch blurred          # auto-label ด้วย SAM
-./run_pipeline.sh --yolo --model small_detection # train YOLO26
-./run_pipeline.sh --pred --batch blurred         # inference ด้วยโมเดล production
-
-# dry-run (ดูแผนโดยไม่รันจริง)
-./run_pipeline.sh --dry-run --yolo --model nano_detection
 ```
 
 ### รันแต่ละส่วนแยก
