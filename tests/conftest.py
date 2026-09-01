@@ -1,6 +1,5 @@
 """Shared fixtures for pipeline CLI tests."""
 import importlib.util
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -9,6 +8,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CLI_PATH = REPO_ROOT / "pipeline_cli.py"
+SAM_SRC = REPO_ROOT / "sam3_auto_label" / "src"
+sys.path.insert(0, str(SAM_SRC))
 
 
 @pytest.fixture(scope="session")

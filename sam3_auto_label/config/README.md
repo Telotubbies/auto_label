@@ -27,6 +27,17 @@ checkpoint:        # resume settings
   enabled, auto_resume, clear_on_success
 ```
 
+ค่าคอนฟิกถูกอ่านด้วย `yaml.safe_load()` จากนั้นแปลงเป็น dataclass และตรวจสอบก่อนเริ่มโหลดโมเดล ข้อผิดพลาดจะระบุ field ที่ไม่ถูกต้อง เช่น `inference.confidence_threshold` หรือ `categories[1].id`
+
+กฎ validation ที่สำคัญ:
+
+- `categories` ต้องไม่ว่าง; `id` และ `name` ต้องไม่ซ้ำ
+- category `threshold` ต้องเป็น `-1` หรืออยู่ในช่วง `0..1`
+- `confidence_threshold` ต้องอยู่ในช่วง `0..1`; `resolution` ต้องมากกว่า `0`
+- boolean ต้องเป็น YAML boolean (`true` / `false`) ไม่ใช่ string ที่ใส่ quote
+- `device` ต้องเป็น `auto`, `cpu`, `cuda`, `rocm`, หรือ `mps`
+- `viz_figsize` ต้องมีตัวเลขบวก 2 ค่า
+
 ## คลาสทั้งหมด (6 class)
 
 | id | name | prompt | threshold | คำอธิบาย |
