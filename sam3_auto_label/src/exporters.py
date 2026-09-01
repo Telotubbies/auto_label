@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import xml.etree.ElementTree as ET
+from typing import Callable, TypedDict
 
 import numpy as np
 import yaml
@@ -38,6 +39,15 @@ from config import Config
 from inference import rle_to_mask, save_masks
 
 log = logging.getLogger(__name__)
+
+
+class ExporterSpec(TypedDict, total=False):
+    """Callable contract and annotation prerequisites for one export format."""
+
+    per_image: Callable[..., None]
+    finalize: Callable[..., None]
+    needs: tuple[str, ...]
+
 
 # ---------------------------------------------------------------------------
 # Polygon utilities (pure Python/NumPy — no OpenCV dependency)
@@ -183,7 +193,7 @@ def mask_to_rle_counts(mask):
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-_warned = set()
+_warned: set[str] = set()
 
 
 def _stem(image_info):
@@ -574,7 +584,7 @@ def _masks_image(cfg, image_info, annotations, out_dir):
 # Registry
 # ---------------------------------------------------------------------------
 
-EXPORTERS = {
+EXPORTERS: dict[str, ExporterSpec] = {
     "coco":         {"finalize": _coco_final, "needs": ()},
     "yolo":         {"per_image": _yolo_image, "finalize": _yolo_final, "needs": ()},
     "voc":          {"per_image": _voc_image, "needs": ("bbox",)},
@@ -589,7 +599,7 @@ EXPORTERS = {
 }
 
 
-def _check_needs(fmt: str, exp: dict, cfg: Config) -> bool:
+def _check_needs(fmt: str, exp: ExporterSpec, cfg: Config) -> bool:
     """Skip formats whose required annotation kind is switched off (warn once)."""
     needs = exp.get("needs", ())
     if "bbox" in needs and not cfg.annotation.bbox:
