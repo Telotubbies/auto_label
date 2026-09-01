@@ -22,7 +22,6 @@ from config import Config
 try:
     from sam3.eval.postprocessors import robust_rle_encode
     from sam3.perflib.masks_ops import mask_iou as gpu_mask_iou
-    from sam3.perflib.nms import generic_nms
     _HAS_GPU_OPS = True
 except ImportError:
     _HAS_GPU_OPS = False
@@ -47,6 +46,7 @@ COLORS = {
 # ---------------------------------------------------------------------------
 
 def to_numpy(tensor):
+    """Move tensor-like data to a CPU NumPy array without changing shape."""
     if hasattr(tensor, "cpu"):
         return tensor.cpu().numpy()
     return np.asarray(tensor)
@@ -138,6 +138,7 @@ def rle_to_mask(rle):
 
 
 def clamp_box(box, W, H):
+    """Convert an XYXY box to image-bounded COCO XYWH coordinates."""
     x0 = max(0, min(float(box[0]), W))
     y0 = max(0, min(float(box[1]), H))
     x1 = max(0, min(float(box[2]), W))
@@ -223,8 +224,6 @@ def cross_class_nms(annotations, iou_threshold=0.5, use_mask=False):
 
             # Only suppress if different classes (cross-class)
             # Within-class duplicates are also suppressed here
-            same_class = ann_i["category_id"] == ann_j["category_id"]
-
             if use_mask and "segmentation" in ann_i and "segmentation" in ann_j:
                 iou = _mask_iou(ann_i["segmentation"], ann_j["segmentation"])
             else:
@@ -312,6 +311,11 @@ def cross_class_nms_gpu(annotations, masks_tensor, scores_tensor, iou_threshold=
         return cross_class_nms(annotations, iou_threshold=iou_threshold, use_mask=False)
 
 
+def device_type(device):
+    """Normalize torch.device and string representations to a device family."""
+    return device.type if isinstance(device, torch.device) else str(device).split(":", 1)[0]
+
+
 def resolve_device(device_str):
     """Resolve device string to a torch device.
 
@@ -345,6 +349,7 @@ def resolve_device(device_str):
 # ---------------------------------------------------------------------------
 
 def build_model(cfg: Config):
+    """Load the configured SAM model and return its image processor."""
     from sam3.model_builder import build_sam3_image_model
     from sam3.model.sam3_image_processor import Sam3Processor
 
@@ -379,6 +384,42 @@ def _to_float32(t):
     return t
 
 
+def _gpu_nms(scores, masks, iou_threshold=0.5, device="cuda"):
+    """Return a keep mask using pairwise mask IoU on the selected accelerator."""
+    n = len(scores)
+    if n <= 1:
+        return torch.ones(n, dtype=torch.bool, device=device)
+
+    ious = gpu_mask_iou(masks, masks)
+    order = torch.argsort(scores, descending=True)
+    suppressed = torch.zeros(n, dtype=torch.bool, device=device)
+
+    for idx in range(n):
+        i = order[idx].item()
+        if suppressed[i]:
+            continue
+        overlap = ious[i] > iou_threshold
+        overlap[i] = False
+        overlap &= ~suppressed
+        suppressed |= overlap
+
+    return ~suppressed
+
+
+def _gpu_bbox_nms(scores, boxes, iou_threshold=0.5, device="cuda"):
+    """Return a keep mask using torchvision NMS over XYXY boxes."""
+    from torchvision.ops import nms as tv_nms
+
+    n = len(scores)
+    if n <= 1:
+        return torch.ones(n, dtype=torch.bool, device=device)
+
+    keep_indices = tv_nms(boxes, scores, iou_threshold)
+    keep_mask = torch.zeros(n, dtype=torch.bool, device=device)
+    keep_mask[keep_indices] = True
+    return keep_mask
+
+
 def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
     """Segment a single image with all configured categories.
 
@@ -391,10 +432,10 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
     """
     W, H = image.size
     device = processor.device
-    use_gpu_ops = _HAS_GPU_OPS and device == "cuda" and getattr(cfg.inference, "gpu_ops", True)
+    use_gpu_ops = _HAS_GPU_OPS and device_type(device) == "cuda" and getattr(cfg.inference, "gpu_ops", True)
 
     with torch.inference_mode(), \
-         torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
+         torch.autocast("cuda", dtype=torch.bfloat16, enabled=device_type(device) == "cuda"):
         inference_state = processor.set_image(image)
 
         # --- Phase 1: Run all 6 text prompts on GPU, collect results ---
@@ -495,8 +536,8 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
 
         # Build annotation dicts on CPU
         annotations = []
-        for i, idx in enumerate(range(len(keep_indices))):
-            cat_id = all_cats[idx]
+        kept_category_ids = [all_cats[index] for index in keep_indices.tolist()]
+        for i, cat_id in enumerate(kept_category_ids):
             score = float(scores_cpu[i])
 
             if boxes_xyxy is not None:
@@ -520,54 +561,12 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
     return annotations, ann_id
 
 
-def _gpu_nms(scores, masks, iou_threshold=0.5, device="cuda"):
-    """GPU NMS using mask IoU (matmul-based, Tensor Core accelerated).
-
-    Greedy: sort by score desc, suppress overlapping lower-score detections.
-    Returns bool tensor (N,) indicating which detections to keep.
-    """
-    n = len(scores)
-    if n <= 1:
-        return torch.ones(n, dtype=torch.bool, device=device)
-
-    # Compute pairwise mask IoU on GPU — (N, N) matrix
-    ious = gpu_mask_iou(masks, masks)  # (N, N)
-
-    # Greedy NMS on GPU
-    order = torch.argsort(scores, descending=True)
-    suppressed = torch.zeros(n, dtype=torch.bool, device=device)
-
-    for idx in range(n):
-        i = order[idx].item()
-        if suppressed[i]:
-            continue
-        overlap = ious[i] > iou_threshold
-        overlap[i] = False
-        overlap &= ~suppressed
-        suppressed |= overlap
-
-    return ~suppressed
-
-
-def _gpu_bbox_nms(scores, boxes, iou_threshold=0.5, device="cuda"):
-    """GPU NMS using bbox IoU via torchvision.ops.nms.
-
-    Faster than mask NMS for small N (< 50 detections).
-    """
-    from torchvision.ops import nms as tv_nms
-
-    n = len(scores)
-    if n <= 1:
-        return torch.ones(n, dtype=torch.bool, device=device)
-
-    # torchvision NMS expects (N, 4) boxes in xyxy and (N,) scores
-    keep_indices = tv_nms(boxes, scores, iou_threshold)
-    keep_mask = torch.zeros(n, dtype=torch.bool, device=device)
-    keep_mask[keep_indices] = True
-    return keep_mask
-
+# ---------------------------------------------------------------------------
+# Output serialization
+# ---------------------------------------------------------------------------
 
 def save_coco(image_info, annotations, path, cfg: Config):
+    """Persist the durable per-image COCO record used by resume reconstruction."""
     coco = {
         "images": [image_info],
         "annotations": annotations,
@@ -581,6 +580,7 @@ def save_coco(image_info, annotations, path, cfg: Config):
 
 
 def save_masks(image_name, annotations, output_dir):
+    """Write one binary PNG for each RLE-encoded instance annotation."""
     for ann in annotations:
         m = rle_to_mask(ann["segmentation"])
         img = Image.fromarray((m * 255).astype(np.uint8))
@@ -613,7 +613,6 @@ def save_viz(image, image_name, annotations, output_path, cfg: Config):
         # COLORS values are (R, G, B, alpha) — convert to BGR for OpenCV
         rgba = COLORS.get(cat_id, (0.5, 0.5, 0.5, 0.4))
         bgr = (int(rgba[2] * 255), int(rgba[1] * 255), int(rgba[0] * 255))
-        alpha = rgba[3]
 
         # Draw mask
         if ann.get("segmentation"):
