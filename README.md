@@ -1,83 +1,394 @@
-# Auto-Label PPE Pipeline
+# PPE Auto-Labeling and YOLO26 Training Pipeline
 
-ระบบสร้างground truth และฝึกโมเดลตรวจจับอุปกรณ์ความปลอดภัยส่วนบุคคล (PPE) ด้วย **SAM 3.1** และ **YOLO26**
+ระบบ batch pipeline สำหรับสร้างชุดข้อมูล PPE จากภาพดิบด้วย SAM 3.1, ตรวจสอบ ground truth โดยมนุษย์, ฝึกและประเมิน YOLO26 จำนวน 4 รุ่น และส่งออกโมเดล ONNX สำหรับการนำไปใช้งานต่อ
 
-โปรเจกต์นี้เป็น pipeline ครบวงจร ตั้งแต่รับภาพดิบ → สร้าง annotation → ฝึกโมเดล → ประเมินผล → export ONNX → สร้างรายงาน ออกแบบให้คนทำต่อเข้าใจง่ายและรันซ้ำได้
+Repository นี้ครอบคลุมวงจรงานตั้งแต่ **raw image → auto-label → verified dataset → training → evaluation → ONNX export → engineering report** โดยเน้น reproducibility, checkpoint recovery, explicit configuration และ traceable artifacts
 
-## ภาพรวม pipeline
+> **Implementation status:** ระบบหลักทำงานในรูปแบบ offline batch CLI และมี production model artifacts แล้ว แต่ยังไม่ใช่ production service แบบ multi-user ดูข้อจำกัดที่ [Known limitations and operational risks](#known-limitations-and-operational-risks) ก่อนนำไป deploy
 
-```text
-data/raw/  ──[SAM 3.1]──▶  data/sam_outputs_ground_truth/  ──[prepare]──▶  yolo26_ppe/data/  ──[train]──▶  yolo26_ppe/models/production/
-                                                                                         │
-                                                                                         ├──[evaluate]──▶ artifacts/evaluation/
-                                                                                         ├──[export]────▶ artifacts/onnx_models/
-                                                                                         └──[report]────▶ reports/final/report.pdf
+## Table of contents
+
+- [System scope](#system-scope)
+- [Architecture](#architecture)
+- [Key results](#key-results)
+- [Supported PPE classes](#supported-ppe-classes)
+- [Repository structure](#repository-structure)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Operating workflows](#operating-workflows)
+- [Configuration and outputs](#configuration-and-outputs)
+- [Testing and quality gates](#testing-and-quality-gates)
+- [Known limitations and operational risks](#known-limitations-and-operational-risks)
+- [Documentation](#documentation)
+- [Engineering governance](#engineering-governance)
+
+## System scope
+
+| Capability | Implementation | Status |
+|---|---|---|
+| SAM auto-labeling | Text-prompted segmentation for 6 PPE classes | Implemented |
+| Annotation output | Bounding boxes, masks, visualization, and 11 export formats | Implemented |
+| Recovery | Atomic checkpoint writes and configurable resume policy | Implemented |
+| SAM experiment tracking | SQLite run, image, and metric records | Implemented |
+| Ground-truth preparation | Manual verification followed by versioned dataset preparation | Implemented; review is external/manual |
+| YOLO26 training | Nano/small × detection/segmentation | Implemented |
+| Evaluation | Precision, recall, mAP50, mAP50-95, per-class results, and failure artifacts | Implemented |
+| Deployment artifacts | Four production `.pt` models and four ONNX exports | Available |
+| Root orchestration | Interactive/direct CLI with `sam`, `yolo`, and `pred` modes | Implemented for the configured WSL2 environment |
+| REST API, job queue, review UI | No runtime implementation | Not implemented |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Raw images<br/>data/raw] --> B[SAM 3.1 auto-labeling]
+    C[Typed YAML configuration] --> B
+    B --> D[COCO and multi-format annotations]
+    B --> E[SQLite experiment history]
+    B --> F[Checkpoint and resume state]
+    D --> G[Manual verification]
+    G --> H[Versioned YOLO datasets]
+    H --> I[YOLO26 training<br/>n/s detect + n/s segment]
+    I --> J[Production PyTorch models]
+    J --> K[Evaluation and failure analysis]
+    J --> L[ONNX export and comparison]
+    K --> M[PDF engineering report]
+    L --> M
 ```
 
-1. **SAM** — ใช้ SAM 3.1 ตรวจจับ 6 คลาส (person, helmet, boots, shoes, sandals, harness) ออกเป็น COCO annotations
-2. **Prepare** — แปลง COCO → YOLO format แล้วแบ่ง train/val/test
-3. **Train** — ฝึก YOLO26 4 โมเดล (nano/small × detect/segment)
-4. **Evaluate** — วัด P/R/F1/mAP50/mAP50-95 รวมถึง confusion matrix และ failure analysis
-5. **Export** — export เป็น ONNX แล้วประเมินเทียบกับ PyTorch
-6. **Report** — สร้าง PDF report ภาษาไทย (XeLaTeX)
+### Dependency direction
 
-## โครงสร้างหลัก
+- `pipeline_cli.py` coordinates repository-level `sam`, `yolo`, and `pred` workflows through subprocesses.
+- `sam3_auto_label/src/batch_segment.py` coordinates one SAM batch.
+- `config.py` owns YAML parsing, typed dataclass construction, and centralized validation.
+- `inference.py` owns device selection, SAM model loading, prompt inference, thresholding, NMS, and mask encoding.
+- `exporters.py` owns format-specific annotation serialization.
+- `tracker.py` owns SQLite experiment persistence.
+- `yolo26_ppe/scripts/pipeline/` owns dataset preparation, training, evaluation, ONNX export, robustness analysis, reporting, and prediction.
+
+Detailed diagrams and design rationale are available in [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) and [docs/design/component-design.md](docs/design/component-design.md).
+
+## Key results
+
+The following values come from the current canonical evaluation artifact: [`yolo26_ppe/reports/inputs/final_eval_results.json`](yolo26_ppe/reports/inputs/final_eval_results.json).
+
+| Model | Task | Precision | Recall | Box mAP50 | Box mAP50-95 |
+|---|---:|---:|---:|---:|---:|
+| YOLO26n | Detection | 0.777 | 0.665 | 0.712 | 0.514 |
+| **YOLO26s** | **Detection** | **0.862** | **0.758** | **0.808** | **0.644** |
+| YOLO26n-seg | Segmentation | 0.720 | 0.522 | 0.547 | 0.365 |
+| YOLO26s-seg | Segmentation | 0.824 | 0.606 | 0.654 | 0.485 |
+
+**Current conclusion:** YOLO26s detection has the strongest reported box accuracy. The project target of `mAP50 >= 0.85` was not achieved; dataset size, rare-class coverage, and label consistency remain the primary constraints.
+
+SAM 3.1 benchmark evidence is stored in [`sam3_benchmark_results.json`](yolo26_ppe/reports/inputs/sam3_benchmark_results.json): 92 test images, approximately `2755 ms/image`, `0.36 FPS`, and a `3340 MB` model artifact. Historical reports may contain results from earlier runs; use the linked JSON artifacts as the source of truth for the values shown in this README.
+
+## Supported PPE classes
+
+SAM auto-labeling uses 6 prompt classes. YOLO dataset v2 uses 5 classes by merging `sandals` into `shoes`.
+
+| SAM ID | SAM class | Text prompt | Threshold | YOLO v2 class |
+|---:|---|---|---:|---|
+| 1 | `person` | `person` | 0.70 | `person` |
+| 2 | `helmet` | `helmet` | 0.25 | `helmet` |
+| 3 | `boots` | `boots` | 0.25 | `boots` |
+| 4 | `shoes` | `shoes` | 0.25 | `shoes` |
+| 5 | `sandals` | `flip-flops` | 0.30 | merged into `shoes` |
+| 6 | `harness` | `safety harness` | 0.25 | `harness` |
+
+Sources: [`ppe_6class.yaml`](sam3_auto_label/config/ppe_6class.yaml) and YOLO v2 [`data.yaml`](yolo26_ppe/data/yolo_detection_dataset_version_2/data.yaml).
+
+## Repository structure
 
 ```text
 auto_label/
-├── pipeline_cli.py          # CLI หลัก (interactive + direct mode) — ทางเข้าหลัก
-├── run_pipeline.sh          # bash wrapper พร้อมตั้งค่า ROCm/WSL2 GPU
-├── AGENTS.md                # กฎการทำงานสำหรับ AI agent/วิศวกร (อ่านก่อนเริ่มงาน)
-├── sam3_auto_label/         # โค้ด SAM 3.1 auto-labeling
-├── yolo26_ppe/              # โค้ด YOLO26 training/evaluation/report
-├── data/                    # ข้อมูลดิบ + ผลลัพธ์จาก SAM (ground truth)
-└── tests/                   # ทดสอบ pipeline_cli.py ระดับ repo
+├── pipeline_cli.py                 # Repository-level interactive/direct CLI
+├── run_pipeline.sh                 # WSL2/ROCm wrapper for pipeline_cli.py
+├── sam3_auto_label/
+│   ├── src/                        # Config, inference, batch, exporters, tracking
+│   ├── config/                     # SAM YAML configuration
+│   ├── sam3/                       # Vendored SAM source
+│   ├── setup.py                    # Hardware-aware SAM environment setup
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── yolo26_ppe/
+│   ├── configs/                    # Training, augmentation, and MLflow config
+│   ├── scripts/pipeline/           # Prepare, train, evaluate, export, report, predict
+│   ├── data/                       # Versioned detection/segmentation datasets
+│   ├── models/production/          # Production PyTorch weights
+│   ├── artifacts/onnx_models/      # Production ONNX models
+│   └── reports/                    # Metrics, figures, and final PDF report
+├── data/
+│   ├── raw/                        # Input batches
+│   └── sam_outputs_ground_truth/   # SAM annotations and visualizations
+├── tests/                          # Root CLI and SAM-focused tests
+├── docs/                           # Architecture, pipeline, model, and operations docs
+└── AGENTS.md                       # Mandatory engineering and repository rules
 ```
 
-## วิธีรัน
+Generated datasets, model weights, binary databases, and reports can be large. Treat them as controlled artifacts rather than normal source files.
 
-### รันผ่าน CLI (แนะนำ)
+## Prerequisites
+
+### Runtime
+
+- Python `3.10–3.12`; Python `3.12` is the project target.
+- Git, used for source control and SAM experiment metadata.
+- PyTorch selected for the target hardware: NVIDIA CUDA, AMD ROCm, Apple MPS, or CPU.
+- Recommended operational environment: Linux or WSL2 with a supported GPU.
+- Sufficient storage for the SAM checkpoint (`~3.34 GB`), Python dependencies, datasets, model weights, and generated outputs.
+
+### Python dependencies
+
+SAM dependencies are pinned in [`sam3_auto_label/requirements.txt`](sam3_auto_label/requirements.txt). PyTorch and torchvision are installed separately because the package index depends on the accelerator.
+
+YOLO dependencies are declared in [`yolo26_ppe/requirements.txt`](yolo26_ppe/requirements.txt).
+
+The root CLI imports `questionary` and `rich`, while the documented quality gates use `pytest`, `ruff`, and `mypy`. These tools are not currently consolidated in a repository-level runtime/development dependency manifest. Provision them explicitly in the working environment until that packaging gap is resolved:
 
 ```bash
-# interactive mode — เมนูเลือก dataset/mode/model
+python -m pip install questionary rich pytest ruff mypy
+```
+
+## Quick start
+
+### 1. Inspect the environment
+
+```bash
+cd sam3_auto_label
+python setup.py --check
+```
+
+### 2. Create the SAM environment
+
+```bash
+python setup.py
+```
+
+`setup.py` creates `sam3_auto_label/sam3_venv`, installs the hardware-specific PyTorch build and non-torch requirements, and downloads the checkpoint. The SAM source and BPE tokenizer asset are vendored under `sam3_auto_label/sam3/`; direct execution must include that directory in `PYTHONPATH`.
+
+### 3. Align the checkpoint path
+
+The current setup script downloads the model to:
+
+```text
+sam3_auto_label/models/sam3/sam3.1_multiplex.pt
+```
+
+The runtime expects:
+
+```text
+sam3_auto_label/checkpoints/sam3.1_multiplex.pt
+```
+
+On Linux/WSL2, create a link after setup:
+
+```bash
+mkdir -p checkpoints
+ln -s ../models/sam3/sam3.1_multiplex.pt checkpoints/sam3.1_multiplex.pt
+```
+
+If links are not appropriate for the environment, place the checkpoint at the runtime path by another controlled deployment step.
+
+### 4. Run a SAM batch directly
+
+From `sam3_auto_label/`:
+
+```bash
+PYTHONPATH=src:sam3 sam3_venv/bin/python src/batch_segment.py \
+  --config config/ppe_6class.yaml \
+  --input ../data/raw/<batch> \
+  --output ../data/sam_outputs_ground_truth/<batch> \
+  --fresh
+```
+
+Windows interpreter path:
+
+```powershell
+$env:PYTHONPATH = "src;sam3"
+sam3_venv\Scripts\python.exe src\batch_segment.py `
+  --config config\ppe_6class.yaml `
+  --input ..\data\raw\<batch> `
+  --output ..\data\sam_outputs_ground_truth\<batch> `
+  --fresh
+```
+
+Use `--resume` instead of `--fresh` to continue a checkpointed run.
+
+## Operating workflows
+
+### Repository-level CLI
+
+The wrapper is intended for the repository's configured WSL2 environment. It does **not** use the `sam3_auto_label/sam3_venv` path created by the Quick Start: both the wrapper and `pipeline_cli.py` expect `/opt/sam3_venv/bin/python` for SAM execution. Provision that interpreter path explicitly before using repository-level SAM mode. `YOLO_PYTHON` can override the wrapper/YOLO interpreter, but it does not override the `SAM_PYTHON` constant inside `pipeline_cli.py`.
+
+```bash
 ./run_pipeline.sh
 ```
 
-### รันแต่ละส่วนแยก
+Direct examples using valid model keys:
 
-- SAM: ดู `sam3_auto_label/README.md`
-- YOLO: ดู `yolo26_ppe/README.md` และ `yolo26_ppe/scripts/pipeline/`
+```bash
+# Preview without executing
+./run_pipeline.sh --dry-run --yolo --model small_detection
 
-## คลาสทั้งหมด
+# Auto-label one raw-image batch
+./run_pipeline.sh --sam --batch blurred --resume
 
-SAM ใช้ 6 คลาส (เพิ่ม sandals) แต่ YOLO ใช้ 5 คลาส (รวม boots+shoes ไว้ ไม่มี sandals)
+# Train selected YOLO models
+./run_pipeline.sh --yolo --model nano_detection,small_detection --stage 12
 
-| id | SAM (6 class) | YOLO (5 class) | คำอธิบาย |
-|----|---------------|----------------|----------|
-| 1 | person | person | คน |
-| 2 | helmet | helmet | หมวกนิรภัย |
-| 3 | boots | boots | บูทนิรภัย/บูทยาง |
-| 4 | shoes | shoes | รองเท้าผ้าใบ/รองเท้าหุ้มส้น |
-| 5 | sandals | — | รองเท้าแตะ/flip-flops (SAM เท่านั้น) |
-| 6 | harness | harness | สาย safety/ชุดเดือย |
+# Run production prediction
+./run_pipeline.sh --pred --batch blurred --model small_detection \
+  --conf 0.25 --iou 0.45 --imgsz 640
+```
 
-## environment
+Valid model keys:
 
-- Python 3.12
-- PyTorch ตาม GPU: ROCm 6.x (AMD), CUDA 12.x (NVIDIA), หรือ CPU
-- ทดสอบบน WSL2 + AMD RX 7800 XT (gfx1101)
-- ติดตั้ง SAM environment: `cd sam3_auto_label && python setup.py`
+- `nano_detection`
+- `small_detection`
+- `nano_segmentation`
+- `small_segmentation`
 
-## ก่อนเริ่มทำงาน
+The root CLI currently hard-codes the repository root as `/mnt/e/02_Projects/auto_label` and the SAM interpreter as `/opt/sam3_venv/bin/python`. For another machine or layout, use the module-level commands or update deployment configuration deliberately before relying on the wrapper.
 
-1. อ่าน `AGENTS.md` ก่อนเสมอ — เป็นกฎการทำงานสำหรับทั้ง repo
-2. ตรวจ `git status` ก่อนแก้ไขไฟล์
-3. ใช้โมเดลใน `yolo26_ppe/models/production/` เท่านั้นสำหรับ production
-4. ห้ามแก้ไฟล์ใน `yolo26_ppe/scripts/archive/` (เก็บไว้ทำ reproducibility)
-5. ผลลัพธ์ evaluation ที่เป็นทางการมาจาก `artifacts/evaluation/yolo/production_v4_recipe/`
+### YOLO pipeline stages
 
-## อ้างอิง
+The executable pipeline scripts are ordered in [`yolo26_ppe/scripts/pipeline/`](yolo26_ppe/scripts/pipeline/):
 
-- SAM 3.1: `sam3_auto_label/sam3/` (vendored source)
-- YOLO26: Ultralytics framework
-- Release notes: `sam3_auto_label/RELEASE_NOTES_v1.0.0.md`
+1. `01_prepare_dataset.py`
+2. `02_train_models.py`
+3. `03_evaluate_models.py`
+4. `04_export_and_evaluate_onnx.py`
+5. `05_generate_failure_montage.py`
+6. `06_run_blur_robustness.py`
+7. `07_analyze_blur_robustness.py`
+8. `08_generate_report_figures.py`
+9. `09_predict_raw_images.py`
+
+Use production weights under `yolo26_ppe/models/production/`. Content under `scripts/archive/` and `models/archive/` exists for reproducibility and should not be modified as part of normal operation.
+
+## Configuration and outputs
+
+### Configuration lifecycle
+
+```text
+YAML file → safe parsing → typed dataclasses → centralized validation → CLI overrides → revalidation → application
+```
+
+The SAM configuration rejects malformed section types, invalid ranges, duplicate category IDs/names, unsupported devices and formats, quoted booleans, and invalid annotation combinations before model loading.
+
+See [docs/operations/configuration.md](docs/operations/configuration.md) and [`sam3_auto_label/config/README.md`](sam3_auto_label/config/README.md).
+
+### SAM output contract
+
+For each batch under `data/sam_outputs_ground_truth/<batch>/`:
+
+| Path | Purpose |
+|---|---|
+| `coco/<image>.json` | Durable per-image COCO cache used for resume reconstruction |
+| `coco/annotations.json` | Combined COCO export when `coco` is selected |
+| `viz/<image>.png` | Visualization overlay when enabled |
+| `<format>/` | Selected YOLO, VOC, LabelMe, CVAT, Label Studio, KITTI, CreateML, OpenImages, Supervisely, or mask output |
+| `checkpoint.json` | Atomic progress state when checkpointing is enabled |
+| `experiments.db` | SQLite experiment, image-result, and metric records |
+| `errors.json` | Batch error report when one or more images fail |
+
+An image is committed as successfully processed only after its configured per-image exports complete. A batch containing image/export failures returns a non-zero process exit code.
+
+### Model and report artifacts
+
+| Artifact | Location |
+|---|---|
+| Production PyTorch weights | `yolo26_ppe/models/production/` |
+| Production ONNX models | `yolo26_ppe/artifacts/onnx_models/production/` |
+| Evaluation evidence | `yolo26_ppe/artifacts/evaluation/yolo/production_v4_recipe/` |
+| Canonical final metrics | `yolo26_ppe/reports/inputs/final_eval_results.json` |
+| SAM benchmark | `yolo26_ppe/reports/inputs/sam3_benchmark_results.json` |
+| Final report | `yolo26_ppe/reports/final/report.pdf` |
+
+## Testing and quality gates
+
+Run checks from the repository root.
+
+### SAM-focused regression suite
+
+```bash
+python -m pytest \
+  tests/test_sam_config.py \
+  tests/test_sam_inference.py \
+  tests/test_sam_batch_segment.py \
+  -q
+```
+
+These tests avoid loading the real SAM checkpoint or requiring a GPU.
+
+### Root CLI tests
+
+```bash
+python -m pytest tests -q
+```
+
+This suite requires the root CLI dependencies, including `questionary` and `rich`. Project-wide unrestricted pytest discovery may also collect vendored SAM tests and traverse dataset links; prefer explicit repository-owned test paths in automation.
+
+### Static checks used for the SAM source
+
+```bash
+python -m ruff check sam3_auto_label/src tests
+python -m mypy \
+  sam3_auto_label/src/config.py \
+  sam3_auto_label/src/batch_segment.py \
+  --ignore-missing-imports
+python -m compileall -q sam3_auto_label/src
+```
+
+Tests that require large model files, external services, MLflow, datasets, or a GPU should be isolated and documented as integration tests rather than included in the fast unit-test gate.
+
+## Known limitations and operational risks
+
+| Area | Current limitation | Operational impact |
+|---|---|---|
+| Portability | Root CLI, the default SAM config, and YOLO dataset YAML files contain absolute WSL2 paths | Wrapper and stored datasets are not portable without overrides or controlled configuration changes |
+| Packaging | No root manifest consolidates CLI and development tools (`questionary`, `rich`, `pytest`, `ruff`, `mypy`) | Fresh environments cannot run all documented commands from declared dependencies alone |
+| Checkpoint deployment | Setup download path differs from runtime checkpoint path | Manual link/copy step is required after setup |
+| Hardware versions | ROCm versions differ across setup script, requirements guidance, Docker image, and wrapper | Validate the complete driver/runtime/PyTorch matrix before deployment |
+| Human review | Verification is manual and external to the application | No review queue, audit workflow, or reviewer authorization model |
+| Resilience | No bounded retry policy or dedicated GPU OOM recovery | Transient failures require operator intervention or a later rerun |
+| Service architecture | No REST API, job queue, scheduler, authentication, or multi-user isolation | Suitable for controlled batch operation, not an online service |
+| Observability | Local logs and SQLite tracking only | No centralized metrics, tracing, alerting, or log aggregation |
+| Visualization | Overlay colors use a hard-coded category-ID palette that is stale for several configured classes | Treat text labels as authoritative and correct the palette before using color as a review signal |
+| Model quality | Best reported box mAP50 is `0.808`, below the `0.85` target | Additional representative data and label-quality work are required |
+| Licensing | No top-level license file is present | Redistribution and external use rights are not established by this repository |
+
+Do not describe this repository as fully production-ready until environment portability, dependency packaging, checkpoint deployment, failure recovery, model acceptance criteria, monitoring, and licensing are resolved for the target deployment.
+
+## Documentation
+
+Start with the [documentation index](docs/README.md).
+
+| Topic | Document |
+|---|---|
+| Product overview and requirements | [Overview](docs/00-overview.md) · [Requirements](docs/01-requirements.md) |
+| Architecture and data flow | [System architecture](docs/architecture/system-architecture.md) · [Data flow](docs/architecture/data-flow.md) |
+| Component behavior | [Component design](docs/design/component-design.md) · [Sequence diagram](docs/design/sequence-diagram.md) · [State diagram](docs/design/state-diagram.md) |
+| Auto-labeling and quality | [Pipeline flow](docs/pipeline/pipeline-flow.md) · [Auto-labeling strategy](docs/pipeline/auto-labeling-strategy.md) · [Quality control](docs/pipeline/quality-control.md) |
+| Ground truth and YOLO training | [Ground-truth generation](docs/pipeline/ground-truth-generation.md) · [YOLO26 training](docs/pipeline/yolo26-training.md) |
+| Models | [SAM 3.1](docs/models/sam3.md) · [YOLO26](docs/models/yolo26.md) · [Classifier status](docs/models/classifier.md) |
+| Operations | [Configuration](docs/operations/configuration.md) · [CLI](docs/operations/cli-and-api.md) · [Testing](docs/operations/testing.md) · [Performance](docs/operations/performance.md) · [Error handling](docs/operations/error-handling.md) · [Troubleshooting](docs/operations/troubleshooting.md) |
+| Deployment | [Deployment](docs/architecture/deployment.md) |
+
+The detailed docs use Markdown Preview Enhanced features such as PlantUML, KaTeX, `@import`, and executable code chunks. GitHub can display the Markdown text, but rendering all embedded features requires the documented local tooling.
+
+## Engineering governance
+
+Before changing code, configuration, models, datasets, or operational documentation:
+
+1. Read [`AGENTS.md`](AGENTS.md).
+2. Inspect `git status` and preserve unrelated work.
+3. Verify behavior against current code, configuration, tests, and artifacts.
+4. Use authoritative documentation for framework, runtime, hardware, and interoperability decisions.
+5. Add behavior-focused tests for every logic change.
+6. Run relevant lint, type, syntax, configuration, and test checks.
+7. Keep generated artifacts, production data, credentials, and model binaries under explicit lifecycle control.
+8. Report exactly which checks were run and which integration risks remain.
+
+This repository contains research, operational, and generated artifacts in addition to source code. Keep commits focused and do not mix code refactors, dataset regeneration, model updates, and documentation changes without a clear review and rollback plan.
