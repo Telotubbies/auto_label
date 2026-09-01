@@ -1,0 +1,29 @@
+{
+  "model": "nano_detection",
+  "task": "detect",
+  "n_images": 1,
+  "total_time_s": 2.21,
+  "avg_latency_ms": 2214.1,
+  "conf_threshold": 0.25,
+  "iou_threshold": 0.45,
+  "imgsz": 640,
+  "class_order": [
+    "person",
+    "helmet",
+    "boots",
+    "shoes",
+    "harness"
+  ],
+  "results": [
+    {
+      "image": "706911.jpg",
+      "n_det": 3,
+      "latency_ms": 2214.1,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "shoes": 1
+      }
+    }
+  ]
+}

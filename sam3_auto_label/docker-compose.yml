@@ -2,7 +2,12 @@
 #
 # GPU priority: ROCm (AMD) > CUDA (NVIDIA) > CPU (last resort)
 #
-# Usage:
+# Batch CLI mode (no web service). Override the command to run a batch:
+#   docker compose --profile rocm run --rm ppe-rocm \
+#     python src/batch_segment.py -c config/ppe_6class.yaml \
+#     --input /app/input/<batch> --output /app/output/<batch> --fresh
+#
+# Usage (default shows help):
 #   AMD ROCm:    docker compose --profile rocm up --build
 #   NVIDIA CUDA: docker compose --profile cuda up --build
 #   CPU:         docker compose --profile cpu up --build
@@ -19,8 +24,6 @@ services:
       args:
         GPU_TYPE: rocm
     container_name: ppe-segmentation-rocm
-    ports:
-      - "8000:8000"
     volumes:
       - ./checkpoints:/app/checkpoints
       - ../data/raw:/app/input
@@ -48,8 +51,6 @@ services:
       args:
         GPU_TYPE: cuda
     container_name: ppe-segmentation-cuda
-    ports:
-      - "8000:8000"
     volumes:
       - ./checkpoints:/app/checkpoints
       - ../data/raw:/app/input
@@ -79,8 +80,6 @@ services:
       args:
         GPU_TYPE: cpu
     container_name: ppe-segmentation-cpu
-    ports:
-      - "8000:8000"
     volumes:
       - ./checkpoints:/app/checkpoints
       - ../data/raw:/app/input

@@ -1,0 +1,28 @@
+{
+  "model": "small_segmentation",
+  "task": "segment",
+  "n_images": 1,
+  "total_time_s": 0.79,
+  "avg_latency_ms": 786.6,
+  "conf_threshold": 0.25,
+  "iou_threshold": 0.45,
+  "imgsz": 640,
+  "class_order": [
+    "person",
+    "helmet",
+    "boots",
+    "shoes",
+    "harness"
+  ],
+  "results": [
+    {
+      "image": "706911.jpg",
+      "n_det": 6,
+      "latency_ms": 786.6,
+      "classes": {
+        "person": 4,
+        "shoes": 2
+      }
+    }
+  ]
+}
