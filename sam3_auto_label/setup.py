@@ -392,12 +392,12 @@ def main():
     print(f"  Checkpoint: {CKPT_PATH}")
     print(f"  GPU mode:   {( 'cpu' if args.force_cpu else hw.gpu_type).upper()}")
     print()
-    print("Next steps:")
+    print("Next steps — batch CLI (no web service):")
     if os.name == "nt":
-        print("  sam3_venv\\Scripts\\python.exe src\\service.py")
+        print("  sam3_venv\\Scripts\\python.exe src\\batch_segment.py -c config\\ppe_6class.yaml --input ..\\data\\raw\\<batch> --output ..\\data\\sam_outputs_ground_truth\\<batch> --fresh")
     else:
-        print("  source sam3_venv/bin/activate && python src/service.py")
-    print("  -> API at http://localhost:8000  (docs: http://localhost:8000/docs)")
+        print("  source sam3_venv/bin/activate && python src/batch_segment.py -c config/ppe_6class.yaml --input ../data/raw/<batch> --output ../data/sam_outputs_ground_truth/<batch> --fresh")
+    print("  -> Annotations in <output>/coco/, visualizations in <output>/viz/")
     print("=" * 60)
 
 

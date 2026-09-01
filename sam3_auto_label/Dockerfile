@@ -71,9 +71,7 @@ ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 ENV PYTHONPATH=/app/src:/app/sam3
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-CMD ["python", "src/service.py"]
+# Batch CLI is the entrypoint (no web service)
+# Run: docker run --rm -v ./checkpoints:/app/checkpoints -v ../data/raw:/app/input <image> \
+#          python src/batch_segment.py -c config/ppe_6class.yaml --input /app/input/<batch> --output /app/output/<batch>
+CMD ["python", "src/batch_segment.py", "--help"]
