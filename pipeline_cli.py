@@ -76,7 +76,12 @@ _dry_run = False
 # =============================================================================
 # Config — all paths and model definitions (testable without GPU)
 # =============================================================================
-REPO_ROOT = Path("/mnt/e/02_Projects/auto_label")
+# Platform-aware repo root: use WSL path on Linux/WSL, Windows path on Windows.
+# This allows the CLI to run on both WSL2 (training/inference) and Windows (dry-run, checks).
+if os.name == "nt":
+    REPO_ROOT = Path(__file__).resolve().parent
+else:
+    REPO_ROOT = Path("/mnt/e/02_Projects/auto_label")
 SAM_DIR = REPO_ROOT / "sam3_auto_label"
 YOLO_DIR = REPO_ROOT / "yolo26_ppe"
 RAW_DIR = REPO_ROOT / "data" / "raw"
@@ -344,15 +349,17 @@ def check_python_venv() -> bool:
     return Path(SAM_PYTHON).exists()
 
 
-def validate_mode_args(mode: str, batch: Optional[str], model: Optional[str]) -> List[str]:
+def validate_mode_args(mode: str, batch: Optional[str], model: Optional[str],
+                        input_path: Optional[str] = None) -> List[str]:
     """Validate that required args are present for the given mode.
     Returns list of error messages (empty if valid).
+    --input can substitute for --batch in sam/pred modes.
     """
     errors = []
     if not mode:
         errors.append("No mode specified. Use --sam, --yolo, or --pred.")
-    if mode in ("sam", "pred") and not batch:
-        errors.append(f"--batch is required for --{mode} mode.")
+    if mode in ("sam", "pred") and not batch and not input_path:
+        errors.append(f"--batch (or --input) is required for --{mode} mode.")
     if mode == "yolo" and model:
         try:
             parse_model_list(model)
@@ -644,12 +651,26 @@ def render_tip(msg: str):
 # Pipeline Runners
 # =============================================================================
 
-def run_sam_batch(datasets: List[str], fresh=False, resume=False) -> Tuple[bool, Dict]:
-    """Run SAM 3.1 on multiple datasets sequentially."""
+def run_sam_batch(datasets: List[str], fresh=False, resume=False,
+                   input_override: Optional[str] = None,
+                   output_override: Optional[str] = None) -> Tuple[bool, Dict]:
+    """Run SAM 3.1 on multiple datasets sequentially.
+
+    If input_override/output_override are given, they are used directly and
+    datasets is expected to be a single-element list (the batch name is used
+    only for display). Otherwise input/output are resolved from RAW_DIR /
+    SAM_OUTPUTS_DIR + dataset name.
+    """
     results = {}
     for ds_name in datasets:
-        input_dir = RAW_DIR / ds_name
-        output_dir = SAM_OUTPUTS_DIR / ds_name
+        if input_override:
+            input_dir = Path(input_override)
+        else:
+            input_dir = RAW_DIR / ds_name
+        if output_override:
+            output_dir = Path(output_override)
+        else:
+            output_dir = SAM_OUTPUTS_DIR / ds_name
         n = count_images(input_dir)
 
         console.print(f"\n  [cyan]▶ Processing:[/cyan] [bold]{ds_name}[/bold] ({n} images)")
@@ -769,13 +790,25 @@ def run_yolo_train(models: List[str], stage: int = 12, config: Optional[dict] = 
     return all(results.values()), results
 
 
-def run_yolo_predict(datasets: List[str], models: List[str], conf, iou, imgsz, device) -> Tuple[bool, Dict]:
-    """Run YOLO26 inference on multiple datasets."""
+def run_yolo_predict(datasets: List[str], models: List[str], conf, iou, imgsz, device,
+                     input_override: Optional[str] = None,
+                     output_override: Optional[str] = None) -> Tuple[bool, Dict]:
+    """Run YOLO26 inference on multiple datasets.
+
+    If input_override/output_override are given, they are used directly and
+    datasets is expected to be a single-element list (batch name for display).
+    """
     results = {}
 
     for ds_name in datasets:
-        input_dir = RAW_DIR / ds_name
-        output_dir = PREDICTIONS_DIR / ds_name
+        if input_override:
+            input_dir = Path(input_override)
+        else:
+            input_dir = RAW_DIR / ds_name
+        if output_override:
+            output_dir = Path(output_override)
+        else:
+            output_dir = PREDICTIONS_DIR / ds_name
         n = count_images(input_dir)
 
         console.print(f"\n  [cyan]▶ Predicting:[/cyan] [bold]{ds_name}[/bold] ({n} images)")
@@ -817,6 +850,193 @@ def run_yolo_predict(datasets: List[str], models: List[str], conf, iou, imgsz, d
 # Interactive Flow
 # =============================================================================
 
+def _pick_datasets_interactive(mode: str, datasets: List[Tuple[str, int]]) -> List[str]:
+    """Show the dataset selection menu and return the selected dataset names.
+
+    Raises PipelineError (via render_error + sys.exit) if no datasets found.
+    """
+    if not datasets:
+        render_error(f"No datasets found in {RAW_DIR}",
+                    f"Place images in subdirectories under {RAW_DIR}/<batch_name>/")
+        sys.exit(1)
+
+    all_choice = questionary.Choice(
+        f"All datasets   ({sum(c for _, c in datasets)} images total)",
+        value="__all__",
+    )
+    ds_choices = [all_choice] + [
+        questionary.Choice(f"{name}   ({count} images)", value=name)
+        for name, count in datasets
+    ]
+
+    if mode == "sam":
+        prompt = "Select a dataset to auto-label"
+    elif mode == "yolo":
+        prompt = "Select raw dataset to include in training"
+    else:
+        prompt = "Select a dataset for inference"
+
+    selected = questionary.select(
+        f"{prompt}\n  Press ENTER to confirm your selection.",
+        choices=ds_choices,
+        style=QSTYLE,
+    ).ask()
+
+    if selected == "__all__":
+        selected_datasets = [name for name, _ in datasets]
+        console.print(f"\n  [green]✓[/green] Selected: [bold]All datasets[/bold]")
+    else:
+        selected_datasets = [selected]
+        render_selection_summary(selected_datasets, "Selected datasets")
+    return selected_datasets
+
+
+def _discover_input_dirs() -> List[Tuple[str, str]]:
+    """Find candidate input directories containing images.
+
+    Scans data/raw/ subdirectories plus any subdirectories under data/ that
+    contain image files. Returns list of (display_label, absolute_path).
+    """
+    candidates = []
+    seen = set()
+
+    # 1. data/raw/ subdirectories (standard dataset location)
+    if RAW_DIR.exists():
+        for d in sorted(RAW_DIR.iterdir()):
+            if d.is_dir() and str(d) not in seen:
+                n = count_images(d)
+                if n > 0:
+                    candidates.append((f"{d.name}/   ({n} images)   [data/raw/]", str(d)))
+                    seen.add(str(d))
+
+    # 2. Any other subdirectories under data/ that contain images directly
+    data_root = REPO_ROOT / "data"
+    if data_root.exists():
+        for d in sorted(data_root.iterdir()):
+            if not d.is_dir() or str(d) in seen:
+                continue
+            # Skip known output directories
+            if d.name in ("sam_outputs_ground_truth", "raw"):
+                continue
+            n = count_images(d)
+            if n > 0:
+                candidates.append((f"{d.name}/   ({n} images)   [data/]", str(d)))
+                seen.add(str(d))
+            # Check one level deeper
+            for sub in sorted(d.iterdir()):
+                if sub.is_dir() and str(sub) not in seen:
+                    n = count_images(sub)
+                    if n > 0:
+                        candidates.append((f"{d.name}/{sub.name}/   ({n} images)", str(sub)))
+                        seen.add(str(sub))
+
+    return candidates
+
+
+def _pick_custom_paths_interactive(mode: str) -> Tuple[str, str]:
+    """Present list-based selection for custom input and output paths.
+
+    Returns (input_path, output_path) as strings.
+    Falls back to manual text entry if user selects "Type manually".
+    """
+    # --- Input selection ---
+    input_candidates = _discover_input_dirs()
+    input_choices = []
+    for label, path in input_candidates:
+        input_choices.append(questionary.Choice(label, value=path))
+    input_choices.append(questionary.Choice(
+        "✍  Type path manually...",
+        value="__manual__",
+    ))
+
+    selected_input = questionary.select(
+        "Select input directory (folder with images):",
+        choices=input_choices,
+        style=QSTYLE,
+    ).ask()
+
+    if not selected_input:
+        render_error("Input path selection cancelled.")
+        sys.exit(0)
+
+    if selected_input == "__manual__":
+        custom_input = questionary.text(
+            "Input directory path:",
+            style=QSTYLE,
+        ).ask()
+        if not custom_input:
+            render_error("Input path is required.")
+            sys.exit(1)
+    else:
+        custom_input = selected_input
+
+    # Validate input directory exists
+    if not Path(custom_input).exists():
+        render_error(f"Input directory not found: {custom_input}")
+        sys.exit(1)
+    n_images = count_images(Path(custom_input))
+    if n_images == 0:
+        render_error(f"No images found in: {custom_input}",
+                    f"Supported formats: {', '.join(IMAGE_EXTS)}")
+        sys.exit(1)
+    console.print(f"  [dim]Found {n_images} images[/dim]")
+
+    # --- Output selection ---
+    # Build output candidates based on mode defaults + sibling directories
+    default_output = SAM_OUTPUTS_DIR if mode == "sam" else PREDICTIONS_DIR
+    input_name = Path(custom_input).name
+    default_output_path = str(default_output / input_name)
+
+    output_choices = []
+    # Default output path
+    output_choices.append(questionary.Choice(
+        f"Default: {default_output_path}   [auto]",
+        value=default_output_path,
+    ))
+    # Sibling of input (next to input folder)
+    sibling_output = str(Path(custom_input).parent / (input_name + "_output"))
+    output_choices.append(questionary.Choice(
+        f"Next to input: {sibling_output}",
+        value=sibling_output,
+    ))
+    # Existing output directories for this mode
+    if default_output.exists():
+        for d in sorted(default_output.iterdir()):
+            if d.is_dir():
+                output_choices.append(questionary.Choice(
+                    f"{d.name}/   [existing {default_output.name}/]",
+                    value=str(d),
+                ))
+    # Manual entry
+    output_choices.append(questionary.Choice(
+        "✍  Type path manually...",
+        value="__manual__",
+    ))
+
+    selected_output = questionary.select(
+        "Select output directory (where to save results):",
+        choices=output_choices,
+        style=QSTYLE,
+    ).ask()
+
+    if not selected_output:
+        render_error("Output path selection cancelled.")
+        sys.exit(0)
+
+    if selected_output == "__manual__":
+        custom_output = questionary.text(
+            "Output directory path:",
+            default=default_output_path,
+            style=QSTYLE,
+        ).ask()
+        if not custom_output:
+            custom_output = default_output_path
+    else:
+        custom_output = selected_output
+
+    return custom_input, custom_output
+
+
 def interactive_mode():
     """Run the full interactive CLI flow."""
     render_header()
@@ -855,41 +1075,25 @@ def interactive_mode():
     # --- Step 2: Select datasets ---
     render_step(2, 4, "Select Datasets")
 
-    datasets = discover_datasets()
-    if not datasets:
-        render_error(f"No datasets found in {RAW_DIR}",
-                    f"Place images in subdirectories under {RAW_DIR}/<batch_name>/")
-        sys.exit(1)
-
-    # Build choices: "All datasets" first, then individual datasets
-    all_choice = questionary.Choice(
-        f"All datasets   ({sum(c for _, c in datasets)} images total)",
-        value="__all__",
-    )
-    ds_choices = [all_choice] + [
-        questionary.Choice(f"{name}   ({count} images)", value=name)
-        for name, count in datasets
-    ]
-
-    if mode == "sam":
-        prompt = "Select a dataset to auto-label"
-    elif mode == "yolo":
-        prompt = "Select raw dataset to include in training"
+    # For sam/pred modes, offer a custom input/output path option.
+    custom_input = None
+    custom_output = None
+    if mode in ("sam", "pred"):
+        use_custom = questionary.confirm(
+            "Use a custom input/output path instead of data/raw/?\n"
+            "  (choose No to pick from existing datasets under data/raw/)",
+            default=False,
+            style=QSTYLE,
+        ).ask()
+        if use_custom:
+            custom_input, custom_output = _pick_custom_paths_interactive(mode)
+            console.print(f"\n  [green]✓[/green] Input:  [bold]{custom_input}[/bold]")
+            console.print(f"  [green]✓[/green] Output: [bold]{custom_output}[/bold]")
+            selected_datasets = [Path(custom_input).name]
+        else:
+            selected_datasets = _pick_datasets_interactive(mode, datasets)
     else:
-        prompt = "Select a dataset for inference"
-
-    selected = questionary.select(
-        f"{prompt}\n  Press ENTER to confirm your selection.",
-        choices=ds_choices,
-        style=QSTYLE,
-    ).ask()
-
-    if selected == "__all__":
-        selected_datasets = [name for name, _ in datasets]
-        console.print(f"\n  [green]✓[/green] Selected: [bold]All datasets[/bold]")
-    else:
-        selected_datasets = [selected]
-        render_selection_summary(selected_datasets, "Selected datasets")
+        selected_datasets = _pick_datasets_interactive(mode, datasets)
 
     # --- Step 3: Mode-specific options ---
     selected_models = None
@@ -1096,7 +1300,10 @@ def interactive_mode():
     render_step(total_steps, total_steps, "Review & Confirm")
 
     # Calculate ETA
-    total_images = sum(count_images(RAW_DIR / d) for d in selected_datasets)
+    if custom_input:
+        total_images = count_images(Path(custom_input))
+    else:
+        total_images = sum(count_images(RAW_DIR / d) for d in selected_datasets)
     if mode == "sam":
         eta_s = estimate_eta_sam(total_images)
     elif mode == "yolo":
@@ -1110,11 +1317,17 @@ def interactive_mode():
 
     # Output dirs
     if mode == "sam":
-        output_dirs = [str(SAM_OUTPUTS_DIR / d) for d in selected_datasets]
+        if custom_output:
+            output_dirs = [custom_output]
+        else:
+            output_dirs = [str(SAM_OUTPUTS_DIR / d) for d in selected_datasets]
     elif mode == "yolo":
         output_dirs = [str(YOLO_DIR / "models" / "production" / m) for m in selected_models]
     else:
-        output_dirs = [str(PREDICTIONS_DIR / d) for d in selected_datasets]
+        if custom_output:
+            output_dirs = [custom_output]
+        else:
+            output_dirs = [str(PREDICTIONS_DIR / d) for d in selected_datasets]
 
     render_plan_panel(mode, selected_datasets, selected_models, stage, eta_s, output_dirs)
 
@@ -1132,7 +1345,9 @@ def interactive_mode():
     start_time = time.time()
 
     if mode == "sam":
-        success, details = run_sam_batch(selected_datasets)
+        success, details = run_sam_batch(selected_datasets,
+                                          input_override=custom_input,
+                                          output_override=custom_output)
     elif mode == "yolo":
         if do_prepare:
             console.print(Rule("[dim]  Data Preparation  [/dim]", style="dim"))
@@ -1150,7 +1365,10 @@ def interactive_mode():
         console.print(Rule("[dim]  Training  [/dim]", style="dim"))
         success, details = run_yolo_train(selected_models, stage, train_config)
     else:
-        success, details = run_yolo_predict(selected_datasets, selected_models, conf, iou, imgsz, device)
+        success, details = run_yolo_predict(selected_datasets, selected_models,
+                                             conf, iou, imgsz, device,
+                                             input_override=custom_input,
+                                             output_override=custom_output)
 
     elapsed = time.time() - start_time
 
@@ -1177,17 +1395,22 @@ def direct_mode(args):
     render_header()
 
     # Validate
-    errors = validate_mode_args(args.mode, args.batch, args.model)
+    errors = validate_mode_args(args.mode, args.batch, args.model, args.input)
     if errors:
         for e in errors:
             render_error(e)
         sys.exit(1)
 
-    try:
-        datasets = parse_batch_list(args.batch)
-    except ValueError as e:
-        render_error(str(e))
-        sys.exit(1)
+    # When --input is given, batch is optional (used only for display name).
+    # When --input is absent, batch is required and validated against RAW_DIR.
+    if args.input:
+        datasets = [args.batch or Path(args.input).name]
+    else:
+        try:
+            datasets = parse_batch_list(args.batch)
+        except ValueError as e:
+            render_error(str(e))
+            sys.exit(1)
 
     if args.mode == "yolo":
         try:
@@ -1221,9 +1444,15 @@ def direct_mode(args):
         models = None
         stage = None
         train_config = {}
-        total_images = sum(count_images(RAW_DIR / d) for d in datasets)
+        if args.input:
+            total_images = count_images(Path(args.input))
+        else:
+            total_images = sum(count_images(RAW_DIR / d) for d in datasets)
         eta_s = estimate_eta_sam(total_images)
-        output_dirs = [str(SAM_OUTPUTS_DIR / d) for d in datasets]
+        if args.output:
+            output_dirs = [args.output]
+        else:
+            output_dirs = [str(SAM_OUTPUTS_DIR / d) for d in datasets]
     else:  # pred
         try:
             models = parse_model_list(args.model)
@@ -1232,9 +1461,15 @@ def direct_mode(args):
             sys.exit(1)
         stage = None
         train_config = {}
-        total_images = sum(count_images(RAW_DIR / d) for d in datasets)
+        if args.input:
+            total_images = count_images(Path(args.input))
+        else:
+            total_images = sum(count_images(RAW_DIR / d) for d in datasets)
         eta_s = estimate_eta_yolo_pred(total_images, len(models))
-        output_dirs = [str(PREDICTIONS_DIR / d) for d in datasets]
+        if args.output:
+            output_dirs = [args.output]
+        else:
+            output_dirs = [str(PREDICTIONS_DIR / d) for d in datasets]
 
     render_plan_panel(args.mode, datasets, models, stage, eta_s, output_dirs)
 
@@ -1243,11 +1478,17 @@ def direct_mode(args):
         console.print("\n  [yellow]🔍 DRY RUN — execution skipped[/yellow]")
         console.print("  [dim]Would execute:[/dim]")
         if args.mode == "sam":
-            console.print(f"  [dim]  SAM batch_segment on: {datasets}[/dim]")
+            in_disp = args.input or datasets
+            out_disp = args.output or output_dirs
+            console.print(f"  [dim]  SAM batch_segment input: {in_disp}[/dim]")
+            console.print(f"  [dim]  SAM output: {out_disp}[/dim]")
         elif args.mode == "yolo":
             console.print(f"  [dim]  YOLO train: {models}, stage={stage}, config={train_config}[/dim]")
         else:
-            console.print(f"  [dim]  YOLO predict: {datasets}, {models}, conf={args.conf}, iou={args.iou}[/dim]")
+            in_disp = args.input or datasets
+            out_disp = args.output or output_dirs
+            console.print(f"  [dim]  YOLO predict input: {in_disp}, models: {models}, conf={args.conf}, iou={args.iou}[/dim]")
+            console.print(f"  [dim]  YOLO output: {out_disp}[/dim]")
         console.print()
         return
 
@@ -1255,7 +1496,8 @@ def direct_mode(args):
     start_time = time.time()
 
     if args.mode == "sam":
-        success, _ = run_sam_batch(datasets, fresh=args.fresh, resume=args.resume)
+        success, _ = run_sam_batch(datasets, fresh=args.fresh, resume=args.resume,
+                                    input_override=args.input, output_override=args.output)
     elif args.mode == "yolo":
         if args.prepare:
             run_prepare_dataset()
@@ -1264,7 +1506,8 @@ def direct_mode(args):
         success, _ = run_yolo_train(models, stage, train_config)
     else:
         device = resolve_device(args.device) if args.device in PROCESSING_DEVICES else args.device
-        success, _ = run_yolo_predict(datasets, models, args.conf, args.iou, args.imgsz, device)
+        success, _ = run_yolo_predict(datasets, models, args.conf, args.iou, args.imgsz, device,
+                                      input_override=args.input, output_override=args.output)
 
     elapsed = time.time() - start_time
     render_results_panel(args.mode, output_dirs, success, elapsed)
@@ -1287,6 +1530,10 @@ Direct mode:
   python pipeline_cli.py --sam --batch blurred,custom_capture_2026-08-14
   python pipeline_cli.py --yolo --model nano_detection,small_detection --stage 12
   python pipeline_cli.py --pred --batch blurred --model small_detection
+
+Custom input/output paths (SAM/pred):
+  python pipeline_cli.py --sam --input /data/my_images --output /data/my_labels
+  python pipeline_cli.py --pred --input /data/new_batch --output /data/preds --model small_detection
 
 Global flags:
   -v, --verbose    Increase output verbosity
@@ -1314,7 +1561,9 @@ Custom training (YOLO):
     parser.add_argument("--yolo", action="store_const", dest="mode", const="yolo")
     parser.add_argument("--pred", action="store_const", dest="mode", const="pred")
     # --- Mode-specific args ---
-    parser.add_argument("--batch", help="dataset name(s), comma-separated")
+    parser.add_argument("--batch", help="dataset name(s), comma-separated (under data/raw/)")
+    parser.add_argument("--input", help="custom input directory (overrides --batch for input)")
+    parser.add_argument("--output", help="custom output directory (overrides default output path)")
     parser.add_argument("--model", help="model key(s), comma-separated")
     parser.add_argument("--stage", type=int, choices=[1, 2, 12], default=12, help="training stage")
     parser.add_argument("--conf", type=float, default=0.25, help="confidence threshold (pred)")

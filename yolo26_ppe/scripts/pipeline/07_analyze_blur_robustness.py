@@ -242,7 +242,7 @@ for m in MODELS:
     latex += f"{m} & {a['n_images']} & {a['avg_latency_ms']} & {a['std_latency_ms']} & {a['total_detections']} & {a['avg_det_per_img']} & {a['images_with_zero_det']} & {a['p95_latency_ms']} \\\\\n"
 latex += r"""\bottomrule
 \end{tabular}
-\caption{ผลการ inference บน blurred dataset (48 ภาพ) ด้วย ONNX — latency และจำนวน detection}
+\caption{Inference results on blurred dataset (48 images) using ONNX — latency and detection count}
 \label{tab:blurred_onnx_results}
 \end{table}"""
 
@@ -261,7 +261,7 @@ for m in MODELS:
     latex_cls += f"{m} & {cd.get('person',0)} & {cd.get('helmet',0)} & {cd.get('boots',0)} & {cd.get('shoes',0)} & {cd.get('harness',0)} & {total} \\\\\n"
 latex_cls += r"""\bottomrule
 \end{tabular}
-\caption{Class distribution ของ detection บน blurred dataset (48 ภาพ) ด้วย ONNX}
+\caption{Class distribution of detections on blurred dataset (48 images) using ONNX}
 \label{tab:blurred_class_dist}
 \end{table}"""
 

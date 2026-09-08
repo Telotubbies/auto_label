@@ -1,72 +1,73 @@
-# yolo26_ppe/reports — รายงาย PDF
+# yolo26_ppe/reports — PDF Report
 
-รายงายฉบับสมบูรณ์ภาษาไทย (XeLaTeX) สำหรับโปรเจกต์ YOLO26 PPE
+Complete Thai-language report (XeLaTeX) for the YOLO26 PPE project.
 
-## โครงสร้าง
+## Structure
 
 ```text
 reports/
 ├── final/
-│   └── report.pdf              # ← PDF สำเร็จ (79 หน้า) — ใช้ตัวนี้
+│   └── report.pdf              # ← Final PDF (79 pages) — use this
 ├── source/
 │   ├── report.tex              # LaTeX source
-│   ├── report_plan.md          # โครงร่างรายงาน
-│   ├── figures/                # กราฟ PDF/PNG (training curves, confusion matrix, Pareto)
+│   ├── report_plan.md          # Report outline
+│   ├── figures/                # PDF/PNG charts (training curves, confusion matrix, Pareto)
 │   └── fonts/
-│       └── Sarabun-Regular.ttf # ฟอนต์ไทย
-├── inputs/                     # JSON ที่ใช้สร้างรายงาน
+│       └── Sarabun-Regular.ttf # Thai font
+├── inputs/                     # JSON used to generate the report
 │   ├── final_eval_results.json
 │   ├── onnx_export_results.json
 │   └── sam3_benchmark_results.json
-├── metrics/                    # สรุป metrics ในรูปแบบต่างๆ
+├── metrics/                    # Metrics summaries in various formats
 │   ├── comparison_report.md
 │   ├── eval_all.json
 │   ├── model_comparison.csv
 │   ├── model_comparison.json
 │   ├── train_v2_summary.json
-│   └── tune_*.json             # ผล hyperparameter tuning แยกต่อโมเดล
+│   └── tune_*.json             # Hyperparameter tuning results per model
 └── build/                      # XeLaTeX intermediate files (.aux, .log, .toc)
 ```
 
 ## final/report.pdf
 
-รายงายฉบับสมบูรณ์ 79 หน้า ภาษาไทย เนื้อหาครอบคลุม:
+Complete 79-page Thai report covering:
 
-- ภาพรวมโปรเจกต์และ dataset
-- การฝึก YOLO26 4 โมเดล
-- ผล evaluation (P/R/F1/mAP50/mAP50-95)
-- Confusion matrix แยกต่อโมเดล
+- Project overview and dataset
+- YOLO26 training for 4 models
+- Evaluation results (P/R/F1/mAP50/mAP50-95)
+- Confusion matrix per model
 - Per-class comparison
 - ONNX vs PyTorch comparison
-- Robustness test (ภาพเบลอ)
+- Robustness test (blurred images)
 - SAM 3.1 benchmark
 - Production recommendation
 
-## วิธีสร้างใหม่
+## How to Rebuild
 
 ```bash
 cd reports/source
 xelatex report.tex
-xelatex report.tex   # รัน 2 รอบเพื่อ cross-reference
+xelatex report.tex   # Run twice for cross-references
 mv report.pdf ../final/
 ```
 
-หรือรันผ่าน pipeline: `scripts/pipeline/08_generate_report_figures.py`
+Or run via pipeline: `scripts/pipeline/08_generate_report_figures.py`
 
 ## inputs/
 
-JSON ที่เป็น input ของรายงาน — ดึงมาจาก `../artifacts/evaluation/` ถ้าข้อมูลเปลี่ยน ต้อง regenerate ก่อน build PDF
+JSON inputs for the report — pulled from `../artifacts/evaluation/`. If data changes, regenerate before building the PDF.
 
 ## metrics/
 
-สรุป metrics ในรูปแบบที่อ่านง่าย:
-- `comparison_report.md` — ตารางเปรียบเทียบโมเดล
-- `model_comparison.csv` — สำหรับ Excel
-- `tune_*.json` — ผล Ultralytics Tune แยกต่อโมเดล
+Metrics summaries in readable formats:
 
-## ข้อควรระวัง
+- `comparison_report.md` — Model comparison table
+- `model_comparison.csv` — For Excel
+- `tune_*.json` — Ultralytics Tune results per model
 
-- ต้องมี XeLaTeX สำหรับฟอนต์ไทย (Sarabun)
-- อย่าแก้ `final/report.pdf` โดยตรง — แก้ `source/report.tex` แล้ว build ใหม่
-- `build/` เป็น intermediate files — ลบได้ถ้าจะ build ใหม่
-- ถ้าข้อมูลใน `inputs/` เปลี่ยน ต้อง rebuild PDF ไม่งั้นรายงานจะไม่ตรง
+## Cautions
+
+- XeLaTeX is required for the Thai font (Sarabun)
+- Do not edit `final/report.pdf` directly — edit `source/report.tex` and rebuild
+- `build/` contains intermediate files — can be deleted when rebuilding
+- If data in `inputs/` changes, the PDF must be rebuilt or the report will be out of date

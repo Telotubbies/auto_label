@@ -1,10 +1,10 @@
 # PPE Auto-Labeling and YOLO26 Training Pipeline
 
-ระบบ batch pipeline สำหรับสร้างชุดข้อมูล PPE จากภาพดิบด้วย SAM 3.1, ตรวจสอบ ground truth โดยมนุษย์, ฝึกและประเมิน YOLO26 จำนวน 4 รุ่น และส่งออกโมเดล ONNX สำหรับการนำไปใช้งานต่อ
+A batch pipeline for generating PPE datasets from raw images using SAM 3.1, human-verified ground truth, training and evaluating 4 YOLO26 models, and exporting ONNX models for downstream deployment.
 
-Repository นี้ครอบคลุมวงจรงานตั้งแต่ **raw image → auto-label → verified dataset → training → evaluation → ONNX export → engineering report** โดยเน้น reproducibility, checkpoint recovery, explicit configuration และ traceable artifacts
+This repository covers the full workflow from **raw image → auto-label → verified dataset → training → evaluation → ONNX export → engineering report**, with emphasis on reproducibility, checkpoint recovery, explicit configuration, and traceable artifacts.
 
-> **Implementation status:** ระบบหลักทำงานในรูปแบบ offline batch CLI และมี production model artifacts แล้ว แต่ยังไม่ใช่ production service แบบ multi-user ดูข้อจำกัดที่ [Known limitations and operational risks](#known-limitations-and-operational-risks) ก่อนนำไป deploy
+> **Implementation status:** The core system runs as an offline batch CLI and already has production model artifacts, but it is not a multi-user production service. See [Known limitations and operational risks](#known-limitations-and-operational-risks) before deploying.
 
 ## Table of contents
 
@@ -105,7 +105,7 @@ Sources: [`ppe_6class.yaml`](sam3_auto_label/config/ppe_6class.yaml) and YOLO v2
 ```text
 auto_label/
 ├── pipeline_cli.py                 # Repository-level interactive/direct CLI
-├── run_pipeline.sh                 # WSL2/ROCm wrapper for pipeline_cli.py
+├── auto_label.sh                   # WSL2/ROCm wrapper for pipeline_cli.py
 ├── sam3_auto_label/
 │   ├── src/                        # Config, inference, batch, exporters, tracking
 │   ├── config/                     # SAM YAML configuration
@@ -224,23 +224,23 @@ Use `--resume` instead of `--fresh` to continue a checkpointed run.
 The wrapper is intended for the repository's configured WSL2 environment. It does **not** use the `sam3_auto_label/sam3_venv` path created by the Quick Start: both the wrapper and `pipeline_cli.py` expect `/opt/sam3_venv/bin/python` for SAM execution. Provision that interpreter path explicitly before using repository-level SAM mode. `YOLO_PYTHON` can override the wrapper/YOLO interpreter, but it does not override the `SAM_PYTHON` constant inside `pipeline_cli.py`.
 
 ```bash
-./run_pipeline.sh
+./auto_label.sh
 ```
 
 Direct examples using valid model keys:
 
 ```bash
 # Preview without executing
-./run_pipeline.sh --dry-run --yolo --model small_detection
+./auto_label.sh --dry-run --yolo --model small_detection
 
 # Auto-label one raw-image batch
-./run_pipeline.sh --sam --batch blurred --resume
+./auto_label.sh --sam --batch blurred --resume
 
 # Train selected YOLO models
-./run_pipeline.sh --yolo --model nano_detection,small_detection --stage 12
+./auto_label.sh --yolo --model nano_detection,small_detection --stage 12
 
 # Run production prediction
-./run_pipeline.sh --pred --batch blurred --model small_detection \
+./auto_label.sh --pred --batch blurred --model small_detection \
   --conf 0.25 --iou 0.45 --imgsz 640
 ```
 

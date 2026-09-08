@@ -7,15 +7,15 @@ status: "Verified"
 
 # YOLO26 Training (Requirement 2)
 
-> เทรน YOLO26 จำนวน 4 รุ่น เพื่อเปรียบเทียบ accuracy–efficiency trade-off สำหรับ PPE detection
+> Train 4 YOLO26 models to compare the accuracy–efficiency trade-off for PPE detection
 >
-> **Status**: Verified — สอบกับ `yolo26_ppe/`, `yolo26_ppe/reports/final/report.pdf`, `yolo26_ppe/configs/`
+> **Status**: Verified — checked against `yolo26_ppe/`, `yolo26_ppe/reports/final/report.pdf`, `yolo26_ppe/configs/`
 
 ---
 
 ## Objective
 
-เปรียบเทียบประสิทธิภาพและ computational efficiency ของ YOLO26 จำนวน 4 รุ่น:
+Compare the performance and computational efficiency of 4 YOLO26 models:
 
 | Model | Task | Scale |
 |-------|------|-------|
@@ -24,7 +24,7 @@ status: "Verified"
 | YOLO26n-seg | Segmentation | Nano |
 | YOLO26s-seg | Segmentation | Small |
 
-> ที่มา: `yolo26_ppe/reports/source/report.tex:634-650`
+> Source: `yolo26_ppe/reports/source/report.tex:634-650`
 
 ---
 
@@ -83,26 +83,26 @@ stop
 | Hardware | AMD RX 7800 XT (ROCm, WSL2) |
 | Random seed | 42 |
 
-> ที่มา: `yolo26_ppe/reports/source/report.tex:652-677`, `yolo26_ppe/configs/production_train.yaml`
+> Source: `yolo26_ppe/reports/source/report.tex:652-677`, `yolo26_ppe/configs/production_train.yaml`
 
 ---
 
 ## Dataset
 
-### ขนาด
+### Size
 
-| Split | จำนวนภาพ |
+| Split | Image count |
 |-------|---------|
 | Train | 335 |
 | Validation | 95 |
 | Test | 50 |
-| **รวม** | **480** |
+| **Total** | **480** |
 
-> ที่มา: `yolo26_ppe/reports/metrics/comparison_report.md:3`
+> Source: `yolo26_ppe/reports/metrics/comparison_report.md:3`
 
 ### Class Distribution
 
-| Class | Original Count | สถานะ |
+| Class | Original Count | Status |
 |-------|---------------|-------|
 | person | 2271 | Adequate |
 | helmet | 2693 | Adequate |
@@ -117,7 +117,7 @@ stop
 - **Imbalance ratio (after)**: 3003:56 = 53.6:1
 - **Oversampling**: sandals +30, harness +114
 
-> ที่มา: `yolo26_ppe/reports/metrics/comparison_report.md:64-66`
+> Source: `yolo26_ppe/reports/metrics/comparison_report.md:64-66`
 
 ---
 
@@ -145,17 +145,17 @@ v2c --> v2s : convert
 @enduml
 ```
 
-> ที่มา: `yolo26_ppe/data/` directory listing
+> Source: `yolo26_ppe/data/` directory listing
 
 ---
 
 ## MLflow Integration
 
-YOLO26 training ใช้ **MLflow** สำหรับ experiment tracking (ต่างจาก SAM 3.1 ที่ใช้ SQLite):
+YOLO26 training uses **MLflow** for experiment tracking (unlike SAM 3.1 which uses SQLite):
 
 @import "../../yolo26_ppe/configs/mlflow.yaml" {title="mlflow.yaml"}
 
-> MLflow tracking URI และ configuration อยู่ใน `yolo26_ppe/configs/mlflow.yaml`
+> MLflow tracking URI and configuration are in `yolo26_ppe/configs/mlflow.yaml`
 
 ---
 
@@ -180,19 +180,19 @@ YOLO26 training ใช้ **MLflow** สำหรับ experiment tracking (ต
 | n_seg | 0.4158 | 0.3822 | ❌ No |
 | s_seg | 0.5538 | 0.4753 | ❌ No |
 
-> **สรุป**: 50-epoch tuning trials ไม่สามารถเทียบ 150-epoch baseline ได้ — baseline weights ถูกเก็บไว้ทั้งหมด
+> **Summary**: 50-epoch tuning trials could not match the 150-epoch baseline — all baseline weights were retained
 >
-> ที่มา: `yolo26_ppe/reports/metrics/comparison_report.md:119-174`
+> Source: `yolo26_ppe/reports/metrics/comparison_report.md:119-174`
 
-### Parameters ที่ tune
+### Tuned Parameters
 
 - `lr0`, `imgsz`, `cls_pw`, `mosaic`, `mixup`, `copy_paste`, `scale`, `close_mosaic`
 
 ---
 
-## อ้างอิง
+## References
 
-- `yolo26_ppe/reports/final/report.pdf` — รายงานฉบับสมบูรณ์
+- `yolo26_ppe/reports/final/report.pdf` — full report
 - `yolo26_ppe/reports/source/report.tex:628-747` — RQ2 chapter
 - `yolo26_ppe/reports/inputs/final_eval_results.json` — metrics
 - `yolo26_ppe/reports/metrics/comparison_report.md` — comparison summary

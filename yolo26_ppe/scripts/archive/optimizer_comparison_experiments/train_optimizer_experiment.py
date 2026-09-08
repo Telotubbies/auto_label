@@ -60,11 +60,11 @@ OPTIMIZER_CONFIG = {
     },
     "AdamW": {
         "optimizer": "AdamW",
-        "lr0": 0.001,          # ต้องต่ำ 10x ไม่งั้น NaN
+        "lr0": 0.001,          # Must be 10x lower, otherwise NaN
         "lrf": 0.01,
         "momentum": 0.937,     # beta1
         "weight_decay": 0.0005,
-        "warmup_bias_lr": 0.0, # ต้องเป็น 0 สำหรับ Adam family
+        "warmup_bias_lr": 0.0, # Must be 0 for Adam family
     },
     "Adam": {
         "optimizer": "Adam",
@@ -76,7 +76,7 @@ OPTIMIZER_CONFIG = {
     },
     "auto": {
         "optimizer": "auto",
-        # auto จะ ignore lr0 และ momentum แต่ใส่ไว้เผื่อ
+        # auto ignores lr0 and momentum, but kept here for reference
         "lr0": 0.01,
         "lrf": 0.01,
         "momentum": 0.937,
@@ -85,7 +85,7 @@ OPTIMIZER_CONFIG = {
     },
 }
 
-# Common training params (เหมือนกันทุก optimizer)
+# Common training params (same for all optimizers)
 COMMON_PARAMS = {
     "epochs": 300,
     "imgsz": 640,
@@ -97,7 +97,7 @@ COMMON_PARAMS = {
     "deterministic": True,
     "warmup_epochs": 3,
     "warmup_momentum": 0.8,
-    # Augmentation (กลางๆ เหมือน v2)
+    # Augmentation (moderate, same as v2)
     "hsv_h": 0.02,
     "hsv_s": 0.7,
     "hsv_v": 0.5,

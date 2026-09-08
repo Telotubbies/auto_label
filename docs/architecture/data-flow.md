@@ -7,52 +7,52 @@ status: "Verified"
 
 # 04 — Data Flow
 
-> ข้อมูลเดินทางจากไหน → ถูกแปลงอะไร → ไปอยู่ที่ไหน
+> Where data originates → what transformations are applied → where it ends up
 >
-> **Status**: Verified — สอบกับ `src/config.py:95-109` (path properties) และ `src/batch_segment.py`
+> **Status**: Verified — cross-checked against `src/config.py:95-109` (path properties) and `src/batch_segment.py`
 
 ---
 
-## โครงสร้างโฟลเดอร์ Input/Output
+## Input/Output Folder Structure
 
 ```
 data/
-├── raw/                              ← INPUT: ภาพดิบ
+├── raw/                              ← INPUT: raw images
 │   ├── IMG_001.jpg
 │   ├── IMG_002.png
 │   └── ...
 │
-└── sam_outputs_ground_truth/         ← OUTPUT: ผลลัพธ์ทั้งหมด
+└── sam_outputs_ground_truth/         ← OUTPUT: all results
     ├── coco/
-    │   ├── IMG_001.json              ← per-image COCO (cache สำหรับ resume)
+    │   ├── IMG_001.json              ← per-image COCO (cache for resume)
     │   ├── IMG_002.json
-    │   └── annotations.json          ← combined COCO dataset (สุดท้าย)
+    │   └── annotations.json          ← combined COCO dataset (final)
     │
     ├── viz/
     │   ├── IMG_001.png               ← overlay visualization
     │   └── IMG_002.png
     │
-    ├── yolo/                         ← (ถ้าเลือก format: yolo)
+    ├── yolo/                         ← (if format: yolo selected)
     │   ├── IMG_001.txt
     │   ├── data.yaml
     │   └── classes.txt
     │
-    ├── voc/                          ← (ถ้าเลือก format: voc)
+    ├── voc/                          ← (if format: voc selected)
     │   └── IMG_001.xml
     │
-    ├── labelme/                      ← (ถ้าเลือก format: labelme)
+    ├── labelme/                      ← (if format: labelme selected)
     │   └── IMG_001.json
     │
-    ├── masks/                        ← (ถ้าเลือก format: masks)
+    ├── masks/                        ← (if format: masks selected)
     │   ├── IMG_001_ann1_cat1.png
     │   └── IMG_001_ann2_cat2.png
     │
     ├── experiments.db                ← SQLite experiment log
-    ├── checkpoint.json               ← progress checkpoint (ลบเมื่อจบ ถ้า clear_on_success)
-    └── errors.json                   ← (ถ้ามีภาพที่ error) summary ของ errors
+    ├── checkpoint.json               ← progress checkpoint (deleted on completion if clear_on_success)
+    └── errors.json                   ← (if any images errored) summary of errors
 ```
 
-> ที่มา: `src/config.py:95-109` — `coco_path`, `viz_path`, `masks_path`, `combined_json_path`
+> Source: `src/config.py:95-109` — `coco_path`, `viz_path`, `masks_path`, `combined_json_path`
 
 ---
 
@@ -100,57 +100,57 @@ digraph DataFlow {
 
 ## Provenance Metadata
 
-### ต่อหนึ่ง Experiment Run
+### Per Experiment Run
 
-| Field | ที่มา | ตัวอย่าง |
-|-------|------|---------|
+| Field | Source | Example |
+|-------|--------|---------|
 | `id` | `run_{timestamp}_{config_hash}_{suffix}` | `run_20260901_143022_a1b2c3d4e5f6_x7y9` |
 | `started_at` | ISO timestamp | `2026-09-01T14:30:22.123456` |
 | `ended_at` | ISO timestamp | `2026-09-01T15:05:11.789012` |
 | `status` | `running` / `completed` / `failed` | `completed` |
-| `config_hash` | MD5 hash ของ threshold+resolution+device+categories | `a1b2c3d4e5f6` |
-| `config_json` | JSON ของ config ที่ใช้ | `{"threshold": 0.25, ...}` |
-| `num_images` | จำนวนภาพทั้งหมด | `1500` |
-| `num_annotations` | จำนวน annotation รวม | `12340` |
-| `total_time` | วินาทีรวม | `2100.5` |
-| `avg_time_per_image` | วินาทีเฉลี่ย | `1.4` |
-| `errors` | จำนวนภาพที่ error | `3` |
+| `config_hash` | MD5 hash of threshold+resolution+device+categories | `a1b2c3d4e5f6` |
+| `config_json` | JSON of the config used | `{"threshold": 0.25, ...}` |
+| `num_images` | Total number of images | `1500` |
+| `num_annotations` | Total number of annotations | `12340` |
+| `total_time` | Total seconds | `2100.5` |
+| `avg_time_per_image` | Average seconds per image | `1.4` |
+| `errors` | Number of errored images | `3` |
 | `git_commit` | `git rev-parse --short HEAD` | `9d956c1` |
 
 > `src/tracker.py:33-52` (schema), `src/tracker.py:98-124` (start_run)
 
-### ต่อหนึ่ง Image
+### Per Image
 
-| Field | ที่มา | ตัวอย่าง |
-|-------|------|---------|
+| Field | Source | Example |
+|-------|--------|---------|
 | `experiment_id` | FK → experiments | `run_20260901_...` |
-| `image_name` | ชื่อไฟล์ | `IMG_001.jpg` |
-| `num_annotations` | จำนวน detection ในภาพ | `8` |
-| `time_seconds` | เวลา inference ภาพนี้ | `1.35` |
+| `image_name` | File name | `IMG_001.jpg` |
+| `num_annotations` | Number of detections in the image | `8` |
+| `time_seconds` | Inference time for this image | `1.35` |
 
 > `src/tracker.py:62-69` (schema), `src/tracker.py:126-141` (log_image_result)
 
-### ต่อหนึ่ง Annotation (ใน COCO JSON)
+### Per Annotation (in COCO JSON)
 
 @import "../../sam3_auto_label/src/inference.py" {line_begin=491 line_end=520 title="inference.py:491-520 — annotation dict construction"}
 
 ---
 
-## สิ่งที่ระบบทั่วไปมักมี (แต่โค้ดนี้ไม่มี)
+## What Typical Systems Usually Have (but this code does not)
 
-| Provenance field ทั่วไป | สถานะ | ผลกระทบ |
-|-------------------------|-------|---------|
-| `model_version` | ❌ ไม่มี field โดยตรง — มีแค่ `config_hash` ที่ hash รวม config | ไม่รู้ว่าใช้ checkpoint เวอร์ชันไหน |
-| `prompt_version` | ❌ ไม่มี — prompt อยู่ใน `config_json` แต่ไม่มี version | เปลี่ยน prompt แล้วไม่รู้ว่า label เก่าใช้ prompt ไหน |
-| `pipeline_version` | ❌ ไม่มี — มี `git_commit` เป็นตัวแทน | พอใช้ได้ถ้า commit ไม่ dirty |
-| `annotation_source` (`auto`/`reviewed`) | ❌ ไม่มี | ทุก annotation เป็น `auto` โดยปริยาย ไม่มีทางแยก |
-| `review_status` | ❌ ไม่มี | ไม่มี review process |
+| Common provenance field | Status | Impact |
+|-------------------------|-------|--------|
+| `model_version` | ❌ No direct field — only `config_hash` which hashes the entire config | Cannot determine which checkpoint version was used |
+| `prompt_version` | ❌ Not present — prompt is in `config_json` but has no version | Changing the prompt makes it impossible to know which prompt old labels used |
+| `pipeline_version` | ❌ Not present — `git_commit` serves as proxy | Usable if the commit is not dirty |
+| `annotation_source` (`auto`/`reviewed`) | ❌ Not present | All annotations are `auto` by default; no way to distinguish |
+| `review_status` | ❌ Not present | No review process |
 
-> **ความเสี่ยง**: ถ้าเปลี่ยน model checkpoint หรือ prompt แล้วรันใหม่ จะไม่สามารถบอกได้จาก `experiments.db` ว่า annotation เก่าใช้ model/prompt ไหน (นอกจากเปิด `config_json` ดู)
+> **Risk**: If the model checkpoint or prompt is changed and the pipeline is re-run, `experiments.db` cannot indicate which model/prompt was used for old annotations (unless `config_json` is inspected manually)
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/config.py:95-109` — path properties
 - `src/tracker.py:33-71` — SQLite schema
@@ -162,35 +162,35 @@ digraph DataFlow {
 
 # 11 — Dataset Versioning
 
-> การ track เวอร์ชันของ dataset ที่ generate ออกมา
+> Tracking the version of generated datasets
 >
-> **Status**: Verified — สอบกับ `src/tracker.py`
+> **Status**: Verified — cross-checked against `src/tracker.py`
 >
-> **⚠️ สำคัญ**: ระบบปัจจุบัน **ไม่มี dataset versioning อย่างเป็นทางการ** — มีเพียง `config_hash` และ `git_commit` เป็นตัวแทน
+> **⚠️ Important**: The current system **has no formal dataset versioning** — only `config_hash` and `git_commit` serve as proxies
 
 ---
 
-## สิ่งที่มีจริง
+## What Actually Exists
 
 ### Config Hash
 
 @import "../../sam3_auto_label/src/tracker.py" {line_begin=73 line_end=83 title="tracker.py:73-83 — _config_hash"}
 
-| รายการ | ค่า |
+| Item | Value |
 |--------|-----|
-| Algorithm | MD5 (12 ตัวแรก) |
-| Hash รวม | threshold, resolution, device, categories (id+name+prompt) |
-| ไม่รวม | checkpoint version, prompt version, pipeline version, output formats |
+| Algorithm | MD5 (first 12 characters) |
+| Hash includes | threshold, resolution, device, categories (id+name+prompt) |
+| Does not include | checkpoint version, prompt version, pipeline version, output formats |
 
 ### Git Commit
 
 @import "../../sam3_auto_label/src/tracker.py" {line_begin=85 line_end=96 title="tracker.py:85-96 — _git_commit"}
 
-| รายการ | ค่า |
+| Item | Value |
 |--------|-----|
-| กลไก | `git rev-parse --short HEAD` |
-| Timeout | 5 วินาที |
-| Fallback | `"unknown"` ถ้า fail |
+| Mechanism | `git rev-parse --short HEAD` |
+| Timeout | 5 seconds |
+| Fallback | `"unknown"` on failure |
 
 ### Experiments DB Schema
 
@@ -204,38 +204,38 @@ skinparam ActivityBorderColor #4285F4
 
 start
 :Run pipeline;
-:สร้าง experiment row\nconfig_hash + git_commit;
+:Create experiment row\nconfig_hash + git_commit;
 :Generate annotations;
 :Export dataset;
-:experiments.db เก็บประวัติ;
-if (ต้องการรู้ version?) then (ใช่)
-  :เปิด experiments.db\nดู config_hash + git_commit;
-  :เทียบกับ git history\nเพื่อหา code ที่ใช้;
-else (ไม่)
+:experiments.db stores history;
+if (Need to know version?) then (yes)
+  :Open experiments.db\ncheck config_hash + git_commit;
+  :Compare with git history\nto find the code used;
+else (no)
 endif
 stop
 @enduml
 ```
 
-### วิธี track version ในปัจจุบัน (manual)
+### Current version Tracking Method (manual)
 
-1. ดู `experiments.db` → หา run ที่สนใจ
-2. อ่าน `config_hash` และ `git_commit`
-3. `git show <commit>` เพื่อดู code ที่ใช้ตอนนั้น
-4. อ่าน `config_json` เพื่อดู threshold/prompt ที่ใช้
+1. Check `experiments.db` → find the run of interest
+2. Read `config_hash` and `git_commit`
+3. `git show <commit>` to view the code used at that time
+4. Read `config_json` to view the threshold/prompt used
 
-> **ไม่สะดวก** — ต้อง manual ทุกครั้ง ไม่มี CLI สำหรับ query
+> **Inconvenient** — must be done manually each time; no CLI for querying
 
 ---
 
-## ความเสี่ยงด้าน Versioning
+## Versioning Risks
 
-| ความเสี่ยง | ระดับ | หมายเหตุ |
+| Risk | Level | Note |
 |-----------|-------|---------|
-| เปลี่ยน checkpoint แล้วไม่รู้ | สูง | `config_hash` ไม่ได้ hash checkpoint content |
-| เปลี่ยน prompt แล้ว label เปลี่ยน | สูง | มี prompt ใน `config_json` แต่ไม่มี version tag |
-| Git commit dirty | กลาง | `git_commit` จะเป็น HEAD แต่ code จริงอาจถูกแก้แล้วไม่ commit |
-| ลบ `experiments.db` | สูง | หายหมด — ไม่มี backup mechanism |
+| Changed checkpoint without knowing | High | `config_hash` does not hash checkpoint content |
+| Changed prompt causes label changes | High | Prompt is in `config_json` but has no version tag |
+| Git commit dirty | Medium | `git_commit` will be HEAD but actual code may have uncommitted changes |
+| Deleting `experiments.db` | High | Everything is lost — no backup mechanism |
 
 ---
 
@@ -276,19 +276,19 @@ digraph YOLODataFlow {
 
 ### Dataset Versions
 
-| Version | Path | ใช้สำหรับ |
+| Version | Path | Used for |
 |---------|------|----------|
-| v1 | `yolo26_ppe/data/yolo_detection_dataset_version_1/` | เทรนรอบแรก |
-| v1 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_1/` | เทรน seg รอบแรก |
-| v2 | `yolo26_ppe/data/yolo_detection_dataset_version_2/` | เทรนรอบปรับปรุง |
-| v2 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_2/` | เทรน seg รอบปรับปรุง |
-| v2 combined | `yolo26_ppe/data/combined_coco_dataset_version_2/` | COCO รวมก่อน convert |
+| v1 | `yolo26_ppe/data/yolo_detection_dataset_version_1/` | First training round |
+| v1 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_1/` | First segmentation training round |
+| v2 | `yolo26_ppe/data/yolo_detection_dataset_version_2/` | Improved training round |
+| v2 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_2/` | Improved segmentation training round |
+| v2 combined | `yolo26_ppe/data/combined_coco_dataset_version_2/` | Combined COCO before conversion |
 
-> ที่มา: `yolo26_ppe/data/` directory listing
+> Source: `yolo26_ppe/data/` directory listing
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/tracker.py:33-71` — schema
 - `src/tracker.py:73-83` — config_hash

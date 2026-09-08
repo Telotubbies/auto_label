@@ -24,11 +24,10 @@ cls: 0.5
 dfl: 1.5              # repurposed as L1 loss in YOLO26 (no DFL)
 
 # Focal Loss — helps with class imbalance + hard examples.
-# Ultralytics: fl_gamma > 0 enables Quality Focal Loss.
-# 0.0 = disabled (use standard cross-entropy)
-# 1.5 = moderate (good default for imbalanced detection)
-# 2.0 = aggressive (use if hard examples dominate errors)
-fl_gamma: 1.5         # ← enables Focal Loss for cls loss
+# Applied via focal_patch.py monkey-patch (gamma=1.5, alpha=0.25).
+# focal_patch.py replaces v8DetectionLoss.bce with FocalBCE on import.
+# fl_gamma is logged to MLflow for tracking only (not a valid Ultralytics arg).
+fl_gamma: 1.5         # ← Focal Loss gamma (applied via focal_patch.py)
 
 # Gradient Accumulation — simulate larger batch without more VRAM.
 # Ultralytics uses `nbs` (nominal batch size): accumulation = nbs / batch.

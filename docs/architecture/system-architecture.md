@@ -7,9 +7,9 @@ status: "Verified"
 
 # System Architecture
 
-> ภาพรวมสถาปัตยกรรม — ครอบคลุม 3 requirements (SAM auto-label, YOLO26 train, ground truth)
+> Architecture overview — covers 3 requirements (SAM auto-label, YOLO26 train, ground truth)
 >
-> **Status**: Verified — สอบกับ `sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py`
+> **Status**: Verified — cross-checked against `sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py`
 
 ---
 
@@ -167,7 +167,7 @@ REPORT --> PDF
 
 ## pipeline_cli.py — 3 Modes
 
-> ที่มา: `pipeline_cli.py:263-265, 550-552, 834-852`
+> Source: `pipeline_cli.py:263-265, 550-552, 834-852`
 
 ```plantuml {align="center"}
 @startuml
@@ -242,13 +242,13 @@ EXP is "Export img N+2"
 @enduml
 ```
 
-> ที่มา: `src/batch_segment.py:270, 287-295, 304, 316-320`
+> Source: `src/batch_segment.py:270, 287-295, 304, 316-320`
 >
-> **หมายเหตุ**: เป็น CPU thread (ThreadPoolExecutor) ไม่ใช่ multi-GPU — inference ยังอยู่บน GPU เดียว
+> **Note**: This is a CPU thread (ThreadPoolExecutor), not multi-GPU — inference still runs on a single GPU
 
 ---
 
-## อ้างอิง
+## References
 
 - `pipeline_cli.py:263-265` — 3 modes
 - `pipeline_cli.py:550-552` — mode names
@@ -259,4 +259,4 @@ EXP is "Export img N+2"
 - `sam3_auto_label/src/exporters.py:577-589` — `EXPORTERS` registry
 - `sam3_auto_label/src/tracker.py:23-229` — `ExperimentTracker`
 - `yolo26_ppe/configs/production_train.yaml` — YOLO26 training config
-- `yolo26_ppe/reports/final/report.pdf` — รายงานฉบับสมบูรณ์
+- `yolo26_ppe/reports/final/report.pdf` — final report

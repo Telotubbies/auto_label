@@ -1,12 +1,12 @@
-"""Experiment tracking — บันทึกประวัติทุกครั้งที่รัน batch segmentation.
+"""Experiment tracking — logs history every time batch segmentation is run.
 
-เก็บเป็น SQLite + JSON artifacts (ไม่ต้องลง MLflow server)
+Stores as SQLite + JSON artifacts (no MLflow server required)
 
-Usage ใน batch_segment.py:
+Usage in batch_segment.py:
     from tracker import ExperimentTracker
     tracker = ExperimentTracker(cfg)
     exp_id = tracker.start_run(cfg, image_files)
-    # ... รันจบ ...
+    # ... run completed ...
     tracker.log_metrics(exp_id, {"annotations": 28})
     tracker.end_run(exp_id, status="completed")
 """

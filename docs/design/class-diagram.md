@@ -7,9 +7,9 @@ status: "Verified"
 
 # 06 — Class Diagram
 
-> โครงสร้าง class และความสัมพันธ์ในระบบ
+> Class structure and relationships in the system
 >
-> **Status**: Verified — สอบกับ `src/config.py`, `src/inference.py`, `src/tracker.py`, `src/exporters.py`
+> **Status**: Verified — cross-checked against `src/config.py`, `src/inference.py`, `src/tracker.py`, `src/exporters.py`
 
 ---
 
@@ -109,27 +109,27 @@ REG --> MASKS
 
 ---
 
-## สิ่งที่ระบบทั่วไปมักมี (แต่โค้ดนี้ไม่มี)
+## What Typical Systems Usually Have (but this code does not)
 
-| Class ทั่วไป | สถานะ | หมายเหตุ |
+| Common class | Status | Note |
 |----------------|-------|---------|
-| `Segmenter` interface (abstract) | ❌ | `build_model` ผูกกับ SAM 3.1 โดยตรง |
-| `SAM3Segmenter`, `SAM2Segmenter`, `YOLOSegmenter` | ❌ | ไม่มี polymorphism — เปลี่ยน model ต้องแก้ `inference.py` |
-| `ImageLoader` class | ❌ | เป็นฟังก์ชัน `load_image` ใน `batch_segment.py` |
-| `Preprocessor` class | ❌ | SAM processor จัดการ resize เอง |
-| `PromptGenerator` class | ❌ | prompt มาจาก config ตรง ๆ |
-| `MaskProcessor` class | ❌ | กระจายอยู่ใน `inference.py` (NMS, RLE, clamp) |
-| `Classifier` class | ❌ | ไม่มี classifier แยก |
-| `ConfidenceScorer` class | ❌ | ใช้ score ดิบจาก model |
-| `LabelValidator` class | ❌ | ไม่มี validation ก่อน export |
-| `AutoLabeler`, `HumanReviewer` class | ❌ | ไม่มี review process |
-| `DatasetExporter` class | ❌ | เป็น registry ของฟังก์ชัน ไม่ใช่ class |
+| `Segmenter` interface (abstract) | ❌ | `build_model` is directly coupled to SAM 3.1 |
+| `SAM3Segmenter`, `SAM2Segmenter`, `YOLOSegmenter` | ❌ | No polymorphism — changing the model requires modifying `inference.py` |
+| `ImageLoader` class | ❌ | Implemented as a `load_image` function in `batch_segment.py` |
+| `Preprocessor` class | ❌ | SAM processor handles resizing internally |
+| `PromptGenerator` class | ❌ | Prompts come directly from config |
+| `MaskProcessor` class | ❌ | Distributed across `inference.py` (NMS, RLE, clamp) |
+| `Classifier` class | ❌ | No separate classifier |
+| `ConfidenceScorer` class | ❌ | Uses raw scores from the model |
+| `LabelValidator` class | ❌ | No validation before export |
+| `AutoLabeler`, `HumanReviewer` class | ❌ | No review process |
+| `DatasetExporter` class | ❌ | Implemented as a registry of functions, not a class |
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/config.py:10-125` — dataclasses
 - `src/tracker.py:23-229` — ExperimentTracker
-- `src/inference.py:347-365` — build_model (ไม่ใช่ class)
-- `src/exporters.py:577-589` — EXPORTERS registry (ไม่ใช่ class)
+- `src/inference.py:347-365` — build_model (not a class)
+- `src/exporters.py:577-589` — EXPORTERS registry (not a class)
