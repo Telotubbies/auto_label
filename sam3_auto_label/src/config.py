@@ -53,6 +53,9 @@ class InferenceConfig:
     gpu_ops: bool = True
     # Pipeline: overlap CPU export with GPU inference for ~100% GPU utilization
     pipeline_export: bool = True
+    # torch.compile: enable operation fusion for faster inference (SAM 3.1).
+    # First forward pass is slower due to compilation; subsequent batches are faster.
+    compile: bool = False
 
 
 @dataclass
@@ -222,6 +225,7 @@ def _parse_inference(value: Any) -> InferenceConfig:
         device=_string(data.get("device", "auto"), "inference.device").lower(),
         gpu_ops=_boolean(data.get("gpu_ops", True), "inference.gpu_ops"),
         pipeline_export=_boolean(data.get("pipeline_export", True), "inference.pipeline_export"),
+        compile=_boolean(data.get("compile", False), "inference.compile"),
     )
 
 
@@ -358,6 +362,7 @@ def save_config(cfg: Config, path: str):
             "device": cfg.inference.device,
             "gpu_ops": cfg.inference.gpu_ops,
             "pipeline_export": cfg.inference.pipeline_export,
+            "compile": cfg.inference.compile,
         },
         "annotation": {
             "bbox": cfg.annotation.bbox,

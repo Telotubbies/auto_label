@@ -368,6 +368,7 @@ def build_model(cfg: Config):
         checkpoint_path=cfg.ckpt_path,
         load_from_HF=False,
         device=device,
+        compile=cfg.inference.compile,
     )
     processor = Sam3Processor(
         model,
