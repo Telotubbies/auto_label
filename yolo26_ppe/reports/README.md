@@ -7,7 +7,7 @@ Complete Thai-language report (XeLaTeX) for the YOLO26 PPE project.
 ```text
 reports/
 ├── final/
-│   └── report.pdf              # ← Final PDF (79 pages) — use this
+│   └── report.pdf              
 ├── source/
 │   ├── report.tex              # LaTeX source
 │   ├── report_plan.md          # Report outline
@@ -28,19 +28,7 @@ reports/
 └── build/                      # XeLaTeX intermediate files (.aux, .log, .toc)
 ```
 
-## final/report.pdf
 
-Complete 79-page Thai report covering:
-
-- Project overview and dataset
-- YOLO26 training for 4 models
-- Evaluation results (P/R/F1/mAP50/mAP50-95)
-- Confusion matrix per model
-- Per-class comparison
-- ONNX vs PyTorch comparison
-- Robustness test (blurred images)
-- SAM 3.1 benchmark
-- Production recommendation
 
 ## How to Rebuild
 
