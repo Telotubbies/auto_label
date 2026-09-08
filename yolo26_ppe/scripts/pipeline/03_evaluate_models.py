@@ -69,34 +69,45 @@ def eval_model(key, cfg):
         name="test_eval",
         exist_ok=True,
     )
-    # Collect metrics
+    # Collect metrics — Ultralytics API uses lowercase property names
+    # (results.box.map, .map50, .map75, .mp, .mr; same for results.seg).
+    # See https://docs.ultralytics.com/modes/val and
+    # https://docs.ultralytics.com/tasks/segment for the current API.
     metrics = {}
     try:
         metrics["precision"] = float(results.box.mp)  # mean precision
         metrics["recall"] = float(results.box.mr)
-        metrics["mAP50"] = float(results.box.mAP50)
-        metrics["mAP50-95"] = float(results.box.mAP50_95)
+        metrics["mAP50"] = float(results.box.map50)
+        metrics["mAP75"] = float(results.box.map75)
+        metrics["mAP50-95"] = float(results.box.map)
     except Exception as e:
         print(f"box metric error: {e}")
     if cfg["task"] == "segment":
         try:
             metrics["mask_precision"] = float(results.seg.mp)
             metrics["mask_recall"] = float(results.seg.mr)
-            metrics["mask_mAP50"] = float(results.seg.mAP50)
-            metrics["mask_mAP50-95"] = float(results.seg.mAP50_95)
+            metrics["mask_mAP50"] = float(results.seg.map50)
+            metrics["mask_mAP75"] = float(results.seg.map75)
+            metrics["mask_mAP50-95"] = float(results.seg.map)
         except Exception as e:
             print(f"seg metric error: {e}")
-    # Per-class
+    # Per-class — box metrics for all tasks, mask metrics for segment
     try:
         names = results.names
         per_class = {}
         for i, n in names.items():
-            per_class[n] = {
+            entry = {
                 "P": float(results.box.p[i]) if i < len(results.box.p) else None,
                 "R": float(results.box.r[i]) if i < len(results.box.r) else None,
                 "mAP50": float(results.box.ap50[i]) if i < len(results.box.ap50) else None,
                 "mAP50-95": float(results.box.ap[i]) if i < len(results.box.ap) else None,
             }
+            if cfg["task"] == "segment":
+                entry["mask_P"] = float(results.seg.p[i]) if i < len(results.seg.p) else None
+                entry["mask_R"] = float(results.seg.r[i]) if i < len(results.seg.r) else None
+                entry["mask_mAP50"] = float(results.seg.ap50[i]) if i < len(results.seg.ap50) else None
+                entry["mask_mAP50-95"] = float(results.seg.ap[i]) if i < len(results.seg.ap) else None
+            per_class[n] = entry
         metrics["per_class"] = per_class
     except Exception as e:
         print(f"per-class error: {e}")
@@ -232,10 +243,17 @@ def main():
     # Print summary table
     print(f"\n{'='*80}")
     print("SUMMARY: v4_recipe test set evaluation")
-    print(f"{'='*80}")
-    print(f"{'Model':<12} {'mAP50':>8} {'mAP50-95':>10} {'P':>8} {'R':>8} {'Size(MB)':>10} {'Params':>12} {'Inf(ms)':>8}")
+    print(f"{'='*90}")
+    print(f"{'Model':<18} {'mAP50':>7} {'mAP75':>7} {'mAP50-95':>9} {'P':>7} {'R':>7} {'Size(MB)':>9} {'Params':>11} {'Inf(ms)':>8}")
     for key, m in all_metrics.items():
-        print(f"{key:<12} {m.get('mAP50',0):>8.3f} {m.get('mAP50-95',0):>10.3f} {m.get('precision',0):>8.3f} {m.get('recall',0):>8.3f} {m.get('model_size_MB',0):>10.1f} {m.get('params',0):>12,} {m.get('inference_ms',0):>8.1f}")
+        print(f"{key:<18} {m.get('mAP50',0):>7.3f} {m.get('mAP75',0):>7.3f} {m.get('mAP50-95',0):>9.3f} {m.get('precision',0):>7.3f} {m.get('recall',0):>7.3f} {m.get('model_size_MB',0):>9.1f} {m.get('params',0):>11,} {m.get('inference_ms',0):>8.1f}")
+    # Mask summary for segmentation models
+    seg_models = {k: m for k, m in all_metrics.items() if "mask_mAP50" in m}
+    if seg_models:
+        print(f"\n--- Mask (M) metrics for segmentation models ---")
+        print(f"{'Model':<18} {'mAP50':>7} {'mAP75':>7} {'mAP50-95':>9} {'P':>7} {'R':>7}")
+        for key, m in seg_models.items():
+            print(f"{key:<18} {m.get('mask_mAP50',0):>7.3f} {m.get('mask_mAP75',0):>7.3f} {m.get('mask_mAP50-95',0):>9.3f} {m.get('mask_precision',0):>7.3f} {m.get('mask_recall',0):>7.3f}")
     print(f"\nFailure cases saved to: {FAIL_DIR}")
     print(f"Metrics saved to: {OUT}")
 
