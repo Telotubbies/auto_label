@@ -154,10 +154,27 @@ def eval_onnx(key, cfg, onnx_path):
     return metrics
 
 def extract_metrics(results, task):
+    """Extract box (B) and, for segment tasks, mask (M) metrics.
+
+    Uses the current Ultralytics API: results.box.map, .map50, .map75,
+    .mp, .mr, .p[i], .r[i], .ap50[i], .ap[i]; same shape on results.seg
+    for segmentation. See ultralytics/utils/metrics.py and the val mode
+    docs for the property names.
+    """
     metrics = {}
+    # Box (B) mean metrics — use Ultralytics' own aggregated values
     try:
-        pc = {}
+        metrics["precision"] = float(results.box.mp)
+        metrics["recall"] = float(results.box.mr)
+        metrics["mAP50"] = float(results.box.map50)
+        metrics["mAP75"] = float(results.box.map75)
+        metrics["mAP50-95"] = float(results.box.map)
+    except Exception as e:
+        print(f"box metric error: {e}")
+    # Box (B) per-class metrics
+    try:
         names = results.names
+        pc = {}
         for i, n in names.items():
             pc[n] = {
                 "P": float(results.box.p[i]) if i < len(results.box.p) else None,
@@ -165,34 +182,36 @@ def extract_metrics(results, task):
                 "mAP50": float(results.box.ap50[i]) if i < len(results.box.ap50) else None,
                 "mAP50-95": float(results.box.ap[i]) if i < len(results.box.ap) else None,
             }
-        maps = [v["mAP50"] for v in pc.values() if v.get("mAP50") is not None]
-        map95 = [v["mAP50-95"] for v in pc.values() if v.get("mAP50-95") is not None]
-        ps = [v["P"] for v in pc.values() if v.get("P") is not None]
-        rs = [v["R"] for v in pc.values() if v.get("R") is not None]
-        metrics["mAP50"] = sum(maps)/len(maps) if maps else 0
-        metrics["mAP50-95"] = sum(map95)/len(map95) if map95 else 0
-        metrics["precision"] = sum(ps)/len(ps) if ps else 0
-        metrics["recall"] = sum(rs)/len(rs) if rs else 0
         metrics["per_class"] = pc
     except Exception as e:
-        print(f"metric error: {e}")
-    try:
-        speed = results.speed
-        metrics["inference_ms"] = float(speed.get("inference", 0))
-    except Exception:
-        pass
+        print(f"per-class box error: {e}")
+    # Mask (M) metrics for segmentation
     if task == "segment":
+        try:
+            metrics["mask_precision"] = float(results.seg.mp)
+            metrics["mask_recall"] = float(results.seg.mr)
+            metrics["mask_mAP50"] = float(results.seg.map50)
+            metrics["mask_mAP75"] = float(results.seg.map75)
+            metrics["mask_mAP50-95"] = float(results.seg.map)
+        except Exception as e:
+            print(f"mask mean metric error: {e}")
         try:
             seg_pc = {}
             for i, n in names.items():
                 seg_pc[n] = {
                     "P": float(results.seg.p[i]) if i < len(results.seg.p) else None,
                     "R": float(results.seg.r[i]) if i < len(results.seg.r) else None,
-                    "mAP50": float(results.seg.mAP50) if hasattr(results.seg, 'mAP50') else None,
+                    "mAP50": float(results.seg.ap50[i]) if i < len(results.seg.ap50) else None,
+                    "mAP50-95": float(results.seg.ap[i]) if i < len(results.seg.ap) else None,
                 }
             metrics["mask_per_class"] = seg_pc
         except Exception as e:
-            print(f"seg metric error: {e}")
+            print(f"per-class mask error: {e}")
+    try:
+        speed = results.speed
+        metrics["inference_ms"] = float(speed.get("inference", 0))
+    except Exception:
+        pass
     return metrics
 
 def main():
@@ -219,15 +238,24 @@ def main():
     with open(EVAL_OUT / "all_comparison.json", "w") as f:
         json.dump(all_results, f, indent=2, default=str)
     # Print comparison table
-    print(f"\n{'='*90}")
-    print("COMPARISON: PyTorch vs ONNX (GPU)")
-    print(f"{'='*90}")
-    print(f"{'Model':<12} {'Engine':<8} {'mAP50':>8} {'mAP50-95':>10} {'P':>8} {'R':>8} {'Size(MB)':>10} {'Lat(ms)':>8}")
-    print("-"*90)
+    print(f"\n{'='*100}")
+    print("COMPARISON: PyTorch vs ONNX (GPU) — Box (B) metrics")
+    print(f"{'='*100}")
+    print(f"{'Model':<18} {'Engine':<8} {'mAP50':>7} {'mAP75':>7} {'mAP50-95':>9} {'P':>7} {'R':>7} {'Size(MB)':>9} {'Lat(ms)':>8}")
+    print("-"*100)
     for key, r in all_results.items():
         for engine in ["pytorch", "onnx"]:
             m = r[engine]
-            print(f"{key:<12} {engine:<8} {m.get('mAP50',0):>8.3f} {m.get('mAP50-95',0):>10.3f} {m.get('precision',0):>8.3f} {m.get('recall',0):>8.3f} {m.get('model_size_MB',0):>10.1f} {m.get('latency_ms',0):>8.1f}")
+            print(f"{key:<18} {engine:<8} {m.get('mAP50',0):>7.3f} {m.get('mAP75',0):>7.3f} {m.get('mAP50-95',0):>9.3f} {m.get('precision',0):>7.3f} {m.get('recall',0):>7.3f} {m.get('model_size_MB',0):>9.1f} {m.get('latency_ms',0):>8.1f}")
+    # Mask (M) metrics for segmentation models
+    seg_models = {k: r for k, r in all_results.items() if "mask_mAP50" in r.get("pytorch", {})}
+    if seg_models:
+        print(f"\n--- Mask (M) metrics for segmentation models ---")
+        print(f"{'Model':<18} {'Engine':<8} {'mAP50':>7} {'mAP75':>7} {'mAP50-95':>9} {'P':>7} {'R':>7}")
+        for key, r in seg_models.items():
+            for engine in ["pytorch", "onnx"]:
+                m = r[engine]
+                print(f"{key:<18} {engine:<8} {m.get('mask_mAP50',0):>7.3f} {m.get('mask_mAP75',0):>7.3f} {m.get('mask_mAP50-95',0):>9.3f} {m.get('mask_precision',0):>7.3f} {m.get('mask_recall',0):>7.3f}")
     print(f"\nResults saved to: {EVAL_OUT}")
 
 if __name__ == "__main__":
