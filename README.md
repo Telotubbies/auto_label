@@ -154,92 +154,26 @@ python -m pip install questionary rich pytest ruff mypy
 
 ## Quick start
 
-### 1. Inspect the environment
+> **Entry point:** `./auto_label.sh` is the recommended way to run the pipeline. It handles environment detection, ROCm setup, and launches the interactive CLI. For a fresh machine, run `./setup.sh` first to create the venv and download the SAM checkpoint.
+
+### One-shot setup + launch (fresh machine)
 
 ```bash
-cd sam3_auto_label
-python setup.py --check
+./setup.sh                    # setup env + launch pipeline interactively
+./setup.sh --check-only       # inspect hardware only, install nothing
+./setup.sh --no-launch        # setup only, do not launch
+./setup.sh -- --sam --batch blurred  # setup then run SAM on a batch
 ```
 
-### 2. Create the SAM environment
+`setup.sh` finds a Python interpreter, runs `sam3_auto_label/setup.py` (creates `sam3_venv`, installs PyTorch, downloads the SAM checkpoint after asking), then launches `auto_label.sh`.
+
+### Run the pipeline
 
 ```bash
-python setup.py
-```
-
-`setup.py` creates `sam3_auto_label/sam3_venv`, installs the hardware-specific PyTorch build and non-torch requirements, and downloads the checkpoint. The SAM source and BPE tokenizer asset are vendored under `sam3_auto_label/sam3/`; direct execution must include that directory in `PYTHONPATH`.
-
-### 3. Align the checkpoint path
-
-The current setup script downloads the model to:
-
-```text
-sam3_auto_label/models/sam3/sam3.1_multiplex.pt
-```
-
-The runtime expects:
-
-```text
-sam3_auto_label/checkpoints/sam3.1_multiplex.pt
-```
-
-On Linux/WSL2, create a link after setup:
-
-```bash
-mkdir -p checkpoints
-ln -s ../models/sam3/sam3.1_multiplex.pt checkpoints/sam3.1_multiplex.pt
-```
-
-If links are not appropriate for the environment, place the checkpoint at the runtime path by another controlled deployment step.
-
-### 4. Run a SAM batch directly
-
-From `sam3_auto_label/`:
-
-```bash
-PYTHONPATH=src:sam3 sam3_venv/bin/python src/batch_segment.py \
-  --config config/ppe_6class.yaml \
-  --input ../data/raw/<batch> \
-  --output ../data/sam_outputs_ground_truth/<batch> \
-  --fresh
-```
-
-Windows interpreter path:
-
-```powershell
-$env:PYTHONPATH = "src;sam3"
-sam3_venv\Scripts\python.exe src\batch_segment.py `
-  --config config\ppe_6class.yaml `
-  --input ..\data\raw\<batch> `
-  --output ..\data\sam_outputs_ground_truth\<batch> `
-  --fresh
-```
-
-Use `--resume` instead of `--fresh` to continue a checkpointed run.
-
-## Operating workflows
-
-### Repository-level CLI
-
-The wrapper is intended for the repository's configured WSL2 environment. It does **not** use the `sam3_auto_label/sam3_venv` path created by the Quick Start: both the wrapper and `pipeline_cli.py` expect `/opt/sam3_venv/bin/python` for SAM execution. Provision that interpreter path explicitly before using repository-level SAM mode. `YOLO_PYTHON` can override the wrapper/YOLO interpreter, but it does not override the `SAM_PYTHON` constant inside `pipeline_cli.py`.
-
-```bash
-./auto_label.sh
-```
-
-Direct examples using valid model keys:
-
-```bash
-# Preview without executing
-./auto_label.sh --dry-run --yolo --model small_detection
-
-# Auto-label one raw-image batch
-./auto_label.sh --sam --batch blurred --resume
-
-# Train selected YOLO models
+./auto_label.sh                          # interactive mode (dropdowns)
+./auto_label.sh --dry-run --yolo --model small_detection  # preview
+./auto_label.sh --sam --batch blurred --resume            # SAM auto-label
 ./auto_label.sh --yolo --model nano_detection,small_detection --stage 12
-
-# Run production prediction
 ./auto_label.sh --pred --batch blurred --model small_detection \
   --conf 0.25 --iou 0.45 --imgsz 640
 ```
@@ -251,7 +185,34 @@ Valid model keys:
 - `nano_segmentation`
 - `small_segmentation`
 
-The root CLI currently hard-codes the repository root as `/mnt/e/02_Projects/auto_label` and the SAM interpreter as `/opt/sam3_venv/bin/python`. For another machine or layout, use the module-level commands or update deployment configuration deliberately before relying on the wrapper.
+### Manual SAM batch (advanced)
+
+For direct SAM execution without the wrapper, from `sam3_auto_label/`:
+
+```bash
+PYTHONPATH=src:sam3 sam3_venv/bin/python src/batch_segment.py \
+  --config config/ppe_6class.yaml \
+  --input ../data/raw/<batch> \
+  --output ../data/sam_outputs_ground_truth/<batch> \
+  --fresh
+```
+
+Use `--resume` instead of `--fresh` to continue a checkpointed run.
+
+### Checkpoint path
+
+`setup.py` downloads to `models/sam3/sam3.1_multiplex.pt`; the runtime expects `checkpoints/sam3.1_multiplex.pt`. Create a symlink after setup:
+
+```bash
+mkdir -p checkpoints
+ln -s ../models/sam3/sam3.1_multiplex.pt checkpoints/sam3.1_multiplex.pt
+```
+
+## Operating workflows
+
+### YOLO pipeline stages
+
+The root CLI resolves the repository root and SAM interpreter at runtime, supporting both WSL2 and Windows. `YOLO_PYTHON` and `SAM_PYTHON` environment variables can override the interpreters if needed.
 
 ### YOLO pipeline stages
 
