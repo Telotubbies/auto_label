@@ -70,16 +70,18 @@ Detailed diagrams and design rationale are available in [docs/architecture/syste
 
 ## Key results
 
-The following values come from the current canonical evaluation artifact: [`yolo26_ppe/reports/inputs/final_eval_results.json`](yolo26_ppe/reports/inputs/final_eval_results.json).
+The following values come from the current canonical evaluation artifact: [`yolo26_ppe/reports/inputs/final_eval_results.json`](yolo26_ppe/reports/inputs/final_eval_results.json). Segmentation models report both box (B) and mask (M) metrics, as required by the Ultralytics segmentation validation contract.
 
-| Model | Task | Precision | Recall | Box mAP50 | Box mAP50-95 |
-|---|---:|---:|---:|---:|---:|
-| YOLO26n | Detection | 0.777 | 0.665 | 0.712 | 0.514 |
-| **YOLO26s** | **Detection** | **0.862** | **0.758** | **0.808** | **0.644** |
-| YOLO26n-seg | Segmentation | 0.720 | 0.522 | 0.547 | 0.365 |
-| YOLO26s-seg | Segmentation | 0.824 | 0.606 | 0.654 | 0.485 |
+| Model | Task | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---:|---:|---:|---:|
+| YOLO26n | Detection (B) | 0.777 | 0.665 | 0.712 | 0.514 |
+| **YOLO26s** | **Detection (B)** | **0.862** | **0.758** | **0.808** | **0.644** |
+| YOLO26n-seg | Segmentation (B) | 0.720 | 0.522 | 0.547 | 0.365 |
+| YOLO26n-seg | Segmentation (M) | 0.659 | 0.466 | 0.491 | 0.277 |
+| YOLO26s-seg | Segmentation (B) | 0.824 | 0.606 | 0.654 | 0.485 |
+| YOLO26s-seg | Segmentation (M) | 0.758 | 0.524 | 0.555 | 0.340 |
 
-**Current conclusion:** YOLO26s detection has the strongest reported box accuracy. The project target of `mAP50 >= 0.85` was not achieved; dataset size, rare-class coverage, and label consistency remain the primary constraints.
+**Current conclusion:** YOLO26s detection has the strongest reported box accuracy. The project target of `mAP50 >= 0.85` was not achieved; dataset size, rare-class coverage, and label consistency remain the primary constraints. For segmentation models, mask (M) metrics are lower than box (B) metrics across all models, which is expected because mask IoU is stricter than box IoU.
 
 SAM 3.1 benchmark evidence is stored in [`sam3_benchmark_results.json`](yolo26_ppe/reports/inputs/sam3_benchmark_results.json): 92 test images, approximately `2755 ms/image`, `0.36 FPS`, and a `3340 MB` model artifact. Historical reports may contain results from earlier runs; use the linked JSON artifacts as the source of truth for the values shown in this README.
 
