@@ -482,8 +482,11 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
             boxes_keep = _to_float32(boxes)[keep_indices] if boxes is not None else None
 
             if masks is not None:
-                masks_f32 = _to_float32(masks)[keep_indices]
-                masks_bool = masks_f32 > 0.5
+                # Sam3Processor._forward_grounding already binarizes via
+                # `state["masks"] = out_masks > 0.5`, so output["masks"] is
+                # already bool. We only need to cast dtype (in case of bf16
+                # output under autocast) and squeeze the channel dim if present.
+                masks_bool = _to_float32(masks)[keep_indices].bool()
                 if masks_bool.ndim > 3:
                     masks_bool = masks_bool.squeeze(1)
             else:
