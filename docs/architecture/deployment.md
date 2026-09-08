@@ -7,9 +7,9 @@ status: "Verified"
 
 # 17 — Deployment
 
-> การ deploy pipeline ด้วย Docker
+> Deploying the pipeline with Docker
 >
-> **Status**: Verified — สอบกับ `Dockerfile`, `docker-compose.yml`, `setup.py`
+> **Status**: Verified — cross-checked against `Dockerfile`, `docker-compose.yml`, `setup.py`
 
 ---
 
@@ -28,7 +28,7 @@ start
 :Detect OS;
 :Detect GPU\nCUDA/ROCm/MPS/CPU;
 :Create venv\nsam3_venv;
-:Install PyTorch\nตาม GPU type;
+:Install PyTorch\nbased on GPU type;
 :Install requirements.txt;
 :Download SAM 3.1 checkpoint\nfrom HuggingFace;
 :Verify PyTorch\nshort subprocess;
@@ -36,7 +36,7 @@ stop
 @enduml
 ```
 
-| ขั้นตอน | รายละเอียด |
+| Step | Details |
 |---------|-----------|
 | Hardware detect | `HardwareInfo` class — OS, RAM, GPU, VRAM |
 | Venv | `sam3_auto_label/sam3_venv` |
@@ -48,52 +48,52 @@ stop
 
 ### ⚠️ Checkpoint Path Inconsistency
 
-| ที่ | Path |
+| Location | Path |
 |----|------|
-| `setup.py:35` ดาวน์โหลดไป | `models/sam3/sam3.1_multiplex.pt` |
-| `config.py:112-113` มองหา | `checkpoints/sam3.1_multiplex.pt` |
-| `README.md:14` อ้างถึง | `checkpoints/` |
-| `docker-compose.yml` อ้างถึง | `./checkpoints` |
+| `setup.py:35` downloads to | `models/sam3/sam3.1_multiplex.pt` |
+| `config.py:112-113` looks for | `checkpoints/sam3.1_multiplex.pt` |
+| `README.md:14` references | `checkpoints/` |
+| `docker-compose.yml` references | `./checkpoints` |
 
-**ต้องย้ายไฟล์หรือ symlink ด้วยตนเองหลัง setup**
+**Must manually move or symlink the file after setup**
 
 ---
 
-## สิ่งที่ระบบทั่วไปมักมี (แต่โค้ดนี้ไม่มี)
+## What Typical Systems Usually Have (but this code does not)
 
 ### ❌ API Server Deployment
 
-แนวทางทั่วไป:
+Typical approach:
 ```
 User → API Server → Job Queue → GPU Worker → Annotation Storage
 ```
 
-**โค้ดจริง**: batch CLI — ไม่มี API server, ไม่มี job queue, ไม่มี worker pool (มีแค่ ThreadPoolExecutor ภายใน)
+**Actual code**: batch CLI — no API server, no job queue, no worker pool (only an internal ThreadPoolExecutor)
 
 ### ❌ Health Check
 
-ไม่มี HEALTHCHECK ใน Dockerfile — ไม่เหมาะสำหรับ long-running service (แต่ระบบนี้เป็น batch ไม่ใช่ service)
+No HEALTHCHECK in Dockerfile — not suitable for long-running services (but this system is a batch process, not a service)
 
 ### ❌ Monitoring / Alerting
 
-ไม่มี Prometheus metrics, ไม่มี log aggregation, ไม่มี alerting
+No Prometheus metrics, no log aggregation, no alerting
 
 ---
 
-## ความเสี่ยงด้าน Deployment
+## Deployment Risks
 
-| ความเสี่ยง | ระดับ | หมายเหตุ |
+| Risk | Level | Note |
 |-----------|-------|---------|
-| Checkpoint path ไม่ตรง | สูง | setup.py ลงที่ `models/sam3/` แต่ config มองที่ `checkpoints/` |
-| ไม่มี health check | กลาง | ถ้าใช้เป็น service (ไม่ใช่กรณีปัจจุบัน) |
-| ไม่มี resource limits | กลาง | Docker ไม่ได้ตั้ง memory/CPU limits |
-| Model 3.34 GB ต้องดาวน์โหลดทุกครั้ง | กลาง | ไม่ได้ bake เข้า image — ใช้ volume mount |
+| Checkpoint path mismatch | High | setup.py installs to `models/sam3/` but config looks in `checkpoints/` |
+| No health check | Medium | If used as a service (not the current case) |
+| No resource limits | Medium | Docker does not set memory/CPU limits |
+| 3.34 GB model downloaded each time | Medium | Not baked into image — uses volume mount |
 
 ---
 
-## อ้างอิง
+## References
 
 - `Dockerfile:1-77`
 - `docker-compose.yml:1-91`
 - `setup.py:1-405`
-- `run_pipeline.sh:1-51`
+- `auto_label.sh:1-51`

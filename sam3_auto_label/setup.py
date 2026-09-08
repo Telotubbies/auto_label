@@ -6,16 +6,19 @@ Detects:
   - RAM / VRAM
 
 Then:
-  1. Creates Python 3.12 venv (if missing)
-  2. Installs correct PyTorch variant
-  3. Installs remaining requirements
-  4. Downloads SAM 3.1 checkpoint (if missing)
-  5. Prints summary
+  1. Locates a compatible Python interpreter (3.10-3.12 preferred; 3.13+
+     supported with upgraded numpy 2.x / torch 2.6+ deps)
+  2. Creates a venv from that interpreter (if missing)
+  3. Installs correct PyTorch variant
+  4. Installs remaining requirements
+  5. Downloads SAM 3.1 checkpoint (if missing)
+  6. Prints summary
 
 Usage:
     python setup.py              # full setup
     python setup.py --check      # just detect and print, no install
     python setup.py --force-cpu  # force CPU-only even if GPU exists
+    python setup.py --no-prompt  # non-interactive: skip download confirmations
 """
 
 import argparse
@@ -34,6 +37,20 @@ VENV_DIR = os.path.join(BASE_DIR, "sam3_venv")
 MODEL_DIR = os.path.join(BASE_DIR, "models", "sam3")
 CKPT_PATH = os.path.join(MODEL_DIR, "sam3.1_multiplex.pt")
 CKPT_URL = "https://huggingface.co/facebook/sam3.1/resolve/main/sam3.1_multiplex.pt"
+
+# ---------------------------------------------------------------------------
+# Python version policy
+# ---------------------------------------------------------------------------
+# Preferred range: 3.10-3.12 (matches pinned deps: numpy==1.26.4, torch==2.5.1).
+# 3.13+ is supported with upgraded deps (numpy>=2.1, torch==2.6.0) but is less
+# tested because SAM3's vendored pyproject.toml declares numpy<2.
+# Sources:
+#   numpy 1.26.4 supports 3.9-3.12 only: https://numpy.org/doc/2.3/release/1.26.4-notes.html
+#   PyTorch 2.6+ supports 3.13: https://github.com/pytorch/pytorch/blob/2c13a07/RELEASE.md
+PY_PREFERRED = (3, 10), (3, 12)   # inclusive range preferred for pinned deps
+PY_MAX = (3, 13)                  # highest minor version we will attempt
+# Interpreter chosen for venv creation; set by find_compatible_python().
+SELECTED_PYTHON = None
 
 # ---------------------------------------------------------------------------
 # Hardware detection
@@ -196,14 +213,155 @@ class HardwareInfo:
         print("=" * 60)
 
     def is_compatible(self):
-        """Check if Python version is compatible (3.10-3.12)."""
+        """Check the *selected* interpreter's version against the policy.
+
+        Returns True when an interpreter in [3.10, 3.13] was located. The
+        preferred range is 3.10-3.12 (pinned deps); 3.13 is allowed with a
+        warning and upgraded dependencies.
+        """
+        global SELECTED_PYTHON
         v = sys.version_info
-        if v < (3, 10) or v >= (3, 13):
-            print(f"\nERROR: Python {v.major}.{v.minor} is not supported.")
-            print("SAM 3.1 requires Python 3.10, 3.11, or 3.12.")
-            print("Please install Python 3.12 and try again.")
+        print(f"\n[CHECK] Current interpreter: Python {v.major}.{v.minor}.{v.micro}")
+        print(f"        {sys.executable}")
+
+        candidate = find_compatible_python()
+        if candidate is None:
+            print("\nERROR: No compatible Python interpreter found.")
+            print(f"  Preferred:  Python {PY_PREFERRED[0][0]}.{PY_PREFERRED[0][1]}-"
+                  f"{PY_PREFERRED[1][0]}.{PY_PREFERRED[1][1]}")
+            print(f"  Acceptable: up to Python {PY_MAX[0]}.{PY_MAX[1]}")
+            print("  Install one of the above and ensure it is on PATH, then rerun.")
+            if not _ARGS.no_prompt:
+                offer_install_python()
             return False
+
+        SELECTED_PYTHON = candidate
+        # Report the chosen interpreter's version.
+        cv = _python_version(candidate)
+        print(f"[OK] Selected interpreter: Python {cv[0]}.{cv[1]} "
+              f"-> {candidate}")
+        if cv > (PY_PREFERRED[1][0], PY_PREFERRED[1][1]):
+            print("  WARNING: Python 3.13+ selected — using upgraded deps "
+                  "(numpy>=2.1, torch==2.6.0).")
+            print("  This path is less tested; SAM3 vendored source declares "
+                  "numpy<2.")
         return True
+
+
+def _python_version(exe):
+    """Return (major, minor) for an interpreter, or (0, 0) on failure."""
+    try:
+        out = subprocess.check_output(
+            [exe, "-c", "import sys; print(sys.version_info[:2])"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        # Output looks like "(3, 12)" or "sys.version_info(major=3, minor=12)"
+        import ast
+        return ast.literal_eval(out)
+    except Exception:
+        return (0, 0)
+
+
+def find_compatible_python():
+    """Locate a Python interpreter in the supported range.
+
+    Preference order:
+      1. Current interpreter (sys.executable) if in preferred range 3.10-3.12.
+      2. Current interpreter if in acceptable range up to 3.13.
+      3. `py` launcher (Windows) / `python3.X` (Linux/macOS) for 3.10-3.12.
+      4. `py` launcher / `python3.13` as a last resort.
+    Returns the executable path or None.
+    """
+    cur = _python_version(sys.executable)
+    lo, hi = PY_PREFERRED
+    if lo <= cur <= hi:
+        return sys.executable
+    if cur <= PY_MAX and cur >= (3, 10):
+        return sys.executable
+
+    # Build candidate list: preferred minors first, then 3.13 as fallback.
+    candidates = []
+    for minor in range(lo[1], hi[1] + 1):
+        candidates.append(f"3.{minor}")
+    candidates.append(f"{PY_MAX[0]}.{PY_MAX[1]}")
+
+    for ver in candidates:
+        exe = _lookup_python(ver)
+        if exe:
+            cv = _python_version(exe)
+            if cv != (0, 0) and (3, 10) <= cv <= PY_MAX:
+                return exe
+    return None
+
+
+def _lookup_python(ver):
+    """Find an executable for a specific `major.minor` version string."""
+    if os.name == "nt":
+        # Windows: py launcher. `py -3.12` prints the path with -0p flag.
+        for launcher in ("py", "py.exe"):
+            if shutil.which(launcher):
+                try:
+                    out = subprocess.check_output(
+                        [launcher, f"-{ver}", "-0p"],
+                        text=True, stderr=subprocess.DEVNULL,
+                    ).strip()
+                    if out:
+                        # First line is the interpreter path.
+                        return out.splitlines()[0].strip()
+                except Exception:
+                    pass
+        # Common install locations as a fallback.
+        for base in (
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Python"),
+            r"C:\Python",
+            r"C:\Program Files\Python311",
+            r"C:\Program Files\Python312",
+        ):
+            cand = os.path.join(base, f"Python{ver.replace('.', '')}",
+                                "python.exe")
+            if os.path.exists(cand):
+                return cand
+    else:
+        # Unix: try python3.X on PATH, then well-known prefixes.
+        for name in (f"python{ver}", f"python{ver[0]}"):
+            path = shutil.which(name)
+            if path:
+                return path
+        for prefix in ("/usr/bin", "/usr/local/bin", "/opt/conda/bin"):
+            cand = os.path.join(prefix, f"python{ver}")
+            if os.path.exists(cand):
+                return cand
+    return None
+
+
+def offer_install_python():
+    """Interactively offer to install a compatible Python (WSL2/Ubuntu)."""
+    print()
+    if os.name == "nt":
+        print("On Windows, install Python 3.12 from:")
+        print("  https://www.python.org/downloads/release/python-3120/")
+        print("Then rerun this setup.")
+        return
+    try:
+        ans = input("Install Python 3.12 via apt now? [y/N] ").strip().lower()
+    except EOFError:
+        return
+    if ans != "y":
+        return
+    print("[SETUP] Installing python3.12 and venv module via apt...")
+    try:
+        subprocess.check_call(
+            ["sudo", "apt-get", "update", "-y"], stderr=subprocess.DEVNULL
+        )
+        subprocess.check_call(
+            ["sudo", "apt-get", "install", "-y",
+             "python3.12", "python3.12-venv", "python3-pip"],
+            stderr=subprocess.DEVNULL,
+        )
+        print("[OK] Python 3.12 installed. Rerun setup to continue.")
+    except Exception as e:
+        print(f"[ERROR] apt install failed: {e}")
+        print("  Install python3.12 manually and rerun.")
 
 
 # ---------------------------------------------------------------------------
@@ -223,41 +381,55 @@ def get_venv_pip():
 
 
 def create_venv():
-    """Create virtual environment if it doesn't exist."""
+    """Create virtual environment from the selected interpreter if missing."""
     if os.path.exists(get_venv_python()):
         print("[OK] Virtual environment exists")
         return
 
-    print("[SETUP] Creating Python virtual environment...")
-    subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
+    base = SELECTED_PYTHON or sys.executable
+    print(f"[SETUP] Creating Python virtual environment from: {base}")
+    subprocess.check_call([base, "-m", "venv", VENV_DIR])
     print(f"[OK] Created venv: {VENV_DIR}")
 
 
+def _venv_python_version():
+    """Return (major, minor) of the interpreter inside the venv."""
+    return _python_version(get_venv_python())
+
+
 def install_torch(hw: HardwareInfo, force_cpu: bool = False):
-    """Install PyTorch variant matching hardware."""
+    """Install PyTorch variant matching hardware and the venv's Python.
+
+    torch==2.5.1 for Python 3.10-3.12 (pinned, stable for the project).
+    torch==2.6.0 for Python 3.13+ (first release with full 3.13 support).
+    Source: https://github.com/pytorch/pytorch/blob/2c13a07/RELEASE.md
+    """
     pip = get_venv_pip()
     gpu_type = "cpu" if force_cpu else hw.gpu_type
+    pv = _venv_python_version()
+    torch_ver, tv_ver = ("2.5.1", "0.20.1") if pv <= (3, 12) else ("2.6.0", "0.21.0")
 
-    print(f"\n[SETUP] Installing PyTorch ({gpu_type.upper()})...")
+    print(f"\n[SETUP] Installing PyTorch {torch_ver} ({gpu_type.upper()}) "
+          f"for Python {pv[0]}.{pv[1]}...")
 
     if gpu_type == "cuda":
         subprocess.check_call([
-            pip, "install", "torch==2.5.1", "torchvision==0.20.1",
+            pip, "install", f"torch=={torch_ver}", f"torchvision=={tv_ver}",
             "--index-url", "https://download.pytorch.org/whl/cu121"
         ])
     elif gpu_type == "rocm":
         subprocess.check_call([
-            pip, "install", "torch==2.5.1", "torchvision==0.20.1",
+            pip, "install", f"torch=={torch_ver}", f"torchvision=={tv_ver}",
             "--index-url", "https://download.pytorch.org/whl/rocm6.1"
         ])
     elif gpu_type == "mps":
         # macOS arm64: default PyPI build has MPS
         subprocess.check_call([
-            pip, "install", "torch==2.5.1", "torchvision==0.20.1"
+            pip, "install", f"torch=={torch_ver}", f"torchvision=={tv_ver}"
         ])
     else:  # cpu
         subprocess.check_call([
-            pip, "install", "torch==2.5.1", "torchvision==0.20.1",
+            pip, "install", f"torch=={torch_ver}", f"torchvision=={tv_ver}",
             "--index-url", "https://download.pytorch.org/whl/cpu"
         ])
 
@@ -265,9 +437,16 @@ def install_torch(hw: HardwareInfo, force_cpu: bool = False):
 
 
 def install_requirements():
-    """Install remaining requirements (excluding torch, which is already installed)."""
+    """Install remaining requirements (excluding torch, already installed).
+
+    For Python 3.13+ the pinned numpy==1.26.4 (no cp313 wheel) is replaced
+    with numpy>=2.1 which ships cp313 wheels. Source:
+    https://numpy.org/doc/2.3/release/1.26.4-notes.html (3.9-3.12 only)
+    """
     pip = get_venv_pip()
     req_path = os.path.join(BASE_DIR, "requirements.txt")
+    pv = _venv_python_version()
+    is_py313 = pv > (3, 12)
 
     # Read requirements and filter out torch/torchvision (already installed)
     with open(req_path, "r") as f:
@@ -275,6 +454,18 @@ def install_requirements():
     filtered = [l.strip() for l in lines
                 if l.strip() and not l.strip().startswith("#")
                 and not l.strip().lower().startswith("torch")]
+
+    if is_py313:
+        # numpy 1.26.4 has no cp313 wheel; upgrade to 2.x.
+        upgraded = []
+        for line in filtered:
+            if line.lower().startswith("numpy=="):
+                upgraded.append("numpy>=2.1")
+            else:
+                upgraded.append(line)
+        filtered = upgraded
+        print("  [INFO] Python 3.13+ detected: using numpy>=2.1 "
+              "(1.26.4 has no cp313 wheel).")
 
     # Write temp requirements
     temp_req = os.path.join(BASE_DIR, "requirements_temp.txt")
@@ -288,18 +479,29 @@ def install_requirements():
 
 
 def download_checkpoint():
-    """Download SAM 3.1 checkpoint if missing."""
+    """Download SAM 3.1 checkpoint if missing, asking the user first."""
     if os.path.exists(CKPT_PATH):
         size_gb = round(os.path.getsize(CKPT_PATH) / (1024**3), 2)
         print(f"[OK] SAM 3.1 checkpoint exists ({size_gb} GB)")
         return
 
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    print(f"\n[SETUP] Downloading SAM 3.1 checkpoint...")
+    print(f"\n[SETUP] SAM 3.1 checkpoint is missing.")
     print(f"  URL: {CKPT_URL}")
     print(f"  To:  {CKPT_PATH}")
-    print(f"  (This may take a while — file is ~1-2 GB)")
-    print()
+    print(f"  Size: ~1-2 GB (this may take a while)")
+
+    if not _ARGS.no_prompt:
+        try:
+            ans = input("\nDownload the checkpoint now? [Y/n] ").strip().lower()
+        except EOFError:
+            ans = "y"
+        if ans in ("n", "no"):
+            print("[SKIP] Checkpoint download skipped.")
+            print(f"  Place it manually at {CKPT_PATH} before running inference.")
+            return
+
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    print("[SETUP] Downloading SAM 3.1 checkpoint...")
 
     try:
         urllib.request.urlretrieve(CKPT_URL, CKPT_PATH)
@@ -342,11 +544,19 @@ else:
 # Main
 # ---------------------------------------------------------------------------
 
+# Parsed CLI args, accessible by helper functions (set in main()).
+_ARGS = argparse.Namespace(no_prompt=False)
+
+
 def main():
+    global _ARGS
     parser = argparse.ArgumentParser(description="Auto-detect hardware and install dependencies")
     parser.add_argument("--check", action="store_true", help="Detect only, no install")
     parser.add_argument("--force-cpu", action="store_true", help="Force CPU-only PyTorch")
-    args = parser.parse_args()
+    parser.add_argument("--no-prompt", action="store_true",
+                        help="Non-interactive: skip download confirmations")
+    _ARGS = parser.parse_args()
+    args = _ARGS
 
     print("PPE Segmentation Platform — Setup")
     print()

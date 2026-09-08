@@ -32,6 +32,10 @@ os.environ.setdefault("HSA_ENABLE_DXG_DETECTION", "1")
 os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Ensure BASE (yolo26_ppe/) is on sys.path so `import focal_patch` resolves
+# regardless of the current working directory.
+if BASE not in sys.path:
+    sys.path.insert(0, BASE)
 
 # MLflow setup
 MLFLOW_DB = os.path.join(BASE, "artifacts", "mlflow", "backend", "mlflow.db")
@@ -129,7 +133,8 @@ def get_stage1_args(batch):
         "box": 7.5,
         "cls": 0.5,
         "dfl": 1.5,
-        # Focal Loss — applied via focal_patch.py monkey-patch (gamma=1.5)
+        # Focal Loss — applied via focal_patch.py monkey-patch (gamma=1.5, alpha=0.25)
+        # focal_patch.py replaces v8DetectionLoss.bce with FocalBCE on import.
         # fl_gamma is NOT a valid Ultralytics arg; logged to MLflow only.
         # Gradient Accumulation — effective batch 64
         "nbs": 64,
@@ -174,7 +179,8 @@ def get_stage2_args(batch):
         "box": 7.5,
         "cls": 0.5,
         "dfl": 1.5,
-        # Focal Loss — applied via focal_patch.py monkey-patch (gamma=1.5)
+        # Focal Loss — applied via focal_patch.py monkey-patch (gamma=1.5, alpha=0.25)
+        # focal_patch.py replaces v8DetectionLoss.bce with FocalBCE on import.
         # fl_gamma is NOT a valid Ultralytics arg; logged to MLflow only.
         # Gradient Accumulation
         "nbs": 64,

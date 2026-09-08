@@ -7,9 +7,9 @@ status: "Verified"
 
 # 01 — Requirements
 
-> ความต้องการของระบบ — hardware, software, dependencies
+> System requirements — hardware, software, dependencies
 >
-> **Status**: Verified — สอบกับ `setup.py`, `requirements.txt`, `Dockerfile`
+> **Status**: Verified — verified against `setup.py`, `requirements.txt`, `Dockerfile`
 
 ---
 
@@ -17,12 +17,12 @@ status: "Verified"
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| GPU | ไม่บังคับ (CPU ได้) | NVIDIA 8GB+ VRAM หรือ AMD ROCm 16GB+ |
+| GPU | Optional (CPU supported) | NVIDIA 8GB+ VRAM or AMD ROCm 16GB+ |
 | RAM | 8 GB | 16 GB+ |
-| Disk | 5 GB (model 3.34 GB + deps) | 10 GB+ (รวม output) |
+| Disk | 5 GB (model 3.34 GB + deps) | 10 GB+ (including output) |
 | OS | Linux, Windows (WSL2), macOS | Linux/WSL2 (ROCm) |
 
-### GPU ที่รองรับ
+### Supported GPUs
 
 ```plantuml {align="center"}
 @startuml
@@ -43,7 +43,7 @@ rectangle "Apple" as apple {
   rectangle "MPS" as mps
 }
 rectangle "Any" as any {
-  rectangle "CPU\n(ช้ามาก)" as cpu
+  rectangle "CPU\n(very slow)" as cpu
 }
 
 nvidia --> cuda : torch==2.5.1+cu121
@@ -53,18 +53,18 @@ any --> cpu : torch==2.5.1+cpu
 @enduml
 ```
 
-> ที่มา: `setup.py:95-178`, `Dockerfile:1-77`
+> Source: `setup.py:95-178`, `Dockerfile:1-77`
 
 ---
 
 ## Software Requirements
 
-| Software | Version | ที่มา |
+| Software | Version | Source |
 |----------|---------|-------|
 | Python | 3.12 | `Dockerfile`, `setup.py` |
-| PyTorch | 2.5.1 | `setup.py` (ติดตั้งแยกตาม GPU) |
+| PyTorch | 2.5.1 | `setup.py` (installed separately per GPU) |
 | torchvision | 0.20.1 | `setup.py` |
-| Git | ใด ๆ | `tracker.py` เรียก `git rev-parse` |
+| Git | any | `tracker.py` calls `git rev-parse` |
 
 ---
 
@@ -74,48 +74,48 @@ any --> cpu : torch==2.5.1+cpu
 
 @import "../sam3_auto_label/requirements.txt" {title="requirements.txt"}
 
-> PyTorch ถูกติดตั้งแยกจาก `requirements.txt` เพราะต้องเลือก index URL ตาม GPU
+> PyTorch is installed separately from `requirements.txt` because the index URL must be selected based on the GPU
 
 ### Vendored SAM 3.1
 
-- โฟลเดอร์ `sam3/` คือ source code ของ SAM 3.1 ที่ vendored ไว้ใน repo
-- **ห้ามแก้** (`README.md:73`)
-- import เป็น `sam3.model_builder`, `sam3.model.sam3_image_processor`, `sam3.eval.postprocessors`, `sam3.perflib.*`
+- The `sam3/` folder is the SAM 3.1 source code vendored into the repo
+- **Do not modify** (`README.md:73`)
+- Imported as `sam3.model_builder`, `sam3.model.sam3_image_processor`, `sam3.eval.postprocessors`, `sam3.perflib.*`
 
 ### Parent repo CLI (`pipeline_cli.py`)
 
-| Package | หน้าที่ |
+| Package | Purpose |
 |---------|---------|
 | `questionary` | interactive prompts |
 | `rich` | terminal formatting |
 
-> ไม่อยู่ใน `sam3_auto_label/requirements.txt` — ติดตั้งใน venv ระดับ repo root
+> Not included in `sam3_auto_label/requirements.txt` — installed in the repo-root-level venv
 
 ---
 
 ## Model Checkpoint
 
-| รายการ | ค่า |
+| Item | Value |
 |--------|-----|
 | Checkpoint | `sam3.1_multiplex.pt` |
-| ขนาด | $3340 \text{ MB} \approx 3.34 \text{ GB}$ |
+| Size | $3340 \text{ MB} \approx 3.34 \text{ GB}$ |
 | URL | `https://huggingface.co/facebook/sam3.1/resolve/main/sam3.1_multiplex.pt` |
-| ที่เก็บ (runtime) | `sam3_auto_label/checkpoints/sam3.1_multiplex.pt` |
+| Storage location (runtime) | `sam3_auto_label/checkpoints/sam3.1_multiplex.pt` |
 
-> **⚠️ Known issue**: `setup.py:35` ดาวน์โหลดไป `models/sam3/` แต่ `config.py:112-113` มองหาที่ `checkpoints/` — ต้องย้ายไฟล์หรือ symlink ด้วยตนเองหลัง setup
+> **⚠️ Known issue**: `setup.py:35` downloads to `models/sam3/` but `config.py:112-113` looks in `checkpoints/` — the file must be moved or symlinked manually after setup
 
 ---
 
-## ข้อกำหนดเชิงฟังก์ชัน (Functional Requirements)
+## Functional Requirements
 
 ### RQ1 — SAM 3.1 Auto-Labeling
 
-| ID | ข้อกำหนด | สถานะ |
+| ID | Requirement | Status |
 |----|---------|-------|
-| FR-01 | รัน batch segmentation บนโฟลเดอร์ภาพ | ✅ |
-| FR-02 | รองรับ text prompt หลายคลาส | ✅ (6 คลาส) |
-| FR-03 | สร้าง bounding box + segmentation mask | ✅ |
-| FR-04 | Export 11 ฟอร์แมต | ✅ |
+| FR-01 | Run batch segmentation on an image folder | ✅ |
+| FR-02 | Support multi-class text prompts | ✅ (6 classes) |
+| FR-03 | Generate bounding box + segmentation mask | ✅ |
+| FR-04 | Export to 11 formats | ✅ |
 | FR-05 | Checkpoint/resume | ✅ |
 | FR-06 | Experiment tracking | ✅ (SQLite) |
 | FR-07 | Visualization overlay | ✅ |
@@ -123,62 +123,62 @@ any --> cpu : torch==2.5.1+cpu
 
 ### RQ2 — YOLO26 Training
 
-| ID | ข้อกำหนด | สถานะ |
+| ID | Requirement | Status |
 |----|---------|-------|
-| FR-10 | เทรน YOLO26 4 รุ่น (n/s detect + n/s seg) | ✅ (300 epochs) |
-| FR-11 | Dataset preparation จาก ground truth | ✅ (v1, v2) |
+| FR-10 | Train 4 YOLO26 variants (n/s detect + n/s seg) | ✅ (300 epochs) |
+| FR-11 | Dataset preparation from ground truth | ✅ (v1, v2) |
 | FR-12 | MLflow experiment tracking | ✅ |
 | FR-13 | Hyperparameter tuning | ✅ (3 trials × 4 models) |
 | FR-14 | ONNX export | ✅ |
-| FR-15 | รายงานเปรียบเทียบ (PDF) | ✅ (`report.pdf`) |
+| FR-15 | Comparison report (PDF) | ✅ (`report.pdf`) |
 | FR-16 | Class balancing (oversampling) | ✅ (sandals, harness) |
 
 ### RQ3 — Ground Truth Generation
 
-| ID | ข้อกำหนด | สถานะ |
+| ID | Requirement | Status |
 |----|---------|-------|
-| FR-20 | สร้าง ground truth จาก SAM 3.1 output | ✅ |
+| FR-20 | Generate ground truth from SAM 3.1 output | ✅ |
 | FR-21 | Human verification | ✅ (manual) |
-| FR-22 | Dataset versioning | ✅ (v1, v2 ใน `yolo26_ppe/data/`) |
+| FR-22 | Dataset versioning | ✅ (v1, v2 in `yolo26_ppe/data/`) |
 | FR-23 | Train/val/test split | ✅ (335/95/50) |
 
-### ไม่ได้ทำ
+### Not Implemented
 
-| ID | ข้อกำหนด | สถานะ |
+| ID | Requirement | Status |
 |----|---------|-------|
-| FR-30 | REST API | ❌ ไม่มีในโค้ด |
-| FR-31 | Human review queue อัตโนมัติ | ❌ ทำ manual |
-| FR-32 | Multi-model agreement (ensemble) | ❌ เปรียบเทียบในรายงานเท่านั้น |
-| FR-33 | mAP50 ≥ 0.85 target | ❌ ไม่บรรลุ (dataset จำกัด) |
+| FR-30 | REST API | ❌ Not in code |
+| FR-31 | Automated human review queue | ❌ Done manually |
+| FR-32 | Multi-model agreement (ensemble) | ❌ Compared in report only |
+| FR-33 | mAP50 ≥ 0.85 target | ❌ Not achieved (limited dataset) |
 
-## ข้อกำหนดเชิงไม่ใช่ฟังก์ชัน (Non-functional)
+## Non-functional Requirements
 
 ### RQ1 — SAM 3.1
 
-| ID | ข้อกำหนด | สถานะ |
+| ID | Requirement | Status |
 |----|---------|-------|
-| NFR-01 | throughput $\geq 0.3$ FPS บน GPU | ✅ (~0.36 FPS บน test set) |
-| NFR-02 | รันได้บน CPU (ช้า) | ✅ |
-| NFR-03 | ไม่เสียข้อมูลเมื่อคอมดับ | ✅ (checkpoint) |
+| NFR-01 | throughput $\geq 0.3$ FPS on GPU | ✅ (~0.36 FPS on test set) |
+| NFR-02 | Runs on CPU (slow) | ✅ |
+| NFR-03 | No data loss on power failure | ✅ (checkpoint) |
 | NFR-04 | reproducible config | ✅ (config_hash) |
-| NFR-05 | retry ภาพที่ล้มเหลว | ❌ ไม่มี |
-| NFR-06 | GPU OOM recovery | ❌ ไม่มี |
+| NFR-05 | retry failed images | ❌ Not implemented |
+| NFR-06 | GPU OOM recovery | ❌ Not implemented |
 
 ### RQ2 — YOLO26
 
-| ID | ข้อกำหนด | สถานะ |
+| ID | Requirement | Status |
 |----|---------|-------|
 | NFR-10 | Training reproducible (seed=42) | ✅ |
-| NFR-11 | Inference $\leq 35$ ms ทุกโมเดล | ✅ (30.8–33.8 ms) |
+| NFR-11 | Inference $\leq 35$ ms for all models | ✅ (30.8–33.8 ms) |
 | NFR-12 | Model size $\leq 50$ MB | ✅ (10–42 MB) |
-| NFR-13 | ONNX export สำหรับ deployment | ✅ |
-| NFR-14 | mAP50 ≥ 0.85 | ❌ สูงสุด 0.808 (s_detect) |
+| NFR-13 | ONNX export for deployment | ✅ |
+| NFR-14 | mAP50 ≥ 0.85 | ❌ Max 0.808 (s_detect) |
 
 ---
 
 ## YOLO26 Training Hardware
 
-| Component | ค่าที่ใช้ |
+| Component | Value Used |
 |-----------|---------|
 | GPU | AMD RX 7800 XT (ROCm, WSL2) |
 | Framework | Ultralytics YOLO26 + PyTorch 2.5.1+rocm6.1 |
@@ -188,11 +188,11 @@ any --> cpu : torch==2.5.1+cpu
 | Optimizer | SGD (lr0=0.01, lrf=0.01 cosine) |
 | Freeze | 10 (backbone frozen) |
 
-> ที่มา: `yolo26_ppe/reports/source/report.tex:652-677`
+> Source: `yolo26_ppe/reports/source/report.tex:652-677`
 
 ---
 
-## อ้างอิง
+## References
 
 - `sam3_auto_label/requirements.txt:1-23`
 - `sam3_auto_label/setup.py:1-405`

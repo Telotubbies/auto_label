@@ -7,13 +7,13 @@ status: "Verified"
 
 # 09 — Quality Control
 
-> ระบบรู้ได้ยังไงว่า auto-label ที่สร้างขึ้นมันถูก?
+> How does the system know the auto-labels it generates are correct?
 >
-> **Status**: Verified — สอบกับ `src/inference.py`, `src/exporters.py`
+> **Status**: Verified — checked against `src/inference.py`, `src/exporters.py`
 
 ---
 
-## QC ที่มีจริงในโค้ด
+## Actual QC in Code
 
 ```plantuml {align="center"}
 @startuml
@@ -25,13 +25,13 @@ skinparam package {
   BackgroundColor #F0F4FF
 }
 
-package "จริงในโค้ด" {
+package "In Code" {
   [Threshold] --> [NMS]
   [NMS] --> [Clamp]
   [Clamp] --> [Final]
 }
 
-package "แนวทางทั่วไป" #FFF4E5 {
+package "Typical Approach" #FFF4E5 {
   [Threshold] --> [NMS]
   [NMS] --> [Mask Quality]
   [Mask Quality] --> [Class Score]
@@ -41,23 +41,23 @@ package "แนวทางทั่วไป" #FFF4E5 {
 @enduml
 ```
 
-> ระบบจริงมี QC น้อยกว่าแนวทางทั่วไปมาก — พึ่ง threshold + NMS เป็นหลัก
+> The actual system has far less QC than the typical approach — relies primarily on threshold + NMS
 
 ---
 
-## ความเสี่ยงด้านคุณภาพ
+## Quality Risks
 
-| ความเสี่ยง | ระดับ | กลไกที่ช่วย | สิ่งที่ขาด |
+| Risk | Level | Mitigating mechanism | What is missing |
 |-----------|-------|-------------|-----------|
-| Mask ใหญ่เกินไป (ครอบทั้งภาพ) | สูง | — | ไม่มี `max_area_ratio` filter |
-| Mask เล็กเกินไป (1-2 px) | กลาง | tiny component drop (< 3px) | ไม่มี `min_area` filter ที่ configurable |
-| Polygon ผิดรูป | กลาง | Douglas-Peucker | ไม่มี self-intersection check |
-| False positive จาก threshold ต่ำ | สูง | — | ไม่มี review tier |
-| Overlap ระหว่างคลาสคล้ายกัน | กลาง | NMS $\text{IoU}=0.5$ | ถ้า $\text{IoU} < 0.5$ จะเก็บทั้งคู่ |
+| Mask too large (covers entire image) | High | — | No `max_area_ratio` filter |
+| Mask too small (1-2 px) | Medium | tiny component drop (< 3px) | No configurable `min_area` filter |
+| Malformed polygon | Medium | Douglas-Peucker | No self-intersection check |
+| False positive from low threshold | High | — | No review tier |
+| Overlap between similar classes | Medium | NMS $\text{IoU}=0.5$ | if $\text{IoU} < 0.5$ both are kept |
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/inference.py:416-425` — threshold
 - `src/inference.py:189-313` — NMS
@@ -70,26 +70,26 @@ package "แนวทางทั่วไป" #FFF4E5 {
 
 # 10 — Confidence Scoring
 
-> ระบบคำนวณ confidence score ยังไง และใช้ตัดสินใจอะไร
+> How the system calculates confidence scores and what it uses them for
 >
-> **Status**: Verified — สอบกับ `src/inference.py:382-520`
+> **Status**: Verified — checked against `src/inference.py:382-520`
 
 ---
 
-## Confidence Score จริงในโค้ด
+## Actual Confidence Score in Code
 
-### ที่มา
+### Source
 
-Score มาจาก **SAM 3.1 โดยตรง** — เป็น output ของโมเดล ไม่ได้คำนวณเพิ่ม
+Score comes **directly from SAM 3.1** — it is model output, not additionally computed
 
 ```python
-# src/inference.py (สรุปจาก segment_image)
+# src/inference.py (summary from segment_image)
 output = processor.set_text_prompt(state=inference_state, prompt=cat.prompt)
 masks, boxes, scores = output.masks, output.boxes, output.scores
-# scores เป็น float tensor [N] ค่า 0.0–1.0
+# scores is a float tensor [N] with values 0.0–1.0
 ```
 
-### การใช้งาน
+### Usage
 
 ```plantuml {align="center"}
 @startuml
@@ -97,13 +97,13 @@ masks, boxes, scores = output.masks, output.boxes, output.scores
 skinparam linetype ortho
 skinparam backgroundColor #FEFEFE
 
-package "จริงในโค้ด" #E8F0FE {
+package "In Code" #E8F0FE {
   [Score] --> [>= T ?]
   [>= T ?] --> [Annotation]
-  [>= T ?] --> [ทิ้ง]
+  [>= T ?] --> [Discard]
 }
 
-package "แนวทางทั่วไป" #FFF4E5 {
+package "Typical Approach" #FFF4E5 {
   [Score] --> [>= 0.90 ?]
   [>= 0.90 ?] --> [Auto Accept]
   [>= 0.90 ?] --> [>= 0.70 ?]
@@ -115,26 +115,26 @@ package "แนวทางทั่วไป" #FFF4E5 {
 
 ---
 
-## ค่า Threshold ที่ใช้จริง
+## Actual Threshold Values Used
 
-| Category | Threshold | ระดับ | หมายเหตุ |
+| Category | Threshold | Level | Note |
 |----------|-----------|-------|---------|
-| `person` | $0.7$ | สูง | object ใหญ่ ชัดเจน → ตั้งสูงเพื่อลด false positive |
-| `helmet` | $0.25$ | ต่ำ | object เล็ก → ตั้งต่ำเพื่อไม่ให้หาย |
-| `boots` | $0.25$ | ต่ำ | เดียวกัน |
-| `shoes` | $0.25$ | ต่ำ | เดียวกัน |
-| `sandals` | $0.3$ | กลาง | ค่อนข้างหายาก |
-| `harness` | $0.25$ | ต่ำ | หายาก + ลักษณะซับซ้อน |
-| Global | $0.25$ | ต่ำ | fallback |
+| `person` | $0.7$ | High | large object, clearly visible → set high to reduce false positives |
+| `helmet` | $0.25$ | Low | small object → set low to avoid missing |
+| `boots` | $0.25$ | Low | same |
+| `shoes` | $0.25$ | Low | same |
+| `sandals` | $0.3$ | Medium | relatively rare |
+| `harness` | $0.25$ | Low | rare + complex appearance |
+| Global | $0.25$ | Low | fallback |
 
-> **สังเกต**: threshold ส่วนใหญ่อยู่ที่ $0.25$ — ค่อนข้างต่ำ → อาจปล่อย false positive ผ่านเข้า dataset
+> **Observation**: most thresholds are at $0.25$ — quite low → may allow false positives into the dataset
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/inference.py:404-406` — inference call
 - `src/inference.py:416` — threshold logic
 - `src/inference.py:421` — filter
-- `src/inference.py:512` — score ใน annotation
+- `src/inference.py:512` — score in annotation
 - `config/ppe_6class.yaml` — threshold values

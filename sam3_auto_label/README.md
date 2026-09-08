@@ -1,76 +1,76 @@
 # SAM 3.1 Auto-Labeling
 
-โมดูลสร้าง annotation อัตโนมัติด้วย **SAM 3.1** (Segment Anything Model 3.1) สำหรับภาพ PPE 6 คลาส
+Module for automatic annotation using **SAM 3.1** (Segment Anything Model 3.1) for PPE images with 6 classes
 
-รับภาพดิบจาก `../data/raw/` → ตรวจจับด้วย text prompt → export เป็น COCO/YOLO และอีก 9 ฟอร์แมต → เก็บที่ `../data/sam_outputs_ground_truth/`
+Takes raw images from `../data/raw/` → detects via text prompt → exports to COCO/YOLO and 9 other formats → stores at `../data/sam_outputs_ground_truth/`
 
-## โครงสร้าง
+## Structure
 
 ```text
 sam3_auto_label/
-├── src/                     # โค้ดหลัก (config, inference, batch_segment, exporters, tracker)
-├── config/                  # YAML config สำหรับแต่ละชุดข้อมูล
-├── sam3/                    # SAM 3.1 source code (vendored — ห้ามแก้)
-├── checkpoints/             # SAM 3.1 model weights (ดาวน์โหลดอัตโนมัติ)
-├── setup.py                 # ติดตั้ง environment ตาม hardware (CUDA/ROCm/CPU)
-├── requirements.txt         # dependencies (ยกเว้น torch ที่ติดตั้งแยก)
-├── Dockerfile               # container สำหรับ deployment
+├── src/                     # Core code (config, inference, batch_segment, exporters, tracker)
+├── config/                  # YAML config for each dataset
+├── sam3/                    # SAM 3.1 source code (vendored — do not modify)
+├── checkpoints/             # SAM 3.1 model weights (auto-downloaded)
+├── setup.py                 # Environment setup based on hardware (CUDA/ROCm/CPU)
+├── requirements.txt         # dependencies (except torch, which is installed separately)
+├── Dockerfile               # container for deployment
 ├── docker-compose.yml       # orchestration
 ├── RELEASE_NOTES_v1.0.0.md  # release notes
-└── sam3_source_locked.zip   # snapshot ของ sam3/ (สำรอง)
+└── sam3_source_locked.zip   # snapshot of sam3/ (backup)
 ```
 
-## วิธีติดตั้ง
+## Installation
 
 ```bash
 cd sam3_auto_label
-python setup.py              # full setup — สร้าง venv + ลง torch + ดาวน์โหลด checkpoint
-python setup.py --check      # ตรวจ hardware อย่างเดียว ไม่ลงอะไร
-python setup.py --force-cpu  # บังคับ CPU-only
+python setup.py              # full setup — create venv + install torch + download checkpoint
+python setup.py --check      # check hardware only, install nothing
+python setup.py --force-cpu  # force CPU-only
 ```
 
-`setup.py` ตรวจ hardware อัตโนมัติ:
+`setup.py` automatically detects hardware:
 - GPU: NVIDIA CUDA / AMD ROCm / Apple MPS / CPU
-- เลือก PyTorch index URL ที่ถูกต้อง
-- ดาวน์โหลด `sam3.1_multiplex.pt` จาก Hugging Face
+- Selects the correct PyTorch index URL
+- Downloads `sam3.1_multiplex.pt` from Hugging Face
 
-## วิธีรัน
+## How to Run
 
 ```bash
-# ใช้ config เริ่มต้น (config/ppe_6class.yaml)
+# Use default config (config/ppe_6class.yaml)
 python src/batch_segment.py
 
-# resume จาก checkpoint (ถ้ารันค้างไว้)
+# Resume from checkpoint (if a previous run was interrupted)
 python src/batch_segment.py --resume
 
-# เริ่มใหม่ (ลบ checkpoint)
+# Start fresh (clear checkpoint)
 python src/batch_segment.py --fresh
 
-# override threshold
+# Override threshold
 python src/batch_segment.py --threshold 0.5
 ```
 
-หรือรันผ่าน CLI หลัก: `../run_pipeline.sh --sam --batch <ชื่อbatch>`
+Or run via the main CLI: `../auto_label.sh --sam --batch <batch_name>`
 
-## คุณสมบัติเด่น
+## Key Features
 
-- **Text-prompted segmentation** — ใช้ชื่อคลาสเป็น prompt ไม่ต้องวาด bbox มือ
-- **GPU acceleration** — RLE encode + mask IoU NMS บน GPU, BF16 autocast
-- **Pipeline export** — ทับซ้อน CPU export กับ GPU inference → GPU utilization ~100%
-- **Checkpoint/resume** — บันทึกความคืบหน้า รันต่อได้ถ้าคอมดับกลางคัน
+- **Text-prompted segmentation** — uses class names as prompts; no manual bbox drawing required
+- **GPU acceleration** — RLE encode + mask IoU NMS on GPU, BF16 autocast
+- **Pipeline export** — overlaps CPU export with GPU inference → GPU utilization ~100%
+- **Checkpoint/resume** — saves progress; can resume if the computer crashes mid-run
 - **Multi-format export** — COCO, YOLO, VOC, LabelMe, CVAT, Label Studio, KITTI, CreateML, OpenImages, Supervisely, masks
-- **Experiment tracking** — SQLite + JSON (ไม่ต้องลง MLflow server)
-- **Visualization** — ภาพ overlay ทุกใบ (OpenCV, เร็วกว่า matplotlib 10-50x)
+- **Experiment tracking** — SQLite + JSON (no MLflow server required)
+- **Visualization** — overlay image for every file (OpenCV, 10-50x faster than matplotlib)
 
 ## config
 
-ดู `config/README.md` สำหรับรายละเอียดการตั้งค่าแต่ละไฟล์
+See `config/README.md` for details on each configuration file
 
-config หลัก: `config/ppe_6class.yaml` — กำหนด 6 คลาส, threshold, resolution, output format, path
+Main config: `config/ppe_6class.yaml` — defines 6 classes, threshold, resolution, output format, and paths
 
-## ข้อควรระวัง
+## Notes
 
-- `sam3/` เป็น vendored source ของ SAM 3.1 — **ห้ามแก้ไข** ถ้าจะอัปเดตให้ดาวน์โหลดจาก upstream ใหม่
-- `sam3_source_locked.zip` (63 MB) เป็น snapshot สำรอง
-- `checkpoints/` เก็บ model weights ขนาดใหญ่ — อยู่ใน `.gitignore` ถ้าไม่ใช้ Git LFS
-- path ใน config เป็น absolute path สำหรับ WSL2 (`/mnt/e/...`) — override ด้วย `--input`/`--output` ถ้ารันที่อื่น
+- `sam3/` is vendored SAM 3.1 source — **do not modify**; to update, download fresh from upstream
+- `sam3_source_locked.zip` (63 MB) is a backup snapshot
+- `checkpoints/` stores large model weights — included in `.gitignore` unless using Git LFS
+- Paths in config are absolute paths for WSL2 (`/mnt/e/...`) — override with `--input`/`--output` when running elsewhere

@@ -7,13 +7,13 @@ status: "Verified"
 
 # 08 — Auto-Labeling Strategy
 
-> ระบบตัดสินใจสร้าง label ยังไง — หัวใจของโปรเจกต์
+> How the system decides to create labels — the core of the project
 >
-> **Status**: Verified — สอบกับ `src/inference.py:382-520`
+> **Status**: Verified — checked against `src/inference.py:382-520`
 
 ---
 
-## Strategy จริงในโค้ด
+## Actual Strategy in Code
 
 ```plantuml {align="center"}
 @startuml
@@ -25,43 +25,43 @@ skinparam ActivityBorderColor #4285F4
 
 start
 :Image;
-:วน per category;
+:Loop per category;
 repeat
   :Set text prompt\nprocessor.set_text_prompt;
   :SAM 3.1 Inference\nmasks + boxes + scores;
-  :Filter score >= threshold\nper-category หรือ global;
-  if (มี detection?) then (no)
-    :ไป category ถัดไป;
+  :Filter score >= threshold\nper-category or global;
+  if (Any detection?) then (no)
+    :Go to next category;
   else (yes)
-    :รวมทุก category;
+    :Combine all categories;
   endif
 repeat while (more categories?) is (yes)
 ->no;
 :Cross-class NMS\nIoU = 0.5;
-:เก็บ detection ที่ score สูงสุด\nกำจัด overlap ข้ามคลาส;
+:Keep highest-score detection\nremove cross-class overlap;
 :Encode mask → RLE/Polygon;
-:สร้าง COCO annotation dict;
-:Export — ทุก annotation เป็น final;
+:Build COCO annotation dict;
+:Export — all annotations are final;
 stop
 @enduml
 ```
 
-> **สำคัญ**: ไม่มี auto-accept/review/reject tiers — ทุก detection ที่ผ่าน threshold + NMS จะกลายเป็น annotation สุดท้ายทันที
+> **Important**: no auto-accept/review/reject tiers — every detection that passes threshold + NMS immediately becomes a final annotation
 
 ---
 
-## Decision Logic ทีละขั้น
+## Decision Logic Step by Step
 
-### 1. Text Prompt (ไม่มี point/box prompt)
+### 1. Text Prompt (no point/box prompt)
 
 @import "../../sam3_auto_label/src/inference.py" {line_begin=404 line_end=406 title="inference.py:404-406 — text prompt loop"}
 
-| Prompt Type | สถานะ |
+| Prompt Type | Status |
 |-------------|-------|
-| Text prompt | ✅ ใช้ (เช่น `"person"`, `"helmet"`) |
-| Point prompt | ❌ ไม่มี |
-| Box prompt | ❌ ไม่มี |
-| Negative prompt | ❌ ไม่มี |
+| Text prompt | ✅ Used (e.g., `"person"`, `"helmet"`) |
+| Point prompt | ❌ Not present |
+| Box prompt | ❌ Not present |
+| Negative prompt | ❌ Not present |
 
 ### 2. Confidence Threshold (per-category override)
 
@@ -71,26 +71,26 @@ $$
 T_{\text{cat}} = \begin{cases} T_{\text{global}} & \text{if } T_{\text{cat}} < 0 \\ T_{\text{cat}} & \text{otherwise} \end{cases}
 $$
 
-| Category | Threshold | หมายเหตุ |
+| Category | Threshold | Note |
 |----------|-----------|---------|
-| `person` | $0.7$ | สูงเพราะ person ชัดเจน |
-| `helmet` | $0.25$ | ต่ำเพราะ object เล็ก |
-| `boots` | $0.25$ | ต่ำ |
-| `shoes` | $0.25$ | ต่ำ |
-| `sandals` | $0.3$ | กลาง |
-| `harness` | $0.25$ | ต่ำเพราะหายาก |
-| Global fallback | $0.25$ | ใช้เมื่อ `cat.threshold = -1` |
+| `person` | $0.7$ | High because person is clearly visible |
+| `helmet` | $0.25$ | Low because object is small |
+| `boots` | $0.25$ | Low |
+| `shoes` | $0.25$ | Low |
+| `sandals` | $0.3$ | Medium |
+| `harness` | $0.25$ | Low because rare |
+| Global fallback | $0.25$ | Used when `cat.threshold = -1` |
 
 ### 3. Cross-class NMS
 
 @import "../../sam3_auto_label/src/inference.py" {line_begin=470 line_end=474 title="inference.py:470-474 — NMS call"}
 
-| พารามิเตอร์ | ค่า | หมายเหตุ |
+| Parameter | Value | Note |
 |-------------|-----|---------|
-| `iou_threshold` | $0.5$ | ถ้า $\text{IoU} \geq 0.5$ ระหว่าง 2 detection ข้ามคลาส → เก็บ score สูงกว่า |
-| ภายในคลาส | จัดการโดย SAM 3.1 เอง | ไม่มี within-class NMS แยกในโค้ด |
+| `iou_threshold` | $0.5$ | if $\text{IoU} \geq 0.5$ between 2 cross-class detections → keep higher score |
+| Within-class | handled by SAM 3.1 itself | no separate within-class NMS in code |
 
-### 4. ผลลัพธ์ = Final Annotation
+### 4. Result = Final Annotation
 
 ```json
 {
@@ -104,24 +104,24 @@ $$
 }
 ```
 
-→ ไม่มีขั้นตอน "review" หรือ "validate" ถัดไป — annotation นี้คือ final
+→ No subsequent "review" or "validate" step — this annotation is final
 
 ---
 
-## สิ่งที่ระบบทั่วไปมักมี (แต่โค้ดนี้ไม่มี)
+## What Typical Systems Usually Have (but this code does not)
 
 ### ❌ Composite Confidence Score
 
-แนวทางทั่วไป:
+Typical approach:
 $$
 \text{Final Score} = w_1 \cdot \text{ClassificationConf} + w_2 \cdot \text{MaskQuality} + w_3 \cdot \text{AreaValidity} + w_4 \cdot \text{ModelAgreement}
 $$
 
-**โค้ดจริง**: ใช้ `score` ดิบจาก SAM 3.1 อย่างเดียว — ไม่มี weighted formula ไม่มี mask quality metric ไม่มี area validity ไม่มี model agreement
+**Actual code**: uses raw `score` from SAM 3.1 alone — no weighted formula, no mask quality metric, no area validity, no model agreement
 
 ### ❌ Auto-accept / Review / Reject Tiers
 
-แนวทางทั่วไป:
+Typical approach:
 
 | Score | Action |
 |-------|--------|
@@ -129,37 +129,37 @@ $$
 | $0.70$–$0.90$ | Review |
 | $< 0.70$ | Reject |
 
-**โค้ดจริง**: มีแค่ threshold เดียว — ผ่าน = annotation, ไม่ผ่าน = หายไป ไม่มี "review" tier
+**Actual code**: only a single threshold — pass = annotation, fail = discarded, no "review" tier
 
 ### ❌ Multi-Model Agreement
 
-แนวทางทั่วไป:
+Typical approach:
 ```
 Image → SAM 3.1 + YOLO → Agreement Check → Final Label
 ```
 
-**โค้ดจริง**: SAM 3.1 ตัวเดียว — YOLO26 อยู่ใน pipeline ถัดไป (training) ไม่ได้ใช้ยืนยัน label ตอน auto-label
+**Actual code**: SAM 3.1 only — YOLO26 is in the next pipeline stage (training), not used to confirm labels during auto-labeling
 
 ### ❌ Mask Quality Gate
 
-แนวทางทั่วไป: ตรวจ mask quality ก่อนยืนยัน
+Typical approach: check mask quality before confirming
 
-**โค้ดจริง**: ไม่มี — ทุก mask ที่ผ่าน threshold + NMS จะถูก export โดยไม่ตรวจคุณภาพเพิ่ม
+**Actual code**: none — every mask that passes threshold + NMS is exported without additional quality checks
 
 ---
 
-## ความเสี่ยงของ strategy ปัจจุบัน
+## Risks of Current Strategy
 
-| ความเสี่ยง | ระดับ | หมายเหตุ |
+| Risk | Level | Note |
 |-----------|-------|---------|
-| False positive ปน | สูง | threshold ต่ำ (0.25) + ไม่มี review → noise เข้า dataset |
-| Overlap ระหว่าง boots/shoes/sandals | กลาง | NMS ช่วยได้บ้าง แต่ถ้า $\text{IoU} < 0.5$ จะเก็บทั้งคู่ |
-| ไม่รู้ว่า label ไหนน่าเชื่อถือ | สูง | ไม่มี quality score แยก — มีแค่ raw model score |
-| เปลี่ยน prompt แล้ว label เปลี่ยน | กลาง | ไม่มี prompt versioning — ต้องดู config_json ใน experiments.db |
+| False positive contamination | High | low threshold (0.25) + no review → noise enters dataset |
+| Overlap between boots/shoes/sandals | Medium | NMS helps somewhat, but if $\text{IoU} < 0.5$ both are kept |
+| Unknown label reliability | High | no separate quality score — only raw model score |
+| Changing prompt changes labels | Medium | no prompt versioning — must check config_json in experiments.db |
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/inference.py:404-406` — text prompt loop
 - `src/inference.py:416` — per-category threshold

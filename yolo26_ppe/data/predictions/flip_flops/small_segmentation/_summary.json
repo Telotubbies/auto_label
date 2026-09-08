@@ -2,8 +2,8 @@
   "model": "small_segmentation",
   "task": "segment",
   "n_images": 3,
-  "total_time_s": 1.79,
-  "avg_latency_ms": 597.3,
+  "total_time_s": 2.54,
+  "avg_latency_ms": 845.7,
   "conf_threshold": 0.25,
   "iou_threshold": 0.45,
   "imgsz": 640,
@@ -18,7 +18,7 @@
     {
       "image": "706911.jpg",
       "n_det": 6,
-      "latency_ms": 96.7,
+      "latency_ms": 2435.8,
       "classes": {
         "person": 4,
         "shoes": 2
@@ -27,7 +27,7 @@
     {
       "image": "images (3).jpg",
       "n_det": 1,
-      "latency_ms": 952.8,
+      "latency_ms": 49.8,
       "classes": {
         "person": 1
       }
@@ -35,7 +35,7 @@
     {
       "image": "images.jpg",
       "n_det": 5,
-      "latency_ms": 742.2,
+      "latency_ms": 51.4,
       "classes": {
         "person": 3,
         "shoes": 1,

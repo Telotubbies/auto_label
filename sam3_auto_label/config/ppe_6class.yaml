@@ -1,11 +1,11 @@
 categories:
-# 6 หมวดสำหรับประเมิน — threshold แยกตาม category (-1 = ใช้ global, 0 = รับทั้งหมด)
-# id=1 person  — คน
-# id=2 helmet  — หมวกนิรภัย
-# id=3 boots   — บูทนิรภัย/บูทยาง (safety boots, rubber boots)
-# id=4 shoes   — รองเท้าผ้าใบ/รองเท้าหุ้มส้นทั่วไป (sneakers, closed-toe shoes)
-# id=5 sandals — รองเท้าแตะ/flip-flops (slippers, flip-flops)
-# id=6 harness — สาย safety/ชุดเดือย
+# 6 categories for evaluation — threshold per category (-1 = use global, 0 = accept all)
+# id=1 person  — person
+# id=2 helmet  — safety helmet
+# id=3 boots   — safety boots/rubber boots (safety boots, rubber boots)
+# id=4 shoes   — sneakers/closed-toe shoes (sneakers, closed-toe shoes)
+# id=5 sandals — slippers/flip-flops (slippers, flip-flops)
+# id=6 harness — safety harness/full-body harness
 - id: 1
   name: person
   prompt: person

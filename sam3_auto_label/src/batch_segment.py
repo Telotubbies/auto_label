@@ -1,8 +1,8 @@
 """Batch segment all images using SAM 3.1 with YAML config.
 
 Features:
-  - Checkpoint/resume: บันทึกความคืบหน้า ถ้าคอมดับกลางคันรันต่อได้
-  - ETA estimation: ประเมินเวลาที่เหลือจากค่าเฉลี่ย
+  - Checkpoint/resume: saves progress; if the computer crashes mid-run, execution can resume
+  - ETA estimation: estimates remaining time from the average
 
 Usage:
     python src/batch_segment.py                          # use config/ppe_6class.yaml

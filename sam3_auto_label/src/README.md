@@ -1,18 +1,18 @@
-# sam3_auto_label/src — โค้ดหลัก
+# sam3_auto_label/src — Core Code
 
-โค้ด Python สำหรับรัน SAM 3.1 auto-labeling แบบ batch
+Python code for running SAM 3.1 auto-labeling in batch mode
 
-## ไฟล์ทั้งหมด
+## All Files
 
-| ไฟล์ | หน้าที่ | หมายเหตุ |
+| File | Role | Notes |
 |------|--------|---------|
-| `config.py` | read YAML → parse typed dataclass → validate config | จุดเริ่มต้น — ทุกไฟล์อื่น import จากที่นี่ |
-| `inference.py` | สร้างโมเดล SAM 3.1, segment ภาพเดียว, export COCO/mask/viz | จัดการ device (CUDA > ROCm > MPS > CPU), GPU ops |
-| `batch_segment.py` | รัน batch segmentation ทุกภาพใน folder, checkpoint/resume, ETA | CLI entry point — `python src/batch_segment.py` |
-| `exporters.py` | export annotation เป็น 11 ฟอร์แมต (COCO, YOLO, VOC, LabelMe, CVAT, ...) | เลือกฟอร์แมตผ่าน `output.formats` ใน config |
-| `tracker.py` | บันทึกประวัติทุกครั้งที่รัน (SQLite + JSON) | ไม่ต้องลง MLflow |
+| `config.py` | read YAML → parse typed dataclass → validate config | entry point — all other files import from here |
+| `inference.py` | build SAM 3.1 model, segment single image, export COCO/mask/viz | handles device (CUDA > ROCm > MPS > CPU), GPU ops |
+| `batch_segment.py` | run batch segmentation across all images in a folder, checkpoint/resume, ETA | CLI entry point — `python src/batch_segment.py` |
+| `exporters.py` | export annotations to 11 formats (COCO, YOLO, VOC, LabelMe, CVAT, ...) | select format via `output.formats` in config |
+| `tracker.py` | log history for every run (SQLite + JSON) | no MLflow required |
 
-## ลำดับการทำงาน
+## Execution Flow
 
 ```text
 batch_segment.py
@@ -27,64 +27,64 @@ batch_segment.py
 
 ## config.py
 
-dataclass หลัก:
+Main dataclasses:
 
-- `Category` — id, name, prompt, threshold (per-category override; -1 = ใช้ global, 0 = รับทั้งหมด)
+- `Category` — id, name, prompt, threshold (per-category override; -1 = use global, 0 = accept all)
 - `InferenceConfig` — confidence_threshold, resolution, device, gpu_ops, pipeline_export
 - `AnnotationConfig` — bbox, segmentation, segmentation_encoding (rle | polygon)
 - `OutputConfig` — formats, save_viz, input_dir, output_dir, viz_dpi, viz_figsize
-- `Config` — รวมทั้งหมด + checkpoint settings
+- `Config` — combines all of the above + checkpoint settings
 
-`SUPPORTED_FORMATS` — tuple ของ 11 ฟอร์แมตที่ exporters.py รองรับ
+`SUPPORTED_FORMATS` — tuple of 11 formats supported by exporters.py
 
 ## inference.py
 
-- `build_model()` — สร้าง SAM 3.1 model ตาม device ที่ตรวจพบ
-- `segment_image()` — segment ภาพเดียว คืน list ของ annotation
-- `save_coco()` / `save_masks()` / `save_viz()` — helper export
-- GPU ops (optional): `robust_rle_encode`, `gpu_mask_iou`, `generic_nms` จาก `sam3.perflib` — fallback ไป CPU ถ้า import ไม่ได้
+- `build_model()` — builds the SAM 3.1 model based on detected device
+- `segment_image()` — segments a single image, returns a list of annotations
+- `save_coco()` / `save_masks()` / `save_viz()` — helper exports
+- GPU ops (optional): `robust_rle_encode`, `gpu_mask_iou`, `generic_nms` from `sam3.perflib` — falls back to CPU if import fails
 
 ## batch_segment.py
 
 CLI flags:
 
-- `--resume` — รันต่อจาก checkpoint
-- `--fresh` — เริ่มใหม่ ลบ checkpoint
+- `--resume` — resume from checkpoint
+- `--fresh` — start fresh, clear checkpoint
 - `--threshold <float>` — override confidence threshold
-- `--config <path>` — ระบุ config file (default: `config/ppe_6class.yaml`)
+- `--config <path>` — specify config file (default: `config/ppe_6class.yaml`)
 
-ค่า `checkpoint.enabled`, `checkpoint.auto_resume`, และ `checkpoint.clear_on_success` มีผลกับการทำงานของ checkpoint โดยตรง การ export ภาพต้องสำเร็จก่อนจึงจะบันทึกภาพนั้นว่า processed และ batch จะคืน exit code ที่ไม่ใช่ศูนย์เมื่อมีภาพที่ประมวลผลหรือ export ไม่สำเร็จ
+`checkpoint.enabled`, `checkpoint.auto_resume`, and `checkpoint.clear_on_success` directly affect checkpoint behavior. Image export must succeed before an image is marked as processed, and the batch will return a non-zero exit code when there are images that failed to process or export
 
 ## exporters.py
 
-แต่ละฟอร์แมตเขียนแบบไหน:
+How each format is written:
 
 | Format | Output | Annotation type |
 |--------|--------|-----------------|
-| coco | JSON รวม | bbox/seg (RLE or polygon) |
-| yolo | TXT per image + data.yaml | bbox หรือ polygon |
+| coco | combined JSON | bbox/seg (RLE or polygon) |
+| yolo | TXT per image + data.yaml | bbox or polygon |
 | voc | XML per image | bbox only |
 | labelme | JSON per image | bbox/seg (polygon) |
-| cvat | XML รวม | bbox/seg (polygon) |
-| label_studio | JSON รวม | bbox/seg (uncompressed RLE) |
+| cvat | combined XML | bbox/seg (polygon) |
+| label_studio | combined JSON | bbox/seg (uncompressed RLE) |
 | kitti | TXT per image | bbox only |
-| createml | JSON รวม | bbox only |
-| openimages | CSV รวม | bbox only |
+| createml | combined JSON | bbox only |
+| openimages | combined CSV | bbox only |
 | supervisely | JSON per image + meta.json | bbox/seg (polygon) |
 | masks | PNG per annotation | seg only |
 
-หมายเหตุ: per-image JSON ใน `output/coco/{name}.json` เขียนเสมอ เป็น internal cache สำหรับ checkpoint/resume ไม่ขึ้นกับ `formats`
+Note: per-image JSON in `output/coco/{name}.json` is always written; it serves as an internal cache for checkpoint/resume and is independent of `formats`
 
 ## tracker.py
 
-`ExperimentTracker` — บันทึกทุกครั้งที่รัน:
+`ExperimentTracker` — logs every run:
 
-- SQLite: `experiments.db` ใน output_dir
+- SQLite: `experiments.db` in output_dir
 - JSON artifacts: `experiments/` folder
-- ใช้ผ่าน `tracker.start_run()` → `tracker.log_metrics()` → `tracker.end_run()`
+- Used via `tracker.start_run()` → `tracker.log_metrics()` → `tracker.end_run()`
 
-## ข้อควรระวัง
+## Notes
 
-- import ใช้ relative path (`from config import ...`) — ต้องรันจากใน `src/` หรือเพิ่ม `src/` ใน `sys.path`
-- `sam3` import ใน `inference.py` เป็น optional — ถ้าไม่มี GPU ops จะ fallback ไป CPU
-- ถ้าเพิ่มฟอร์แมตใหม่ ต้องเพิ่มใน `SUPPORTED_FORMATS` ใน `config.py` ด้วย
+- Imports use relative paths (`from config import ...`) — must run from within `src/` or add `src/` to `sys.path`
+- The `sam3` import in `inference.py` is optional — if GPU ops are unavailable, it falls back to CPU
+- If adding a new format, it must also be added to `SUPPORTED_FORMATS` in `config.py`

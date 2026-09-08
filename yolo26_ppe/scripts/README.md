@@ -1,69 +1,69 @@
-# yolo26_ppe/scripts — Pipeline และ Utilities
+# yolo26_ppe/scripts — Pipeline and Utilities
 
-สคริปต์สำหรับฝึก ประเมิน export และสร้างรายงาน YOLO26 PPE
+Scripts for training, evaluating, exporting, and reporting YOLO26 PPE.
 
-## โครงสร้าง
+## Structure
 
 ```text
 scripts/
-├── pipeline/      # pipeline ปัจจุบัน — รันตามลำดับเลข
-├── tools/         # utility แยก (ไม่อยู่ในลำดับ pipeline)
-├── services/      # จัดการ MLflow (foreground/background)
-└── archive/       # pipeline และ experiment เก่า — ห้ามใช้กับ production
+├── pipeline/      # Current pipeline — run in numeric order
+├── tools/         # Standalone utilities (not in pipeline order)
+├── services/      # MLflow management (foreground/background)
+└── archive/       # Legacy pipelines and experiments — do not use for production
 ```
 
-## pipeline/ — pipeline ปัจจุบัน
+## pipeline/ — Current Pipeline
 
-รันตามลำดับเลขหน้าไฟล์:
+Run in numeric order by filename:
 
-| ขั้นตอน | ไฟล์ | ทำอะไร |
-|--------|------|--------|
-| 01 | `01_prepare_dataset.py` | แปลง COCO → YOLO format, แบ่ง train/val/test, oversampling |
-| 02 | `02_train_models.py` | ฝึก 4 โมเดล (nano/small × detect/segment) |
-| 03 | `03_evaluate_models.py` | วัด P/R/F1/mAP50/mAP50-95, confusion matrix |
-| 04 | `04_export_and_evaluate_onnx.py` | export ONNX + ประเมินเทียบ PyTorch |
-| 05 | `05_generate_failure_montage.py` | สร้าง montage ของ failure cases |
-| 06 | `06_run_blur_robustness.py` | ทดสอบความทนต่อภาพเบลอ |
-| 07 | `07_analyze_blur_robustness.py` | วิเคราะห์ผล blur robustness |
-| 08 | `08_generate_report_figures.py` | สร้างกราฟ PDF/PNG สำหรับ report |
-| 09 | `09_predict_raw_images.py` | inference ด้วยโมเดล production ลงภาพดิบ |
+| Step | File | Purpose |
+| ---- | ---- | ------- |
+| 01 | `01_prepare_dataset.py` | Convert COCO → YOLO format, split train/val/test, oversampling |
+| 02 | `02_train_models.py` | Train 4 models (nano/small × detect/segment) |
+| 03 | `03_evaluate_models.py` | Measure P/R/F1/mAP50/mAP50-95, confusion matrix |
+| 04 | `04_export_and_evaluate_onnx.py` | Export ONNX + evaluate against PyTorch |
+| 05 | `05_generate_failure_montage.py` | Generate montage of failure cases |
+| 06 | `06_run_blur_robustness.py` | Test robustness to blurred images |
+| 07 | `07_analyze_blur_robustness.py` | Analyze blur robustness results |
+| 08 | `08_generate_report_figures.py` | Generate PDF/PNG charts for the report |
+| 09 | `09_predict_raw_images.py` | Inference with production models on raw images |
 
-หรือรันผ่าน CLI หลัก: `../../run_pipeline.sh --yolo --model <ชื่อโมเดล>`
+Or run via the main CLI: `../../auto_label.sh --yolo --model <model_name>`
 
-## tools/ — utility แยก
+## tools/ — Standalone Utilities
 
-| ไฟล์ | ทำอะไร |
-|------|--------|
-| `export_legacy_models.py` | export โมเดลเก่าใน archive เป็น ONNX |
-| `filter_annotations.py` | กรอง annotation ตามเงื่อนไข |
-| `generate_visualizations.py` | สร้าง visualization นอก pipeline |
+| File | Purpose |
+| ---- | ------- |
+| `export_legacy_models.py` | Export legacy models in archive to ONNX |
+| `filter_annotations.py` | Filter annotations by criteria |
+| `generate_visualizations.py` | Generate visualizations outside the pipeline |
 
 ## services/ — MLflow
 
-| ไฟล์ | ทำอะไร |
-|------|--------|
-| `manage_mlflow_background.sh` | start/stop MLflow ใน background |
-| `run_mlflow_foreground.sh` | รัน MLflow ใน foreground |
-| `mlflow_env.sh` | ตั้งค่า environment สำหรับ MLflow |
+| File | Purpose |
+| ---- | ------- |
+| `manage_mlflow_background.sh` | Start/stop MLflow in the background |
+| `run_mlflow_foreground.sh` | Run MLflow in the foreground |
+| `mlflow_env.sh` | Set up environment for MLflow |
 
-MLflow config อยู่ที่ `../configs/mlflow.yaml`
+MLflow config is at `../configs/mlflow.yaml`
 
-## archive/ — ประวัติการทดลอง
+## archive/ — Experiment History
 
-**ห้ามใช้กับ production** — เก็บไว้ทำ reproducibility เท่านั้น
+**Do not use for production** — retained for reproducibility only.
 
-| Folder | คืออะไร |
-|--------|---------|
-| `version_1_baseline_pipeline/` | pipeline แรก (01-08 + shell scripts) |
-| `version_2_baseline_training/` | training ของ v2 |
-| `dataset_migration/` | สคริปต์ย้าย dataset |
-| `historical_analysis/` | benchmark SAM3, error analysis, viz |
-| `legacy_stage_2_fine_tuning/` | fine-tuning stage 2 แบบเก่า |
-| `optimizer_comparison_experiments/` | ทดลองเปรียบเทียบ optimizer (AdamW) |
+| Folder | Description |
+| ------ | ----------- |
+| `version_1_baseline_pipeline/` | First pipeline (01-08 + shell scripts) |
+| `version_2_baseline_training/` | v2 training |
+| `dataset_migration/` | Dataset migration scripts |
+| `historical_analysis/` | SAM3 benchmark, error analysis, visualization |
+| `legacy_stage_2_fine_tuning/` | Legacy stage 2 fine-tuning |
+| `optimizer_comparison_experiments/` | Optimizer comparison experiments (AdamW) |
 
-## ข้อควรระวัง
+## Cautions
 
-- ไฟล์ใน `pipeline/` ขึ้นต้นด้วยเลข — โหลดเป็น module ต้องใช้ `importlib.util` (ชื่อขึ้นต้นด้วยตัวเลข import ตรงไม่ได้)
-- ถ้าเพิ่มขั้นตอนใหม่ใน pipeline ให้ใช้เลขถัดไป (เช่น `10_...`)
-- อย่าลบไฟล์ใน `archive/` ถ้าไม่ได้ยืนยันกับทีม
-- ผลลัพธ์ evaluation ที่เป็นทางการมาจาก `production_v4_recipe` เท่านั้น
+- Files in `pipeline/` start with numbers — to load as a module, use `importlib.util` (names starting with digits cannot be imported directly)
+- If adding a new pipeline step, use the next number (e.g., `10_...`)
+- Do not delete files in `archive/` without team confirmation
+- Official evaluation results come from `production_v4_recipe` only

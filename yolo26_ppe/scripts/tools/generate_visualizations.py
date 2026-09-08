@@ -130,7 +130,7 @@ def plot_radar(results):
     ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
     ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], size=9)
     ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=10)
-    plt.title("เปรียบเทียบ Metrics รวมของทุกโมเดล", size=14, pad=20)
+    plt.title("Comparison of Overall Metrics Across All Models", size=14, pad=20)
     plt.tight_layout()
     plt.savefig(FIGURES / "radar_chart.png", dpi=150, bbox_inches="tight")
     plt.close()
@@ -158,7 +158,7 @@ def plot_per_class_map50(results):
 
     ax.set_xlabel("Class", fontsize=12)
     ax.set_ylabel("mAP50", fontsize=12)
-    ax.set_title("mAP50 แต่ละคลาสของทุกโมเดล", fontsize=14)
+    ax.set_title("mAP50 per Class Across All Models", fontsize=14)
     ax.set_xticks(x)
     ax.set_xticklabels(CLASSES, fontsize=11)
     ax.legend(fontsize=9, loc="upper right")
@@ -185,7 +185,7 @@ def plot_inference_speed(results):
                 f"{t:.1f} ms", va="center", fontsize=11)
 
     ax.set_xlabel("Inference time (ms/image)", fontsize=12)
-    ax.set_title("ความเร็ว Inference ของแต่ละโมเดล", fontsize=14)
+    ax.set_title("Inference Speed of Each Model", fontsize=14)
     ax.grid(axis="x", alpha=0.3)
     plt.tight_layout()
     plt.savefig(FIGURES / "inference_speed.png", dpi=150, bbox_inches="tight")
@@ -207,7 +207,7 @@ def plot_model_size(results):
                 f"{s:.1f} MB", va="center", fontsize=11)
 
     ax.set_xlabel("Model size (MB)", fontsize=12)
-    ax.set_title("ขนาดโมเดล (MB)", fontsize=14)
+    ax.set_title("Model Size (MB)", fontsize=14)
     ax.set_xscale("log")
     ax.grid(axis="x", alpha=0.3)
     plt.tight_layout()
@@ -232,7 +232,7 @@ def plot_tradeoff(results):
 
     ax.set_xlabel("Inference time (ms)", fontsize=12)
     ax.set_ylabel("mAP50", fontsize=12)
-    ax.set_title("Trade-off: ความแม่น vs ความเร็ว (ขนาดวง = ขนาดโมเดล)", fontsize=14)
+    ax.set_title("Trade-off: Accuracy vs Speed (Circle Size = Model Size)", fontsize=14)
     ax.axhline(y=0.85, color="red", linestyle="--", alpha=0.5, label="Target 85%")
     ax.legend(fontsize=10)
     ax.grid(alpha=0.3)
@@ -262,7 +262,7 @@ def plot_fp_fn(results):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                 f"{v:.2f}", ha="center", fontsize=10)
     ax.set_ylabel("False Negative Rate (1 - Recall)", fontsize=11)
-    ax.set_title("อัตรา False Negative (พลาดการตรวจจับ)", fontsize=13)
+    ax.set_title("False Negative Rate (Missed Detections)", fontsize=13)
     ax.set_xticklabels(models, rotation=30, ha="right", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
 
@@ -274,7 +274,7 @@ def plot_fp_fn(results):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                 f"{v:.2f}", ha="center", fontsize=10)
     ax.set_ylabel("False Positive Rate (1 - Precision)", fontsize=11)
-    ax.set_title("อัตรา False Positive (ตรวจจับผิด)", fontsize=13)
+    ax.set_title("False Positive Rate (False Detections)", fontsize=13)
     ax.set_xticklabels(models, rotation=30, ha="right", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
 
@@ -322,7 +322,7 @@ def plot_summary_table(results):
                 table[i + 1, j].set_facecolor("#2ecc71")
                 table[i + 1, j].set_text_props(fontweight="bold")
 
-    plt.title("สรุป Metrics ทั้งหมด (เน้นสีเขียว = ดีที่สุด)", fontsize=14, pad=20)
+    plt.title("Summary of All Metrics (Green = Best)", fontsize=14, pad=20)
     plt.tight_layout()
     plt.savefig(FIGURES / "summary_table.png", dpi=150, bbox_inches="tight")
     plt.close()

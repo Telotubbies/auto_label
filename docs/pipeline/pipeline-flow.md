@@ -7,13 +7,13 @@ status: "Verified"
 
 # 03 — Pipeline Flow
 
-> ลำดับการทำงานทีละ step — ข้อมูลเดินผ่านอะไรบ้าง
+> Step-by-step workflow — how data flows through the system
 >
-> **Status**: Verified — สอบกับ `src/batch_segment.py:main()` บรรทัด 130-435
+> **Status**: Verified — checked against `src/batch_segment.py:main()` lines 130-435
 
 ---
 
-## Flowchart หลัก
+## Main Flowchart
 
 ```plantuml {align="center"}
 @startuml
@@ -39,21 +39,21 @@ ERROR --> [*] : mark processed\n(no retry)
 
 ---
 
-## ขั้นตอนที่ระบบทั่วไปมักมี (แต่โค้ดนี้ไม่มี)
+## Steps That Typical Systems Usually Have (but this code does not)
 
-| ขั้นตอนทั่วไป | สถานะ | หมายเหตุ |
+| Typical step | Status | Note |
 |---------------|-------|---------|
-| Validate image (corrupted check) | ⚠️ มีบางส่วน | `load_image()` catch exception → return `None` แต่ไม่มี validation เชิงรุก |
-| Filter small objects (min area) | ❌ ไม่มี | ไม่มี `min_area` filter — มีแค่ drop tiny components <3px ตอน trace polygon |
-| Classify region | ❌ ไม่มี | SAM 3.1 ให้ class มาจาก text prompt โดยตรง |
-| Calculate confidence (composite score) | ❌ ไม่มี | ใช้ score ดิบจาก model ไม่มี weighted formula |
-| Human review branch | ❌ ไม่มี | ทุก detection ที่ผ่าน threshold → annotation ทันที |
-| Retry on failure | ❌ ไม่มี | mark processed และข้าม |
+| Validate image (corrupted check) | ⚠️ Partial | `load_image()` catches exception → returns `None` but no proactive validation |
+| Filter small objects (min area) | ❌ Missing | no `min_area` filter — only drops tiny components <3px during polygon tracing |
+| Classify region | ❌ Missing | SAM 3.1 provides class from text prompt directly |
+| Calculate confidence (composite score) | ❌ Missing | uses raw model score, no weighted formula |
+| Human review branch | ❌ Missing | every detection that passes threshold → annotation immediately |
+| Retry on failure | ❌ Missing | mark processed and skip |
 
 ---
 
-## อ้างอิง
+## References
 
-- `src/batch_segment.py:130-435` — `main()` ทั้งฟังก์ชัน
+- `src/batch_segment.py:130-435` — `main()` entire function
 - `src/inference.py:382-520` — `segment_image()`
 - `src/exporters.py:608-623` — `write_image_exports()`, `finalize_exports()`

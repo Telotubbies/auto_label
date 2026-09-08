@@ -5,7 +5,7 @@
 - Splits into train/val/test (80/10/10)
 - Converts to YOLO detection format (bbox)
 - Converts to YOLO segmentation format (polygon masks)
-- Applies oversampling for rare classes (harness)
+- Applies oversampling for rare classes (harness, boots)
 - Generates data.yaml files
 """
 import json
@@ -42,8 +42,16 @@ COCO_TO_YOLO_V1 = {1: 0, 2: 1, 3: 2, 4: 3, 5: 3, 6: 4}
 SPLIT_RATIOS = {"train": 0.8, "val": 0.1, "test": 0.1}
 RANDOM_SEED = 42
 
-# Oversampling targets for rare classes
-OVERSAMPLE_TARGETS = {4: 500}  # harness (YOLO class 4) → target 500 annotations
+# Oversampling targets for rare classes (YOLO class ID → target annotation count).
+# Based on data/dataset_analysis_reports/data_analysis.json:
+#   before_balance: helmet=2693, person=2271, shoes=2407, boots=802, harness=102
+#   imbalance: 2693:102 = 26:1 (helmet vs harness)
+# Targets bring rare classes closer to common classes via image duplication.
+# Cap at 10x per image to avoid overfitting (see multiplier cap below).
+OVERSAMPLE_TARGETS = {
+    2: 400,   # boots  (YOLO class 2) → target 400 annotations (was 802, but still minority vs 2693)
+    4: 500,   # harness (YOLO class 4) → target 500 annotations (was 102, 26:1 imbalance)
+}
 
 
 def mask_to_polygons(segmentation, height, width):
@@ -229,26 +237,58 @@ def main():
                         train_class_counts[yolo_cid] += 1
             print(f"  Train class counts: {dict(train_class_counts)}")
 
+            # Validate oversampling targets against actual class distribution
+            max_count = max(train_class_counts.values()) if train_class_counts else 0
+            if max_count > 0:
+                for cls_id in range(len(CLASS_NAMES)):
+                    count = train_class_counts.get(cls_id, 0)
+                    ratio = max_count / count if count > 0 else float('inf')
+                    name = CLASS_NAMES[cls_id]
+                    if count == 0:
+                        print(f"  ⚠ WARNING: class {name} (id={cls_id}) has 0 samples in train — cannot oversample")
+                    elif ratio > 10:
+                        print(f"  ⚠ WARNING: class {name} imbalance {ratio:.1f}:1 — consider increasing oversample target")
+                    elif cls_id in OVERSAMPLE_TARGETS and count >= OVERSAMPLE_TARGETS[cls_id]:
+                        print(f"  ℹ class {name} already has {count} (target={OVERSAMPLE_TARGETS[cls_id]}) — no oversampling needed")
+
             # Calculate oversampling multipliers
             oversample_imgs = []
             for target_cls, target_count in OVERSAMPLE_TARGETS.items():
                 current = train_class_counts.get(target_cls, 0)
-                if current < target_count and current > 0:
-                    # Find images that contain this class
-                    imgs_with_class = []
-                    for img_id in split_img_ids:
-                        for ann in anns_by_img.get(img_id, []):
-                            if COCO_TO_YOLO.get(ann['category_id']) == target_cls:
-                                imgs_with_class.append(img_id)
-                                break
-                    # Calculate how many times to duplicate
-                    multiplier = min(target_count // current, 10)  # Cap at 10x
-                    for img_id in imgs_with_class:
-                        for _ in range(multiplier - 1):
-                            oversample_imgs.append(img_id)
-                    print(f"  Oversampling class {CLASS_NAMES[target_cls]}: {len(imgs_with_class)} images × {multiplier}x = +{len(oversample_imgs)} copies")
+                if current == 0:
+                    print(f"  ⚠ Skipping oversampling for {CLASS_NAMES[target_cls]}: 0 samples in train")
+                    continue
+                if current >= target_count:
+                    continue  # already meets target
+                # Find images that contain this class
+                imgs_with_class = []
+                for img_id in split_img_ids:
+                    for ann in anns_by_img.get(img_id, []):
+                        if COCO_TO_YOLO.get(ann['category_id']) == target_cls:
+                            imgs_with_class.append(img_id)
+                            break
+                # Calculate how many times to duplicate
+                multiplier = min(target_count // current, 10)  # Cap at 10x
+                class_copies = len(imgs_with_class) * (multiplier - 1)
+                for img_id in imgs_with_class:
+                    for _ in range(multiplier - 1):
+                        oversample_imgs.append(img_id)
+                print(f"  Oversampling class {CLASS_NAMES[target_cls]}: {len(imgs_with_class)} images × {multiplier}x = +{class_copies} copies")
 
             split_img_ids = split_img_ids + oversample_imgs
+
+            # Print post-oversampling imbalance
+            if oversample_imgs:
+                post_counts = Counter()
+                for img_id in split_img_ids:
+                    for ann in anns_by_img.get(img_id, []):
+                        yolo_cid = COCO_TO_YOLO.get(ann['category_id'])
+                        if yolo_cid is not None:
+                            post_counts[yolo_cid] += 1
+                post_max = max(post_counts.values()) if post_counts else 0
+                post_min = min((c for c in post_counts.values() if c > 0), default=0)
+                if post_max > 0 and post_min > 0:
+                    print(f"  Post-oversampling imbalance: {post_max}:{post_min} = {post_max/post_min:.1f}:1")
 
         processed = 0
         for img_id in split_img_ids:
@@ -372,7 +412,7 @@ names: {CLASS_NAMES}
 
     print(f"\nClasses (5): {CLASS_NAMES}")
     print(f"Note: sandals merged into shoes (only 12 samples total)")
-    print(f"Note: harness oversampled in train set")
+    print(f"Note: harness + boots oversampled in train set")
     print(f"\n{'=' * 70}")
     print("DONE")
 

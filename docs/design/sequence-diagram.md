@@ -7,13 +7,13 @@ status: "Verified"
 
 # Sequence Diagram
 
-> ลำดับการเรียกฟังก์ชันระหว่าง component ใน 1 รอบ inference
+> Function call sequence between components in a single inference round
 >
-> **Status**: Verified — สอบกับ `src/batch_segment.py:main()` และ `src/inference.py:segment_image()`
+> **Status**: Verified — cross-checked against `src/batch_segment.py:main()` and `src/inference.py:segment_image()`
 
 ---
 
-## Sequence: รัน pipeline เต็มรอบ
+## Sequence: Full Pipeline Run
 
 ```plantuml {align="center"}
 @startuml
@@ -33,7 +33,7 @@ participant "cross_class_nms" as NMS
 participant "mask_to_rle" as RLE
 
 SI -> PROC : reset_all_prompts(state)
-loop ทุก category (6 คลาส)
+loop each category (6 classes)
   SI -> PROC : set_text_prompt(state, cat.prompt)
   PROC -> MODEL : forward(image, prompt)
   MODEL --> PROC : masks, boxes, scores
@@ -51,7 +51,7 @@ end
 NMS --> SI : keep_indices
 
 SI -> SI : clamp boxes to image bounds
-loop ทุก kept detection
+loop each kept detection
   SI -> RLE : mask_to_rle(mask)
   RLE --> SI : RLE counts string
   SI -> SI : build annotation dict
@@ -63,7 +63,7 @@ SI --> SI : return annotations[]
 
 ---
 
-## Sequence: Error path (ภาพที่ inference ล้มเหลว)
+## Sequence: Error Path (image where inference failed)
 
 ```plantuml {align="center"}
 @startuml
@@ -88,16 +88,16 @@ CLI -> EXC : catch Exception
 EXC -> EXC : log error message
 EXC -> EXC : mark image as processed
 EXC -> ERR : append to errors list
-EXC -> TRK : (ไม่ log image_result — ข้าม)
+EXC -> TRK : (no image_result logged — skipped)
 EXC --> CLI : continue to next image
 @enduml
 ```
 
-> **ไม่มี retry** — ภาพที่ error จะถูกข้ามและไม่กลับมาประมวลผลใหม่
+> **No retry** — errored images are skipped and not reprocessed
 
 ---
 
-## อ้างอิง
+## References
 
 - `src/batch_segment.py:130-435` — main loop
 - `src/inference.py:382-520` — segment_image
