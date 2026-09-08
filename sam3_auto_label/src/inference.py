@@ -356,6 +356,13 @@ def build_model(cfg: Config):
     device = resolve_device(cfg.inference.device)
     log.info(f"device: {device}, resolution: {cfg.inference.resolution}px")
 
+    # Enable TF32 on Ampere+ GPUs for ~2-3x matmul throughput without
+    # meaningful accuracy loss. Recommended by the SAM 3 batched
+    # inference guide (facebookresearch/sam3 docs/guides/batched-inference).
+    if device_type(device) == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
     model = build_sam3_image_model(
         bpe_path=cfg.bpe_path,
         checkpoint_path=cfg.ckpt_path,
