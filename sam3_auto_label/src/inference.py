@@ -556,20 +556,103 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
             else:
                 bbox = [0, 0, 0, 0]
 
-            annotations.append({
-                "id": start_ann_id + i,
-                "image_id": image_id,
-                "category_id": cat_id,
-                "bbox": bbox,
-                "area": areas[i] if i < len(areas) else 0,
-                "iscrowd": 0,
-                "segmentation": rles[i] if i < len(rles) else None,
-                "score": score,
-            })
+            annotations.append(build_annotation_dict(
+                ann_id=start_ann_id + i,
+                image_id=image_id,
+                category_id=cat_id,
+                bbox=bbox,
+                area=areas[i] if i < len(areas) else 0,
+                score=score,
+                segmentation=rles[i] if i < len(rles) else None,
+                annotation_source="auto",
+            ))
 
         ann_id = start_ann_id + len(annotations)
 
+        # Apply min_area filter if configured
+        min_area = getattr(cfg.inference, "min_area", 0)
+        if min_area > 0:
+            annotations = filter_by_min_area(annotations, min_area)
+            # Re-number annotation IDs after filtering
+            for new_idx, ann in enumerate(annotations):
+                ann["id"] = start_ann_id + new_idx
+            ann_id = start_ann_id + len(annotations)
+
+        # Validate annotations before returning
+        annotations = [ann for ann in annotations if validate_annotation(ann)]
+
     return annotations, ann_id
+
+
+# ---------------------------------------------------------------------------
+# Annotation construction, validation, and filtering
+# ---------------------------------------------------------------------------
+
+def build_annotation_dict(ann_id, image_id, category_id, bbox, area,
+                          score, segmentation, annotation_source="auto"):
+    """Build a COCO-format annotation dict with provenance field.
+
+    The annotation_source field tracks whether this annotation was
+    auto-generated ('auto') or human-reviewed ('reviewed').
+    """
+    return {
+        "id": ann_id,
+        "image_id": image_id,
+        "category_id": category_id,
+        "bbox": bbox,
+        "area": area,
+        "iscrowd": 0,
+        "segmentation": segmentation,
+        "score": score,
+        "annotation_source": annotation_source,
+    }
+
+
+def validate_annotation(ann):
+    """Return True if the annotation has valid data, False otherwise.
+
+    Checks:
+    - bbox has no NaN values
+    - bbox width and height are non-negative
+    - area is non-negative
+    - category_id is positive
+    - score is in [0, 1]
+    """
+    import math
+
+    bbox = ann.get("bbox", [])
+    if len(bbox) != 4:
+        return False
+    if any(math.isnan(v) or math.isinf(v) for v in bbox):
+        return False
+    # bbox is [x, y, w, h] in COCO format
+    if bbox[2] < 0 or bbox[3] < 0:
+        return False
+
+    area = ann.get("area", 0)
+    if area is None or (isinstance(area, float) and math.isnan(area)):
+        return False
+    if area <= 0:
+        return False
+
+    cat_id = ann.get("category_id", 0)
+    if cat_id is None or cat_id <= 0:
+        return False
+
+    score = ann.get("score", 0)
+    if score is None or (isinstance(score, float) and math.isnan(score)):
+        return False
+    if score < 0 or score > 1:
+        return False
+
+    return True
+
+
+def filter_by_min_area(annotations, min_area):
+    """Drop annotations with area < min_area. Returns filtered list."""
+    if min_area <= 0:
+        return annotations
+    return [ann for ann in annotations if ann.get("area", 0) >= min_area]
 
 
 # ---------------------------------------------------------------------------

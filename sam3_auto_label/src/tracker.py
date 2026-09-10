@@ -46,7 +46,9 @@ class ExperimentTracker:
                     total_time REAL,
                     avg_time_per_image REAL,
                     errors INTEGER,
-                    git_commit TEXT
+                    git_commit TEXT,
+                    model_version TEXT,
+                    prompt_version TEXT
                 )
             """)
             c.execute("""
@@ -77,9 +79,9 @@ class ExperimentTracker:
             "device": cfg.inference.device,
             "categories": [(c.id, c.name, c.prompt) for c in cfg.categories],
         }
-        return hashlib.md5(
+        return hashlib.sha256(
             json.dumps(config_dict, sort_keys=True).encode()
-        ).hexdigest()[:12]
+        ).hexdigest()[:16]
 
     def _git_commit(self) -> str:
         """Get current git commit (best effort)."""
@@ -110,12 +112,19 @@ class ExperimentTracker:
             ],
         }, ensure_ascii=False)
 
+        # Provenance: model version from checkpoint filename, prompt version from config hash
+        model_version = os.path.basename(cfg.ckpt_path) if hasattr(cfg, "ckpt_path") else "unknown"
+        prompt_version = self._config_hash(cfg)
+
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute(
-            "INSERT INTO experiments (id, started_at, status, config_hash, config_json, num_images, git_commit) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO experiments (id, started_at, status, config_hash, config_json, "
+            "num_images, git_commit, model_version, prompt_version) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (exp_id, datetime.now().isoformat(), "running", self._config_hash(cfg),
-             config_json, len(image_files), self._git_commit()),
+             config_json, len(image_files), self._git_commit(),
+             model_version, prompt_version),
         )
         conn.commit()
         conn.close()

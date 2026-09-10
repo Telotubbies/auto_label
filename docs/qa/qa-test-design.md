@@ -29,12 +29,12 @@ library / devtools / CLI.
 
 | Level | Ratio | Count | Rationale |
 | --- | --- | --- | --- |
-| Unit | 80% | 40 tests | Logic lives in pure functions (path sanitization, bbox conversion, split logic, focal loss math, config validation) |
+| Unit | 80% | 56 tests | Logic lives in pure functions (path sanitization, bbox conversion, split logic, focal loss math, config validation, provenance, label validation) |
 | Integration | 15% | 14 tests | Module interactions (checkpoint save/load, model dict structure, ONNX script existence) |
 | E2E | 5% | 1 test (skipped) | Full SAM batch on real image (requires WSL venv + GPU + 3.34 GB checkpoint) |
 | Static | 5% | 6 tests | Config file scans and source-code security audits (no execution) |
 
-Total: 60 tests collected, 59 passed, 1 skipped.
+Total: 76 tests collected, 75 passed, 1 skipped.
 
 ### 1.2 Case Selection Method
 
@@ -334,26 +334,24 @@ Last test run: 2026-09-10
 platform win32 -- Python 3.11.9, pytest-8.3.4
 plugins: anyio-4.11.0, asyncio-0.25.0, cov-6.0.0
 
-collected 60 items
+collected 76 items
 
 tests/integration/test_sam_batch.py::TestSAMBatchSingleImage::test_produces_coco_and_yolo_outputs SKIPPED
-tests/integration/test_sam_batch.py::TestSAMResumeFromCheckpoint::test_checkpoint_skips_processed_images PASSED
-tests/integration/test_sam_batch.py::TestSAMResumeFromCheckpoint::test_fresh_deletes_checkpoint PASSED
-tests/integration/test_sam_batch.py::TestSAMResumeFromCheckpoint::test_corrupt_checkpoint_ignored PASSED
-tests/integration/test_yolo_training.py::TestYOLOTrainingFourModels ... (6 PASSED)
-tests/integration/test_yolo_training.py::TestONNXExport ... (4 PASSED)
+tests/integration/test_sam_batch.py::TestSAMResumeFromCheckpoint ... (3 PASSED)
+tests/integration/test_yolo_training.py ... (10 PASSED)
 tests/unit/test_config_static.py ... (7 PASSED)
 tests/unit/test_dataset_prep.py ... (16 PASSED)
 tests/unit/test_focal_patch.py ... (7 PASSED)
 tests/unit/test_path_safety.py ... (12 PASSED)
+tests/unit/test_provenance.py ... (16 PASSED)
 tests/unit/test_security_static.py ... (4 PASSED)
 
-======================= 59 passed, 1 skipped in 11.09s ========================
+======================= 75 passed, 1 skipped in 9.55s ========================
 ```
 
 Command: `python -m pytest tests/ -v --tb=short`
 
-Result: 59 passed, 1 skipped, 0 failed.
+Result: 75 passed, 1 skipped, 0 failed.
 
 ---
 
