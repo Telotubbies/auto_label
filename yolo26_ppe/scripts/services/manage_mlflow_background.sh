@@ -13,7 +13,7 @@ set -e
 TRACKING_URI="sqlite:////mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/mlflow/backend/mlflow.db"
 ARTIFACT_ROOT="/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/mlflow/artifacts"
 PORT=5000
-HOST="0.0.0.0"
+HOST="127.0.0.1"
 PID_FILE="/tmp/mlflow_server.pid"
 LOG_FILE="/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/logs/mlflow_server.log"
 PYTHON="/opt/sam3_venv/bin/python3"

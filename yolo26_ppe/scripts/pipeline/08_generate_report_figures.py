@@ -279,7 +279,7 @@ def fig_training_curves():
             try:
                 loss.append(float(l))
                 map50.append(float(m))
-            except:
+            except (ValueError, TypeError):
                 pass
     if not epochs:
         print("SKIP training_curves: no data parsed")
