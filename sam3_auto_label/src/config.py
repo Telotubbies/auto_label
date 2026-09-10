@@ -56,6 +56,9 @@ class InferenceConfig:
     # torch.compile: enable operation fusion for faster inference (SAM 3.1).
     # First forward pass is slower due to compilation; subsequent batches are faster.
     compile: bool = False
+    # Minimum object area in pixels. Annotations with area < min_area are dropped.
+    # 0 = disabled (keep all). Set to e.g. 100 to filter tiny false positives.
+    min_area: int = 0
 
 
 @dataclass
@@ -226,6 +229,7 @@ def _parse_inference(value: Any) -> InferenceConfig:
         gpu_ops=_boolean(data.get("gpu_ops", True), "inference.gpu_ops"),
         pipeline_export=_boolean(data.get("pipeline_export", True), "inference.pipeline_export"),
         compile=_boolean(data.get("compile", False), "inference.compile"),
+        min_area=_integer(data.get("min_area", 0), "inference.min_area"),
     )
 
 
@@ -363,6 +367,7 @@ def save_config(cfg: Config, path: str):
             "gpu_ops": cfg.inference.gpu_ops,
             "pipeline_export": cfg.inference.pipeline_export,
             "compile": cfg.inference.compile,
+            "min_area": cfg.inference.min_area,
         },
         "annotation": {
             "bbox": cfg.annotation.bbox,

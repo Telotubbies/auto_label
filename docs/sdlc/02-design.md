@@ -359,7 +359,7 @@ auto_label/
 
 ### 4.2.1 Test Infrastructure
 
-The project includes a pytest test suite (60 tests across 7 files) covering all 12 SDLC test cases:
+The project includes a pytest test suite (76 tests across 8 files) covering 17 SDLC test cases:
 
 ```text
 tests/
@@ -371,6 +371,7 @@ tests/
     test_dataset_prep.py               # TC-05, TC-06: split + oversampling (16 tests)
     test_config_static.py              # TC-09, TC-12: MLflow + checkpoint path (7 tests)
     test_security_static.py            # TC-10, TC-11: secrets + shell=True scan (4 tests)
+    test_provenance.py                 # TC-13 to TC-17: provenance, retry, validator, min_area, sha256 (16 tests)
   integration/
     test_sam_batch.py                  # TC-01, TC-02: SAM batch + resume (4 tests)
     test_yolo_training.py              # TC-07, TC-08: YOLO training + ONNX (10 tests)
@@ -382,7 +383,7 @@ Test markers:
 - `@pytest.mark.integration` — end-to-end tests requiring checkpoint/GPU
 - `@pytest.mark.static` — static-analysis / config-file scans
 
-Run: `python -m pytest tests/` → 59 passed, 1 skipped (TC-01 needs WSL `sam3` module)
+Run: `python -m pytest tests/` → 75 passed, 1 skipped (TC-01 needs WSL `sam3` module)
 
 ### 4.3 Security Controls Implemented
 
@@ -408,7 +409,7 @@ Run: `python -m pytest tests/` → 59 passed, 1 skipped (TC-01 needs WSL `sam3` 
 | TD-07 | `open()` missing `encoding="utf-8"` | Minor | Low |
 | TD-08 | Broken doc links in README | Minor | Low |
 | TD-09 | Focal patch does not cover mask loss | Minor | Medium |
-| TD-10 | `tracker.py` uses md5 instead of sha256 | Minor | Low |
+| TD-10 | `tracker.py` uses md5 instead of sha256 | Minor | Resolved (TC-17) |
 
 ---
 

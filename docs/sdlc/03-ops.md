@@ -25,7 +25,7 @@ status: "Verified"
 
 | Level | Approach | Tools | Status |
 | --- | --- | --- | --- |
-| Unit | Pure function tests (config, parsing, path sanitization) | pytest | Done (40 tests) |
+| Unit | Pure function tests (config, parsing, path sanitization, provenance, validation) | pytest | Done (56 tests) |
 | Integration | Module interaction (SAM inference, YOLO training) | pytest + mocks | Done (14 tests, 1 skipped on Windows) |
 | Functional | End-to-end pipeline (setup -> label -> train -> predict) | Manual | Manual only |
 | Performance | Inference latency, throughput | ONNX benchmark script | Done (manual) |
@@ -56,12 +56,13 @@ Entry Criteria:
 - Dependencies installed in venv
 
 Exit Criteria (met 2026-09-10):
-- Unit tests exist for pure functions — 40 tests across 5 files
+- Unit tests exist for pure functions — 56 tests across 6 files
 - Integration tests cover SAM and YOLO flows — 14 tests (1 skipped on Windows)
 - Security tests pass (path traversal, injection) — TC-03, TC-10, TC-11
 - Regression tests exist for bug fixes — TC-04, TC-05, TC-06, TC-12
+- Standard compliance tests pass — TC-13 through TC-17
 - Coverage >= 60% for project code — Pure functions and config fully covered
-- Full suite: `python -m pytest tests/` → 59 passed, 1 skipped
+- Full suite: `python -m pytest tests/` → 75 passed, 1 skipped
 
 ### 5.4 Test Cases (Planned)
 
@@ -79,6 +80,11 @@ Exit Criteria (met 2026-09-10):
 | TC-10 | No secrets in code | Repository checked | Scan all .py, .sh, .yaml | No passwords, keys, tokens found | Must | Done (2 tests) |
 | TC-11 | shell=True eliminated | pipeline_cli.py checked | Grep for `shell=True` | Zero occurrences | Must | Done (2 tests) |
 | TC-12 | Checkpoint location match | setup.py + pipeline_cli.py | Compare CKPT_PATH | Both use `checkpoints/sam3.1_multiplex.pt` | Must | Done (4 tests) |
+| TC-13 | Provenance fields in tracker | tracker.py schema | Check experiments table columns | model_version, prompt_version columns exist | Must | Done (3 tests) |
+| TC-14 | Retry on failure | batch_segment.py | Call retry_segment with failing function | Retries up to max_retries, then gives up | Must | Done (2 tests) |
+| TC-15 | Label validator | inference.py | Pass invalid annotations to validate_annotation | NaN bbox, zero area, negative bbox, invalid cat_id, bad score rejected | Must | Done (6 tests) |
+| TC-16 | min_area filter | inference.py + config.py | Pass annotations with varying areas | Annotations below min_area are dropped | Should | Done (3 tests) |
+| TC-17 | SHA256 config hash | tracker.py | Check _config_hash output | Uses SHA256 (64 chars), not MD5 (32 chars) | Must | Done (2 tests) |
 
 ### 5.5 Security Audit Results (2026-09-10)
 
@@ -203,7 +209,12 @@ The system is a CLI tool, not a long-running service. The only service component
 - SHA256 checkpoint verification framework
 - YOLO dependencies installed by `setup.py`
 - SDLC documentation (3 files in `docs/sdlc/`)
-- pytest test suite (60 tests, 12 test cases) covering unit, integration, and static security scans
+- pytest test suite (76 tests, 17 test cases) covering unit, integration, and static security scans
+- Provenance tracking: model_version, prompt_version, annotation_source fields in tracker
+- Label validator: rejects NaN bbox, zero area, negative bbox, invalid category_id, bad score
+- min_area filter: drops small false positive annotations
+- Retry on failure: batch loop retries failed images up to 3 times with linear backoff
+- SHA256 config hash: replaces MD5 for collision-safe integrity
 
 ### Changed
 - `pipeline_cli.py` now uses repo-local venv instead of `/opt/sam3_venv`
@@ -251,7 +262,7 @@ The system is a CLI tool, not a long-running service. The only service component
 
 | ID | Action | Owner | Due | Status |
 | --- | --- | --- | --- | --- |
-| AI-01 | Create pytest suite for pure functions | QA | Next sprint | Done (60 tests, 12 TCs) |
+| AI-01 | Create pytest suite for pure functions | QA | Next sprint | Done (76 tests, 17 TCs) |
 | AI-02 | Split `pipeline_cli.py` into modules | Engineering | Next sprint | Open |
 | AI-03 | Use `production_train.yaml` as single source for recipe | Engineering | Next sprint | Open |
 | AI-04 | Fix `inference.py` None boxes in NMS | Engineering | Next sprint | Open |
@@ -260,7 +271,7 @@ The system is a CLI tool, not a long-running service. The only service component
 | AI-07 | Add `encoding="utf-8"` to all `open()` calls | Engineering | Next sprint | Open |
 | AI-08 | Fix broken doc links in README | Engineering | Next sprint | Open |
 | AI-09 | Extend Focal patch to segmentation mask loss | Engineering | Future | Open |
-| AI-10 | Replace `hashlib.md5` with `sha256` in `tracker.py` | Engineering | Next sprint | Open |
+| AI-10 | Replace `hashlib.md5` with `sha256` in `tracker.py` | Engineering | Next sprint | Done (TC-17) |
 
 ### 7.2 Performance and Metrics Report
 

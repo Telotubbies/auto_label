@@ -99,6 +99,28 @@ def format_eta(seconds):
     return str(td)
 
 
+def retry_segment(segment_fn, processor, image, img_id, ann_id, cfg,
+                  max_retries=3):
+    """Call segment_fn with retry on failure.
+
+    Returns (annotations, next_ann_id, attempts).
+    On permanent failure, returns ([], ann_id, attempts).
+    """
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            annotations, ann_id = segment_fn(processor, image, img_id, ann_id, cfg)
+            return annotations, ann_id, attempt
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_retries:
+                log.warning(f"retry {attempt}/{max_retries} for image_id={img_id}: {exc}")
+                time.sleep(1 * attempt)  # linear backoff
+            else:
+                log.error(f"failed after {max_retries} attempts: {exc}")
+    return [], ann_id, max_retries
+
+
 # ---------------------------------------------------------------------------
 # Args
 # ---------------------------------------------------------------------------
@@ -446,7 +468,9 @@ def main():
             # img_id = position in full image list (O(1) lookup)
             img_id = image_id_map[img_path]
 
-            annotations, ann_id = segment_image(processor, image, img_id, ann_id, cfg)
+            annotations, ann_id, _attempts = retry_segment(
+                segment_image, processor, image, img_id, ann_id, cfg, max_retries=3,
+            )
 
             image_info = {
                 "id": img_id,
