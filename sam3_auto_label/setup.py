@@ -34,9 +34,12 @@ import urllib.request
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VENV_DIR = os.path.join(BASE_DIR, "sam3_venv")
-MODEL_DIR = os.path.join(BASE_DIR, "models", "sam3")
+MODEL_DIR = os.path.join(BASE_DIR, "checkpoints")
 CKPT_PATH = os.path.join(MODEL_DIR, "sam3.1_multiplex.pt")
 CKPT_URL = "https://huggingface.co/facebook/sam3.1/resolve/main/sam3.1_multiplex.pt"
+# Expected SHA256 of the checkpoint (for integrity verification).
+# Update this hash after the first verified download if needed.
+CKPT_SHA256 = None  # Set to a 64-char hex string to enable integrity verification
 
 # ---------------------------------------------------------------------------
 # Python version policy
@@ -475,7 +478,16 @@ def install_requirements():
     print("\n[SETUP] Installing remaining dependencies...")
     subprocess.check_call([pip, "install", "-r", temp_req])
     os.remove(temp_req)
-    print("[OK] All dependencies installed")
+    print("[OK] SAM dependencies installed")
+
+    # Install YOLO dependencies (ultralytics, mlflow, albumentations, etc.)
+    yolo_req = os.path.join(os.path.dirname(BASE_DIR), "yolo26_ppe", "requirements.txt")
+    if os.path.exists(yolo_req):
+        print("\n[SETUP] Installing YOLO dependencies...")
+        subprocess.check_call([pip, "install", "-r", yolo_req])
+        print("[OK] YOLO dependencies installed")
+    else:
+        print(f"[WARN] YOLO requirements not found at {yolo_req}")
 
 
 def download_checkpoint():
@@ -507,6 +519,24 @@ def download_checkpoint():
         urllib.request.urlretrieve(CKPT_URL, CKPT_PATH)
         size_gb = round(os.path.getsize(CKPT_PATH) / (1024**3), 2)
         print(f"[OK] Downloaded checkpoint ({size_gb} GB)")
+
+        # Integrity verification (if hash is configured)
+        if CKPT_SHA256:
+            print("[SETUP] Verifying checkpoint integrity (SHA256)...")
+            import hashlib
+            sha = hashlib.sha256()
+            with open(CKPT_PATH, "rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    sha.update(chunk)
+            actual = sha.hexdigest()
+            if actual.lower() != CKPT_SHA256.lower():
+                print(f"[ERROR] Checksum mismatch!")
+                print(f"  Expected: {CKPT_SHA256}")
+                print(f"  Got:      {actual}")
+                os.remove(CKPT_PATH)
+                print("[ERROR] Corrupted checkpoint removed. Please re-run setup.")
+                return
+            print("[OK] Checkpoint integrity verified")
     except Exception as e:
         print(f"[ERROR] Download failed: {e}")
         print(f"  Please download manually from: {CKPT_URL}")

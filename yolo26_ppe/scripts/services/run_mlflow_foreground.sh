@@ -4,4 +4,4 @@
 mlflow server \
   --backend-store-uri sqlite:///yolo26_ppe/artifacts/mlflow/backend/mlflow.db \
   --default-artifact-root yolo26_ppe/artifacts/mlflow \
-  --host 0.0.0.0 --port 5000
+  --host 127.0.0.1 --port 5000

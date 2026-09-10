@@ -2,7 +2,7 @@
 tracking_uri: sqlite:///yolo26_ppe/artifacts/mlflow/backend/mlflow.db
 artifact_root: yolo26_ppe/artifacts/mlflow
 experiment_name: yolo26_ppe
-host: 0.0.0.0
+host: 127.0.0.1
 port: 5000
 
 # Auto-logged by Ultralytics:

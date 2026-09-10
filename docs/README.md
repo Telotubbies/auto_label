@@ -23,9 +23,9 @@ status: "Verified"
 
 | # | Requirement | Status | Main Document |
 |---|-------------|-------|-----------|
-| **RQ1** | Auto-label PPE images with SAM 3.1 | ✅ Completed | [pipeline/pipeline-flow.md](pipeline/pipeline-flow.md) |
-| **RQ2** | Train YOLO26 on the PPE dataset | ✅ Completed | [pipeline/yolo26-training.md](pipeline/yolo26-training.md) |
-| **RQ3** | Generate ground truth from provided data | ✅ Completed | [pipeline/ground-truth-generation.md](pipeline/ground-truth-generation.md) |
+| **RQ1** | Auto-label PPE images with SAM 3.1 | ✅ Completed | [pipeline/01-pipeline-flow.md](pipeline/01-pipeline-flow.md) |
+| **RQ2** | Train YOLO26 on the PPE dataset | ✅ Completed | [pipeline/05-yolo26-training.md](pipeline/05-yolo26-training.md) |
+| **RQ3** | Generate ground truth from provided data | ✅ Completed | [pipeline/03-ground-truth-generation.md](pipeline/03-ground-truth-generation.md) |
 
 > Full report: `yolo26_ppe/reports/final/report.pdf`
 
@@ -36,40 +36,34 @@ status: "Verified"
 ```
 docs/
 │
-├── README.md                          ← This file (index)
-├── 00-overview.md                     ← Overview of 3 requirements
-├── 01-requirements.md                 ← Hardware/software requirements
+├── README.md                              ← This file (index)
+├── 00-overview.md                         ← Overview of 3 requirements
+├── 01-requirements.md                     ← Hardware/software requirements
 │
 ├── architecture/
-│   ├── system-architecture.md         ← Architecture (SAM + YOLO + pipeline_cli)
-│   ├── data-flow.md                   ← Data flow + Dataset Versioning
-│   └── deployment.md                  ← Deployment
-│
-├── pipeline/
-│   ├── pipeline-flow.md               ← SAM 3.1 workflow
-│   ├── auto-labeling-strategy.md      ← Auto-labeling strategy
-│   ├── quality-control.md             ← Quality control + Confidence Scoring
-│   ├── yolo26-training.md             ← YOLO26 Training (RQ2)
-│   └── ground-truth-generation.md     ← Ground Truth Generation (RQ3)
+│   ├── 01-system-architecture.md          ← Architecture (SAM + YOLO + pipeline_cli)
+│   ├── 02-data-flow.md                    ← Data flow + Dataset Versioning
+│   └── 03-deployment.md                   ← Deployment
 │
 ├── design/
-│   ├── component-design.md            ← Component responsibilities
-│   ├── class-diagram.md               ← Class diagram
-│   ├── sequence-diagram.md            ← Sequence diagram
-│   └── state-diagram.md               ← State diagram
+│   ├── 01-component-design.md             ← Component responsibilities
+│   ├── 02-class-diagram.md                ← Class diagram
+│   └── 03-sequence-diagram.md             ← Sequence diagram
 │
-├── models/
-│   ├── sam3.md                        ← SAM 3.1
-│   ├── yolo26.md                      ← YOLO26 (4 models)
-│   └── classifier.md                  ← Classifier (❌ not in code)
+├── pipeline/
+│   ├── 01-pipeline-flow.md                ← SAM 3.1 workflow
+│   ├── 02-auto-labeling-strategy.md       ← Auto-labeling strategy
+│   ├── 03-ground-truth-generation.md      ← Ground Truth Generation (RQ3)
+│   ├── 04-quality-control.md              ← Quality control + Confidence Scoring
+│   └── 05-yolo26-training.md              ← YOLO26 Training (RQ2)
 │
-└── operations/
-    ├── configuration.md               ← Config and parameters
-    ├── cli-and-api.md                 ← CLI 3 modes (sam/yolo/pred)
-    ├── testing.md                     ← Testing
-    ├── performance.md                 ← Performance (SAM + YOLO26)
-    ├── error-handling.md              ← Error handling
-    └── troubleshooting.md             ← Troubleshooting
+├── qa/
+│   └── qa-test-design.md                   ← QA design: why each test function exists
+│
+└── sdlc/
+    ├── 01-overview.md                     ← SDLC Phase 1-2: Business Analysis + Requirements
+    ├── 02-design.md                       ← SDLC Phase 3-4: Architecture, Design + Development
+    └── 03-ops.md                           ← SDLC Phase 5-7: Testing, Deployment + Post-Release
 ```
 
 ---
@@ -87,47 +81,41 @@ docs/
 
 | File | Topic | Status |
 |------|--------|-------|
-| [system-architecture.md](architecture/system-architecture.md) | Architecture (SAM + YOLO + 3 modes) | ✅ Verified |
-| [data-flow.md](architecture/data-flow.md) | Data flow + YOLO26 data flow | ✅ Verified |
-| [deployment.md](architecture/deployment.md) | Deployment | ✅ Verified |
-
-### pipeline/
-
-| File | Topic | Status |
-|------|--------|-------|
-| [pipeline-flow.md](pipeline/pipeline-flow.md) | SAM 3.1 workflow | ✅ Verified |
-| [auto-labeling-strategy.md](pipeline/auto-labeling-strategy.md) | Auto-labeling strategy | ✅ Verified |
-| [quality-control.md](pipeline/quality-control.md) | Quality control + Confidence Scoring | ✅ Verified |
-| [yolo26-training.md](pipeline/yolo26-training.md) | YOLO26 Training (RQ2) | ✅ Verified |
-| [ground-truth-generation.md](pipeline/ground-truth-generation.md) | Ground Truth Generation (RQ3) | ✅ Verified |
+| [01-system-architecture.md](architecture/01-system-architecture.md) | Architecture (SAM + YOLO + 3 modes) | ✅ Verified |
+| [02-data-flow.md](architecture/02-data-flow.md) | Data flow + YOLO26 data flow | ✅ Verified |
+| [03-deployment.md](architecture/03-deployment.md) | Deployment | ✅ Verified |
 
 ### design/
 
 | File | Topic | Status |
 |------|--------|-------|
-| [component-design.md](design/component-design.md) | Component responsibilities | ✅ Verified |
-| [class-diagram.md](design/class-diagram.md) | Class diagram | ✅ Verified |
-| [sequence-diagram.md](design/sequence-diagram.md) | Sequence diagram | ✅ Verified |
-| [state-diagram.md](design/state-diagram.md) | State diagram | ✅ Verified |
+| [01-component-design.md](design/01-component-design.md) | Component responsibilities | ✅ Verified |
+| [02-class-diagram.md](design/02-class-diagram.md) | Class diagram | ✅ Verified |
+| [03-sequence-diagram.md](design/03-sequence-diagram.md) | Sequence diagram | ✅ Verified |
 
-### models/
-
-| File | Topic | Status |
-|------|--------|-------|
-| [sam3.md](models/sam3.md) | SAM 3.1 | ✅ Verified |
-| [yolo26.md](models/yolo26.md) | YOLO26 (4 models + benchmark) | ✅ Verified |
-| [classifier.md](models/classifier.md) | Classifier (❌ not in code) | ✅ Verified |
-
-### operations/
+### pipeline/
 
 | File | Topic | Status |
 |------|--------|-------|
-| [configuration.md](operations/configuration.md) | Config and parameters | ✅ Verified |
-| [cli-and-api.md](operations/cli-and-api.md) | CLI 3 modes (sam/yolo/pred) | ✅ Verified |
-| [testing.md](operations/testing.md) | Testing | ✅ Verified |
-| [performance.md](operations/performance.md) | Performance (SAM + YOLO26) | ✅ Verified |
-| [error-handling.md](operations/error-handling.md) | Error handling | ✅ Verified |
-| [troubleshooting.md](operations/troubleshooting.md) | Troubleshooting | ✅ Verified |
+| [01-pipeline-flow.md](pipeline/01-pipeline-flow.md) | SAM 3.1 workflow | ✅ Verified |
+| [02-auto-labeling-strategy.md](pipeline/02-auto-labeling-strategy.md) | Auto-labeling strategy | ✅ Verified |
+| [03-ground-truth-generation.md](pipeline/03-ground-truth-generation.md) | Ground Truth Generation (RQ3) | ✅ Verified |
+| [04-quality-control.md](pipeline/04-quality-control.md) | Quality control + Confidence Scoring | ✅ Verified |
+| [05-yolo26-training.md](pipeline/05-yolo26-training.md) | YOLO26 Training (RQ2) | ✅ Verified |
+
+### sdlc/
+
+| File | Topic | Status |
+|------|--------|-------|
+| [01-overview.md](sdlc/01-overview.md) | SDLC Phase 1-2: Business Analysis + Requirements | ✅ Verified |
+| [02-design.md](sdlc/02-design.md) | SDLC Phase 3-4: Architecture, Design + Development | ✅ Verified |
+| [03-ops.md](sdlc/03-ops.md) | SDLC Phase 5-7: Testing, Deployment + Post-Release | ✅ Verified |
+
+### qa/
+
+| File | Topic | Status |
+|------|-------|--------|
+| [qa-test-design.md](qa/qa-test-design.md) | QA design: why each test function exists + doc redundancy analysis | Verified |
 
 ---
 

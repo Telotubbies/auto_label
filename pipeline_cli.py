@@ -36,14 +36,9 @@ from rich.progress import (
     Progress, SpinnerColumn, BarColumn, TextColumn,
     TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn,
 )
-from rich.live import Live
 from rich.text import Text
-from rich.align import Align
-from rich.columns import Columns
 from rich.rule import Rule
 from rich import box
-from rich.layout import Layout
-from rich.padding import Padding
 
 # =============================================================================
 # Version
@@ -81,13 +76,20 @@ _dry_run = False
 if os.name == "nt":
     REPO_ROOT = Path(__file__).resolve().parent
 else:
-    REPO_ROOT = Path("/mnt/e/02_Projects/auto_label")
+    REPO_ROOT = Path(__file__).resolve().parent
 SAM_DIR = REPO_ROOT / "sam3_auto_label"
 YOLO_DIR = REPO_ROOT / "yolo26_ppe"
 RAW_DIR = REPO_ROOT / "data" / "raw"
 SAM_OUTPUTS_DIR = REPO_ROOT / "data" / "sam_outputs_ground_truth"
 PREDICTIONS_DIR = YOLO_DIR / "data" / "predictions"
-SAM_PYTHON = "/opt/sam3_venv/bin/python"
+
+# Resolve SAM/YOLO Python from the repo-local venv created by setup.py.
+# Allow override via YOLO_PYTHON env var (for advanced users / CI).
+if os.name == "nt":
+    _default_python = str(SAM_DIR / "sam3_venv" / "Scripts" / "python.exe")
+else:
+    _default_python = str(SAM_DIR / "sam3_venv" / "bin" / "python")
+SAM_PYTHON = os.environ.get("SAM_PYTHON", _default_python)
 YOLO_PYTHON = os.environ.get("YOLO_PYTHON", SAM_PYTHON)
 
 VERSION = "v4_recipe"
@@ -250,23 +252,46 @@ def count_images(path: Path) -> int:
     return sum(1 for f in path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS)
 
 
+def _sanitize_path(user_path: str, base_dir: Optional[Path] = None) -> Path:
+    """Sanitize a user-supplied path to prevent path traversal.
+
+    If base_dir is provided, the resolved path must stay within base_dir.
+    Raises ValueError if the path escapes base_dir.
+    """
+    p = Path(user_path).resolve()
+    if base_dir is not None:
+        base = base_dir.resolve()
+        try:
+            p.relative_to(base)
+        except ValueError:
+            raise ValueError(f"Path '{user_path}' escapes base directory '{base}'")
+    return p
+
+
 def resolve_input_dir(batch: Optional[str], input_path: Optional[str], base_dir: Optional[Path] = None) -> Path:
-    """Resolve input directory from --batch or --input."""
+    """Resolve input directory from --batch or --input.
+
+    Paths are sanitized to prevent traversal outside the base directory.
+    """
     if input_path:
-        return Path(input_path)
+        return _sanitize_path(input_path, base_dir)
     if batch:
-        return (base_dir or RAW_DIR) / batch
+        resolved = (base_dir or RAW_DIR) / batch
+        return _sanitize_path(str(resolved), base_dir or RAW_DIR)
     raise ValueError("Must specify either batch or input_path")
 
 
 def resolve_output_dir(mode: str, batch: Optional[str], output_path: Optional[str]) -> Path:
-    """Resolve output directory based on mode and batch name."""
+    """Resolve output directory based on mode and batch name.
+
+    Paths are sanitized to prevent traversal outside expected output directories.
+    """
     if output_path:
-        return Path(output_path)
+        return _sanitize_path(output_path)
     if not batch:
         raise ValueError("batch name required to resolve output directory")
     if mode == "sam":
-        return SAM_OUTPUTS_DIR / batch
+        return _sanitize_path(str(SAM_OUTPUTS_DIR / batch), SAM_OUTPUTS_DIR)
     elif mode in ("yolo", "pred"):
         return PREDICTIONS_DIR / batch
     raise ValueError(f"Unknown mode: {mode}")
@@ -720,26 +745,35 @@ def copy_datasets_to_tmp() -> bool:
     """Copy prepared datasets to /tmp for fast I/O during training."""
     console.print(f"\n  [cyan]▶ Copying datasets to /tmp for fast I/O...[/cyan]")
 
+    import shutil as _shutil
+
     det_src = YOLO_DIR / "data" / "yolo_detection_dataset_version_2"
     seg_src = YOLO_DIR / "data" / "yolo_segmentation_dataset_version_2"
 
     # Create target directories first
-    cmds = []
+    targets = []
     if det_src.exists():
-        cmds.append(("Detection", f"mkdir -p /tmp/yolo_detect_data && cp -rL {det_src}/* /tmp/yolo_detect_data/"))
+        targets.append(("Detection", det_src, Path("/tmp/yolo_detect_data")))
     if seg_src.exists():
-        cmds.append(("Segmentation", f"mkdir -p /tmp/yolo_seg_data && cp -rL {seg_src}/* /tmp/yolo_seg_data/"))
+        targets.append(("Segmentation", seg_src, Path("/tmp/yolo_seg_data")))
 
-    if not cmds:
+    if not targets:
         render_error("No prepared datasets found to copy",
                     "Run dataset preparation first (01_prepare_dataset.py)")
         return False
 
-    for label, cmd in cmds:
-        console.print(f"    [dim]{label}: {cmd}[/dim]")
-        proc = subprocess.run(cmd, shell=True)
-        if proc.returncode != 0:
-            render_error(f"Copy failed for {label}")
+    for label, src, dst in targets:
+        dst.mkdir(parents=True, exist_ok=True)
+        console.print(f"    [dim]{label}: {src} → {dst}[/dim]")
+        try:
+            for item in src.iterdir():
+                target = dst / item.name
+                if item.is_dir():
+                    _shutil.copytree(item, target, dirs_exist_ok=True)
+                else:
+                    _shutil.copy2(item, target)
+        except OSError as e:
+            render_error(f"Copy failed for {label}: {e}")
             return False
 
     console.print(f"  [green]✅ Datasets copied to /tmp[/green]")
@@ -834,14 +868,21 @@ def run_yolo_predict(datasets: List[str], models: List[str], conf, iou, imgsz, d
                 proc = subprocess.run(m_cmd, cwd=str(YOLO_DIR))
                 if proc.returncode != 0:
                     console.print(f"  [red]❌ {m} failed on {ds_name}[/red]")
+                    results[ds_name] = False
+                else:
+                    results[ds_name] = True
         else:
             for m, cfg in MODELS.items():
                 if not cfg["best"].exists():
                     render_error(f"Missing: {cfg['best']}", "Train the model first with --yolo")
+                    results[ds_name] = False
             console.print(f"    [dim]$ {' '.join(cmd)}[/dim]\n")
             proc = subprocess.run(cmd, cwd=str(YOLO_DIR))
-
-        results[ds_name] = True
+            if proc.returncode != 0:
+                console.print(f"  [red]❌ Prediction failed on {ds_name}[/red]")
+                results[ds_name] = False
+            elif ds_name not in results:
+                results[ds_name] = True
 
     return all(results.values()), results
 

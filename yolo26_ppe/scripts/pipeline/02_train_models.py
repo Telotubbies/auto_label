@@ -47,6 +47,13 @@ os.environ["MLFLOW_TRACKING_URI"] = f"sqlite:///{MLFLOW_DB}"
 try:
     import focal_patch  # noqa: F401
     FOCAL_PATCH_AVAILABLE = True
+    if not getattr(focal_patch, "FOCAL_PATCH_APPLIED", False):
+        import warnings
+        warnings.warn(
+            "focal_patch imported but patch was NOT applied — "
+            "training will use standard BCE. Check Ultralytics version compatibility."
+        )
+        FOCAL_PATCH_AVAILABLE = False
 except ImportError:
     FOCAL_PATCH_AVAILABLE = False
 
