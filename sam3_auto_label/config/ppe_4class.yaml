@@ -1,0 +1,50 @@
+categories:
+# 4 categories for PPE compliance detection — threshold per category
+# id=1 person          — person
+# id=2 helmet          — safety helmet
+# id=3 closed footwear — safety boots / closed-toe shoes
+# id=4 harness         — safety harness / full-body harness
+- id: 1
+  name: person
+  prompt: person
+  threshold: 0.7
+- id: 2
+  name: helmet
+  prompt: helmet
+  threshold: 0.25
+- id: 3
+  name: closed footwear
+  prompt: closed footwear
+  threshold: 0.25
+- id: 4
+  name: harness
+  prompt: safety harness
+  threshold: 0.25
+inference:
+  confidence_threshold: 0.25
+  resolution: 1008
+  device: auto
+  # GPU acceleration: use SAM 3.1 perflib for RLE encode + mask IoU NMS on GPU
+  # pipeline: overlap CPU export with GPU inference for ~100% GPU utilization
+  gpu_ops: true
+  pipeline_export: true
+annotation:
+  bbox: true
+  segmentation: true
+  segmentation_encoding: rle
+output:
+  formats:
+  - coco
+  save_viz: true
+  # Absolute paths — auto-labeling flow: data/raw -> data/sam_outputs_ground_truth
+  # Override at runtime with --input / --output if processing a specific batch.
+  input_dir: /mnt/e/02_Projects/auto_label/data/raw
+  output_dir: /mnt/e/02_Projects/auto_label/data/sam_outputs_ground_truth
+  viz_dpi: 150
+  viz_figsize:
+  - 10
+  - 7
+checkpoint:
+  enabled: true
+  auto_resume: true
+  clear_on_success: false

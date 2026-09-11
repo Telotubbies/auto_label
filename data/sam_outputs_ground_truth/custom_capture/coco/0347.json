@@ -1,0 +1,144 @@
+{
+  "images": [
+    {
+      "id": 347,
+      "file_name": "0347.jpg",
+      "width": 1477,
+      "height": 1108
+    }
+  ],
+  "annotations": [
+    {
+      "id": 5818,
+      "image_id": 347,
+      "category_id": 1,
+      "bbox": [
+        663.81,
+        620.95,
+        15.11,
+        55.77
+      ],
+      "area": 589,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "TS_f0=oQ1=G7K4L4M7H3N1O2M3N11L3D<QOmnNLfQ1Nkknj0"
+      },
+      "score": 0.7734375,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 5819,
+      "image_id": 347,
+      "category_id": 1,
+      "bbox": [
+        806.5,
+        622.61,
+        75.36,
+        71.92
+      ],
+      "area": 2560,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "^kYk0:TR17I8J5L4M3M3N2M3N2N1O2N1O100O1O010O100O001O1G9O001O100O010O0100O100O2N1N2N3fNZoNb0hP1\\O[oNb0hP1[O[oNa0hP1\\O[oNb0]Q1N2N2M2O2N1O2O001O001O0010O01O001O100O001O001O1O010O10O1O1000O2N3LkTSd0"
+      },
+      "score": 0.9140625,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 5820,
+      "image_id": 347,
+      "category_id": 1,
+      "bbox": [
+        199.24,
+        589.25,
+        58.71,
+        88.09
+      ],
+      "area": 3374,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "ang6?PR16L4M3N1O1N2O1N2O2M2O1N2N2N2N2N3M2O1J6K6L3O1O1O2N100O1O101N010O1000002N5L1N010O01O1O1O1O1O1O1N3N2Ld0ZO6J6K5L4M3L6J9G5Il[VY1"
+      },
+      "score": 0.93359375,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 5821,
+      "image_id": 347,
+      "category_id": 2,
+      "bbox": [
+        218.9,
+        589.04,
+        30.83,
+        19.36
+      ],
+      "area": 427,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "ca]77[R13M3N100O1O100O1O10000O10O100000001O0O2O1O1O1O1O001O1O1O2NhT`Y1"
+      },
+      "score": 0.8515625,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 5822,
+      "image_id": 347,
+      "category_id": 2,
+      "bbox": [
+        829.0,
+        622.72,
+        20.8,
+        16.95
+      ],
+      "area": 242,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "\\fRl06]R12M3O0O100O100O11O01O1O1O01O1O001O1OmlVe0"
+      },
+      "score": 0.8515625,
+      "annotation_source": "auto"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "helmet",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "closed footwear",
+      "supercategory": "object"
+    },
+    {
+      "id": 4,
+      "name": "harness",
+      "supercategory": "object"
+    }
+  ]
+}

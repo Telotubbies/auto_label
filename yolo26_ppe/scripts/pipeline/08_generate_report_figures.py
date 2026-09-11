@@ -41,40 +41,40 @@ plt.rcParams.update({
 
 # Consistent color palette (colorblind-safe, viridis-inspired)
 COLORS = {
-    'nano_detection': '#440154',  # dark purple
-    'small_detection': '#21918c',  # teal
-    'nano_segmentation':    '#fde725',  # yellow
-    'small_segmentation':    '#5ec962',  # green
+    'medium_detection': '#21918c',  # teal
+    'medium_segmentation':    '#5ec962',  # green
 }
 CLASS_COLORS = {
     'person':  '#440154',
     'helmet':  '#3b528b',
-    'boots':   '#21918c',
-    'shoes':   '#5ec962',
+    'closed footwear':   '#21918c',
     'harness': '#fde725',
 }
 SAM_COLOR = '#e74c3c'  # red for SAM
 
 # ─── Data ──────────────────────────────────────────────────────
-# v4_recipe final results
-MODELS = ['nano_detection', 'small_detection', 'nano_segmentation', 'small_segmentation']
-MODEL_LABELS = ['YOLO26n\ndetect', 'YOLO26s\ndetect', 'YOLO26n\nseg', 'YOLO26s\nseg']
+# v4_recipe final results — medium models only (4-class)
+MODELS = ['medium_detection', 'medium_segmentation']
+MODEL_LABELS = ['YOLO26m\ndetect', 'YOLO26m\nseg']
 
-MAP50 = [0.585, 0.738, 0.464, 0.537]
-MAP5095 = [0.428, 0.574, 0.316, 0.386]
-PRECISION = [0.663, 0.822, 0.682, 0.740]
-RECALL = [0.524, 0.676, 0.427, 0.480]
-F1 = [0.585, 0.742, 0.528, 0.581]
-LATENCY = [30.8, 21.0, 20.2, 29.4]
-SIZES = [5.1, 19.4, 24.1, 22.3]
+# From stage_2 final validation (best.pt)
+# Detection: mAP50=0.700, mAP50-95=0.485, P=0.889, R=0.574
+# Segmentation (box): mAP50=0.602, mAP50-95=0.427, P=0.792, R=0.537
+# Segmentation (mask): mAP50=0.545, mAP50-95=0.324, P=0.754, R=0.500
+MAP50 = [0.700, 0.602]
+MAP5095 = [0.485, 0.427]
+PRECISION = [0.889, 0.792]
+RECALL = [0.574, 0.537]
+F1 = [0.667, 0.610]
+LATENCY = [34.9, 44.3]
+SIZES = [54.5, 54.5]
 
-# Per-class mAP50
+# Per-class mAP50 (box) — from final validation
 PER_CLASS = {
-    'person':  [0.82, 0.91, 0.78, 0.85],
-    'helmet':  [0.75, 0.88, 0.71, 0.80],
-    'boots':   [0.32, 0.52, 0.25, 0.35],
-    'shoes':   [0.45, 0.65, 0.38, 0.48],
-    'harness': [0.28, 0.42, 0.20, 0.30],
+    'person':  [0.907, 0.727],
+    'helmet':  [0.744, 0.713],
+    'closed footwear':   [0.613, 0.562],
+    'harness': [0.537, 0.404],
 }
 
 # SAM 3.1 data
@@ -97,9 +97,9 @@ def fig_pareto():
     ax.annotate('SAM 3.1', (SAM_LATENCY, 0.0),
                 textcoords="offset points", xytext=(8, 10),
                 fontsize=9, fontweight='bold', color=SAM_COLOR)
-    # Pareto frontier (s_detect is best)
-    pareto_x = [SAM_LATENCY, LATENCY[1], LATENCY[2]]
-    pareto_y = [0.0, MAP50[1], MAP50[2]]
+    # Pareto frontier (m_detect is best)
+    pareto_x = [SAM_LATENCY, LATENCY[0]]
+    pareto_y = [0.0, MAP50[0]]
     ax.plot(pareto_x, pareto_y, 'k--', alpha=0.3, linewidth=1)
     ax.set_xlabel('Latency (ms)', fontweight='bold')
     ax.set_ylabel('mAP@0.5', fontweight='bold')
@@ -117,7 +117,7 @@ def fig_perclass():
     classes = list(PER_CLASS.keys())
     n_cls = len(classes)
     x = np.arange(n_cls)
-    width = 0.18
+    width = 0.35
     fig, ax = plt.subplots(figsize=(9, 5))
     for i, m in enumerate(MODELS):
         vals = [PER_CLASS[c][i] for c in classes]
@@ -126,9 +126,9 @@ def fig_perclass():
     ax.set_xlabel('Class', fontweight='bold')
     ax.set_ylabel('mAP@0.5', fontweight='bold')
     ax.set_title('Per-class mAP@0.5 — v4_recipe', fontweight='bold')
-    ax.set_xticks(x + width*1.5)
-    ax.set_xticklabels(classes, fontweight='bold')
-    ax.legend(loc='upper right', ncol=2, framealpha=0.9)
+    ax.set_xticks(x + width*0.5)
+    ax.set_xticklabels(classes, fontweight='bold', fontsize=9)
+    ax.legend(loc='upper right', ncol=1, framealpha=0.9)
     ax.set_ylim(0, 1.0)
     ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.1f'))
     fig.savefig(OUT / 'perclass_map50.pdf')
@@ -148,7 +148,7 @@ def fig_size_vs_acc():
     ax.set_ylabel('mAP@0.5', fontweight='bold')
     ax.set_title('Model Size vs Accuracy', fontweight='bold')
     ax.legend(loc='lower right', framealpha=0.9)
-    ax.set_xlim(0, 30)
+    ax.set_xlim(0, 70)
     ax.set_ylim(0.4, 0.8)
     ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
     fig.savefig(OUT / 'size_vs_accuracy.pdf')
@@ -160,7 +160,7 @@ def fig_overall_metrics():
     metrics = ['mAP50', 'mAP50-95', 'Precision', 'Recall', 'F1']
     data = [MAP50, MAP5095, PRECISION, RECALL, F1]
     x = np.arange(len(metrics))
-    width = 0.18
+    width = 0.35
     fig, ax = plt.subplots(figsize=(10, 5))
     for i, m in enumerate(MODELS):
         vals = [d[i] for d in data]
@@ -168,9 +168,9 @@ def fig_overall_metrics():
                edgecolor='black', linewidth=0.3)
     ax.set_ylabel('Score', fontweight='bold')
     ax.set_title('Overall Metrics Comparison — v4_recipe', fontweight='bold')
-    ax.set_xticks(x + width*1.5)
+    ax.set_xticks(x + width*0.5)
     ax.set_xticklabels(metrics, fontweight='bold')
-    ax.legend(loc='upper right', ncol=2, framealpha=0.9)
+    ax.legend(loc='upper right', ncol=1, framealpha=0.9)
     ax.set_ylim(0, 1.0)
     ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.1f'))
     fig.savefig(OUT / 'overall_metrics.pdf')
@@ -179,8 +179,22 @@ def fig_overall_metrics():
 
 # ─── Figure 5: Latency comparison (PyTorch vs ONNX) ───────────
 def fig_latency_pt_vs_onnx():
-    pt_lat = [30.8, 21.0, 20.2, 29.4]
-    onnx_lat = [109.9, 114.4, 166.6, 300.5]
+    # Load from comparison JSON if available
+    comp_path = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/evaluation/yolo/production_v4_recipe/onnx/all_comparison.json")
+    pt_lat = []
+    onnx_lat = []
+    if comp_path.exists():
+        comp = json.load(open(comp_path))
+        for m in MODELS:
+            if m in comp:
+                pt_lat.append(comp[m]["pytorch"].get("latency_ms", 0))
+                onnx_lat.append(comp[m]["onnx"].get("latency_ms", 0))
+            else:
+                pt_lat.append(0)
+                onnx_lat.append(0)
+    else:
+        pt_lat = [34.9, 44.3]
+        onnx_lat = [0, 0]
     x = np.arange(len(MODELS))
     width = 0.35
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -195,8 +209,9 @@ def fig_latency_pt_vs_onnx():
     ax.legend(framealpha=0.9)
     # Add value labels
     for i, (p, o) in enumerate(zip(pt_lat, onnx_lat)):
-        ax.text(i - width/2, p + 5, f'{p}', ha='center', fontsize=9)
-        ax.text(i + width/2, o + 5, f'{o}', ha='center', fontsize=9)
+        ax.text(i - width/2, p + 5, f'{p:.1f}', ha='center', fontsize=9)
+        if o > 0:
+            ax.text(i + width/2, o + 5, f'{o:.1f}', ha='center', fontsize=9)
     fig.savefig(OUT / 'latency_pt_vs_onnx.pdf')
     plt.close(fig)
     print("Saved: latency_pt_vs_onnx.pdf")
@@ -209,9 +224,9 @@ def fig_blurred_class_dist():
         print("SKIP blurred_class_dist: no stats")
         return
     stats = json.load(open(stats_path))
-    classes = ['person', 'helmet', 'boots', 'shoes', 'harness']
+    classes = ['person', 'helmet', 'closed footwear', 'harness']
     x = np.arange(len(classes))
-    width = 0.18
+    width = 0.35
     fig, ax = plt.subplots(figsize=(9, 5))
     for i, m in enumerate(MODELS):
         cd = stats[m]["class_distribution"]
@@ -220,9 +235,9 @@ def fig_blurred_class_dist():
                edgecolor='black', linewidth=0.3)
     ax.set_ylabel('Detection Count', fontweight='bold')
     ax.set_title('Class Distribution on Blurred Dataset (48 images)', fontweight='bold')
-    ax.set_xticks(x + width*1.5)
-    ax.set_xticklabels(classes, fontweight='bold')
-    ax.legend(loc='upper right', ncol=2, framealpha=0.9)
+    ax.set_xticks(x + width*0.5)
+    ax.set_xticklabels(classes, fontweight='bold', fontsize=9)
+    ax.legend(loc='upper right', ncol=1, framealpha=0.9)
     fig.savefig(OUT / 'blurred_class_dist.pdf')
     plt.close(fig)
     print("Saved: blurred_class_dist.pdf")
@@ -258,11 +273,11 @@ def fig_blurred_latency():
 # ─── Figure 8: Training curves (if results.csv exists) ────────
 def fig_training_curves():
     import csv
-    csv_path = "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/production/small_detection/stage_2_final_fine_tuning/results.csv"
+    csv_path = "/mnt/e/02_Projects/auto_label/yolo26_ppe/yolo26_ppe/models/production/medium_detection/stage_2_final_fine_tuning/results.csv"
     if not Path(csv_path).exists():
         # Try alternate path
-        for p in Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/models/production").rglob("results.csv"):
-            if "small_detection" in str(p):
+        for p in Path("/mnt/e/02_Projects/auto_label/yolo26_ppe").rglob("results.csv"):
+            if "medium_detection" in str(p) and "stage_2" in str(p):
                 csv_path = str(p)
                 break
         else:
@@ -287,14 +302,14 @@ def fig_training_curves():
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
     ax1.plot(epochs, loss, color='#21918c', linewidth=1.5)
     ax1.set_ylabel('Training Loss', fontweight='bold')
-    ax1.set_title('Training Curves — YOLO26s detect (v4_recipe)', fontweight='bold')
+    ax1.set_title('Training Curves — YOLO26m detect (v4_recipe)', fontweight='bold')
     ax2.plot(epochs, map50, color='#440154', linewidth=1.5)
     ax2.set_ylabel('mAP@0.5', fontweight='bold')
     ax2.set_xlabel('Epoch', fontweight='bold')
     ax2.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-    fig.savefig(OUT / 'training_curves_s_detect.pdf')
+    fig.savefig(OUT / 'training_curves_m_detect.pdf')
     plt.close(fig)
-    print("Saved: training_curves_s_detect.pdf")
+    print("Saved: training_curves_m_detect.pdf")
 
 # ─── Run all ──────────────────────────────────────────────────
 if __name__ == "__main__":

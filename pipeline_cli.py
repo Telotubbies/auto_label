@@ -139,9 +139,31 @@ MODELS: Dict[str, dict] = {
         "batch": 16,
         "size": "s",
     },
+    "medium_detection": {
+        "weights": "yolo26m.pt",
+        "task": "detect",
+        "label": "YOLO26m Detect",
+        "desc": "Medium · Object Detection",
+        "project": "yolo26_ppe/models/production/medium_detection",
+        "best": YOLO_DIR / "models" / "production" / "medium_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
+        "data": "/tmp/yolo_detect_data/data.yaml",
+        "batch": 32,
+        "size": "m",
+    },
+    "medium_segmentation": {
+        "weights": "yolo26m-seg.pt",
+        "task": "segment",
+        "label": "YOLO26m Seg",
+        "desc": "Medium · Instance Segmentation",
+        "project": "yolo26_ppe/models/production/medium_segmentation",
+        "best": YOLO_DIR / "models" / "production" / "medium_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
+        "data": "/tmp/yolo_seg_data/data.yaml",
+        "batch": 12,
+        "size": "m",
+    },
 }
 
-CLASS_NAMES = ["person", "helmet", "boots", "shoes", "harness"]
+CLASS_NAMES = ["person", "helmet", "closed footwear", "harness"]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".tif"}
 
@@ -711,7 +733,7 @@ def run_sam_batch(datasets: List[str], fresh=False, resume=False,
 
         cmd = [
             SAM_PYTHON, "src/batch_segment.py",
-            "-c", "config/ppe_6class.yaml",
+            "-c", "config/ppe_4class.yaml",
             "--input", str(input_dir),
             "--output", str(output_dir),
         ]
@@ -1148,7 +1170,7 @@ def interactive_mode():
         render_step(3, 5, "Select Models to Train")
 
         all_models_choice = questionary.Choice(
-            "All 4 models   —   Train everything",
+            "All 6 models   —   Train everything",
             value="__all__",
         )
         model_choices = [all_models_choice] + [
@@ -1167,7 +1189,7 @@ def interactive_mode():
 
         if selected == "__all__":
             selected_models = list(MODELS.keys())
-            console.print(f"\n  [green]✓[/green] Selected: [bold]All 4 models[/bold]")
+            console.print(f"\n  [green]✓[/green] Selected: [bold]All 6 models[/bold]")
         else:
             selected_models = [selected]
             render_selection_summary([MODELS[selected]["label"]], "Selected models")

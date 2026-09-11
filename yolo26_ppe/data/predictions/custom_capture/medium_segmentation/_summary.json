@@ -1,0 +1,4355 @@
+{
+  "model": "medium_segmentation",
+  "task": "segment",
+  "n_images": 432,
+  "total_time_s": 20.47,
+  "avg_latency_ms": 47.4,
+  "conf_threshold": 0.25,
+  "iou_threshold": 0.45,
+  "imgsz": 640,
+  "class_order": [
+    "person",
+    "helmet",
+    "closed footwear",
+    "harness"
+  ],
+  "results": [
+    {
+      "image": "0001.jpg",
+      "n_det": 11,
+      "latency_ms": 305.4,
+      "classes": {
+        "person": 5,
+        "closed footwear": 5,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0002.jpg",
+      "n_det": 14,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 7,
+        "helmet": 3,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0003.jpg",
+      "n_det": 3,
+      "latency_ms": 27.7,
+      "classes": {
+        "person": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0004.jpg",
+      "n_det": 12,
+      "latency_ms": 29.4,
+      "classes": {
+        "person": 4,
+        "closed footwear": 3,
+        "helmet": 4,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0005.jpg",
+      "n_det": 30,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 9,
+        "helmet": 11,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0006.jpg",
+      "n_det": 6,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0007.jpg",
+      "n_det": 19,
+      "latency_ms": 28.4,
+      "classes": {
+        "person": 8,
+        "helmet": 8,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0008.jpg",
+      "n_det": 19,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "harness": 7,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0009.jpg",
+      "n_det": 2,
+      "latency_ms": 35.6,
+      "classes": {
+        "person": 2
+      }
+    },
+    {
+      "image": "0010.jpg",
+      "n_det": 7,
+      "latency_ms": 32.1,
+      "classes": {
+        "person": 4,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0011.jpg",
+      "n_det": 4,
+      "latency_ms": 26.7,
+      "classes": {
+        "helmet": 1,
+        "closed footwear": 2,
+        "person": 1
+      }
+    },
+    {
+      "image": "0012.jpg",
+      "n_det": 16,
+      "latency_ms": 26.7,
+      "classes": {
+        "closed footwear": 8,
+        "person": 4,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0013.jpg",
+      "n_det": 5,
+      "latency_ms": 26.9,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0014.jpg",
+      "n_det": 14,
+      "latency_ms": 28.4,
+      "classes": {
+        "helmet": 1,
+        "person": 9,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0015.jpg",
+      "n_det": 38,
+      "latency_ms": 1383.2,
+      "classes": {
+        "person": 16,
+        "closed footwear": 10,
+        "helmet": 12
+      }
+    },
+    {
+      "image": "0016.jpg",
+      "n_det": 13,
+      "latency_ms": 35.4,
+      "classes": {
+        "person": 4,
+        "closed footwear": 6,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0017.jpg",
+      "n_det": 33,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 13,
+        "closed footwear": 8,
+        "helmet": 12
+      }
+    },
+    {
+      "image": "0018.jpg",
+      "n_det": 10,
+      "latency_ms": 27.7,
+      "classes": {
+        "person": 3,
+        "closed footwear": 5,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0019.jpg",
+      "n_det": 12,
+      "latency_ms": 31.5,
+      "classes": {
+        "person": 5,
+        "helmet": 2,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0020.jpg",
+      "n_det": 3,
+      "latency_ms": 32.9,
+      "classes": {
+        "helmet": 1,
+        "person": 2
+      }
+    },
+    {
+      "image": "0021.jpg",
+      "n_det": 6,
+      "latency_ms": 33.5,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0022.jpg",
+      "n_det": 0,
+      "latency_ms": 31.4,
+      "classes": {}
+    },
+    {
+      "image": "0023.jpg",
+      "n_det": 41,
+      "latency_ms": 34.8,
+      "classes": {
+        "person": 15,
+        "helmet": 11,
+        "harness": 1,
+        "closed footwear": 14
+      }
+    },
+    {
+      "image": "0024.jpg",
+      "n_det": 3,
+      "latency_ms": 33.1,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0025.jpg",
+      "n_det": 4,
+      "latency_ms": 31.5,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0026.jpg",
+      "n_det": 36,
+      "latency_ms": 38.7,
+      "classes": {
+        "person": 19,
+        "helmet": 15,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0027.jpg",
+      "n_det": 14,
+      "latency_ms": 34.7,
+      "classes": {
+        "person": 4,
+        "helmet": 4,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0028.jpg",
+      "n_det": 21,
+      "latency_ms": 33.6,
+      "classes": {
+        "person": 8,
+        "helmet": 9,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0029.jpg",
+      "n_det": 3,
+      "latency_ms": 37.8,
+      "classes": {
+        "person": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0030.jpg",
+      "n_det": 14,
+      "latency_ms": 34.8,
+      "classes": {
+        "helmet": 4,
+        "person": 7,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0031.jpg",
+      "n_det": 33,
+      "latency_ms": 33.4,
+      "classes": {
+        "person": 19,
+        "helmet": 9,
+        "harness": 1,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0032.jpg",
+      "n_det": 8,
+      "latency_ms": 37.8,
+      "classes": {
+        "helmet": 3,
+        "person": 5
+      }
+    },
+    {
+      "image": "0033.jpg",
+      "n_det": 12,
+      "latency_ms": 36.3,
+      "classes": {
+        "closed footwear": 5,
+        "helmet": 4,
+        "person": 3
+      }
+    },
+    {
+      "image": "0034.jpg",
+      "n_det": 27,
+      "latency_ms": 33.4,
+      "classes": {
+        "person": 10,
+        "closed footwear": 7,
+        "helmet": 8,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0035.jpg",
+      "n_det": 5,
+      "latency_ms": 29.2,
+      "classes": {
+        "person": 3,
+        "harness": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0036.jpg",
+      "n_det": 36,
+      "latency_ms": 37.2,
+      "classes": {
+        "person": 25,
+        "helmet": 6,
+        "closed footwear": 4,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0037.jpg",
+      "n_det": 13,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 5,
+        "helmet": 4,
+        "closed footwear": 3,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0038.jpg",
+      "n_det": 28,
+      "latency_ms": 30.5,
+      "classes": {
+        "person": 14,
+        "helmet": 5,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0039.jpg",
+      "n_det": 18,
+      "latency_ms": 32.1,
+      "classes": {
+        "person": 9,
+        "helmet": 7,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0040.jpg",
+      "n_det": 9,
+      "latency_ms": 29.7,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0041.jpg",
+      "n_det": 41,
+      "latency_ms": 36.3,
+      "classes": {
+        "person": 9,
+        "helmet": 11,
+        "closed footwear": 21
+      }
+    },
+    {
+      "image": "0042.jpg",
+      "n_det": 7,
+      "latency_ms": 31.1,
+      "classes": {
+        "person": 2,
+        "helmet": 1,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0043.jpg",
+      "n_det": 39,
+      "latency_ms": 31.8,
+      "classes": {
+        "helmet": 12,
+        "person": 16,
+        "closed footwear": 11
+      }
+    },
+    {
+      "image": "0044.jpg",
+      "n_det": 17,
+      "latency_ms": 33.8,
+      "classes": {
+        "person": 7,
+        "closed footwear": 2,
+        "helmet": 8
+      }
+    },
+    {
+      "image": "0045.jpg",
+      "n_det": 43,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 13,
+        "closed footwear": 21,
+        "helmet": 9
+      }
+    },
+    {
+      "image": "0046.jpg",
+      "n_det": 40,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 15,
+        "helmet": 12,
+        "closed footwear": 13
+      }
+    },
+    {
+      "image": "0047.jpg",
+      "n_det": 43,
+      "latency_ms": 36.9,
+      "classes": {
+        "person": 11,
+        "closed footwear": 21,
+        "helmet": 11
+      }
+    },
+    {
+      "image": "0048.jpg",
+      "n_det": 8,
+      "latency_ms": 31.7,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0049.jpg",
+      "n_det": 9,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 1,
+        "helmet": 2,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0050.jpg",
+      "n_det": 45,
+      "latency_ms": 34.9,
+      "classes": {
+        "person": 12,
+        "helmet": 12,
+        "closed footwear": 21
+      }
+    },
+    {
+      "image": "0051.jpg",
+      "n_det": 9,
+      "latency_ms": 50.5,
+      "classes": {
+        "helmet": 3,
+        "person": 2,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0052.jpg",
+      "n_det": 16,
+      "latency_ms": 3665.4,
+      "classes": {
+        "person": 4,
+        "helmet": 5,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0053.jpg",
+      "n_det": 16,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 8,
+        "helmet": 6,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0054.jpg",
+      "n_det": 32,
+      "latency_ms": 34.1,
+      "classes": {
+        "person": 10,
+        "helmet": 8,
+        "closed footwear": 14
+      }
+    },
+    {
+      "image": "0055.jpg",
+      "n_det": 6,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0056.jpg",
+      "n_det": 24,
+      "latency_ms": 31.1,
+      "classes": {
+        "person": 8,
+        "helmet": 8,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0057.jpg",
+      "n_det": 20,
+      "latency_ms": 31.4,
+      "classes": {
+        "person": 14,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "0058.jpg",
+      "n_det": 22,
+      "latency_ms": 38.9,
+      "classes": {
+        "person": 9,
+        "helmet": 6,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0059.jpg",
+      "n_det": 23,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 6,
+        "helmet": 7,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0060.jpg",
+      "n_det": 25,
+      "latency_ms": 36.6,
+      "classes": {
+        "closed footwear": 8,
+        "helmet": 7,
+        "person": 10
+      }
+    },
+    {
+      "image": "0061.jpg",
+      "n_det": 24,
+      "latency_ms": 33.3,
+      "classes": {
+        "person": 9,
+        "helmet": 7,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0062.jpg",
+      "n_det": 25,
+      "latency_ms": 30.1,
+      "classes": {
+        "closed footwear": 9,
+        "person": 8,
+        "helmet": 8
+      }
+    },
+    {
+      "image": "0063.jpg",
+      "n_det": 3,
+      "latency_ms": 24.8,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0064.jpg",
+      "n_det": 7,
+      "latency_ms": 27.0,
+      "classes": {
+        "closed footwear": 5,
+        "person": 2
+      }
+    },
+    {
+      "image": "0065.jpg",
+      "n_det": 4,
+      "latency_ms": 26.6,
+      "classes": {
+        "person": 1,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0066.jpg",
+      "n_det": 10,
+      "latency_ms": 25.0,
+      "classes": {
+        "helmet": 2,
+        "person": 2,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0067.jpg",
+      "n_det": 4,
+      "latency_ms": 25.1,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0068.jpg",
+      "n_det": 12,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 4,
+        "closed footwear": 6,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0069.jpg",
+      "n_det": 10,
+      "latency_ms": 26.8,
+      "classes": {
+        "helmet": 1,
+        "person": 6,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0070.jpg",
+      "n_det": 3,
+      "latency_ms": 25.7,
+      "classes": {
+        "closed footwear": 1,
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0071.jpg",
+      "n_det": 4,
+      "latency_ms": 25.4,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0072.jpg",
+      "n_det": 2,
+      "latency_ms": 25.5,
+      "classes": {
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0073.jpg",
+      "n_det": 11,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 5,
+        "helmet": 1,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0074.jpg",
+      "n_det": 10,
+      "latency_ms": 28.0,
+      "classes": {
+        "person": 7,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0075.jpg",
+      "n_det": 9,
+      "latency_ms": 28.4,
+      "classes": {
+        "person": 3,
+        "helmet": 1,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0076.jpg",
+      "n_det": 3,
+      "latency_ms": 27.5,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0077.jpg",
+      "n_det": 7,
+      "latency_ms": 28.5,
+      "classes": {
+        "person": 2,
+        "helmet": 1,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0078.jpg",
+      "n_det": 10,
+      "latency_ms": 27.9,
+      "classes": {
+        "closed footwear": 5,
+        "person": 5
+      }
+    },
+    {
+      "image": "0079.jpg",
+      "n_det": 3,
+      "latency_ms": 27.0,
+      "classes": {
+        "person": 1,
+        "closed footwear": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0080.jpg",
+      "n_det": 11,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 2,
+        "closed footwear": 4,
+        "helmet": 5
+      }
+    },
+    {
+      "image": "0081.jpg",
+      "n_det": 0,
+      "latency_ms": 30.7,
+      "classes": {}
+    },
+    {
+      "image": "0082.jpg",
+      "n_det": 3,
+      "latency_ms": 33.1,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0083.jpg",
+      "n_det": 21,
+      "latency_ms": 30.4,
+      "classes": {
+        "person": 8,
+        "helmet": 5,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0084.jpg",
+      "n_det": 5,
+      "latency_ms": 27.5,
+      "classes": {
+        "closed footwear": 3,
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0085.jpg",
+      "n_det": 27,
+      "latency_ms": 31.8,
+      "classes": {
+        "person": 8,
+        "helmet": 1,
+        "closed footwear": 9,
+        "harness": 9
+      }
+    },
+    {
+      "image": "0086.jpg",
+      "n_det": 15,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 8,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0087.jpg",
+      "n_det": 9,
+      "latency_ms": 30.3,
+      "classes": {
+        "person": 2,
+        "harness": 2,
+        "closed footwear": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0088.jpg",
+      "n_det": 17,
+      "latency_ms": 41.9,
+      "classes": {
+        "person": 4,
+        "helmet": 4,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0089.jpg",
+      "n_det": 35,
+      "latency_ms": 35.3,
+      "classes": {
+        "person": 12,
+        "helmet": 12,
+        "closed footwear": 10,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0090.jpg",
+      "n_det": 15,
+      "latency_ms": 34.8,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "closed footwear": 7,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0091.jpg",
+      "n_det": 14,
+      "latency_ms": 32.9,
+      "classes": {
+        "person": 6,
+        "closed footwear": 5,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0092.jpg",
+      "n_det": 18,
+      "latency_ms": 34.9,
+      "classes": {
+        "person": 4,
+        "closed footwear": 9,
+        "helmet": 5
+      }
+    },
+    {
+      "image": "0093.jpg",
+      "n_det": 0,
+      "latency_ms": 30.2,
+      "classes": {}
+    },
+    {
+      "image": "0094.jpg",
+      "n_det": 11,
+      "latency_ms": 32.7,
+      "classes": {
+        "helmet": 3,
+        "person": 3,
+        "harness": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0095.jpg",
+      "n_det": 2,
+      "latency_ms": 33.1,
+      "classes": {
+        "person": 1,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0096.jpg",
+      "n_det": 22,
+      "latency_ms": 37.7,
+      "classes": {
+        "person": 7,
+        "helmet": 4,
+        "closed footwear": 11
+      }
+    },
+    {
+      "image": "0097.jpg",
+      "n_det": 34,
+      "latency_ms": 35.1,
+      "classes": {
+        "person": 11,
+        "helmet": 12,
+        "closed footwear": 10,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0098.jpg",
+      "n_det": 26,
+      "latency_ms": 34.6,
+      "classes": {
+        "person": 8,
+        "helmet": 10,
+        "closed footwear": 7,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0099.jpg",
+      "n_det": 0,
+      "latency_ms": 32.0,
+      "classes": {}
+    },
+    {
+      "image": "0100.jpg",
+      "n_det": 12,
+      "latency_ms": 31.1,
+      "classes": {
+        "person": 2,
+        "closed footwear": 4,
+        "helmet": 2,
+        "harness": 4
+      }
+    },
+    {
+      "image": "0101.jpg",
+      "n_det": 7,
+      "latency_ms": 29.3,
+      "classes": {
+        "closed footwear": 2,
+        "person": 1,
+        "helmet": 1,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0102.jpg",
+      "n_det": 27,
+      "latency_ms": 33.0,
+      "classes": {
+        "person": 8,
+        "helmet": 1,
+        "closed footwear": 9,
+        "harness": 9
+      }
+    },
+    {
+      "image": "0103.jpg",
+      "n_det": 15,
+      "latency_ms": 34.3,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "closed footwear": 7,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0104.jpg",
+      "n_det": 16,
+      "latency_ms": 31.7,
+      "classes": {
+        "person": 6,
+        "closed footwear": 3,
+        "helmet": 4,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0105.jpg",
+      "n_det": 9,
+      "latency_ms": 35.1,
+      "classes": {
+        "person": 2,
+        "harness": 2,
+        "closed footwear": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0106.jpg",
+      "n_det": 9,
+      "latency_ms": 30.6,
+      "classes": {
+        "person": 4,
+        "harness": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0107.jpg",
+      "n_det": 11,
+      "latency_ms": 32.9,
+      "classes": {
+        "helmet": 3,
+        "person": 3,
+        "harness": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0108.jpg",
+      "n_det": 16,
+      "latency_ms": 32.0,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 4,
+        "harness": 8
+      }
+    },
+    {
+      "image": "0109.jpg",
+      "n_det": 5,
+      "latency_ms": 28.9,
+      "classes": {
+        "closed footwear": 3,
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0110.jpg",
+      "n_det": 7,
+      "latency_ms": 31.4,
+      "classes": {
+        "helmet": 2,
+        "person": 1,
+        "closed footwear": 2,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0111.jpg",
+      "n_det": 25,
+      "latency_ms": 31.6,
+      "classes": {
+        "person": 10,
+        "helmet": 3,
+        "closed footwear": 5,
+        "harness": 7
+      }
+    },
+    {
+      "image": "0112.jpg",
+      "n_det": 20,
+      "latency_ms": 28.9,
+      "classes": {
+        "person": 10,
+        "closed footwear": 4,
+        "helmet": 2,
+        "harness": 4
+      }
+    },
+    {
+      "image": "0113.jpg",
+      "n_det": 2,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 2
+      }
+    },
+    {
+      "image": "0114.jpg",
+      "n_det": 0,
+      "latency_ms": 30.9,
+      "classes": {}
+    },
+    {
+      "image": "0115.jpg",
+      "n_det": 13,
+      "latency_ms": 32.8,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 3,
+        "harness": 6
+      }
+    },
+    {
+      "image": "0116.jpg",
+      "n_det": 8,
+      "latency_ms": 28.5,
+      "classes": {
+        "helmet": 2,
+        "person": 2,
+        "closed footwear": 2,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0117.jpg",
+      "n_det": 11,
+      "latency_ms": 27.9,
+      "classes": {
+        "person": 2,
+        "closed footwear": 5,
+        "helmet": 2,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0118.jpg",
+      "n_det": 6,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 3,
+        "closed footwear": 1,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0119.jpg",
+      "n_det": 24,
+      "latency_ms": 33.5,
+      "classes": {
+        "person": 9,
+        "helmet": 8,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0120.jpg",
+      "n_det": 27,
+      "latency_ms": 33.3,
+      "classes": {
+        "person": 12,
+        "helmet": 9,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0121.jpg",
+      "n_det": 5,
+      "latency_ms": 31.4,
+      "classes": {
+        "person": 2,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0122.jpg",
+      "n_det": 25,
+      "latency_ms": 36.3,
+      "classes": {
+        "person": 9,
+        "helmet": 7,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0123.jpg",
+      "n_det": 15,
+      "latency_ms": 34.8,
+      "classes": {
+        "person": 5,
+        "helmet": 5,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0124.jpg",
+      "n_det": 12,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 5,
+        "helmet": 4,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0125.jpg",
+      "n_det": 17,
+      "latency_ms": 36.3,
+      "classes": {
+        "person": 7,
+        "helmet": 6,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0126.jpg",
+      "n_det": 10,
+      "latency_ms": 32.8,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0127.jpg",
+      "n_det": 5,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0128.jpg",
+      "n_det": 17,
+      "latency_ms": 34.0,
+      "classes": {
+        "person": 6,
+        "helmet": 8,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0129.jpg",
+      "n_det": 6,
+      "latency_ms": 40.7,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0130.jpg",
+      "n_det": 16,
+      "latency_ms": 33.1,
+      "classes": {
+        "person": 5,
+        "closed footwear": 5,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "0131.jpg",
+      "n_det": 0,
+      "latency_ms": 30.1,
+      "classes": {}
+    },
+    {
+      "image": "0132.jpg",
+      "n_det": 10,
+      "latency_ms": 31.4,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0133.jpg",
+      "n_det": 6,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 3,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0134.jpg",
+      "n_det": 26,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 12,
+        "helmet": 9,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0135.jpg",
+      "n_det": 10,
+      "latency_ms": 31.7,
+      "classes": {
+        "person": 6,
+        "helmet": 3,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0136.jpg",
+      "n_det": 26,
+      "latency_ms": 33.7,
+      "classes": {
+        "person": 7,
+        "helmet": 9,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0137.jpg",
+      "n_det": 18,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 5,
+        "helmet": 5,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0138.jpg",
+      "n_det": 24,
+      "latency_ms": 33.9,
+      "classes": {
+        "person": 8,
+        "helmet": 9,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0139.jpg",
+      "n_det": 5,
+      "latency_ms": 32.1,
+      "classes": {
+        "person": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0140.jpg",
+      "n_det": 12,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0141.jpg",
+      "n_det": 21,
+      "latency_ms": 35.0,
+      "classes": {
+        "person": 9,
+        "helmet": 10,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0142.jpg",
+      "n_det": 16,
+      "latency_ms": 32.6,
+      "classes": {
+        "person": 5,
+        "helmet": 4,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0143.jpg",
+      "n_det": 15,
+      "latency_ms": 27.9,
+      "classes": {
+        "person": 6,
+        "helmet": 3,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0144.jpg",
+      "n_det": 7,
+      "latency_ms": 28.5,
+      "classes": {
+        "helmet": 2,
+        "person": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0145.jpg",
+      "n_det": 28,
+      "latency_ms": 32.4,
+      "classes": {
+        "person": 9,
+        "helmet": 11,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0146.jpg",
+      "n_det": 23,
+      "latency_ms": 32.1,
+      "classes": {
+        "person": 6,
+        "helmet": 7,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0147.jpg",
+      "n_det": 34,
+      "latency_ms": 35.5,
+      "classes": {
+        "person": 8,
+        "helmet": 11,
+        "closed footwear": 15
+      }
+    },
+    {
+      "image": "0148.jpg",
+      "n_det": 44,
+      "latency_ms": 34.2,
+      "classes": {
+        "person": 10,
+        "helmet": 13,
+        "closed footwear": 21
+      }
+    },
+    {
+      "image": "0149.jpg",
+      "n_det": 39,
+      "latency_ms": 32.9,
+      "classes": {
+        "person": 12,
+        "helmet": 12,
+        "closed footwear": 15
+      }
+    },
+    {
+      "image": "0150.jpg",
+      "n_det": 20,
+      "latency_ms": 31.1,
+      "classes": {
+        "person": 7,
+        "closed footwear": 10,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0151.jpg",
+      "n_det": 40,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 12,
+        "helmet": 11,
+        "closed footwear": 17
+      }
+    },
+    {
+      "image": "0152.jpg",
+      "n_det": 5,
+      "latency_ms": 28.9,
+      "classes": {
+        "closed footwear": 2,
+        "person": 3
+      }
+    },
+    {
+      "image": "0153.jpg",
+      "n_det": 16,
+      "latency_ms": 32.4,
+      "classes": {
+        "person": 6,
+        "helmet": 2,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0154.jpg",
+      "n_det": 10,
+      "latency_ms": 26.5,
+      "classes": {
+        "person": 6,
+        "closed footwear": 3,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0155.jpg",
+      "n_det": 19,
+      "latency_ms": 28.4,
+      "classes": {
+        "helmet": 2,
+        "person": 7,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0156.jpg",
+      "n_det": 15,
+      "latency_ms": 31.7,
+      "classes": {
+        "helmet": 1,
+        "person": 6,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0157.jpg",
+      "n_det": 14,
+      "latency_ms": 30.4,
+      "classes": {
+        "person": 4,
+        "helmet": 5,
+        "closed footwear": 4,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0158.jpg",
+      "n_det": 3,
+      "latency_ms": 26.6,
+      "classes": {
+        "closed footwear": 1,
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0159.jpg",
+      "n_det": 14,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 5,
+        "helmet": 2,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0160.jpg",
+      "n_det": 11,
+      "latency_ms": 33.1,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 4,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0161.jpg",
+      "n_det": 14,
+      "latency_ms": 27.9,
+      "classes": {
+        "person": 5,
+        "closed footwear": 6,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0162.jpg",
+      "n_det": 6,
+      "latency_ms": 29.8,
+      "classes": {
+        "person": 3,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0163.jpg",
+      "n_det": 18,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 5,
+        "helmet": 4,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0164.jpg",
+      "n_det": 23,
+      "latency_ms": 31.7,
+      "classes": {
+        "person": 12,
+        "helmet": 9,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0165.jpg",
+      "n_det": 14,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 6,
+        "helmet": 6,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0166.jpg",
+      "n_det": 23,
+      "latency_ms": 29.6,
+      "classes": {
+        "person": 7,
+        "helmet": 10,
+        "closed footwear": 5,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0167.jpg",
+      "n_det": 31,
+      "latency_ms": 38.7,
+      "classes": {
+        "helmet": 10,
+        "person": 13,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0168.jpg",
+      "n_det": 18,
+      "latency_ms": 32.6,
+      "classes": {
+        "person": 8,
+        "helmet": 7,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0169.jpg",
+      "n_det": 9,
+      "latency_ms": 28.1,
+      "classes": {
+        "person": 4,
+        "helmet": 5
+      }
+    },
+    {
+      "image": "0170.jpg",
+      "n_det": 29,
+      "latency_ms": 31.8,
+      "classes": {
+        "person": 10,
+        "helmet": 11,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0171.jpg",
+      "n_det": 7,
+      "latency_ms": 26.6,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0172.jpg",
+      "n_det": 5,
+      "latency_ms": 30.5,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0173.jpg",
+      "n_det": 21,
+      "latency_ms": 28.9,
+      "classes": {
+        "person": 7,
+        "closed footwear": 8,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "0174.jpg",
+      "n_det": 13,
+      "latency_ms": 26.9,
+      "classes": {
+        "person": 5,
+        "helmet": 5,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0175.jpg",
+      "n_det": 11,
+      "latency_ms": 29.1,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0176.jpg",
+      "n_det": 6,
+      "latency_ms": 25.5,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0177.jpg",
+      "n_det": 9,
+      "latency_ms": 29.8,
+      "classes": {
+        "person": 4,
+        "helmet": 4,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0178.jpg",
+      "n_det": 27,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 11,
+        "helmet": 7,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0179.jpg",
+      "n_det": 4,
+      "latency_ms": 26.1,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0180.jpg",
+      "n_det": 21,
+      "latency_ms": 26.4,
+      "classes": {
+        "person": 6,
+        "closed footwear": 9,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "0181.jpg",
+      "n_det": 14,
+      "latency_ms": 27.3,
+      "classes": {
+        "person": 4,
+        "helmet": 5,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0182.jpg",
+      "n_det": 12,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 6,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0183.jpg",
+      "n_det": 11,
+      "latency_ms": 28.9,
+      "classes": {
+        "person": 4,
+        "helmet": 2,
+        "harness": 3,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0184.jpg",
+      "n_det": 10,
+      "latency_ms": 28.3,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0185.jpg",
+      "n_det": 12,
+      "latency_ms": 28.9,
+      "classes": {
+        "person": 7,
+        "closed footwear": 2,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0186.jpg",
+      "n_det": 8,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 3,
+        "closed footwear": 4,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0187.jpg",
+      "n_det": 10,
+      "latency_ms": 29.0,
+      "classes": {
+        "harness": 3,
+        "person": 6,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0188.jpg",
+      "n_det": 16,
+      "latency_ms": 28.9,
+      "classes": {
+        "person": 6,
+        "harness": 3,
+        "helmet": 4,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0189.jpg",
+      "n_det": 8,
+      "latency_ms": 28.7,
+      "classes": {
+        "person": 3,
+        "harness": 2,
+        "helmet": 2,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0190.jpg",
+      "n_det": 7,
+      "latency_ms": 29.2,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0191.jpg",
+      "n_det": 10,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "helmet": 1,
+        "harness": 6
+      }
+    },
+    {
+      "image": "0192.jpg",
+      "n_det": 13,
+      "latency_ms": 27.9,
+      "classes": {
+        "person": 4,
+        "closed footwear": 6,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0193.jpg",
+      "n_det": 14,
+      "latency_ms": 29.7,
+      "classes": {
+        "person": 5,
+        "helmet": 2,
+        "closed footwear": 3,
+        "harness": 4
+      }
+    },
+    {
+      "image": "0194.jpg",
+      "n_det": 5,
+      "latency_ms": 28.6,
+      "classes": {
+        "person": 1,
+        "helmet": 2,
+        "harness": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0195.jpg",
+      "n_det": 29,
+      "latency_ms": 31.4,
+      "classes": {
+        "person": 11,
+        "helmet": 6,
+        "closed footwear": 5,
+        "harness": 7
+      }
+    },
+    {
+      "image": "0196.jpg",
+      "n_det": 7,
+      "latency_ms": 28.1,
+      "classes": {
+        "person": 2,
+        "helmet": 1,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0197.jpg",
+      "n_det": 9,
+      "latency_ms": 29.2,
+      "classes": {
+        "harness": 1,
+        "closed footwear": 4,
+        "person": 3,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0198.jpg",
+      "n_det": 14,
+      "latency_ms": 29.7,
+      "classes": {
+        "person": 4,
+        "helmet": 2,
+        "closed footwear": 3,
+        "harness": 5
+      }
+    },
+    {
+      "image": "0199.jpg",
+      "n_det": 15,
+      "latency_ms": 34.1,
+      "classes": {
+        "person": 6,
+        "helmet": 6,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0200.jpg",
+      "n_det": 18,
+      "latency_ms": 30.9,
+      "classes": {
+        "person": 8,
+        "helmet": 7,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0201.jpg",
+      "n_det": 7,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 6,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0202.jpg",
+      "n_det": 25,
+      "latency_ms": 29.8,
+      "classes": {
+        "harness": 3,
+        "person": 8,
+        "helmet": 7,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0203.jpg",
+      "n_det": 33,
+      "latency_ms": 37.7,
+      "classes": {
+        "person": 12,
+        "helmet": 11,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0204.jpg",
+      "n_det": 40,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 13,
+        "helmet": 12,
+        "closed footwear": 15
+      }
+    },
+    {
+      "image": "0205.jpg",
+      "n_det": 56,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 19,
+        "helmet": 18,
+        "closed footwear": 19
+      }
+    },
+    {
+      "image": "0206.jpg",
+      "n_det": 17,
+      "latency_ms": 28.0,
+      "classes": {
+        "helmet": 4,
+        "person": 6,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0207.jpg",
+      "n_det": 39,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 13,
+        "helmet": 12,
+        "closed footwear": 14
+      }
+    },
+    {
+      "image": "0208.jpg",
+      "n_det": 24,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 8,
+        "closed footwear": 10,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "0209.jpg",
+      "n_det": 69,
+      "latency_ms": 33.9,
+      "classes": {
+        "person": 24,
+        "helmet": 24,
+        "closed footwear": 21
+      }
+    },
+    {
+      "image": "0210.jpg",
+      "n_det": 8,
+      "latency_ms": 25.2,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0211.jpg",
+      "n_det": 15,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 7,
+        "helmet": 5,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0212.jpg",
+      "n_det": 30,
+      "latency_ms": 30.6,
+      "classes": {
+        "person": 12,
+        "helmet": 12,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0213.jpg",
+      "n_det": 25,
+      "latency_ms": 43.1,
+      "classes": {
+        "person": 6,
+        "closed footwear": 11,
+        "helmet": 6,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0214.jpg",
+      "n_det": 4,
+      "latency_ms": 31.4,
+      "classes": {
+        "person": 1,
+        "harness": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0215.jpg",
+      "n_det": 27,
+      "latency_ms": 32.9,
+      "classes": {
+        "person": 8,
+        "closed footwear": 12,
+        "helmet": 6,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0216.jpg",
+      "n_det": 26,
+      "latency_ms": 31.3,
+      "classes": {
+        "person": 7,
+        "closed footwear": 12,
+        "helmet": 7
+      }
+    },
+    {
+      "image": "0217.jpg",
+      "n_det": 11,
+      "latency_ms": 30.3,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "harness": 2,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0218.jpg",
+      "n_det": 21,
+      "latency_ms": 32.3,
+      "classes": {
+        "person": 9,
+        "closed footwear": 8,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0219.jpg",
+      "n_det": 8,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0220.jpg",
+      "n_det": 11,
+      "latency_ms": 28.3,
+      "classes": {
+        "person": 5,
+        "closed footwear": 4,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0221.jpg",
+      "n_det": 12,
+      "latency_ms": 29.8,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0222.jpg",
+      "n_det": 25,
+      "latency_ms": 35.5,
+      "classes": {
+        "person": 9,
+        "helmet": 3,
+        "closed footwear": 13
+      }
+    },
+    {
+      "image": "0223.jpg",
+      "n_det": 12,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0224.jpg",
+      "n_det": 11,
+      "latency_ms": 30.8,
+      "classes": {
+        "person": 2,
+        "harness": 4,
+        "closed footwear": 2,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0225.jpg",
+      "n_det": 3,
+      "latency_ms": 26.9,
+      "classes": {
+        "person": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0226.jpg",
+      "n_det": 3,
+      "latency_ms": 29.0,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0227.jpg",
+      "n_det": 12,
+      "latency_ms": 27.8,
+      "classes": {
+        "person": 5,
+        "closed footwear": 3,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0228.jpg",
+      "n_det": 15,
+      "latency_ms": 33.5,
+      "classes": {
+        "person": 4,
+        "helmet": 5,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0229.jpg",
+      "n_det": 13,
+      "latency_ms": 27.3,
+      "classes": {
+        "closed footwear": 6,
+        "person": 3,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0230.jpg",
+      "n_det": 8,
+      "latency_ms": 30.5,
+      "classes": {
+        "person": 4,
+        "helmet": 2,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0231.jpg",
+      "n_det": 4,
+      "latency_ms": 30.8,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0232.jpg",
+      "n_det": 11,
+      "latency_ms": 28.6,
+      "classes": {
+        "person": 4,
+        "closed footwear": 4,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0233.jpg",
+      "n_det": 4,
+      "latency_ms": 26.8,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0234.jpg",
+      "n_det": 7,
+      "latency_ms": 26.8,
+      "classes": {
+        "person": 3,
+        "helmet": 1,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0235.jpg",
+      "n_det": 35,
+      "latency_ms": 27.0,
+      "classes": {
+        "person": 10,
+        "closed footwear": 16,
+        "helmet": 9
+      }
+    },
+    {
+      "image": "0236.jpg",
+      "n_det": 35,
+      "latency_ms": 29.2,
+      "classes": {
+        "person": 14,
+        "closed footwear": 12,
+        "helmet": 8,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0237.jpg",
+      "n_det": 28,
+      "latency_ms": 29.7,
+      "classes": {
+        "person": 7,
+        "closed footwear": 13,
+        "helmet": 7,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0238.jpg",
+      "n_det": 30,
+      "latency_ms": 30.1,
+      "classes": {
+        "person": 9,
+        "closed footwear": 10,
+        "helmet": 10,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0239.jpg",
+      "n_det": 29,
+      "latency_ms": 45.6,
+      "classes": {
+        "person": 7,
+        "closed footwear": 12,
+        "helmet": 8,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0240.jpg",
+      "n_det": 35,
+      "latency_ms": 39.3,
+      "classes": {
+        "person": 12,
+        "helmet": 13,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0241.jpg",
+      "n_det": 36,
+      "latency_ms": 39.6,
+      "classes": {
+        "person": 13,
+        "helmet": 13,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0242.jpg",
+      "n_det": 28,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 7,
+        "closed footwear": 13,
+        "helmet": 8
+      }
+    },
+    {
+      "image": "0243.jpg",
+      "n_det": 32,
+      "latency_ms": 32.3,
+      "classes": {
+        "person": 9,
+        "closed footwear": 12,
+        "helmet": 11
+      }
+    },
+    {
+      "image": "0244.jpg",
+      "n_det": 6,
+      "latency_ms": 31.3,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0245.jpg",
+      "n_det": 4,
+      "latency_ms": 30.4,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0246.jpg",
+      "n_det": 2,
+      "latency_ms": 30.4,
+      "classes": {
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0247.jpg",
+      "n_det": 13,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 5,
+        "helmet": 6,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0248.jpg",
+      "n_det": 13,
+      "latency_ms": 25.7,
+      "classes": {
+        "person": 5,
+        "closed footwear": 5,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0249.jpg",
+      "n_det": 18,
+      "latency_ms": 25.9,
+      "classes": {
+        "person": 8,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0250.jpg",
+      "n_det": 10,
+      "latency_ms": 27.6,
+      "classes": {
+        "person": 4,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0251.jpg",
+      "n_det": 41,
+      "latency_ms": 29.8,
+      "classes": {
+        "person": 17,
+        "helmet": 13,
+        "closed footwear": 11
+      }
+    },
+    {
+      "image": "0252.jpg",
+      "n_det": 15,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 5,
+        "helmet": 6,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0253.jpg",
+      "n_det": 19,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 8,
+        "helmet": 5,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0254.jpg",
+      "n_det": 17,
+      "latency_ms": 25.4,
+      "classes": {
+        "person": 6,
+        "helmet": 4,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0255.jpg",
+      "n_det": 14,
+      "latency_ms": 26.6,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 5,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0256.jpg",
+      "n_det": 18,
+      "latency_ms": 30.1,
+      "classes": {
+        "person": 5,
+        "helmet": 6,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0257.jpg",
+      "n_det": 3,
+      "latency_ms": 30.6,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0258.jpg",
+      "n_det": 18,
+      "latency_ms": 29.6,
+      "classes": {
+        "closed footwear": 4,
+        "person": 8,
+        "helmet": 6
+      }
+    },
+    {
+      "image": "0259.jpg",
+      "n_det": 18,
+      "latency_ms": 25.7,
+      "classes": {
+        "person": 5,
+        "closed footwear": 9,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0260.jpg",
+      "n_det": 5,
+      "latency_ms": 29.0,
+      "classes": {
+        "helmet": 1,
+        "person": 2,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0261.jpg",
+      "n_det": 4,
+      "latency_ms": 28.1,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0262.jpg",
+      "n_det": 14,
+      "latency_ms": 28.6,
+      "classes": {
+        "helmet": 4,
+        "closed footwear": 3,
+        "person": 6,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0263.jpg",
+      "n_det": 22,
+      "latency_ms": 28.7,
+      "classes": {
+        "person": 5,
+        "helmet": 5,
+        "harness": 1,
+        "closed footwear": 11
+      }
+    },
+    {
+      "image": "0264.jpg",
+      "n_det": 30,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 14,
+        "closed footwear": 10,
+        "helmet": 5,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0265.jpg",
+      "n_det": 30,
+      "latency_ms": 28.7,
+      "classes": {
+        "person": 9,
+        "helmet": 5,
+        "closed footwear": 10,
+        "harness": 6
+      }
+    },
+    {
+      "image": "0266.jpg",
+      "n_det": 18,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 6,
+        "helmet": 5,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0267.jpg",
+      "n_det": 10,
+      "latency_ms": 28.8,
+      "classes": {
+        "closed footwear": 6,
+        "person": 4
+      }
+    },
+    {
+      "image": "0268.jpg",
+      "n_det": 7,
+      "latency_ms": 30.1,
+      "classes": {
+        "person": 2,
+        "closed footwear": 4,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0269.jpg",
+      "n_det": 11,
+      "latency_ms": 28.0,
+      "classes": {
+        "person": 2,
+        "closed footwear": 5,
+        "harness": 1,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0270.jpg",
+      "n_det": 17,
+      "latency_ms": 30.8,
+      "classes": {
+        "person": 7,
+        "helmet": 6,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0271.jpg",
+      "n_det": 19,
+      "latency_ms": 30.9,
+      "classes": {
+        "helmet": 5,
+        "person": 9,
+        "closed footwear": 4,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0272.jpg",
+      "n_det": 8,
+      "latency_ms": 30.4,
+      "classes": {
+        "person": 5,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0273.jpg",
+      "n_det": 11,
+      "latency_ms": 27.2,
+      "classes": {
+        "person": 6,
+        "helmet": 1,
+        "harness": 3,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0274.jpg",
+      "n_det": 5,
+      "latency_ms": 30.0,
+      "classes": {
+        "helmet": 1,
+        "person": 3,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0275.jpg",
+      "n_det": 24,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 4,
+        "closed footwear": 5,
+        "helmet": 2,
+        "harness": 13
+      }
+    },
+    {
+      "image": "0276.jpg",
+      "n_det": 10,
+      "latency_ms": 28.4,
+      "classes": {
+        "helmet": 1,
+        "person": 2,
+        "closed footwear": 3,
+        "harness": 4
+      }
+    },
+    {
+      "image": "0277.jpg",
+      "n_det": 4,
+      "latency_ms": 28.5,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0278.jpg",
+      "n_det": 0,
+      "latency_ms": 26.9,
+      "classes": {}
+    },
+    {
+      "image": "0279.jpg",
+      "n_det": 12,
+      "latency_ms": 29.4,
+      "classes": {
+        "person": 3,
+        "closed footwear": 3,
+        "harness": 5,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0280.jpg",
+      "n_det": 10,
+      "latency_ms": 26.7,
+      "classes": {
+        "person": 6,
+        "helmet": 1,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0281.jpg",
+      "n_det": 9,
+      "latency_ms": 29.0,
+      "classes": {
+        "closed footwear": 1,
+        "person": 7,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0282.jpg",
+      "n_det": 32,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 14,
+        "helmet": 8,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0283.jpg",
+      "n_det": 18,
+      "latency_ms": 30.5,
+      "classes": {
+        "person": 6,
+        "helmet": 6,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0284.jpg",
+      "n_det": 12,
+      "latency_ms": 28.3,
+      "classes": {
+        "person": 4,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0285.jpg",
+      "n_det": 51,
+      "latency_ms": 32.8,
+      "classes": {
+        "person": 16,
+        "helmet": 14,
+        "closed footwear": 21
+      }
+    },
+    {
+      "image": "0286.jpg",
+      "n_det": 23,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 9,
+        "helmet": 6,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0287.jpg",
+      "n_det": 58,
+      "latency_ms": 33.2,
+      "classes": {
+        "person": 23,
+        "helmet": 24,
+        "closed footwear": 11
+      }
+    },
+    {
+      "image": "0288.jpg",
+      "n_det": 36,
+      "latency_ms": 31.6,
+      "classes": {
+        "helmet": 16,
+        "person": 14,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0289.jpg",
+      "n_det": 22,
+      "latency_ms": 29.2,
+      "classes": {
+        "person": 8,
+        "closed footwear": 7,
+        "helmet": 7
+      }
+    },
+    {
+      "image": "0290.jpg",
+      "n_det": 14,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 6,
+        "helmet": 6,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0291.jpg",
+      "n_det": 8,
+      "latency_ms": 30.9,
+      "classes": {
+        "person": 3,
+        "closed footwear": 2,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0292.jpg",
+      "n_det": 20,
+      "latency_ms": 29.6,
+      "classes": {
+        "person": 9,
+        "helmet": 8,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0293.jpg",
+      "n_det": 25,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 12,
+        "helmet": 13
+      }
+    },
+    {
+      "image": "0294.jpg",
+      "n_det": 16,
+      "latency_ms": 28.6,
+      "classes": {
+        "person": 7,
+        "helmet": 7,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0295.jpg",
+      "n_det": 8,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 4,
+        "helmet": 2,
+        "harness": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0296.jpg",
+      "n_det": 5,
+      "latency_ms": 30.6,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0297.jpg",
+      "n_det": 4,
+      "latency_ms": 29.9,
+      "classes": {
+        "helmet": 1,
+        "closed footwear": 2,
+        "person": 1
+      }
+    },
+    {
+      "image": "0298.jpg",
+      "n_det": 39,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 15,
+        "helmet": 16,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0299.jpg",
+      "n_det": 13,
+      "latency_ms": 27.7,
+      "classes": {
+        "person": 3,
+        "closed footwear": 6,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0300.jpg",
+      "n_det": 24,
+      "latency_ms": 35.9,
+      "classes": {
+        "person": 7,
+        "closed footwear": 10,
+        "helmet": 6,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0301.jpg",
+      "n_det": 29,
+      "latency_ms": 29.2,
+      "classes": {
+        "person": 9,
+        "closed footwear": 10,
+        "helmet": 7,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0302.jpg",
+      "n_det": 10,
+      "latency_ms": 24.6,
+      "classes": {
+        "helmet": 2,
+        "person": 4,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0303.jpg",
+      "n_det": 16,
+      "latency_ms": 31.8,
+      "classes": {
+        "person": 4,
+        "helmet": 5,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0304.jpg",
+      "n_det": 19,
+      "latency_ms": 29.5,
+      "classes": {
+        "helmet": 4,
+        "person": 7,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0305.jpg",
+      "n_det": 5,
+      "latency_ms": 2003.8,
+      "classes": {
+        "closed footwear": 2,
+        "person": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0306.jpg",
+      "n_det": 13,
+      "latency_ms": 29.6,
+      "classes": {
+        "person": 5,
+        "helmet": 4,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0307.jpg",
+      "n_det": 4,
+      "latency_ms": 29.3,
+      "classes": {
+        "helmet": 1,
+        "person": 2,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0308.jpg",
+      "n_det": 12,
+      "latency_ms": 28.8,
+      "classes": {
+        "helmet": 4,
+        "person": 5,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0309.jpg",
+      "n_det": 12,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0310.jpg",
+      "n_det": 7,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 4,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0311.jpg",
+      "n_det": 12,
+      "latency_ms": 29.4,
+      "classes": {
+        "person": 3,
+        "helmet": 4,
+        "closed footwear": 4,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0312.jpg",
+      "n_det": 10,
+      "latency_ms": 28.6,
+      "classes": {
+        "person": 5,
+        "helmet": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0313.jpg",
+      "n_det": 29,
+      "latency_ms": 30.6,
+      "classes": {
+        "person": 11,
+        "helmet": 12,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0314.jpg",
+      "n_det": 26,
+      "latency_ms": 31.0,
+      "classes": {
+        "helmet": 10,
+        "person": 10,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0315.jpg",
+      "n_det": 36,
+      "latency_ms": 32.6,
+      "classes": {
+        "person": 12,
+        "closed footwear": 15,
+        "helmet": 9
+      }
+    },
+    {
+      "image": "0316.jpg",
+      "n_det": 41,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 10,
+        "helmet": 10,
+        "harness": 1,
+        "closed footwear": 20
+      }
+    },
+    {
+      "image": "0317.jpg",
+      "n_det": 34,
+      "latency_ms": 29.3,
+      "classes": {
+        "helmet": 9,
+        "person": 9,
+        "closed footwear": 16
+      }
+    },
+    {
+      "image": "0318.jpg",
+      "n_det": 39,
+      "latency_ms": 32.7,
+      "classes": {
+        "person": 16,
+        "helmet": 9,
+        "closed footwear": 14
+      }
+    },
+    {
+      "image": "0319.jpg",
+      "n_det": 29,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 8,
+        "closed footwear": 14,
+        "helmet": 7
+      }
+    },
+    {
+      "image": "0320.jpg",
+      "n_det": 30,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 10,
+        "closed footwear": 13,
+        "helmet": 7
+      }
+    },
+    {
+      "image": "0321.jpg",
+      "n_det": 29,
+      "latency_ms": 30.1,
+      "classes": {
+        "person": 10,
+        "closed footwear": 12,
+        "helmet": 7
+      }
+    },
+    {
+      "image": "0322.jpg",
+      "n_det": 3,
+      "latency_ms": 29.4,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0323.jpg",
+      "n_det": 9,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 3,
+        "helmet": 1,
+        "closed footwear": 2,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0324.jpg",
+      "n_det": 10,
+      "latency_ms": 33.7,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 1,
+        "harness": 5
+      }
+    },
+    {
+      "image": "0325.jpg",
+      "n_det": 5,
+      "latency_ms": 29.1,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "helmet": 1,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0326.jpg",
+      "n_det": 11,
+      "latency_ms": 30.4,
+      "classes": {
+        "helmet": 3,
+        "person": 7,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0327.jpg",
+      "n_det": 11,
+      "latency_ms": 29.1,
+      "classes": {
+        "person": 5,
+        "helmet": 2,
+        "closed footwear": 3,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0328.jpg",
+      "n_det": 8,
+      "latency_ms": 28.1,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0329.jpg",
+      "n_det": 2,
+      "latency_ms": 27.6,
+      "classes": {
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0330.jpg",
+      "n_det": 5,
+      "latency_ms": 27.8,
+      "classes": {
+        "person": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0331.jpg",
+      "n_det": 8,
+      "latency_ms": 33.2,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0332.jpg",
+      "n_det": 4,
+      "latency_ms": 28.4,
+      "classes": {
+        "person": 2,
+        "helmet": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0333.jpg",
+      "n_det": 10,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 7,
+        "closed footwear": 2,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0334.jpg",
+      "n_det": 8,
+      "latency_ms": 29.2,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0335.jpg",
+      "n_det": 8,
+      "latency_ms": 30.6,
+      "classes": {
+        "person": 5,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0336.jpg",
+      "n_det": 9,
+      "latency_ms": 29.4,
+      "classes": {
+        "person": 3,
+        "helmet": 4,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0337.jpg",
+      "n_det": 3,
+      "latency_ms": 26.3,
+      "classes": {
+        "person": 1,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0338.jpg",
+      "n_det": 5,
+      "latency_ms": 30.6,
+      "classes": {
+        "person": 2,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0339.jpg",
+      "n_det": 11,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 7,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0340.jpg",
+      "n_det": 9,
+      "latency_ms": 29.9,
+      "classes": {
+        "person": 5,
+        "closed footwear": 3,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0341.jpg",
+      "n_det": 22,
+      "latency_ms": 30.5,
+      "classes": {
+        "person": 9,
+        "helmet": 9,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0342.jpg",
+      "n_det": 27,
+      "latency_ms": 33.5,
+      "classes": {
+        "person": 13,
+        "closed footwear": 4,
+        "helmet": 10
+      }
+    },
+    {
+      "image": "0343.jpg",
+      "n_det": 11,
+      "latency_ms": 26.7,
+      "classes": {
+        "person": 6,
+        "helmet": 4,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0344.jpg",
+      "n_det": 13,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "harness": 5,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0345.jpg",
+      "n_det": 8,
+      "latency_ms": 28.6,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "harness": 4,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0346.jpg",
+      "n_det": 5,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 1,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0347.jpg",
+      "n_det": 4,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 2,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0348.jpg",
+      "n_det": 27,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 12,
+        "helmet": 7,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0349.jpg",
+      "n_det": 27,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 9,
+        "helmet": 5,
+        "closed footwear": 13
+      }
+    },
+    {
+      "image": "0350.jpg",
+      "n_det": 18,
+      "latency_ms": 29.7,
+      "classes": {
+        "person": 8,
+        "helmet": 8,
+        "harness": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0351.jpg",
+      "n_det": 15,
+      "latency_ms": 28.9,
+      "classes": {
+        "person": 7,
+        "helmet": 8
+      }
+    },
+    {
+      "image": "0352.jpg",
+      "n_det": 20,
+      "latency_ms": 32.6,
+      "classes": {
+        "person": 5,
+        "helmet": 5,
+        "closed footwear": 5,
+        "harness": 5
+      }
+    },
+    {
+      "image": "0353.jpg",
+      "n_det": 11,
+      "latency_ms": 28.0,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 3,
+        "harness": 3
+      }
+    },
+    {
+      "image": "0354.jpg",
+      "n_det": 28,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 10,
+        "helmet": 10,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0355.jpg",
+      "n_det": 32,
+      "latency_ms": 31.6,
+      "classes": {
+        "person": 13,
+        "helmet": 10,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0356.jpg",
+      "n_det": 23,
+      "latency_ms": 33.1,
+      "classes": {
+        "person": 7,
+        "helmet": 7,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0357.jpg",
+      "n_det": 0,
+      "latency_ms": 34.0,
+      "classes": {}
+    },
+    {
+      "image": "0358.jpg",
+      "n_det": 14,
+      "latency_ms": 34.2,
+      "classes": {
+        "person": 4,
+        "closed footwear": 7,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0359.jpg",
+      "n_det": 18,
+      "latency_ms": 31.3,
+      "classes": {
+        "person": 4,
+        "closed footwear": 9,
+        "helmet": 5
+      }
+    },
+    {
+      "image": "0360.jpg",
+      "n_det": 14,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0361.jpg",
+      "n_det": 13,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0362.jpg",
+      "n_det": 18,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 7,
+        "helmet": 6,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0363.jpg",
+      "n_det": 48,
+      "latency_ms": 34.8,
+      "classes": {
+        "person": 17,
+        "helmet": 19,
+        "closed footwear": 12
+      }
+    },
+    {
+      "image": "0364.jpg",
+      "n_det": 49,
+      "latency_ms": 36.2,
+      "classes": {
+        "person": 17,
+        "helmet": 15,
+        "closed footwear": 17
+      }
+    },
+    {
+      "image": "0365.jpg",
+      "n_det": 39,
+      "latency_ms": 33.3,
+      "classes": {
+        "person": 11,
+        "helmet": 12,
+        "closed footwear": 16
+      }
+    },
+    {
+      "image": "0366.jpg",
+      "n_det": 4,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 1,
+        "helmet": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0367.jpg",
+      "n_det": 10,
+      "latency_ms": 27.4,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "harness": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0368.jpg",
+      "n_det": 9,
+      "latency_ms": 27.8,
+      "classes": {
+        "person": 5,
+        "helmet": 3,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0369.jpg",
+      "n_det": 14,
+      "latency_ms": 27.4,
+      "classes": {
+        "person": 3,
+        "helmet": 5,
+        "closed footwear": 4,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0370.jpg",
+      "n_det": 8,
+      "latency_ms": 31.2,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 2,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0371.jpg",
+      "n_det": 14,
+      "latency_ms": 26.8,
+      "classes": {
+        "person": 5,
+        "closed footwear": 6,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0372.jpg",
+      "n_det": 14,
+      "latency_ms": 28.0,
+      "classes": {
+        "person": 6,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0373.jpg",
+      "n_det": 5,
+      "latency_ms": 26.3,
+      "classes": {
+        "helmet": 1,
+        "person": 1,
+        "closed footwear": 2,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0374.jpg",
+      "n_det": 6,
+      "latency_ms": 31.2,
+      "classes": {
+        "helmet": 1,
+        "person": 3,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0375.jpg",
+      "n_det": 5,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 2,
+        "helmet": 1,
+        "harness": 1,
+        "closed footwear": 1
+      }
+    },
+    {
+      "image": "0376.jpg",
+      "n_det": 12,
+      "latency_ms": 26.9,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0377.jpg",
+      "n_det": 9,
+      "latency_ms": 24.1,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0378.jpg",
+      "n_det": 15,
+      "latency_ms": 26.9,
+      "classes": {
+        "person": 8,
+        "helmet": 4,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0379.jpg",
+      "n_det": 13,
+      "latency_ms": 27.9,
+      "classes": {
+        "person": 6,
+        "helmet": 3,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0380.jpg",
+      "n_det": 22,
+      "latency_ms": 26.6,
+      "classes": {
+        "person": 7,
+        "helmet": 9,
+        "closed footwear": 5,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0381.jpg",
+      "n_det": 21,
+      "latency_ms": 27.0,
+      "classes": {
+        "person": 9,
+        "helmet": 8,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0382.jpg",
+      "n_det": 18,
+      "latency_ms": 27.6,
+      "classes": {
+        "person": 8,
+        "helmet": 6,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0383.jpg",
+      "n_det": 20,
+      "latency_ms": 28.0,
+      "classes": {
+        "person": 7,
+        "helmet": 7,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0384.jpg",
+      "n_det": 12,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "closed footwear": 6
+      }
+    },
+    {
+      "image": "0385.jpg",
+      "n_det": 14,
+      "latency_ms": 29.6,
+      "classes": {
+        "person": 4,
+        "helmet": 3,
+        "closed footwear": 6,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0386.jpg",
+      "n_det": 17,
+      "latency_ms": 31.9,
+      "classes": {
+        "person": 6,
+        "helmet": 7,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0387.jpg",
+      "n_det": 8,
+      "latency_ms": 27.0,
+      "classes": {
+        "person": 4,
+        "helmet": 4
+      }
+    },
+    {
+      "image": "0388.jpg",
+      "n_det": 11,
+      "latency_ms": 24.5,
+      "classes": {
+        "closed footwear": 6,
+        "person": 3,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0389.jpg",
+      "n_det": 10,
+      "latency_ms": 28.8,
+      "classes": {
+        "person": 3,
+        "helmet": 4,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0390.jpg",
+      "n_det": 16,
+      "latency_ms": 28.5,
+      "classes": {
+        "person": 6,
+        "helmet": 5,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0391.jpg",
+      "n_det": 13,
+      "latency_ms": 28.2,
+      "classes": {
+        "closed footwear": 6,
+        "person": 4,
+        "helmet": 3
+      }
+    },
+    {
+      "image": "0392.jpg",
+      "n_det": 4,
+      "latency_ms": 32.1,
+      "classes": {
+        "closed footwear": 2,
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0393.jpg",
+      "n_det": 9,
+      "latency_ms": 29.7,
+      "classes": {
+        "person": 2,
+        "helmet": 2,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0394.jpg",
+      "n_det": 8,
+      "latency_ms": 30.3,
+      "classes": {
+        "person": 3,
+        "closed footwear": 4,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0395.jpg",
+      "n_det": 15,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 6,
+        "helmet": 4,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0396.jpg",
+      "n_det": 24,
+      "latency_ms": 30.7,
+      "classes": {
+        "person": 6,
+        "helmet": 6,
+        "closed footwear": 12
+      }
+    },
+    {
+      "image": "0397.jpg",
+      "n_det": 29,
+      "latency_ms": 29.6,
+      "classes": {
+        "person": 7,
+        "helmet": 8,
+        "closed footwear": 14
+      }
+    },
+    {
+      "image": "0398.jpg",
+      "n_det": 18,
+      "latency_ms": 32.5,
+      "classes": {
+        "person": 6,
+        "helmet": 4,
+        "closed footwear": 8
+      }
+    },
+    {
+      "image": "0399.jpg",
+      "n_det": 36,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 11,
+        "helmet": 10,
+        "closed footwear": 15
+      }
+    },
+    {
+      "image": "0400.jpg",
+      "n_det": 33,
+      "latency_ms": 29.2,
+      "classes": {
+        "helmet": 10,
+        "person": 10,
+        "closed footwear": 13
+      }
+    },
+    {
+      "image": "0401.jpg",
+      "n_det": 31,
+      "latency_ms": 32.2,
+      "classes": {
+        "person": 14,
+        "helmet": 10,
+        "closed footwear": 7
+      }
+    },
+    {
+      "image": "0402.jpg",
+      "n_det": 10,
+      "latency_ms": 29.3,
+      "classes": {
+        "person": 3,
+        "helmet": 3,
+        "closed footwear": 4
+      }
+    },
+    {
+      "image": "0403.jpg",
+      "n_det": 17,
+      "latency_ms": 27.4,
+      "classes": {
+        "person": 6,
+        "helmet": 8,
+        "closed footwear": 3
+      }
+    },
+    {
+      "image": "0404.jpg",
+      "n_det": 26,
+      "latency_ms": 29.1,
+      "classes": {
+        "person": 7,
+        "closed footwear": 10,
+        "helmet": 9
+      }
+    },
+    {
+      "image": "0405.jpg",
+      "n_det": 10,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 5,
+        "helmet": 5
+      }
+    },
+    {
+      "image": "0406.jpg",
+      "n_det": 16,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 6,
+        "helmet": 7,
+        "harness": 1,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0407.jpg",
+      "n_det": 30,
+      "latency_ms": 36.4,
+      "classes": {
+        "person": 13,
+        "helmet": 7,
+        "closed footwear": 8,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0408.jpg",
+      "n_det": 26,
+      "latency_ms": 31.3,
+      "classes": {
+        "person": 9,
+        "closed footwear": 8,
+        "helmet": 7,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0409.jpg",
+      "n_det": 25,
+      "latency_ms": 30.8,
+      "classes": {
+        "person": 7,
+        "closed footwear": 10,
+        "helmet": 8
+      }
+    },
+    {
+      "image": "0410.jpg",
+      "n_det": 28,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 11,
+        "helmet": 7,
+        "closed footwear": 10
+      }
+    },
+    {
+      "image": "0411.jpg",
+      "n_det": 34,
+      "latency_ms": 31.7,
+      "classes": {
+        "helmet": 7,
+        "person": 16,
+        "closed footwear": 11
+      }
+    },
+    {
+      "image": "0412.jpg",
+      "n_det": 10,
+      "latency_ms": 27.8,
+      "classes": {
+        "person": 3,
+        "helmet": 2,
+        "closed footwear": 5
+      }
+    },
+    {
+      "image": "0413.jpg",
+      "n_det": 15,
+      "latency_ms": 26.9,
+      "classes": {
+        "person": 7,
+        "closed footwear": 6,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0414.jpg",
+      "n_det": 13,
+      "latency_ms": 28.4,
+      "classes": {
+        "person": 4,
+        "closed footwear": 8,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0415.jpg",
+      "n_det": 10,
+      "latency_ms": 31.0,
+      "classes": {
+        "person": 4,
+        "closed footwear": 4,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0416.jpg",
+      "n_det": 26,
+      "latency_ms": 28.0,
+      "classes": {
+        "person": 9,
+        "helmet": 5,
+        "closed footwear": 12
+      }
+    },
+    {
+      "image": "0417.jpg",
+      "n_det": 28,
+      "latency_ms": 32.3,
+      "classes": {
+        "person": 10,
+        "helmet": 4,
+        "closed footwear": 14
+      }
+    },
+    {
+      "image": "0418.jpg",
+      "n_det": 23,
+      "latency_ms": 27.8,
+      "classes": {
+        "person": 11,
+        "closed footwear": 11,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0419.jpg",
+      "n_det": 33,
+      "latency_ms": 28.3,
+      "classes": {
+        "person": 12,
+        "helmet": 9,
+        "closed footwear": 12
+      }
+    },
+    {
+      "image": "0420.jpg",
+      "n_det": 24,
+      "latency_ms": 30.2,
+      "classes": {
+        "person": 10,
+        "helmet": 5,
+        "closed footwear": 9
+      }
+    },
+    {
+      "image": "0421.jpg",
+      "n_det": 4,
+      "latency_ms": 30.0,
+      "classes": {
+        "person": 2,
+        "helmet": 2
+      }
+    },
+    {
+      "image": "0422.jpg",
+      "n_det": 2,
+      "latency_ms": 28.1,
+      "classes": {
+        "person": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0423.jpg",
+      "n_det": 3,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 1,
+        "closed footwear": 1,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0424.jpg",
+      "n_det": 7,
+      "latency_ms": 28.7,
+      "classes": {
+        "person": 1,
+        "closed footwear": 2,
+        "harness": 3,
+        "helmet": 1
+      }
+    },
+    {
+      "image": "0425.jpg",
+      "n_det": 16,
+      "latency_ms": 31.0,
+      "classes": {
+        "helmet": 2,
+        "person": 7,
+        "harness": 5,
+        "closed footwear": 2
+      }
+    },
+    {
+      "image": "0426.jpg",
+      "n_det": 38,
+      "latency_ms": 29.5,
+      "classes": {
+        "person": 9,
+        "closed footwear": 18,
+        "helmet": 10,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0427.jpg",
+      "n_det": 41,
+      "latency_ms": 27.4,
+      "classes": {
+        "person": 13,
+        "closed footwear": 16,
+        "helmet": 11,
+        "harness": 1
+      }
+    },
+    {
+      "image": "0428.jpg",
+      "n_det": 35,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 9,
+        "closed footwear": 14,
+        "helmet": 10,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0429.jpg",
+      "n_det": 38,
+      "latency_ms": 33.8,
+      "classes": {
+        "person": 13,
+        "closed footwear": 13,
+        "helmet": 10,
+        "harness": 2
+      }
+    },
+    {
+      "image": "0430.jpg",
+      "n_det": 30,
+      "latency_ms": 29.0,
+      "classes": {
+        "person": 8,
+        "helmet": 10,
+        "closed footwear": 12
+      }
+    },
+    {
+      "image": "0431.jpg",
+      "n_det": 33,
+      "latency_ms": 30.5,
+      "classes": {
+        "closed footwear": 13,
+        "helmet": 8,
+        "person": 12
+      }
+    },
+    {
+      "image": "0432.jpg",
+      "n_det": 33,
+      "latency_ms": 31.3,
+      "classes": {
+        "person": 11,
+        "closed footwear": 13,
+        "helmet": 9
+      }
+    }
+  ]
+}

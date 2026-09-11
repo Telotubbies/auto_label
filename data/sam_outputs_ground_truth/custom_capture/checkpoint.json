@@ -1,0 +1,1744 @@
+{
+  "started_at": "2026-09-10 23:40:34",
+  "total_images": 432,
+  "processed": {
+    "0001.jpg": {
+      "time": 2.6,
+      "annotations": 16
+    },
+    "0002.jpg": {
+      "time": 1.5,
+      "annotations": 13
+    },
+    "0003.jpg": {
+      "time": 1.3,
+      "annotations": 2
+    },
+    "0004.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0005.jpg": {
+      "time": 1.4,
+      "annotations": 33
+    },
+    "0006.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0007.jpg": {
+      "time": 1.3,
+      "annotations": 21
+    },
+    "0008.jpg": {
+      "time": 2.5,
+      "annotations": 12
+    },
+    "0009.jpg": {
+      "time": 1.3,
+      "annotations": 1
+    },
+    "0010.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0011.jpg": {
+      "time": 1.4,
+      "annotations": 5
+    },
+    "0012.jpg": {
+      "time": 1.3,
+      "annotations": 14
+    },
+    "0013.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0014.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0015.jpg": {
+      "time": 1.3,
+      "annotations": 40
+    },
+    "0016.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0017.jpg": {
+      "time": 1.3,
+      "annotations": 43
+    },
+    "0018.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0019.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0020.jpg": {
+      "time": 1.3,
+      "annotations": 2
+    },
+    "0021.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0022.jpg": {
+      "time": 1.3,
+      "annotations": 1
+    },
+    "0023.jpg": {
+      "time": 1.4,
+      "annotations": 47
+    },
+    "0024.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0025.jpg": {
+      "time": 1.2,
+      "annotations": 5
+    },
+    "0026.jpg": {
+      "time": 1.3,
+      "annotations": 52
+    },
+    "0027.jpg": {
+      "time": 1.3,
+      "annotations": 20
+    },
+    "0028.jpg": {
+      "time": 1.3,
+      "annotations": 25
+    },
+    "0029.jpg": {
+      "time": 1.3,
+      "annotations": 2
+    },
+    "0030.jpg": {
+      "time": 1.4,
+      "annotations": 17
+    },
+    "0031.jpg": {
+      "time": 1.3,
+      "annotations": 40
+    },
+    "0032.jpg": {
+      "time": 1.4,
+      "annotations": 16
+    },
+    "0033.jpg": {
+      "time": 2.3,
+      "annotations": 17
+    },
+    "0034.jpg": {
+      "time": 1.4,
+      "annotations": 32
+    },
+    "0035.jpg": {
+      "time": 1.3,
+      "annotations": 7
+    },
+    "0036.jpg": {
+      "time": 1.3,
+      "annotations": 24
+    },
+    "0037.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0038.jpg": {
+      "time": 1.3,
+      "annotations": 30
+    },
+    "0039.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0040.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0041.jpg": {
+      "time": 1.3,
+      "annotations": 46
+    },
+    "0042.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0043.jpg": {
+      "time": 1.3,
+      "annotations": 39
+    },
+    "0044.jpg": {
+      "time": 1.3,
+      "annotations": 19
+    },
+    "0045.jpg": {
+      "time": 1.3,
+      "annotations": 44
+    },
+    "0046.jpg": {
+      "time": 1.3,
+      "annotations": 43
+    },
+    "0047.jpg": {
+      "time": 1.3,
+      "annotations": 47
+    },
+    "0048.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0049.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0050.jpg": {
+      "time": 1.4,
+      "annotations": 52
+    },
+    "0051.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0052.jpg": {
+      "time": 1.3,
+      "annotations": 21
+    },
+    "0053.jpg": {
+      "time": 1.4,
+      "annotations": 18
+    },
+    "0054.jpg": {
+      "time": 1.3,
+      "annotations": 38
+    },
+    "0055.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0056.jpg": {
+      "time": 1.4,
+      "annotations": 44
+    },
+    "0057.jpg": {
+      "time": 2.4,
+      "annotations": 34
+    },
+    "0058.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0059.jpg": {
+      "time": 1.4,
+      "annotations": 19
+    },
+    "0060.jpg": {
+      "time": 1.3,
+      "annotations": 31
+    },
+    "0061.jpg": {
+      "time": 1.3,
+      "annotations": 23
+    },
+    "0062.jpg": {
+      "time": 1.3,
+      "annotations": 28
+    },
+    "0063.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0064.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0065.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0066.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0067.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0068.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0069.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0070.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0071.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0072.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0073.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0074.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0075.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0076.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0077.jpg": {
+      "time": 1.3,
+      "annotations": 7
+    },
+    "0078.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0079.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0080.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0081.jpg": {
+      "time": 1.3,
+      "annotations": 0
+    },
+    "0082.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0083.jpg": {
+      "time": 1.3,
+      "annotations": 21
+    },
+    "0084.jpg": {
+      "time": 1.4,
+      "annotations": 5
+    },
+    "0085.jpg": {
+      "time": 1.4,
+      "annotations": 18
+    },
+    "0086.jpg": {
+      "time": 1.4,
+      "annotations": 26
+    },
+    "0087.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0088.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0089.jpg": {
+      "time": 1.4,
+      "annotations": 38
+    },
+    "0090.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0091.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0092.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0093.jpg": {
+      "time": 1.3,
+      "annotations": 0
+    },
+    "0094.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0095.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0096.jpg": {
+      "time": 1.3,
+      "annotations": 26
+    },
+    "0097.jpg": {
+      "time": 1.5,
+      "annotations": 37
+    },
+    "0098.jpg": {
+      "time": 1.5,
+      "annotations": 29
+    },
+    "0099.jpg": {
+      "time": 1.5,
+      "annotations": 0
+    },
+    "0100.jpg": {
+      "time": 1.4,
+      "annotations": 10
+    },
+    "0101.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0102.jpg": {
+      "time": 1.4,
+      "annotations": 18
+    },
+    "0103.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0104.jpg": {
+      "time": 1.4,
+      "annotations": 11
+    },
+    "0105.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0106.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0107.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0108.jpg": {
+      "time": 1.4,
+      "annotations": 10
+    },
+    "0109.jpg": {
+      "time": 1.4,
+      "annotations": 5
+    },
+    "0110.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0111.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0112.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0113.jpg": {
+      "time": 1.4,
+      "annotations": 0
+    },
+    "0114.jpg": {
+      "time": 1.3,
+      "annotations": 0
+    },
+    "0115.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0116.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0117.jpg": {
+      "time": 1.4,
+      "annotations": 11
+    },
+    "0118.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0119.jpg": {
+      "time": 1.4,
+      "annotations": 27
+    },
+    "0120.jpg": {
+      "time": 1.4,
+      "annotations": 29
+    },
+    "0121.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0122.jpg": {
+      "time": 1.4,
+      "annotations": 24
+    },
+    "0123.jpg": {
+      "time": 1.3,
+      "annotations": 17
+    },
+    "0124.jpg": {
+      "time": 1.4,
+      "annotations": 11
+    },
+    "0125.jpg": {
+      "time": 1.4,
+      "annotations": 39
+    },
+    "0126.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0127.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0128.jpg": {
+      "time": 1.3,
+      "annotations": 18
+    },
+    "0129.jpg": {
+      "time": 1.4,
+      "annotations": 11
+    },
+    "0130.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0131.jpg": {
+      "time": 1.3,
+      "annotations": 0
+    },
+    "0132.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0133.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0134.jpg": {
+      "time": 1.4,
+      "annotations": 24
+    },
+    "0135.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0136.jpg": {
+      "time": 1.4,
+      "annotations": 37
+    },
+    "0137.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0138.jpg": {
+      "time": 1.4,
+      "annotations": 31
+    },
+    "0139.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0140.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0141.jpg": {
+      "time": 1.4,
+      "annotations": 33
+    },
+    "0142.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0143.jpg": {
+      "time": 1.4,
+      "annotations": 19
+    },
+    "0144.jpg": {
+      "time": 1.4,
+      "annotations": 9
+    },
+    "0145.jpg": {
+      "time": 1.4,
+      "annotations": 32
+    },
+    "0146.jpg": {
+      "time": 1.4,
+      "annotations": 36
+    },
+    "0147.jpg": {
+      "time": 1.4,
+      "annotations": 49
+    },
+    "0148.jpg": {
+      "time": 1.4,
+      "annotations": 48
+    },
+    "0149.jpg": {
+      "time": 1.4,
+      "annotations": 44
+    },
+    "0150.jpg": {
+      "time": 1.3,
+      "annotations": 27
+    },
+    "0151.jpg": {
+      "time": 1.4,
+      "annotations": 48
+    },
+    "0152.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0153.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0154.jpg": {
+      "time": 1.4,
+      "annotations": 12
+    },
+    "0155.jpg": {
+      "time": 1.3,
+      "annotations": 17
+    },
+    "0156.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0157.jpg": {
+      "time": 1.4,
+      "annotations": 18
+    },
+    "0158.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0159.jpg": {
+      "time": 1.3,
+      "annotations": 14
+    },
+    "0160.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0161.jpg": {
+      "time": 2.3,
+      "annotations": 13
+    },
+    "0162.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0163.jpg": {
+      "time": 1.3,
+      "annotations": 25
+    },
+    "0164.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0165.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0166.jpg": {
+      "time": 1.4,
+      "annotations": 21
+    },
+    "0167.jpg": {
+      "time": 1.3,
+      "annotations": 43
+    },
+    "0168.jpg": {
+      "time": 1.2,
+      "annotations": 21
+    },
+    "0169.jpg": {
+      "time": 1.2,
+      "annotations": 8
+    },
+    "0170.jpg": {
+      "time": 1.2,
+      "annotations": 45
+    },
+    "0171.jpg": {
+      "time": 1.2,
+      "annotations": 8
+    },
+    "0172.jpg": {
+      "time": 1.2,
+      "annotations": 4
+    },
+    "0173.jpg": {
+      "time": 1.3,
+      "annotations": 22
+    },
+    "0174.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0175.jpg": {
+      "time": 1.3,
+      "annotations": 23
+    },
+    "0176.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0177.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0178.jpg": {
+      "time": 1.4,
+      "annotations": 27
+    },
+    "0179.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0180.jpg": {
+      "time": 1.3,
+      "annotations": 21
+    },
+    "0181.jpg": {
+      "time": 1.4,
+      "annotations": 13
+    },
+    "0182.jpg": {
+      "time": 1.4,
+      "annotations": 11
+    },
+    "0183.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0184.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0185.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0186.jpg": {
+      "time": 1.3,
+      "annotations": 7
+    },
+    "0187.jpg": {
+      "time": 1.4,
+      "annotations": 3
+    },
+    "0188.jpg": {
+      "time": 1.4,
+      "annotations": 12
+    },
+    "0189.jpg": {
+      "time": 1.4,
+      "annotations": 4
+    },
+    "0190.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0191.jpg": {
+      "time": 1.4,
+      "annotations": 5
+    },
+    "0192.jpg": {
+      "time": 1.4,
+      "annotations": 12
+    },
+    "0193.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0194.jpg": {
+      "time": 1.4,
+      "annotations": 4
+    },
+    "0195.jpg": {
+      "time": 1.4,
+      "annotations": 17
+    },
+    "0196.jpg": {
+      "time": 1.4,
+      "annotations": 4
+    },
+    "0197.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0198.jpg": {
+      "time": 1.5,
+      "annotations": 9
+    },
+    "0199.jpg": {
+      "time": 1.5,
+      "annotations": 15
+    },
+    "0200.jpg": {
+      "time": 1.4,
+      "annotations": 31
+    },
+    "0201.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0202.jpg": {
+      "time": 1.4,
+      "annotations": 19
+    },
+    "0203.jpg": {
+      "time": 1.4,
+      "annotations": 32
+    },
+    "0204.jpg": {
+      "time": 1.4,
+      "annotations": 42
+    },
+    "0205.jpg": {
+      "time": 1.4,
+      "annotations": 57
+    },
+    "0206.jpg": {
+      "time": 1.4,
+      "annotations": 19
+    },
+    "0207.jpg": {
+      "time": 1.4,
+      "annotations": 40
+    },
+    "0208.jpg": {
+      "time": 1.4,
+      "annotations": 24
+    },
+    "0209.jpg": {
+      "time": 1.4,
+      "annotations": 78
+    },
+    "0210.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0211.jpg": {
+      "time": 1.4,
+      "annotations": 17
+    },
+    "0212.jpg": {
+      "time": 1.4,
+      "annotations": 33
+    },
+    "0213.jpg": {
+      "time": 1.4,
+      "annotations": 27
+    },
+    "0214.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0215.jpg": {
+      "time": 1.4,
+      "annotations": 25
+    },
+    "0216.jpg": {
+      "time": 1.4,
+      "annotations": 26
+    },
+    "0217.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0218.jpg": {
+      "time": 1.4,
+      "annotations": 22
+    },
+    "0219.jpg": {
+      "time": 2.3,
+      "annotations": 9
+    },
+    "0220.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0221.jpg": {
+      "time": 1.4,
+      "annotations": 14
+    },
+    "0222.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0223.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0224.jpg": {
+      "time": 1.4,
+      "annotations": 9
+    },
+    "0225.jpg": {
+      "time": 1.4,
+      "annotations": 2
+    },
+    "0226.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0227.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0228.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0229.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0230.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0231.jpg": {
+      "time": 1.4,
+      "annotations": 4
+    },
+    "0232.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0233.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0234.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0235.jpg": {
+      "time": 1.4,
+      "annotations": 45
+    },
+    "0236.jpg": {
+      "time": 1.4,
+      "annotations": 32
+    },
+    "0237.jpg": {
+      "time": 1.4,
+      "annotations": 29
+    },
+    "0238.jpg": {
+      "time": 1.3,
+      "annotations": 29
+    },
+    "0239.jpg": {
+      "time": 1.3,
+      "annotations": 30
+    },
+    "0240.jpg": {
+      "time": 1.3,
+      "annotations": 40
+    },
+    "0241.jpg": {
+      "time": 1.3,
+      "annotations": 39
+    },
+    "0242.jpg": {
+      "time": 1.3,
+      "annotations": 28
+    },
+    "0243.jpg": {
+      "time": 1.3,
+      "annotations": 32
+    },
+    "0244.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0245.jpg": {
+      "time": 1.2,
+      "annotations": 4
+    },
+    "0246.jpg": {
+      "time": 1.2,
+      "annotations": 2
+    },
+    "0247.jpg": {
+      "time": 1.2,
+      "annotations": 14
+    },
+    "0248.jpg": {
+      "time": 1.3,
+      "annotations": 21
+    },
+    "0249.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0250.jpg": {
+      "time": 1.2,
+      "annotations": 12
+    },
+    "0251.jpg": {
+      "time": 1.5,
+      "annotations": 46
+    },
+    "0252.jpg": {
+      "time": 1.5,
+      "annotations": 23
+    },
+    "0253.jpg": {
+      "time": 1.5,
+      "annotations": 20
+    },
+    "0254.jpg": {
+      "time": 2.3,
+      "annotations": 20
+    },
+    "0255.jpg": {
+      "time": 1.4,
+      "annotations": 10
+    },
+    "0256.jpg": {
+      "time": 1.3,
+      "annotations": 14
+    },
+    "0257.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0258.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0259.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0260.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0261.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0262.jpg": {
+      "time": 1.4,
+      "annotations": 16
+    },
+    "0263.jpg": {
+      "time": 1.3,
+      "annotations": 22
+    },
+    "0264.jpg": {
+      "time": 1.3,
+      "annotations": 20
+    },
+    "0265.jpg": {
+      "time": 1.3,
+      "annotations": 23
+    },
+    "0266.jpg": {
+      "time": 1.3,
+      "annotations": 18
+    },
+    "0267.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0268.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0269.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0270.jpg": {
+      "time": 1.4,
+      "annotations": 21
+    },
+    "0271.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0272.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0273.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0274.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0275.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0276.jpg": {
+      "time": 1.2,
+      "annotations": 5
+    },
+    "0277.jpg": {
+      "time": 1.2,
+      "annotations": 4
+    },
+    "0278.jpg": {
+      "time": 1.2,
+      "annotations": 3
+    },
+    "0279.jpg": {
+      "time": 2.2,
+      "annotations": 5
+    },
+    "0280.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0281.jpg": {
+      "time": 1.3,
+      "annotations": 7
+    },
+    "0282.jpg": {
+      "time": 1.3,
+      "annotations": 26
+    },
+    "0283.jpg": {
+      "time": 1.3,
+      "annotations": 27
+    },
+    "0284.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0285.jpg": {
+      "time": 1.3,
+      "annotations": 56
+    },
+    "0286.jpg": {
+      "time": 1.3,
+      "annotations": 31
+    },
+    "0287.jpg": {
+      "time": 1.4,
+      "annotations": 78
+    },
+    "0288.jpg": {
+      "time": 1.3,
+      "annotations": 38
+    },
+    "0289.jpg": {
+      "time": 1.2,
+      "annotations": 15
+    },
+    "0290.jpg": {
+      "time": 1.2,
+      "annotations": 15
+    },
+    "0291.jpg": {
+      "time": 1.2,
+      "annotations": 9
+    },
+    "0292.jpg": {
+      "time": 1.4,
+      "annotations": 30
+    },
+    "0293.jpg": {
+      "time": 1.4,
+      "annotations": 32
+    },
+    "0294.jpg": {
+      "time": 1.4,
+      "annotations": 18
+    },
+    "0295.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0296.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0297.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0298.jpg": {
+      "time": 1.4,
+      "annotations": 41
+    },
+    "0299.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0300.jpg": {
+      "time": 1.3,
+      "annotations": 23
+    },
+    "0301.jpg": {
+      "time": 1.3,
+      "annotations": 22
+    },
+    "0302.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0303.jpg": {
+      "time": 1.3,
+      "annotations": 17
+    },
+    "0304.jpg": {
+      "time": 2.5,
+      "annotations": 16
+    },
+    "0305.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0306.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0307.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0308.jpg": {
+      "time": 1.3,
+      "annotations": 10
+    },
+    "0309.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0310.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0311.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0312.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0313.jpg": {
+      "time": 1.3,
+      "annotations": 38
+    },
+    "0314.jpg": {
+      "time": 1.2,
+      "annotations": 31
+    },
+    "0315.jpg": {
+      "time": 1.2,
+      "annotations": 37
+    },
+    "0316.jpg": {
+      "time": 1.3,
+      "annotations": 43
+    },
+    "0317.jpg": {
+      "time": 1.4,
+      "annotations": 37
+    },
+    "0318.jpg": {
+      "time": 1.3,
+      "annotations": 37
+    },
+    "0319.jpg": {
+      "time": 1.3,
+      "annotations": 28
+    },
+    "0320.jpg": {
+      "time": 1.3,
+      "annotations": 28
+    },
+    "0321.jpg": {
+      "time": 1.3,
+      "annotations": 29
+    },
+    "0322.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0323.jpg": {
+      "time": 1.4,
+      "annotations": 6
+    },
+    "0324.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0325.jpg": {
+      "time": 1.4,
+      "annotations": 4
+    },
+    "0326.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0327.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0328.jpg": {
+      "time": 2.4,
+      "annotations": 9
+    },
+    "0329.jpg": {
+      "time": 1.3,
+      "annotations": 2
+    },
+    "0330.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0331.jpg": {
+      "time": 1.3,
+      "annotations": 7
+    },
+    "0332.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0333.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0334.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0335.jpg": {
+      "time": 1.3,
+      "annotations": 7
+    },
+    "0336.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0337.jpg": {
+      "time": 1.2,
+      "annotations": 2
+    },
+    "0338.jpg": {
+      "time": 1.2,
+      "annotations": 6
+    },
+    "0339.jpg": {
+      "time": 1.2,
+      "annotations": 13
+    },
+    "0340.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0341.jpg": {
+      "time": 1.3,
+      "annotations": 36
+    },
+    "0342.jpg": {
+      "time": 1.4,
+      "annotations": 37
+    },
+    "0343.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0344.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0345.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0346.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0347.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0348.jpg": {
+      "time": 1.3,
+      "annotations": 36
+    },
+    "0349.jpg": {
+      "time": 1.3,
+      "annotations": 31
+    },
+    "0350.jpg": {
+      "time": 1.3,
+      "annotations": 18
+    },
+    "0351.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0352.jpg": {
+      "time": 1.3,
+      "annotations": 17
+    },
+    "0353.jpg": {
+      "time": 2.5,
+      "annotations": 9
+    },
+    "0354.jpg": {
+      "time": 1.4,
+      "annotations": 30
+    },
+    "0355.jpg": {
+      "time": 1.3,
+      "annotations": 29
+    },
+    "0356.jpg": {
+      "time": 1.3,
+      "annotations": 26
+    },
+    "0357.jpg": {
+      "time": 1.3,
+      "annotations": 0
+    },
+    "0358.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0359.jpg": {
+      "time": 1.3,
+      "annotations": 19
+    },
+    "0360.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0361.jpg": {
+      "time": 1.3,
+      "annotations": 16
+    },
+    "0362.jpg": {
+      "time": 1.3,
+      "annotations": 21
+    },
+    "0363.jpg": {
+      "time": 1.4,
+      "annotations": 53
+    },
+    "0364.jpg": {
+      "time": 1.4,
+      "annotations": 51
+    },
+    "0365.jpg": {
+      "time": 1.3,
+      "annotations": 50
+    },
+    "0366.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0367.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0368.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0369.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0370.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0371.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0372.jpg": {
+      "time": 1.4,
+      "annotations": 24
+    },
+    "0373.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0374.jpg": {
+      "time": 1.3,
+      "annotations": 5
+    },
+    "0375.jpg": {
+      "time": 1.3,
+      "annotations": 3
+    },
+    "0376.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0377.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0378.jpg": {
+      "time": 1.3,
+      "annotations": 20
+    },
+    "0379.jpg": {
+      "time": 1.3,
+      "annotations": 13
+    },
+    "0380.jpg": {
+      "time": 1.4,
+      "annotations": 21
+    },
+    "0381.jpg": {
+      "time": 1.4,
+      "annotations": 26
+    },
+    "0382.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0383.jpg": {
+      "time": 1.3,
+      "annotations": 22
+    },
+    "0384.jpg": {
+      "time": 1.3,
+      "annotations": 12
+    },
+    "0385.jpg": {
+      "time": 1.3,
+      "annotations": 14
+    },
+    "0386.jpg": {
+      "time": 1.3,
+      "annotations": 17
+    },
+    "0387.jpg": {
+      "time": 1.4,
+      "annotations": 8
+    },
+    "0388.jpg": {
+      "time": 1.4,
+      "annotations": 12
+    },
+    "0389.jpg": {
+      "time": 1.3,
+      "annotations": 11
+    },
+    "0390.jpg": {
+      "time": 1.4,
+      "annotations": 22
+    },
+    "0391.jpg": {
+      "time": 1.4,
+      "annotations": 12
+    },
+    "0392.jpg": {
+      "time": 1.5,
+      "annotations": 5
+    },
+    "0393.jpg": {
+      "time": 1.5,
+      "annotations": 10
+    },
+    "0394.jpg": {
+      "time": 1.4,
+      "annotations": 7
+    },
+    "0395.jpg": {
+      "time": 1.4,
+      "annotations": 13
+    },
+    "0396.jpg": {
+      "time": 1.4,
+      "annotations": 32
+    },
+    "0397.jpg": {
+      "time": 1.4,
+      "annotations": 31
+    },
+    "0398.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0399.jpg": {
+      "time": 1.4,
+      "annotations": 43
+    },
+    "0400.jpg": {
+      "time": 1.4,
+      "annotations": 49
+    },
+    "0401.jpg": {
+      "time": 1.4,
+      "annotations": 30
+    },
+    "0402.jpg": {
+      "time": 1.4,
+      "annotations": 12
+    },
+    "0403.jpg": {
+      "time": 1.4,
+      "annotations": 20
+    },
+    "0404.jpg": {
+      "time": 1.4,
+      "annotations": 30
+    },
+    "0405.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0406.jpg": {
+      "time": 1.3,
+      "annotations": 15
+    },
+    "0407.jpg": {
+      "time": 1.4,
+      "annotations": 22
+    },
+    "0408.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0409.jpg": {
+      "time": 1.4,
+      "annotations": 24
+    },
+    "0410.jpg": {
+      "time": 1.3,
+      "annotations": 24
+    },
+    "0411.jpg": {
+      "time": 1.4,
+      "annotations": 25
+    },
+    "0412.jpg": {
+      "time": 1.4,
+      "annotations": 10
+    },
+    "0413.jpg": {
+      "time": 1.4,
+      "annotations": 24
+    },
+    "0414.jpg": {
+      "time": 1.4,
+      "annotations": 13
+    },
+    "0415.jpg": {
+      "time": 1.3,
+      "annotations": 8
+    },
+    "0416.jpg": {
+      "time": 1.4,
+      "annotations": 23
+    },
+    "0417.jpg": {
+      "time": 1.3,
+      "annotations": 27
+    },
+    "0418.jpg": {
+      "time": 1.4,
+      "annotations": 28
+    },
+    "0419.jpg": {
+      "time": 1.4,
+      "annotations": 29
+    },
+    "0420.jpg": {
+      "time": 1.4,
+      "annotations": 35
+    },
+    "0421.jpg": {
+      "time": 1.3,
+      "annotations": 2
+    },
+    "0422.jpg": {
+      "time": 1.3,
+      "annotations": 2
+    },
+    "0423.jpg": {
+      "time": 1.3,
+      "annotations": 4
+    },
+    "0424.jpg": {
+      "time": 1.3,
+      "annotations": 6
+    },
+    "0425.jpg": {
+      "time": 1.3,
+      "annotations": 9
+    },
+    "0426.jpg": {
+      "time": 1.3,
+      "annotations": 39
+    },
+    "0427.jpg": {
+      "time": 1.4,
+      "annotations": 37
+    },
+    "0428.jpg": {
+      "time": 1.4,
+      "annotations": 36
+    },
+    "0429.jpg": {
+      "time": 1.4,
+      "annotations": 36
+    },
+    "0430.jpg": {
+      "time": 1.4,
+      "annotations": 29
+    },
+    "0431.jpg": {
+      "time": 1.4,
+      "annotations": 30
+    },
+    "0432.jpg": {
+      "time": 1.4,
+      "annotations": 31
+    }
+  },
+  "config": {
+    "threshold": 0.25,
+    "resolution": 1008,
+    "categories": [
+      "person",
+      "helmet",
+      "closed footwear",
+      "harness"
+    ]
+  }
+}

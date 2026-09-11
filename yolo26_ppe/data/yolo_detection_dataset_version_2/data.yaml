@@ -1,9 +1,0 @@
-# yolo_detect_v2 - PPE dataset v2 (5 classes, sandals merged into shoes)
-# Generated from combined_v2 (913 images + oversampling)
-path: /mnt/e/02_Projects/auto_label/yolo26_ppe/data/yolo_detection_dataset_version_2
-train: images/train
-val: images/val
-test: images/test
-
-nc: 5
-names: ['person', 'helmet', 'boots', 'shoes', 'harness']

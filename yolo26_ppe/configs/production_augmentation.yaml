@@ -4,8 +4,9 @@
 
 # Multi-scale training — varies image size ±0.5× during training for better
 # scale robustness. 0.0 = disabled. 0.5 = ±50% size variation (default 0.0).
+# Disabled (0.0) for speed: medium model is heavy, variable sizes cause 2x+ slowdown.
 # Source: https://docs.ultralytics.com/usage/cfg/
-multi_scale: 0.5
+multi_scale: 0.0
 
 # Color space — lighting robustness
 hsv_h: 0.02        # hue shift (color variation)

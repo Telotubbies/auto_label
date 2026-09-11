@@ -70,7 +70,7 @@ class TestSAMBatchSingleImage:
         out_dir.mkdir()
 
         # Build a minimal config
-        config_path = repo_root / "sam3_auto_label" / "config" / "ppe_6class.yaml"
+        config_path = repo_root / "sam3_auto_label" / "config" / "ppe_4class.yaml"
         cfg = load_config(str(config_path))
         cfg.output.input_dir = str(img_dir)
         cfg.output.output_dir = str(out_dir)

@@ -1,6 +1,6 @@
 """Annotation exporters — write segmentation results to standard dataset formats.
 
-Select formats via `output.formats` in config/ppe_6class.yaml, e.g. `formats: [coco, yolo, voc]`.
+Select formats via `output.formats` in config/ppe_4class.yaml, e.g. `formats: [coco, yolo, voc]`.
 What each annotation contains is controlled by the `annotation:` section:
   bbox / segmentation switches + segmentation_encoding (rle | polygon).
 

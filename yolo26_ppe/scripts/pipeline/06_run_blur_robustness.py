@@ -19,9 +19,9 @@ ONNX_DIR = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_models/
 INPUT_DIR = Path("/mnt/e/02_Projects/auto_label/data/raw/blurred")
 OUT_BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_inference_results/blur_robustness")
 
-MODELS = ["nano_detection", "small_detection", "nano_segmentation", "small_segmentation"]
+MODELS = ["medium_detection", "medium_segmentation"]
 # Class order from dataset (verified against ONNX metadata)
-CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
+CLASSES = ["person", "helmet", "closed footwear", "harness"]
 
 # ONNX input
 IMGSZ = 640
@@ -49,9 +49,8 @@ _SAM_COLORS = generate_colors(n_colors=128, n_samples=5000)
 CLASS_COLOR_IDX = {
     0: 0,   # person
     1: 10,  # helmet
-    2: 25,  # boots
-    3: 40,  # shoes
-    4: 60,  # harness
+    2: 25,  # closed footwear
+    3: 60,  # harness
 }
 
 def class_color_bgr(cls_id):
@@ -93,34 +92,101 @@ def preprocess(img):
     return lb, ratio, (dw, dh)
 
 def post_end2end(out, ratio, dw, dh, is_seg=False):
-    """Parse Ultralytics end2end ONNX output.
-    detect: [1, 300, 6] = [x1, y1, x2, y2, conf, cls]
-    seg:    [1, 300, 38] = [x1, y1, x2, y2, conf, cls, 32 mask coeffs]
-    Boxes already in 640x640 letterboxed space, NMS already applied.
+    """Parse Ultralytics ONNX output.
+    Handles two formats:
+    - end2end: [1, 300, 6] or [1, 300, 38] = [x1, y1, x2, y2, conf, cls, (32 mask coeffs)]
+    - raw: [1, C, N] where C = 4 + num_classes (cx, cy, w, h, cls_scores...)
+    Boxes in 640x640 letterboxed space.
     """
-    out = out[0]  # (300, 6) or (300, 38)
-    confs = out[:, 4]
-    keep = confs > CONF_THRES
-    out = out[keep]
+    out = out[0]  # remove batch dim
 
-    dets = []
-    for row in out:
-        x1, y1, x2, y2, conf, cls = row[:6]
-        # Scale from 640 letterboxed to original image
-        x1o = (x1 - dw) / ratio
-        y1o = (y1 - dh) / ratio
-        x2o = (x2 - dw) / ratio
-        y2o = (y2 - dh) / ratio
-        d = {
-            "box": [float(x1o), float(y1o), float(x2o), float(y2o)],
-            "box_640": [float(x1), float(y1), float(x2), float(y2)],  # for mask crop
-            "cls": int(cls),
-            "conf": float(conf),
-        }
-        if is_seg:
-            d["mask_coef"] = row[6:38]
-        dets.append(d)
-    return dets
+    # Check if end2end format (300, 6) or (300, 38)
+    if out.ndim == 2 and out.shape[0] == 300 and out.shape[1] in (6, 38):
+        confs = out[:, 4]
+        keep = confs > CONF_THRES
+        out = out[keep]
+        dets = []
+        for row in out:
+            x1, y1, x2, y2, conf, cls = row[:6]
+            x1o = (x1 - dw) / ratio
+            y1o = (y1 - dh) / ratio
+            x2o = (x2 - dw) / ratio
+            y2o = (y2 - dh) / ratio
+            d = {
+                "box": [float(x1o), float(y1o), float(x2o), float(y2o)],
+                "box_640": [float(x1), float(y1), float(x2), float(y2)],
+                "cls": int(cls),
+                "conf": float(conf),
+            }
+            if is_seg and out.shape[1] == 38:
+                d["mask_coef"] = row[6:38]
+            dets.append(d)
+        return dets
+
+    # Raw YOLO format: [C, N] = [4+nc, 8400] (detect) or [4+nc+32, 8400] (seg)
+    # channels 0-3: cx, cy, w, h (in 640 letterboxed space)
+    # channels 4..4+nc-1: class confidence scores
+    # channels 4+nc..: mask coefficients (seg only, 32 values)
+    if out.ndim == 2 and out.shape[0] > 4:
+        total_c = out.shape[0]
+        n_mask_coef = 32 if is_seg else 0
+        nc = total_c - 4 - n_mask_coef
+        # Transpose to [N, C]
+        preds = out.T  # [8400, total_c]
+        boxes_cxcywh = preds[:, :4]  # cx, cy, w, h
+        class_scores = preds[:, 4:4+nc]  # [N, nc]
+        mask_coefs = preds[:, 4+nc:4+nc+n_mask_coef] if is_seg else None  # [N, 32]
+
+        # Get max class per anchor
+        cls_ids = np.argmax(class_scores, axis=1)
+        confs = np.max(class_scores, axis=1)
+
+        # Filter by confidence
+        keep = confs > CONF_THRES
+        boxes_cxcywh = boxes_cxcywh[keep]
+        cls_ids = cls_ids[keep]
+        confs = confs[keep]
+        if mask_coefs is not None:
+            mask_coefs = mask_coefs[keep]
+
+        if len(confs) == 0:
+            return []
+
+        # Convert cxcywh to xyxy in 640 space
+        cx, cy, w, h = boxes_cxcywh[:, 0], boxes_cxcywh[:, 1], boxes_cxcywh[:, 2], boxes_cxcywh[:, 3]
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
+
+        # NMS
+        import cv2 as _cv2
+        boxes_for_nms = np.stack([x1, y1, x2 - x1, y2 - y1], axis=1).tolist()
+        keep_idx = _cv2.dnn.NMSBoxes(boxes_for_nms, confs.tolist(), CONF_THRES, IOU_THRES)
+        if len(keep_idx) == 0:
+            return []
+        keep_idx = keep_idx.flatten()
+
+        dets = []
+        for idx in keep_idx:
+            x1o = (x1[idx] - dw) / ratio
+            y1o = (y1[idx] - dh) / ratio
+            x2o = (x2[idx] - dw) / ratio
+            y2o = (y2[idx] - dh) / ratio
+            d = {
+                "box": [float(x1o), float(y1o), float(x2o), float(y2o)],
+                "box_640": [float(x1[idx]), float(y1[idx]), float(x2[idx]), float(y2[idx])],
+                "cls": int(cls_ids[idx]),
+                "conf": float(confs[idx]),
+            }
+            if is_seg and mask_coefs is not None:
+                d["mask_coef"] = mask_coefs[idx]
+            dets.append(d)
+        return dets
+
+    # Unknown format
+    print(f"WARN: unknown ONNX output shape: {out.shape}")
+    return []
 
 def generate_masks(dets, mask_proto, ratio, dw, dh, orig_shape):
     """Generate binary masks for seg detections.

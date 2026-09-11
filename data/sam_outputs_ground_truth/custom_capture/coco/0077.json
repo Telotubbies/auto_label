@@ -1,0 +1,188 @@
+{
+  "images": [
+    {
+      "id": 77,
+      "file_name": "0077.jpg",
+      "width": 1477,
+      "height": 1108
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1339,
+      "image_id": 77,
+      "category_id": 1,
+      "bbox": [
+        830.39,
+        483.76,
+        327.41,
+        428.33
+      ],
+      "area": 64908,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "cPVl0d0kQ17N1N101O1N0goNVOjn0j0TQO\\Ohn0d0WQOBdn0>[QOJ^n06aQON[n03fQONXn02hQOOWn00kQO0Tn00lQO1Sn0OnQO1Pn00PRO0Pn00PRO0Pn00PRO1om0OPRO2om0OQRO2nm0NRRO2nm0NRRO2nm0NQRO3om0MPRO4Pn0LoQO5Qn0KoQO5Rn0JnQO6Rn0JnQO7Rn0HnQO8Rn0HnQO8Rn0HnQO8Rn0HoQO7Qn0HPRO9Pn0FPRO;om0EQRO<nm0CSRO>lm0BTRO>lm0AVRO>jm0BVRO>jm0AXRO?gm0AZRO>fm0A[RO?em0A\\RO>cm0B^RO>bm0B_RO=`m0CaRO<`m0DaRO<]m0EcRO;]m0DeRO;Zm0FfRO:Zm0EhRO:Wm0GhRO:Wm0FjRO:Vm0FjRO:Um0GkRO9Um0FlRO:Sm0GmRO8Tm0HlRO7Tm0ImRO6Tm0JlRO5Tm0LkRO4Vm0KkRO4Vm0LiRO3Xm0NhRO0Zm0OgRO1Xm00gRO0Zm00fRO0Zm00eRO1Zm0OgRO0Zm00fRO0Ym01fRO0Zm00fRO0Ym00gRO1Ym0OgRO1Xm00gRO0Zm0OgRO1Xm00hRO0Wm01iROOWm01hRO0Wm00jRO0Vm00iRO1Vm00jROOVm02iROOWm00jRO0Um01kROOWh0VOiZOl0oLOWh0YOfZOi0SMNWh0ZO`ZOm0YMIVh0]OZZOn0`MEWh0^OSZOR1fM@Wh0@mYOT1kM]OXh0BhYOR1QN\\OWh0CeYOS1SN[OWh0DdYOR1UNYOXh0G`YOP1YNYOWh0G_YOQ1YNYOXh0G]YOQ1[NXOXh0H[YOQ1]NVOYh0KWYOP1_NVOZh0KVYOP1_NUO[h0MWVO\\O[2c1ROUO\\h0`0_XO;UOTO]h0d0ZXO:WOSO^h0f0dVOYNP1o1MQO`h0k0ZVO\\NW1h1NROah0`1^WO_O0QObh0d1ZWO\\O2POeh0g1UWOZO4QOfh0h1TWOXOOVOmh0d1RWOWOI[OUi0`1QWOa1oh0`NPWO_1Pi0cNnVO^1Pi0eNoVO[1Pi0gNoVOX1Pi0kNoVOU1Pi0mNoVOS1Pi0oNoVOP1Qi0QOoVOo0oh0TOPWOk0Pi0WOnVOj0Qi0WOnVOj0Ri0WOlVOi0Ti0YOjVOh0Ui0YOjVOh0Ui0ZOhVOg0Yi0YOfVOh0Yi0ZOeVOf0\\i0ZOcVOg0\\i0\\O`VOf0`i0W4O2N:G1O0O101OJmVOmFPi0]9O000000001O0O10001O1O1N101O001O1O1N2O1O001O1O1O1O1O1O2N1O1O1O1O1O1O1O100O1O2N1O100O2N1O010O1O10O01O10OmYO_ESd0b:h[OeEVd0[:f[OiEYd0W:e[OlE[d0T:b[OoE]d0Q:a[ORF_d0n9_[OSFbd0l9\\[OWFdd0i9Z[OXFgd0h9W[OZFhd0f9V[O\\Fkd0c9U[O^Fkd0b9S[O_Fnd0`9Q[OaFPe0_9oZObFQe0]9nZOdFSe0[9lZOfFUe0Y9kZOgFWe0X9gZOjFYe0U9fZOlF[e0S9eZOmF]e0R9aZOoFae0o8^ZORGee0k8ZZOVGie0^OmYOS89`Hoe0POSZO]8MdHSf0gNVZOe8EeHWg0[7gXOgHZg0Y7bXOjH^g0PO]XO[9dg0dF`XOX9`g0hFaXOW9`g0jF^XOV9bg0kF`XOR9ag0nF^XOR9bg0nF`XOP9ag0oF`XOP9ag0QG\\XOP9dg0P11O1WFXXOc8jg0[GWXOe8jg0[GUXOe8lg0[GSXOe8ng0P11\\FRXO_8Ph0`GSXO]8ng0cGQXO]8Ph0bGPXO]8Sh0cGlWO\\8Uh0cGnWOZ8Sh0fGmWOX8Uh0fGlWOZ8Th0fGmWOY8Th0fGmWOX8Th0gGnWOX8Sh0gGnWOW8Sh0jGlWOU8Vh0kGjWOT8Xh0kGhWOS8Zh0lGhWOQ8Zh0oGgWOj2G^1ch0iKeWOh2K[1bh0mKdWOf2LZ1bh0PLcWOd2MY1bh0SL`WOd20V1bh0VL^WOc22T1bh0ZL[WOa24T1ch0ZLYWO`26T1ch0\\LWWO^28T1ch0^LTWO^29S1eh0^LSWO]2:S1eh0aLPWO[2<R1fh0cLmVO[2=Q1hh0eLjVOY2?P1ih0iLfVOU2b0P1lh0jLaVOV2d0n0mh0kL`VOV2c0n0oh0kL^VOW2d0k0Ri0mLYVOW2g0j0Si0mLWVOW2g0k0Ui0lLUVOW2h0k0Ti0oLSVOU2k0j0Ti0QMQVOS2l0k0Vi0PMnUOU2m0i0Wi0QMmUOU2m0h0Xi0RMlUOT2m0j0Yi0QMmUOQ2j0m0\\i0PMkUOR2i0m0_i0PMgUOR2k0m0bi0oLcUOS2k0TOiN7kj0aNaUOR2l0UOmN3hj0gN^UOo1n0VOoN1ij0cN_UOU2i0VORO0[k0i0dUOVOSOO[k0j0cUOUOUOOYk0k0bUOUO\\OITk0P1aUOVOBCoj0U1`UOXOD^Onj0Y1_UOXOGZOnj0[1\\UOZO`l0d0`SO\\OSl0jNiROh1U1]Ocl0a0]SO^Odl0a0]SO^Oel0a0[SO_Ogl0>ZSOAhl0=YSOBil0<WSODkl0:VSOEll09USOFml08SSOHol06RSOIol06QSOJQm05oROJRm05nROKTm04lROKVm03kROLVm04jROKXm03hROMYm01hROOZm00eROO_m0MbRO3am0J`RO5cm0H]RO8fm0E[RO9im0BYRO<QP1M3Lamn:"
+      },
+      "score": 0.9453125,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 1340,
+      "image_id": 77,
+      "category_id": 1,
+      "bbox": [
+        698.64,
+        268.53,
+        208.73,
+        562.84
+      ],
+      "area": 73863,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "Rgeg0a0PR17mPO\\Olk0j0eSOLmk0:kSO2lk02nSO7kk0MPTO:jk0JQTO<jk0IoSO>mk0DPTO`0mk0BoSOd0mk0_OoSOd0ok0^OoSOe0nk0^OnSOg0nk0\\OoSOi0kk0[OPTOl0lk0WOPTOo0jk0TOSTOS1fk0oNXTOU1ek0lNYTOX1ck0jN\\TOZ1_k0iN_TOZ1R4dL^b0T2]YO[1j3RM`b0o5T]ObJdb0b5k\\OoJPc0Y5T\\OaKgc0c4n[OlKic0W4P\\OTLjc0n3P\\O\\Lic0g3P\\OaLmc0`3m[OjLnc0W3o[ORMic0P3S\\OVMjc0l2o[O]Mlc0f2n[OaMoc0e2f[ObMWd0`8N2N1N3N2N4\\\\OaAkb0V?M2O1O1O1O1O001O1O001_]Ok@aa0V?[^OPAba0T`0M2N2O0O1O1O101N1O010O100O1O010O010O010O01\\JS_O_In`0c5Y@TJf?e5g@UJZ?h5n@RJS?m5QAoIP?P6RAnIo>Q6TAmIl>R6WAkIj>U6YAgIh>Z6ZAbIg>`6[A[Ig>e6[AVIh>j6oA]HS>k7eASH]>S8]AkGg>S8YATFhLj0Sb0P9_^O[ES2c0bMP1Qb0o8U^OdE[23gMU1la0S9o]OhEY3S1i>Y9d]OjEc3l0j>k9WARFj>k6b]OoJd3UNj>i6n]OjJY3ZNk>j6P^OiJV3\\Nj>k6R^OgJV3[Ni>m6S^OgJV3YNh>P7T^OeJU3YNh>R7U^OdJU3UNh>W7V^OaJT3UNf>Z7X^O`JU3oMf>b7W^O]JXf0d5iYO[JWf0d5lYOZJJlMVe0k7S[OVJDUNVe0e7X[OTJAZNUe0a7][OSJ]O^NUe0_7`[OQJYOcNUe0]7c[OoIWOgNTe0Z7g[OmITOkNTe0X7j[OkIQOoNTe0V7l[OjIoNROTe0T7n[OiIlNVOTe0Q7Q\\OiIjNXOTe0o6S\\OhIgN\\OUe0l6U\\OgIdN@Ve0i6V\\OgIcNBVe0h6W\\OfI^NGZe0c6Y\\OeIZNL[e0`6\\\\OYKcc0g4^\\OYKac0h4_\\OXK`c0h4`\\OXK`c0h4a\\O[JWN\\NWe0Z7c\\OUJ\\N`Nod0[7e\\OSJ`NaNjd0]7f\\OPJcNbNfd0_7g\\OmIjN_N^d0e7i\\OiInN`NWd0h7l\\OeIPObNSd0k7n\\OeHSNHo0Hnc0l7T]OXHXN1h0Jlc0m7T^OXHQNKjc0n7V^OTHRNOfc0n7[^OnGQN5bc0R8^^OaGSN?\\c0Q8o_OoGQ`0Q8P@nGP`0R8P@nGP`0S8o_OmGQ`0T8o_OlGP`0W8o_OaGW`0d8k43L1O1O1VYOoFoc0Q9cZORGD8ie0g8]ZObHce0`7WZOcHie0_7eYOPGKb1`f0T:iZOTDdc0l;[\\O_D\\c0`;d\\OcDYc0^;f\\OdDXc0\\;g\\OgDWc0Y;i\\OhDWc0X;h\\OhDXc0X;g\\OiDZc0W;e\\OiD\\c0V;c\\OkD]c0U;c\\OkD^c0T;c\\OkD]c0U;d\\OkD\\c0T;e\\OkD\\c0T;d\\OmD\\c0R;e\\OmD\\c0Q;f\\OoDZc0o:h\\OQEXc0m:i\\OTEWc0i:l\\OWETc0g:m\\OZESc0b:S]O[Enb0c:U]O[Emb0a:X]O\\Eib0Z5Z[OVOP2_Khb0U5][OZOm1`Khb0P5_[O^On1_Keb0l4a[OE[g08fXOG^g04dXOK_g01cXON`g0O`XO1cg0L]XO5eg0G[XO:ig0BWXO>mg0^OTXOa0Ph0[OPXOe0Uh0VOlWOh0Yh0TOhWOj0ah0^NdVOSMT1]4^h0WNoWOg1Uh0UNmWOj1Uh0SNPXOh1Sh0UNTXOd1og0XN]XOiMlMW3ii0hN_YOh0df0POiYOg0[f0ROPZOg0Sf0TOlZONYe0BV\\OZOoc0?\\7Bg^Yc0"
+      },
+      "score": 0.95703125,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 1341,
+      "image_id": 77,
+      "category_id": 2,
+      "bbox": [
+        917.53,
+        484.44,
+        133.97,
+        85.84
+      ],
+      "area": 8300,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "YgPo01bR15K3M3N1N4M1O2N1O1O2N1O1O1O1O1O1N2O1O1O001O1O0O2O0O2O1N1O2N2N1N2O2N1O1N3N1O2N1O2N1O101N100O2O0O101N101O0O10001O0O101O0000001N101O0000001N100000001O0O1000001O0000000000001O0001O00000000001O000000001O000010O01O00010O001O1O001O001N2O1O001O1O1O1N2O1O2M2O1O2M3L5L4\\Oe0H8J6Eo]\\>"
+      },
+      "score": 0.9296875,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 1342,
+      "image_id": 77,
+      "category_id": 3,
+      "bbox": [
+        1022.18,
+        820.88,
+        102.33,
+        91.79
+      ],
+      "area": 5256,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "WicR1;UR15L5L3M3M3N1O2M2O2N1O1O2N100O2N100O100O2N100O1O1O1O1O1M3M3M3O1O1O100O1000O10000000000O1000000O1000000O100O10O0100O1O10O01O10O01O1O1O00000001O0O100000OO2O01000O001011N1O2N1O1O2N2O1N2O0O3N3L3M3N2M5K6I=BmSm;"
+      },
+      "score": 0.84765625,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 1343,
+      "image_id": 77,
+      "category_id": 3,
+      "bbox": [
+        750.12,
+        772.97,
+        55.77,
+        58.8
+      ],
+      "area": 2487,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "m[]i0f0kQ15K6K4M2O2N1O1O1O2N001N2O1O1O001O0O2O001O001O001O00000000001O00O100000001O1O2M4M2N1O1N2O1N3N2M4L2N3M4K5J8GlZff0"
+      },
+      "score": 0.87109375,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 1344,
+      "image_id": 77,
+      "category_id": 3,
+      "bbox": [
+        804.2,
+        687.15,
+        81.46,
+        79.47
+      ],
+      "area": 1930,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "RgWk08ZR13M4M3M2N2M3N3M2N2O1N2N3N001001O4L1O1O1O0000001O7I5L0O01O001O1N2O1N1O100O1O10N2Mcb7Aj]H<H3L3L4N1N1000000001O101N2O00O100000O01000O1O1O1O102M2N2M4M2M4L5Jodmc0"
+      },
+      "score": 0.80859375,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 1345,
+      "image_id": 77,
+      "category_id": 3,
+      "bbox": [
+        961.76,
+        776.61,
+        28.35,
+        28.0
+      ],
+      "area": 398,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "feaP19ZR12M4M2N2O10O0100O0101N101N10O01O2O0O002O0O1O100O1O2N2M\\U^`0"
+      },
+      "score": 0.59765625,
+      "annotation_source": "auto"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "helmet",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "closed footwear",
+      "supercategory": "object"
+    },
+    {
+      "id": 4,
+      "name": "harness",
+      "supercategory": "object"
+    }
+  ]
+}

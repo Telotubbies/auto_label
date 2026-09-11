@@ -1,11 +1,5 @@
 categories:
-# 6 categories for evaluation — threshold per category (-1 = use global, 0 = accept all)
-# id=1 person  — person
-# id=2 helmet  — safety helmet
-# id=3 boots   — safety boots/rubber boots (safety boots, rubber boots)
-# id=4 shoes   — sneakers/closed-toe shoes (sneakers, closed-toe shoes)
-# id=5 sandals — slippers/flip-flops (slippers, flip-flops)
-# id=6 harness — safety harness/full-body harness
+
 - id: 1
   name: person
   prompt: person
@@ -15,18 +9,10 @@ categories:
   prompt: helmet
   threshold: 0.25
 - id: 3
-  name: boots
-  prompt: boots
+  name: closed footwear
+  prompt: closed footwear
   threshold: 0.25
 - id: 4
-  name: shoes
-  prompt: shoes
-  threshold: 0.25
-- id: 5
-  name: sandals
-  prompt: flip-flops
-  threshold: 0.3
-- id: 6
   name: harness
   prompt: safety harness
   threshold: 0.25

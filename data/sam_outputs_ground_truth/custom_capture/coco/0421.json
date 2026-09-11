@@ -1,0 +1,78 @@
+{
+  "images": [
+    {
+      "id": 421,
+      "file_name": "0421.jpg",
+      "width": 1706,
+      "height": 960
+    }
+  ],
+  "annotations": [
+    {
+      "id": 7255,
+      "image_id": 421,
+      "category_id": 1,
+      "bbox": [
+        464.47,
+        323.4,
+        186.58,
+        217.94
+      ],
+      "area": 22498,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          960,
+          1706
+        ],
+        "counts": "aZd=5gm07J5L4K5L4M2N3L4M3L6J8I4M4K3M4L3M3N1N4M3L5L3L3N3L2N3N2M3N3L3M4M5J4M3L2O1N2O1N2O1N2O2M4M7H4M3L4M7I3L3N1N2N2O1N101N1O1O2O0O100000000O1000O10OnNUXOQLkg0o3VXOPLjg0W3TXOdLN6ng0T3XXOdMhg0[2ZXOdMfg0[2\\XOcMeg0]2\\XObMcg0_2]XOaMcg0_2]XOaMcg0_2]XOaMbg0`2^XO`Mbg0`2^XO`Mbg0`2^XO_Mbg0b2^XO^Mbg0c2]XO]Mcg0c2]XO]Mcg0c2]XO]Mbg0d2^XO\\Mbg0d2^XO[Mcg0e2]XO[Mcg0e2]XO[Mcg0e2]XO[Mcg0e2]XO[Mbg0f2_XOXMbg0h2^XOXMbg0g2_XOYMag0e2bXOZM^g0b2gXO\\MZg0b2jXO\\MVg0c2QYOWMof0i2XYOoLhf0S3\\YOhLdf0X3^YOeLcf0\\3^YObLbf0^3cYO\\L^f0e3cYOYL]f0V2QXOoNmi0Q1]VOeNci0[1`VObN`i0^1bVOaN]i0_1dVO`N\\i0`1fVO^NZi0c1fVO\\NYi0f1fVO[NYi0g1fVOYNYi0j1dVOWNZi0m1dVOSN[i0o1cVORN\\i0o1dVOPN[i0S2cVOnM\\i0T2aVOnM]i0U2`VOmM_i0Z301O0O2O000O101M2O1O00100O10O10O01AkVOSLTi0j1VWO@IcNRi0j1^WO]OAgNRi0i1cWO\\O_OfNoh0m1hWOYOeh0f0^WOWOch0h0`WOVO_h0k0bWOSO_h0l0dWORO\\h0n0eWOQO[h0n0iWOnNWh0S1lWOjNTh0V1nWOhNRh0W1QXOgNog0Y1RXOfNng0Z1SXOdNng0[1UXOcNkg0\\1XXObNhg0^1ZXO_Ngg0a1[XO\\Nfg0c1^XOYNcg0h1Z21O10O01O00100O010O10O001O1O1O001O1O1N3L4ZOhSO^O\\l0>f0M4K6IVgln0"
+      },
+      "score": 0.95703125,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 7256,
+      "image_id": 421,
+      "category_id": 2,
+      "bbox": [
+        593.7,
+        323.15,
+        57.07,
+        65.92
+      ],
+      "area": 2393,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          960,
+          1706
+        ],
+        "counts": "^T^a05im06K4L4M4K3N1O1N2O1O1N2O001N2O1O0O2O1O0O2O1O1O1O1O1O1O1O2N1O1O1O1O2O0O1O100O10O0100O01O1O001O1O1N2N2N4YOfSOA]l0;kSO\\OZl0a0f0J6KVgln0"
+      },
+      "score": 0.91015625,
+      "annotation_source": "auto"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "helmet",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "closed footwear",
+      "supercategory": "object"
+    },
+    {
+      "id": 4,
+      "name": "harness",
+      "supercategory": "object"
+    }
+  ]
+}

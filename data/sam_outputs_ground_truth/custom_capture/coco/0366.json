@@ -1,0 +1,122 @@
+{
+  "images": [
+    {
+      "id": 366,
+      "file_name": "0366.jpg",
+      "width": 1477,
+      "height": 1108
+    }
+  ],
+  "annotations": [
+    {
+      "id": 6276,
+      "image_id": 366,
+      "category_id": 1,
+      "bbox": [
+        304.79,
+        173.72,
+        216.24,
+        668.01
+      ],
+      "area": 69451,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "hb\\:c0jQ1;H7@`0RQOaNYl0i1dSOZNVNIfm0U2oSOaNjk0e1QTO^Nkk0f1QTO^N[k0X2`TOkMYk0\\2eTOeMVk0b2gTO_MVk0f2fTO\\MWk0h2gTOZMUk0k2hTOVMT8oNe9o3V^ORMo7WOg9j3X^OPMm7[Og9j3Y^OlLi7Bk9e3Z^OjL^7NV:\\3Y^OgLX77\\:U3[^OdLT7<^:U3[^O`LU7=_:W3W^O^LY7<^:T5aEmJ]:U5bElJ]:U5bEmJ[:U5cEmJ\\:S5dEnJ[:S5bEPK]:Q5aEQK^:P5`ERK_:o4^ETKa:m4]EUKb:l4\\EUKd:k4ZEXKe:j4PE`KP;b4aDkK^;Y4YDmKf;V4TDnKk;U4oCoKQ<S4jCoKV<S4eCQL[<Q4_CSL`<o3\\CTLc<o3WCTLi<n3QCWLn<l3kBYLU=i3eB[LZ=h3aBZL_=i3]BYLa=k3ZBXLe=l3oA]LP>g3bAcL]>a3]AcLa>a3ZAbLc>d3WA^Lg>g3TA\\Lj>h3n@^LQ?f3a@eLn=TJaA[90nLX>SJcAT9IQM_>TJcAQ9ASMh>RJdA\\`0Y>j_OcAV`0\\>Q@XAV`0e>n1N2N2O1N1O2O1O1O1O10O01O100O1O10bNlA[^OU>]a0TBb^Ok=Za0[Be^Oe=Wa0_Bh^Oa=Wa0bBh^O^=Ua0eBk^O[=Sa0gBm^OY=Pa0jBo^OV=Pa0mBo^OS=n`0PCR_OP=k`0SCU_Om<h`0VCW_Ok<e`0YC[_Og<_`0`C`_O`<Z`0fCe_O[<R`0nCn_OR<l?TDT@l;i?WDV@j;h?XDX@h;f?ZDY@g;e?[D[@e;c?]D]@c;`?`D_@a;^?cDa@];\\?fDc@[;X?jDg@X;V?jDj@V;U?lDi@U;V?lDj@U;T?mDj@T;V?lDj@T;V?lDi@V;X?iDf@X;[?hDc@Y;_?gD^@[;Y3\\A^8Y3UD];]3[A_8Y3oC_;a3YA`8Zb0`Gg]O`8Yb0_Gh]Ob8Vb0^Gk]Oc8Sb0]Gn]Oc8Rb0\\Go]Oe8oa0[GR^Oe8na0YGT^Oh8ka0WGW^Ok8ea0UG]^OS9Za0lFh^OX9Sa0fFP_O[9n`0dFU_O[9j`0dFY_O[9e`0dF^_O\\9a`0cFg_OW9W`0hFn@V8Q?iGVAR8i>lGbAS8U>lGUBR8e=lGmBe7R=XHSCf7m<WHWCh7i<UH]C`2mKeK0i2g`0oNbCW2TLiKIo2a`0nNfCQ2ZLmKCR3_`0lNmCk1ZLnK_OY3[`0iNTDj1VM[Og>fNZDk1RM]Of>cNcDZOkJ`0n1a1f>oMW_OgNT6?\\JR1e1h1f>mM]G7oIj1f>kMgG0fIS2f>iMjGObIV2f>hMkGOcIV2h>cMiGLjI^2^l0N2N2M4M2N3L3M4M4K5L2M2N2N2O2M2O1N3M2N2O1N1O101N1O101N1O1O2O0O010O1O100O00100O010O1O010O10O10O1O1O1O100O1O1O2N100N4M2M3M5JZgYP1"
+      },
+      "score": 0.95703125,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 6277,
+      "image_id": 366,
+      "category_id": 2,
+      "bbox": [
+        363.43,
+        173.52,
+        101.09,
+        68.67
+      ],
+      "area": 4592,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "]RZ<6ZR16G9I5L3O2M3N1O2N2N2N2O1O1O1O2N100O2O0O1O100O100O2O000O10000O101O0000001O00000000O1000000000001O00001O00001O00001O00001O001O1O00001O1O001O010O1O1O001O001O1O1O00100O1O2N1O101N100O2O1N2O1O2M5L8F:ERQZR1"
+      },
+      "score": 0.81640625,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 6278,
+      "image_id": 366,
+      "category_id": 3,
+      "bbox": [
+        319.79,
+        789.25,
+        104.1,
+        51.46
+      ],
+      "area": 3280,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "gQk:>RR15L4M2N3N1O11O0000000000000000O100000000000O01000000O10O0100O10O010000O01000O00100O10O0100O1O10O0100O10O0100O100O10O0100O100O1000O10O11O0O101O000O2O00000O10000O2O000O100O10000O100O101N100O1O2O0O2O0O2N3M3M4L6HZ`aS1"
+      },
+      "score": 0.8671875,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 6279,
+      "image_id": 366,
+      "category_id": 3,
+      "bbox": [
+        441.6,
+        703.46,
+        80.81,
+        60.65
+      ],
+      "area": 2092,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "_on>9ZR19H2N001O000000000000000000000000O01000O10O10O1O01O010O001N1O1M3O2_OVOVoNk0iP1[OonNh0QQ1=1O101N101N1O101N1O100O1O100O100O010O001O010O100O00100O100O1O1O100O1O1O1O1O1O2N2N2M3N4IhdXP1"
+      },
+      "score": 0.87890625,
+      "annotation_source": "auto"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "helmet",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "closed footwear",
+      "supercategory": "object"
+    },
+    {
+      "id": 4,
+      "name": "harness",
+      "supercategory": "object"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# yolo_detect_v3 - PPE dataset v3 (4 classes: person, helmet, closed footwear, harness)
+# Generated from combined_v3 (480 images + oversampling)
+path: /mnt/e/02_Projects/auto_label/yolo26_ppe/data/yolo_detection_dataset_version_3
+train: images/train
+val: images/val
+test: images/test
+
+nc: 4
+names: ['person', 'helmet', 'closed footwear', 'harness']

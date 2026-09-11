@@ -5,7 +5,7 @@ Features:
   - ETA estimation: estimates remaining time from the average
 
 Usage:
-    python src/batch_segment.py                          # use config/ppe_6class.yaml
+    python src/batch_segment.py                          # use config/ppe_4class.yaml
     python src/batch_segment.py --resume                 # resume from checkpoint
     python src/batch_segment.py --fresh                  # start fresh (delete checkpoint)
     python src/batch_segment.py --threshold 0.5          # override threshold
@@ -127,7 +127,7 @@ def retry_segment(segment_fn, processor, image, img_id, ann_id, cfg,
 
 def parse_args():
     p = argparse.ArgumentParser(description="SAM 3.1 batch segmentation")
-    p.add_argument("-c", "--config", default="config/ppe_6class.yaml", help="path to YAML config")
+    p.add_argument("-c", "--config", default="config/ppe_4class.yaml", help="path to YAML config")
     p.add_argument("--threshold", type=float, help="override confidence threshold")
     p.add_argument("--resolution", type=int, help="override input resolution")
     p.add_argument("--device", choices=["auto", "cpu", "cuda", "rocm", "mps"], help="override device")
@@ -229,6 +229,21 @@ def complete_export(cfg: Config, future, result, state: BatchResults) -> bool:
     if state.experiment_id:
         state.tracker.log_image_result(
             state.experiment_id, basename, len(result["annotations"]), result["elapsed"],
+        )
+        # Count annotations per PPE category for compliance reporting.
+        # Category IDs from ppe_4class.yaml: 1=person, 2=helmet,
+        # 3=closed footwear, 4=harness.
+        cat_counts: dict[int, int] = {}
+        for ann in result["annotations"]:
+            cid = ann.get("category_id", 0)
+            cat_counts[cid] = cat_counts.get(cid, 0) + 1
+        state.tracker.log_ppe_counts(
+            state.experiment_id,
+            basename,
+            person_count=cat_counts.get(1, 0),
+            helmet_count_worn=cat_counts.get(2, 0),
+            harness_count_worn=cat_counts.get(4, 0),
+            closed_footwear_count_worn=cat_counts.get(3, 0),
         )
     log.info(
         f"[OK] {basename}: {len(result['annotations'])} anns in {result['elapsed']:.1f}s"

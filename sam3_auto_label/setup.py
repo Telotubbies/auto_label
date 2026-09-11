@@ -634,9 +634,9 @@ def main():
     print()
     print("Next steps — batch CLI (no web service):")
     if os.name == "nt":
-        print("  sam3_venv\\Scripts\\python.exe src\\batch_segment.py -c config\\ppe_6class.yaml --input ..\\data\\raw\\<batch> --output ..\\data\\sam_outputs_ground_truth\\<batch> --fresh")
+        print("  sam3_venv\\Scripts\\python.exe src\\batch_segment.py -c config\\ppe_4class.yaml --input ..\\data\\raw\\<batch> --output ..\\data\\sam_outputs_ground_truth\\<batch> --fresh")
     else:
-        print("  source sam3_venv/bin/activate && python src/batch_segment.py -c config/ppe_6class.yaml --input ../data/raw/<batch> --output ../data/sam_outputs_ground_truth/<batch> --fresh")
+        print("  source sam3_venv/bin/activate && python src/batch_segment.py -c config/ppe_4class.yaml --input ../data/raw/<batch> --output ../data/sam_outputs_ground_truth/<batch> --fresh")
     print("  -> Annotations in <output>/coco/, visualizations in <output>/viz/")
     print("=" * 60)
 

@@ -1,0 +1,56 @@
+{
+  "images": [
+    {
+      "id": 22,
+      "file_name": "0022.jpg",
+      "width": 1477,
+      "height": 1108
+    }
+  ],
+  "annotations": [
+    {
+      "id": 281,
+      "image_id": 22,
+      "category_id": 1,
+      "bbox": [
+        1405.41,
+        354.5,
+        31.3,
+        63.42
+      ],
+      "area": 1150,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "Wga_1b0nQ15D<H7J6L4O0O10O1O1N101O1N101O2O001N2O1O2O0O2M4L4L5K4L5K4JWP\\1"
+      },
+      "score": 0.81640625,
+      "annotation_source": "auto"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "helmet",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "closed footwear",
+      "supercategory": "object"
+    },
+    {
+      "id": 4,
+      "name": "harness",
+      "supercategory": "object"
+    }
+  ]
+}

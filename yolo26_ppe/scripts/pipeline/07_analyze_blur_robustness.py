@@ -11,8 +11,8 @@ BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_inference_r
 OUT = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/reports/source/figures/blur_robustness")
 OUT.mkdir(parents=True, exist_ok=True)
 
-MODELS = ["nano_detection", "small_detection", "nano_segmentation", "small_segmentation"]
-CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
+MODELS = ["medium_detection", "medium_segmentation"]
+CLASSES = ["person", "helmet", "closed footwear", "harness"]
 
 # SAM-style colors
 def generate_colors(n_colors=256, n_samples=5000):
@@ -26,7 +26,7 @@ def generate_colors(n_colors=256, n_samples=5000):
     return np.clip(colors_rgb, 0, 1)
 
 _SAM = generate_colors(128, 5000)
-CIDX = {0:0, 1:10, 2:25, 3:40, 4:60}
+CIDX = {0:0, 1:10, 2:25, 3:60}
 
 def class_color_bgr(c):
     col = _SAM[CIDX.get(c, c) % len(_SAM)]
@@ -92,8 +92,8 @@ def resize_pad(img, tw, th):
 def make_montage(cases, title, filename, per_model=False):
     """Create montage: if per_model, show 4 models per image; else show 1 model per image."""
     if per_model:
-        # For each case, show 4 model outputs side by side
-        # Layout: 2 cases × 4 models = 8 thumbs, 4 cols × 2 rows
+        # For each case, show 2 model outputs side by side
+        # Layout: 2 cases × 2 models = 4 thumbs, 2 cols × 2 rows
         thumbs = []
         for c in cases[:2]:  # top 2 cases
             for m in MODELS:
@@ -110,16 +110,16 @@ def make_montage(cases, title, filename, per_model=False):
                 lbl = f"[{m}] det={r.get('n_det',0)} {r.get('classes',{})}"
                 cv2.putText(img, lbl, (4, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,0), 1)
                 thumbs.append(img)
-        while len(thumbs) < 8:
+        while len(thumbs) < 4:
             thumbs.append(np.full((THUMB_H, THUMB_W, 3), 255, dtype=np.uint8))
-        # 4 cols × 2 rows
-        rows = [np.hstack(thumbs[i:i+4]) for i in range(0, 8, 4)]
+        # 2 cols × 2 rows
+        rows = [np.hstack(thumbs[i:i+2]) for i in range(0, 4, 2)]
         grid = np.vstack(rows)
     else:
-        # Show 6 cases for best model (s_detect)
+        # Show 6 cases for best model (m_detect)
         thumbs = []
         for c in cases[:6]:
-            p = BASE / "s_detect" / (Path(c["image"]).stem + ".jpg")
+            p = BASE / "medium_detection" / (Path(c["image"]).stem + ".jpg")
             if not p.exists():
                 continue
             img = cv2.imread(str(p))
@@ -127,7 +127,7 @@ def make_montage(cases, title, filename, per_model=False):
                 continue
             img = resize_pad(img, THUMB_W, THUMB_H)
             cv2.rectangle(img, (0, 0), (THUMB_W, 24), (255,255,255), -1)
-            lbl = f"det={c['total_det']} cls={c['n_classes']} {c['per_model'].get('s_detect',{}).get('classes',{})}"
+            lbl = f"det={c['total_det']} cls={c['n_classes']} {c['per_model'].get('medium_detection',{}).get('classes',{})}"
             cv2.putText(img, lbl, (4, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,0), 1)
             thumbs.append(img)
         while len(thumbs) < 6:
@@ -144,12 +144,12 @@ def make_montage(cases, title, filename, per_model=False):
     print(f"Saved: {out} ({grid.shape[1]}x{grid.shape[0]})")
     return out
 
-# Good montage: 4 models × 2 best cases
-make_montage(good, "Good cases — 4 models x 2 images (s_detect, n_detect, n_seg, s_seg per row)",
+# Good montage: 2 models × 2 best cases
+make_montage(good, "Good cases — 2 models x 2 images (m_detect, m_seg per row)",
              "blurred_good_montage.jpg", per_model=True)
 
-# Bad montage: 4 models × 2 worst cases
-make_montage(bad, "Bad cases — 4 models x 2 images (low detection count)",
+# Bad montage: 2 models × 2 worst cases
+make_montage(bad, "Bad cases — 2 models x 2 images (low detection count)",
              "blurred_bad_montage.jpg", per_model=True)
 
 # Also per-model summary montages (6 images each)
@@ -249,16 +249,16 @@ latex += r"""\bottomrule
 # Class distribution table
 latex_cls = r"""\begin{table}[H]
 \centering
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrrr}
 \toprule
-\textbf{Model} & \textbf{person} & \textbf{helmet} & \textbf{boots} & \textbf{shoes} & \textbf{harness} & \textbf{Total} \\
+\textbf{Model} & \textbf{person} & \textbf{helmet} & \textbf{closed footwear} & \textbf{harness} & \textbf{Total} \\
 \midrule
 """
 for m in MODELS:
     a = agg[m]
     cd = a["class_distribution"]
     total = sum(cd.values())
-    latex_cls += f"{m} & {cd.get('person',0)} & {cd.get('helmet',0)} & {cd.get('boots',0)} & {cd.get('shoes',0)} & {cd.get('harness',0)} & {total} \\\\\n"
+    latex_cls += f"{m} & {cd.get('person',0)} & {cd.get('helmet',0)} & {cd.get('closed footwear',0)} & {cd.get('harness',0)} & {total} \\\\\n"
 latex_cls += r"""\bottomrule
 \end{tabular}
 \caption{Class distribution of detections on blurred dataset (48 images) using ONNX}

@@ -1,0 +1,78 @@
+{
+  "images": [
+    {
+      "id": 246,
+      "file_name": "0246.jpg",
+      "width": 1477,
+      "height": 1108
+    }
+  ],
+  "annotations": [
+    {
+      "id": 4184,
+      "image_id": 246,
+      "category_id": 1,
+      "bbox": [
+        907.43,
+        516.29,
+        134.37,
+        122.65
+      ],
+      "area": 8265,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "TUhn05]R13N101N10001O0O10000000000000000001N10000001N100O101N100O1O1O1O1O1M3VNZOdQOg0Vn0H^QO<`n0IYQO;en0IWQO9gn0JUQO9jn0ISQO9ln0KoPO6Ro0MhPO5Xo0d100\\POTM_o0S3M3M1000001N101O1O01O00001N1N3O1N2M400O1O001O0001O1O1O0O2N1000O100O2N1N2O1N101N2N101N2O001O1O1O001O1N2O1O001O2N1O1O0O2O1O1O1O1O1O1N101O00001N101N10001N3N1N2O1N5K3M4L5K4L6H7IkUg>"
+      },
+      "score": 0.9296875,
+      "annotation_source": "auto"
+    },
+    {
+      "id": 4185,
+      "image_id": 246,
+      "category_id": 2,
+      "bbox": [
+        943.16,
+        515.74,
+        35.0,
+        34.27
+      ],
+      "area": 780,
+      "iscrowd": 0,
+      "segmentation": {
+        "size": [
+          1108,
+          1477
+        ],
+        "counts": "bnmo0;VR19H4L3M2O101N10O001N10001O001O10O02O0O1O100O2O001N101O2N3M3M1N3N1N3MeZj`0"
+      },
+      "score": 0.84765625,
+      "annotation_source": "auto"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "helmet",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "closed footwear",
+      "supercategory": "object"
+    },
+    {
+      "id": 4,
+      "name": "harness",
+      "supercategory": "object"
+    }
+  ]
+}

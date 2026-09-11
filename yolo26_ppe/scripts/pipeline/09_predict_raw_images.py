@@ -31,31 +31,23 @@ os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
 from ultralytics import YOLO
 
 BASE = Path("/mnt/e/02_Projects/auto_label")
-PRODUCTION_DIR = BASE / "yolo26_ppe" / "models" / "production"
+PRODUCTION_DIR = BASE / "yolo26_ppe" / "yolo26_ppe" / "models" / "production"
 PREDICTIONS_DIR = BASE / "yolo26_ppe" / "data" / "predictions"
 RAW_DIR = BASE / "data" / "raw"
 
 # Production models — final weights from stage_2_final_fine_tuning
 MODELS = {
-    "nano_detection": {
-        "weights": PRODUCTION_DIR / "nano_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
+    "medium_detection": {
+        "weights": PRODUCTION_DIR / "medium_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
         "task": "detect",
     },
-    "small_detection": {
-        "weights": PRODUCTION_DIR / "small_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "task": "detect",
-    },
-    "nano_segmentation": {
-        "weights": PRODUCTION_DIR / "nano_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "task": "segment",
-    },
-    "small_segmentation": {
-        "weights": PRODUCTION_DIR / "small_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
+    "medium_segmentation": {
+        "weights": PRODUCTION_DIR / "medium_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
         "task": "segment",
     },
 }
 
-CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
+CLASSES = ["person", "helmet", "closed footwear", "harness"]
 
 
 def parse_args():
