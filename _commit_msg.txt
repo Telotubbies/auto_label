@@ -1,16 +1,14 @@
-feat: train small models on v3 4-class dataset and add m-vs-s comparison
+fix: retrain medium detection stage 2 to completion and correct report
 
-Train YOLO26s detection and segmentation models on the same v3 four-class
-dataset as medium models using the two-stage recipe (SGD stage 1 + AdamW
-stage 2, seed 42). Evaluate all four models on the 48-image test set,
-export to ONNX, and update the engineering report with a medium-vs-small
-comparison section.
+The previous medium detection stage 2 run was interrupted after only 3
+epochs, producing a best.pt from epoch 1 that underperformed the small
+model. Retrained stage 2 to completion (50 epochs, AdamW, seed 42).
 
-Key results:
-- small_detection mAP50 0.670 (outperforms medium 0.567)
-- small_segmentation box mAP50 0.566 (competitive with medium 0.599)
-- small models are 2.3-2.6x smaller and faster
-- report.pdf recompiled to 15 pages
+Corrected results:
+- medium_detection mAP50 0.693 (was 0.567 from interrupted run)
+- medium now correctly outperforms small detection (0.693 vs 0.670)
+- ONNX export re-run for all 4 models
+- report.pdf recompiled with corrected metrics and conclusions
 
 Generated with [Devin](https://devin.ai)
 
