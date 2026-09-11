@@ -5,7 +5,7 @@ data: /tmp/yolo_detect_data/data.yaml
 epochs: 50
 time: null
 patience: 15
-batch: 48
+batch: 16
 imgsz: 640
 save: true
 save_period: -1

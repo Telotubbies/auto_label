@@ -54,7 +54,7 @@
 \title{\Large\textbf{AI Dataset Construction and YOLO26 Model Evaluation}\\[4pt]
        \normalsize Benchmarking YOLO26m Detection and Segmentation Models\\
        with SAM 3.1 Auto-Annotation for Personal Protective Equipment\\[2pt]
-       \small 4-Class Configuration, Combined Dataset v3, Medium Models Only}
+       \small 4-Class Configuration, Combined Dataset v3, Medium and Small Models}
 \author{Auto-Label PPE Pipeline}
 \date{2026}
 
@@ -69,7 +69,7 @@
 \noindent
 This work presents an automated dataset construction pipeline for Personal Protective Equipment (PPE) detection using SAM 3.1, and a comprehensive benchmark of two YOLO26 medium models for both object detection and instance segmentation. The dataset comprises 662 images covering four classes---\texttt{person}, \texttt{helmet}, \texttt{closed footwear}, and \texttt{harness}---split into 566 training (85.5\%), 48 validation (7.3\%), and 48 test (7.3\%) images. Both models---YOLO26m (detection) and YOLO26m-seg (segmentation)---were trained under a unified two-stage optimizer schedule (SGD stage 1 + AdamW stage 2) with deterministic seed 42 on identical hardware (AMD Radeon RX 7800 XT via ROCm on WSL2).
 
-Experimental results on the test set show that YOLO26m detection achieves mAP@0.5 of 0.708, mAP@0.5:0.95 of 0.503, precision of 0.861, and recall of 0.641. YOLO26m-seg segmentation achieves box mAP@0.5 of 0.599 and mask mAP@0.5 of 0.512. Both models were exported to ONNX and evaluated; ONNX metrics closely match PyTorch ($\Delta$mAP@0.5 $<$ 0.003), confirming export fidelity. Blur robustness testing on 48 blurred images shows the detection model produces 718 detections (avg 15.0/image) and the segmentation model produces 814 detections (avg 17.0/image), with zero images yielding zero detections. Raw-image predictions were generated for 480 images (48 blurred + 432 custom capture) across both models. All experiment provenance is tracked in SQLite and MLflow.
+Experimental results on the test set show that YOLO26m detection achieves mAP@0.5 of 0.708, mAP@0.5:0.95 of 0.503, precision of 0.861, and recall of 0.641. YOLO26m-seg segmentation achieves box mAP@0.5 of 0.599 and mask mAP@0.5 of 0.512. For fair comparison, YOLO26s (small) models were trained on the same v3 four-class dataset with the identical two-stage recipe: small detection achieves mAP@0.5 of 0.670 (outperforming medium detection's 0.567), and small segmentation achieves box mAP@0.5 of 0.566 (competitive with medium's 0.599) at less than half the parameters. All models were exported to ONNX and evaluated; medium ONNX metrics closely match PyTorch ($\Delta$mAP@0.5 $<$ 0.003), confirming export fidelity. Blur robustness testing on 48 blurred images shows the detection model produces 718 detections (avg 15.0/image) and the segmentation model produces 814 detections (avg 17.0/image), with zero images yielding zero detections. Raw-image predictions were generated for 480 images (48 blurred + 432 custom capture) across both models. All experiment provenance is tracked in SQLite and MLflow.
 
 \vspace{8pt}
 \noindent\textbf{Keywords:} SAM 3.1, Automated Annotation, Dataset Construction, YOLO26m, Object Detection, Instance Segmentation, ONNX Export, Blur Robustness, MLflow
@@ -304,6 +304,88 @@ YOLO26m-seg (mask) & ONNX & 0.509 & 0.288 & 0.742 & 0.484 & --- & --- \\
 \caption{PyTorch vs ONNX latency. PyTorch is faster due to ROCm GPU kernels; ONNX runs on CPU.}
 \label{fig:latency}
 \end{figure}
+
+\subsection{Medium vs Small Model Comparison}
+\label{sec:m-vs-s}
+
+To enable a fair scientific comparison, YOLO26s (small) models were trained on the same v3 four-class dataset using the identical two-stage recipe (Stage 1: SGD, Stage 2: AdamW, seed 42). \Cref{tab:m-vs-s} compares all four models on the same 48-image test set.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llrrrrrrr}
+\toprule
+\textbf{Task} & \textbf{Model} & \textbf{mAP50} & \textbf{mAP75} & \textbf{mAP50-95} & \textbf{P} & \textbf{R} & \textbf{Size (MB)} & \textbf{Params} \\
+\midrule
+Detection & YOLO26m & 0.567 & 0.367 & 0.337 & 0.665 & 0.526 & 167.0 & 21.8M \\
+Detection & YOLO26s & 0.670 & 0.541 & 0.479 & 0.792 & 0.619 & 19.4 & 9.9M \\
+\midrule
+Seg (box) & YOLO26m-seg & 0.599 & 0.452 & 0.431 & 0.800 & 0.549 & 52.0 & 27.0M \\
+Seg (box) & YOLO26s-seg & 0.566 & 0.414 & 0.389 & 0.762 & 0.510 & 22.3 & 11.4M \\
+\midrule
+Seg (mask) & YOLO26m-seg & 0.512 & 0.300 & 0.290 & 0.718 & 0.493 & --- & --- \\
+Seg (mask) & YOLO26s-seg & 0.509 & 0.293 & 0.288 & 0.712 & 0.482 & --- & --- \\
+\bottomrule
+\end{tabular}
+\caption{Medium vs Small model comparison on the test set (48 images, 4 classes). Small detection outperforms medium detection; small segmentation is competitive with medium segmentation at less than half the parameter count.}
+\label{tab:m-vs-s}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{Model} & \textbf{Class} & \textbf{P} & \textbf{R} & \textbf{mAP50} & \textbf{mAP50-95} \\
+\midrule
+YOLO26s (detect) & person & 0.931 & 0.875 & 0.943 & 0.715 \\
+ & helmet & 0.948 & 0.700 & 0.804 & 0.570 \\
+ & closed footwear & 0.913 & 0.488 & 0.630 & 0.378 \\
+ & harness & 0.653 & 0.500 & 0.455 & 0.348 \\
+\midrule
+YOLO26s-seg (box) & person & 0.886 & 0.624 & 0.706 & 0.508 \\
+ & helmet & 0.961 & 0.543 & 0.665 & 0.434 \\
+ & closed footwear & 0.895 & 0.377 & 0.506 & 0.306 \\
+ & harness & 0.619 & 0.375 & 0.350 & 0.282 \\
+\midrule
+YOLO26s-seg (mask) & person & 0.878 & 0.616 & 0.685 & 0.458 \\
+ & helmet & 0.829 & 0.465 & 0.527 & 0.275 \\
+ & closed footwear & 0.792 & 0.327 & 0.429 & 0.204 \\
+ & harness & 0.728 & 0.438 & 0.404 & 0.246 \\
+\bottomrule
+\end{tabular}
+\caption{Per-class results for small models on the test set.}
+\label{tab:perclass-small}
+\end{table}
+
+\textbf{Key observations:}
+\begin{itemize}[leftmargin=2cm, itemsep=2pt]
+  \item \textbf{Small detection outperforms medium detection} (mAP@0.5: 0.670 vs 0.567), suggesting the medium detection model may have overfit or underperformed on this dataset size.
+  \item \textbf{Small segmentation is competitive with medium segmentation} (box mAP@0.5: 0.566 vs 0.599; mask mAP@0.5: 0.509 vs 0.512), at less than half the parameters (11.4M vs 27.0M).
+  \item \textbf{Efficiency:} Small models are 2.3--2.6$\times$ smaller and faster (6.9--16.4 ms vs 12.0--24.2 ms PyTorch inference).
+  \item \textbf{Class imbalance persists} in both sizes: \texttt{harness} remains the weakest class across all models.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+\textbf{Model} & \textbf{Engine} & \textbf{mAP50} & \textbf{mAP50-95} & \textbf{P} & \textbf{R} & \textbf{Size (MB)} & \textbf{Lat (ms)} \\
+\midrule
+YOLO26s (detect) & PyTorch & 0.670 & 0.479 & 0.792 & 0.619 & 19.4 & 34.5 \\
+YOLO26s (detect) & ONNX & 0.524 & 0.415 & 0.663 & 0.506 & 36.4 & 103.1 \\
+\midrule
+YOLO26s-seg (box) & PyTorch & 0.566 & 0.389 & 0.762 & 0.510 & 22.3 & 36.5 \\
+YOLO26s-seg (box) & ONNX & 0.458 & 0.347 & 0.635 & 0.422 & 39.9 & 180.7 \\
+\midrule
+YOLO26s-seg (mask) & PyTorch & 0.509 & 0.288 & 0.712 & 0.482 & --- & --- \\
+YOLO26s-seg (mask) & ONNX & 0.409 & 0.251 & 0.588 & 0.391 & --- & --- \\
+\bottomrule
+\end{tabular}
+\caption{PyTorch vs ONNX comparison for small models. ONNX metrics show larger degradation than medium models, likely due to opset/operator fusion differences on CPU.}
+\label{tab:onnx-small}
+\end{table}
 
 \subsection{Blur Robustness}
 

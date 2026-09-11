@@ -34,6 +34,16 @@ MODELS = {
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },
+    "small_detection": {
+        "weights": BASE / "yolo26_ppe/models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt",
+        "data": "/tmp/yolo_detect_data/data.yaml",
+        "task": "detect",
+    },
+    "small_segmentation": {
+        "weights": BASE / "yolo26_ppe/models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt",
+        "data": "/tmp/yolo_seg_data/data.yaml",
+        "task": "segment",
+    },
 }
 
 NAMES = ["person", "helmet", "closed footwear", "harness"]

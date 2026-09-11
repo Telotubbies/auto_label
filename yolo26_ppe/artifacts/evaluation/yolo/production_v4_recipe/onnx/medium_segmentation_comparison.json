@@ -62,10 +62,10 @@
         "mAP50-95": 0.14988078649384043
       }
     },
-    "inference_ms": 13.68314852080251,
+    "inference_ms": 11.454143895965293,
     "engine": "pytorch",
     "model_size_MB": 51.96348190307617,
-    "latency_ms": 42.792320251464844
+    "latency_ms": 40.44222831726074
   },
   "onnx": {
     "precision": 0.8168442249685351,
@@ -130,10 +130,10 @@
         "mAP50-95": 0.14563638506073645
       }
     },
-    "inference_ms": 330.1578835833349,
+    "inference_ms": 336.5389424795164,
     "engine": "onnx",
     "model_size_MB": 89.99385833740234,
-    "latency_ms": 385.209321975708
+    "latency_ms": 399.89590644836426
   },
   "onnx_path": "/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_models/production/medium_segmentation.onnx"
 }
