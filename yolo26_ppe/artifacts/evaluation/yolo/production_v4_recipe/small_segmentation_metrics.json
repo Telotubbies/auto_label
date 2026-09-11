@@ -53,7 +53,7 @@
   },
   "model_size_MB": 22.265830993652344,
   "params": 11437172,
-  "inference_ms": 6.930039229094594,
-  "preprocess_ms": 1.8813081043541995,
-  "postprocess_ms": 8.600911854197571
+  "inference_ms": 8.62091527111867,
+  "preprocess_ms": 1.8791500624502078,
+  "postprocess_ms": 11.26150937489001
 }
