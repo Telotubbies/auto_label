@@ -5,10 +5,8 @@
 \textbf{Model} & \textbf{Imgs} & \textbf{Avg lat} & \textbf{Std lat} & \textbf{Total det} & \textbf{Avg det/img} & \textbf{Zero-det} & \textbf{P95 lat} \\
  &  & (ms) & (ms) &  &  & (imgs) & (ms) \\
 \midrule
-n_detect & 48 & 33.7 & 4.5 & 556 & 11.6 & 0 & 44.4 \\
-s_detect & 48 & 147.9 & 369.9 & 679 & 14.1 & 0 & 108.8 \\
-n_seg & 48 & 51.3 & 4.1 & 660 & 13.8 & 0 & 58.5 \\
-s_seg & 48 & 127.5 & 6.5 & 712 & 14.8 & 0 & 139.4 \\
+medium_detection & 48 & 181.4 & 8.5 & 718 & 15.0 & 0 & 193.7 \\
+medium_segmentation & 48 & 302.8 & 14.2 & 814 & 17.0 & 0 & 324.0 \\
 \bottomrule
 \end{tabular}
 \caption{Inference results on blurred dataset (48 images) using ONNX — latency and detection count}
@@ -17,14 +15,12 @@ s_seg & 48 & 127.5 & 6.5 & 712 & 14.8 & 0 & 139.4 \\
 
 \begin{table}[H]
 \centering
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrrr}
 \toprule
-\textbf{Model} & \textbf{person} & \textbf{helmet} & \textbf{boots} & \textbf{shoes} & \textbf{harness} & \textbf{Total} \\
+\textbf{Model} & \textbf{person} & \textbf{helmet} & \textbf{closed footwear} & \textbf{harness} & \textbf{Total} \\
 \midrule
-n_detect & 203 & 197 & 35 & 110 & 11 & 556 \\
-s_detect & 233 & 244 & 48 & 142 & 12 & 679 \\
-n_seg & 272 & 209 & 37 & 123 & 19 & 660 \\
-s_seg & 286 & 221 & 58 & 127 & 20 & 712 \\
+medium_detection & 217 & 226 & 250 & 25 & 718 \\
+medium_segmentation & 275 & 220 & 272 & 47 & 814 \\
 \bottomrule
 \end{tabular}
 \caption{Class distribution of detections on blurred dataset (48 images) using ONNX}

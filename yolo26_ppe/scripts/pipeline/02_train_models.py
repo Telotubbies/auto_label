@@ -30,6 +30,9 @@ import contextlib
 # ROCm env (must be before torch import)
 os.environ.setdefault("HSA_ENABLE_DXG_DETECTION", "1")
 os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
+# WSL2: preload HIP runtime so torch.cuda.is_available() detects the GPU
+# Without this, torch loads but cannot find /dev/kfd (WSL2 uses /dev/dxg instead)
+os.environ.setdefault("LD_PRELOAD", "/opt/rocm/lib/libamdhip64.so")
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Ensure BASE (yolo26_ppe/) is on sys.path so `import focal_patch` resolves
@@ -117,6 +120,20 @@ MODELS = {
         "project": f"yolo26_ppe/models/production/small_segmentation",
         "batch": 16,       # stable: 24 caused deadlock, 16 is safe
     },
+    "medium_detection": {
+        "weights": "yolo26m.pt",
+        "task": "detect",
+        "data": DATA_DETECT,
+        "project": f"yolo26_ppe/models/production/medium_detection",
+        "batch": 16,       # m detect OOM at 32 on 16GB → 16 is safe
+    },
+    "medium_segmentation": {
+        "weights": "yolo26m-seg.pt",
+        "task": "segment",
+        "data": DATA_SEG,
+        "project": f"yolo26_ppe/models/production/medium_segmentation",
+        "batch": 12,       # m seg is heavier → 12 to stay within 16GB
+    },
 }
 
 # Stage 1 args — frozen backbone, high LR, full augmentation
@@ -128,7 +145,8 @@ def get_stage1_args(batch):
         "patience": 30,
         "freeze": 10,
         "cls_pw": 0.5,
-        # Optimizer
+        # Optimizer — SGD for stage 1 (better generalization on small dataset)
+        "optimizer": "SGD",
         "lr0": 0.01,
         "lrf": 0.01,
         "momentum": 0.937,
@@ -143,10 +161,14 @@ def get_stage1_args(batch):
         # Focal Loss — applied via focal_patch.py monkey-patch (gamma=1.5, alpha=0.25)
         # focal_patch.py replaces v8DetectionLoss.bce with FocalBCE on import.
         # fl_gamma is NOT a valid Ultralytics arg; logged to MLflow only.
-        # Gradient Accumulation — effective batch 64
-        "nbs": 64,
+        # Gradient Accumulation — effective batch 32 (was 64, reduced for speed)
+        "nbs": 32,
         # AMP
         "amp": True,
+        # Label smoothing — SAM auto-labels may have noise; 0.1 calibrates
+        "label_smoothing": 0.1,
+        # Cosine LR schedule — smoother decay than linear
+        "cos_lr": True,
         # Save + val
         "save": True,
         "save_period": -1,
@@ -155,7 +177,7 @@ def get_stage1_args(batch):
         "exist_ok": True,
         # Cache dataset in RAM (datasets are small, /tmp is fast)
         "cache": True,
-        "workers": 4,
+        "workers": 8,
         # Seed
         "seed": 42,
     }
@@ -174,10 +196,10 @@ def get_stage2_args(batch):
         "patience": 15,
         "freeze": 0,              # unfreeze ALL layers
         "cls_pw": 0.5,
-        # Optimizer — 10x lower LR
+        # Optimizer — AdamW for stage 2 (adaptive LR for 20M+ unfrozen params)
+        "optimizer": "AdamW",
         "lr0": 0.001,
         "lrf": 0.01,
-        "momentum": 0.937,
         "weight_decay": 0.0005,
         "warmup_epochs": 1,
         "warmup_momentum": 0.8,
@@ -190,9 +212,12 @@ def get_stage2_args(batch):
         # focal_patch.py replaces v8DetectionLoss.bce with FocalBCE on import.
         # fl_gamma is NOT a valid Ultralytics arg; logged to MLflow only.
         # Gradient Accumulation
-        "nbs": 64,
+        "nbs": 32,
         # AMP
         "amp": True,
+        # Label smoothing + cosine LR (same as stage 1 for consistency)
+        "label_smoothing": 0.1,
+        "cos_lr": True,
         # Save + val
         "save": True,
         "save_period": -1,
@@ -200,7 +225,7 @@ def get_stage2_args(batch):
         "plots": True,
         "exist_ok": True,
         "cache": True,
-        "workers": 4,
+        "workers": 8,
         "seed": 42,
         # Reduced augmentation for fine-tuning
         "hsv_h": 0.015,
@@ -232,7 +257,7 @@ def log_common_params(model_key, config, stage, args, gpu_name, data_stats):
     mlflow.log_param("version", VERSION)
     mlflow.log_param("stage", stage)
     mlflow.log_param("task", config["task"])
-    model_size = "n" if "nano_detection" in model_key or "nano_segmentation" in model_key else "s"
+    model_size = "n" if "nano_detection" in model_key or "nano_segmentation" in model_key else ("s" if "small_detection" in model_key or "small_segmentation" in model_key else "m")
     mlflow.log_param("model_size", model_size)
     mlflow.log_param("optimizer", "MuSGD")
     mlflow.log_param("seed", args.get("seed", 42))
@@ -442,7 +467,7 @@ def main():
     parser = argparse.ArgumentParser(description="Full recipe training (v4_recipe) for all 4 models")
     parser.add_argument("--stage", choices=[1, 2, 12], type=int, default=12,
                         help="Stage to run: 1=stage1 only, 2=stage2 only, 12=both (default)")
-    parser.add_argument("--model", choices=["n", "s"], help="Model size (single model)")
+    parser.add_argument("--model", choices=["n", "s", "m"], help="Model size (single model)")
     parser.add_argument("--task", choices=["detect", "segment"], help="Task (single model)")
     # Custom training config overrides
     parser.add_argument("--epochs", type=int, default=None, help="Override epochs (both stages)")
@@ -479,7 +504,7 @@ def main():
     }
 
     # Select models — map short names (n/s) to full keys (nano/small)
-    SIZE_MAP = {"n": "nano", "s": "small"}
+    SIZE_MAP = {"n": "nano", "s": "small", "m": "medium"}
     if args.model and args.task:
         size_full = SIZE_MAP.get(args.model, args.model)
         task_full = "segmentation" if args.task == "segment" else "detection"
@@ -498,9 +523,9 @@ def main():
         if not os.path.exists(data_path):
             # Try direct path fallback (BASE is yolo26_ppe/)
             if "detect" in data_path:
-                fallback = os.path.join(BASE, "data", "yolo_detection_dataset_version_2", "data.yaml")
+                fallback = os.path.join(BASE, "data", "yolo_detection_dataset_version_3", "data.yaml")
             else:
-                fallback = os.path.join(BASE, "data", "yolo_segmentation_dataset_version_2", "data.yaml")
+                fallback = os.path.join(BASE, "data", "yolo_segmentation_dataset_version_3", "data.yaml")
             if os.path.exists(fallback):
                 print(f"  NOTE: {data_path} not found, using direct path: {fallback}")
                 cfg["data"] = fallback

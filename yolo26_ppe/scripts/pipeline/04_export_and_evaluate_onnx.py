@@ -36,29 +36,19 @@ EVAL_OUT = BASE / "artifacts" / "evaluation" / "yolo" / f"production_{VERSION}" 
 EVAL_OUT.mkdir(parents=True, exist_ok=True)
 
 MODELS = {
-    "nano_detection": {
-        "weights": BASE / "models/production/nano_detection/stage_2_final_fine_tuning/weights/best.pt",
+    "medium_detection": {
+        "weights": BASE / "yolo26_ppe/models/production/medium_detection/stage_2_final_fine_tuning/weights/best.pt",
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
-    "small_detection": {
-        "weights": BASE / "models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt",
-        "data": "/tmp/yolo_detect_data/data.yaml",
-        "task": "detect",
-    },
-    "nano_segmentation": {
-        "weights": BASE / "models/production/nano_segmentation/stage_2_final_fine_tuning/weights/best.pt",
-        "data": "/tmp/yolo_seg_data/data.yaml",
-        "task": "segment",
-    },
-    "small_segmentation": {
-        "weights": BASE / "models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt",
+    "medium_segmentation": {
+        "weights": BASE / "yolo26_ppe/models/production/medium_segmentation/stage_2_final_fine_tuning/weights/best.pt",
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },
 }
 
-NAMES = ["person", "helmet", "boots", "shoes", "harness"]
+NAMES = ["person", "helmet", "closed footwear", "harness"]
 
 def export_onnx(key, cfg):
     print(f"\n{'='*60}")

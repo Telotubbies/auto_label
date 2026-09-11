@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Step 01: Prepare YOLO data from combined COCO dataset version 2.
+"""Step 01: Prepare YOLO data from combined COCO dataset version 3.
 
-- Reads combined_coco_dataset_version_2/annotations.json (913 images, 5 classes)
+- Reads combined_coco_dataset_version_3/annotations.json (480 images, 4 classes)
 - Splits into train/val/test (80/10/10)
 - Converts to YOLO detection format (bbox)
 - Converts to YOLO segmentation format (polygon masks)
-- Applies oversampling for rare classes (harness, boots)
+- Applies oversampling for rare classes (harness)
 - Generates data.yaml files
+
+4-class scheme (ppe_4class.yaml):
+  1=person, 2=helmet, 3=closed footwear, 4=harness
 """
 import json
 import os
@@ -18,40 +21,30 @@ from collections import Counter
 import numpy as np
 
 BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe")
-COMBINED_DIR = BASE / "data" / "combined_coco_dataset_version_2"
+COMBINED_DIR = BASE / "data" / "combined_coco_dataset_version_3"
 ANN_PATH = COMBINED_DIR / "annotations.json"
 IMG_DIR = COMBINED_DIR / "images"
 
-# Fallback to v1 dataset (has real images on disk)
-V1_DIR = Path("/mnt/e/02_Projects/auto_label/data/processed/combined_coco_dataset_version_1")
-V1_ANN_PATH = V1_DIR / "annotations.json"
-V1_IMG_DIR = V1_DIR / "images"
-
 # Output directories
-DET_DIR = BASE / "data" / "yolo_detection_dataset_version_2"
-SEG_DIR = BASE / "data" / "yolo_segmentation_dataset_version_2"
+DET_DIR = BASE / "data" / "yolo_detection_dataset_version_3"
+SEG_DIR = BASE / "data" / "yolo_segmentation_dataset_version_3"
 
-CLASS_NAMES = ["person", "helmet", "boots", "shoes", "harness"]
-# COCO category IDs in v2 dataset: 1=person, 2=helmet, 3=boots, 4=shoes, 5=harness
-# YOLO class IDs: 0=person, 1=helmet, 2=boots, 3=shoes, 4=harness
-COCO_TO_YOLO = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4}
-
-# v1 dataset has 6 categories: 1=person, 2=helmet, 3=boots, 4=shoes, 5=sandals, 6=harness
-# Map sandals (5) → shoes (YOLO 3), harness (6) → harness (YOLO 4)
-COCO_TO_YOLO_V1 = {1: 0, 2: 1, 3: 2, 4: 3, 5: 3, 6: 4}
+CLASS_NAMES = ["person", "helmet", "closed footwear", "harness"]
+# COCO category IDs in v3 dataset: 1=person, 2=helmet, 3=closed footwear, 4=harness
+# YOLO class IDs: 0=person, 1=helmet, 2=closed footwear, 3=harness
+COCO_TO_YOLO = {1: 0, 2: 1, 3: 2, 4: 3}
 
 SPLIT_RATIOS = {"train": 0.8, "val": 0.1, "test": 0.1}
 RANDOM_SEED = 42
 
 # Oversampling targets for rare classes (YOLO class ID → target annotation count).
-# Based on data/dataset_analysis_reports/data_analysis.json:
-#   before_balance: helmet=2693, person=2271, shoes=2407, boots=802, harness=102
-#   imbalance: 2693:102 = 26:1 (helmet vs harness)
-# Targets bring rare classes closer to common classes via image duplication.
-# Cap at 10x per image to avoid overfitting (see multiplier cap below).
+# Based on v3 dataset distribution:
+#   person=2267, helmet=2503, closed_footwear=3350, harness=177
+#   imbalance: 3350:177 = 19:1 (footwear vs harness)
+# Target brings harness closer to common classes via image duplication.
+# Cap at 10x per image to avoid overfitting.
 OVERSAMPLE_TARGETS = {
-    2: 400,   # boots  (YOLO class 2) → target 400 annotations (was 802, but still minority vs 2693)
-    4: 500,   # harness (YOLO class 4) → target 500 annotations (was 102, 26:1 imbalance)
+    3: 500,   # harness (YOLO class 3) → target 500 annotations (was 177, 19:1 imbalance)
 }
 
 
@@ -131,32 +124,13 @@ def main():
     print("Preparing YOLO v2 data (detect + segment)")
     print("=" * 70)
 
-    # Try v2 first, fall back to v1 if v2 images are missing
+    # Try v3 dataset
     global ANN_PATH, IMG_DIR, COCO_TO_YOLO
-    use_v1 = False
 
     if not ANN_PATH.exists():
-        print(f"v2 annotations not found at {ANN_PATH}")
-        use_v1 = True
-    else:
-        # Check if v2 images exist
-        with open(ANN_PATH) as f:
-            test_data = json.load(f)
-        missing_count = sum(1 for img in test_data['images'] if not (IMG_DIR / img['file_name']).exists())
-        if missing_count == len(test_data['images']):
-            print(f"WARNING: All {missing_count} v2 images are missing.")
-            print(f"  Falling back to v1 dataset (has real images on disk).")
-            use_v1 = True
-
-    if use_v1:
-        if not V1_ANN_PATH.exists():
-            print(f"ERROR: Neither v2 nor v1 annotations found.")
-            sys.exit(1)
-        ANN_PATH = V1_ANN_PATH
-        IMG_DIR = V1_IMG_DIR
-        COCO_TO_YOLO = COCO_TO_YOLO_V1
-        print(f"Using v1 dataset: {V1_DIR}")
-        print(f"  (sandals merged into shoes, 6→5 classes)")
+        print(f"ERROR: v3 annotations not found at {ANN_PATH}")
+        print(f"  Run 00_combine_sam_outputs.py first to build the combined dataset.")
+        sys.exit(1)
 
     # Load annotations
     with open(ANN_PATH) as f:
@@ -292,6 +266,7 @@ def main():
                     print(f"  Post-oversampling imbalance: {post_max}:{post_min} = {post_max/post_min:.1f}:1")
 
         processed = 0
+        seen_count = {}
         for img_id in split_img_ids:
             img_info = img_map[img_id]
             file_name = img_info['file_name']
@@ -313,12 +288,12 @@ def main():
             # Flatten file_name (remove subdirectory prefix like "2026/" or "blurred/")
             flat_name = os.path.basename(file_name)
             base_name = flat_name
-            if split == 'train' and split_img_ids.count(img_id) > 1:
+            seen_count[img_id] = seen_count.get(img_id, 0) + 1
+            if split == 'train' and seen_count[img_id] > 1:
                 # Add suffix for oversampled copies
-                idx = split_img_ids[:split_img_ids.index(img_id)].count(img_id)
-                if idx > 0:
-                    name_parts = os.path.splitext(flat_name)
-                    base_name = f"{name_parts[0]}_dup{idx}{name_parts[1]}"
+                idx = seen_count[img_id] - 1
+                name_parts = os.path.splitext(flat_name)
+                base_name = f"{name_parts[0]}_dup{idx}{name_parts[1]}"
 
             src_path = IMG_DIR / file_name
             if not src_path.exists():
@@ -384,11 +359,11 @@ def main():
         print(f"  Processed: {processed} images")
 
     # Generate data.yaml files
-    for data_dir, name in [(DET_DIR, "yolo_detect_v2"), (SEG_DIR, "yolo_segment_v2")]:
+    for data_dir, name in [(DET_DIR, "yolo_detect_v3"), (SEG_DIR, "yolo_segment_v3")]:
         yaml_path = data_dir / "data.yaml"
         task = "segment" if "segment" in name else "detect"
-        yaml_content = f"""# {name} - PPE dataset v2 (5 classes, sandals merged into shoes)
-# Generated from combined_v2 (913 images + oversampling)
+        yaml_content = f"""# {name} - PPE dataset v3 (4 classes: person, helmet, closed footwear, harness)
+# Generated from combined_v3 (480 images + oversampling)
 path: {data_dir}
 train: images/train
 val: images/val
@@ -411,9 +386,8 @@ names: {CLASS_NAMES}
         seg_labels = len(os.listdir(SEG_DIR / 'labels' / split))
         print(f"  {split}: detect={det_imgs} images/{det_labels} labels, seg={seg_imgs} images/{seg_labels} labels")
 
-    print(f"\nClasses (5): {CLASS_NAMES}")
-    print(f"Note: sandals merged into shoes (only 12 samples total)")
-    print(f"Note: harness + boots oversampled in train set")
+    print(f"\nClasses (4): {CLASS_NAMES}")
+    print(f"Note: harness oversampled in train set")
     print(f"\n{'=' * 70}")
     print("DONE")
 

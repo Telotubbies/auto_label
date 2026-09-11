@@ -69,6 +69,17 @@ class ExperimentTracker:
                     FOREIGN KEY (experiment_id) REFERENCES experiments(id)
                 )
             """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS ppe_counts (
+                    experiment_id TEXT,
+                    image_filename TEXT,
+                    person_count INTEGER DEFAULT 0,
+                    helmet_count_worn INTEGER DEFAULT 0,
+                    harness_count_worn INTEGER DEFAULT 0,
+                    closed_footwear_count_worn INTEGER DEFAULT 0,
+                    FOREIGN KEY (experiment_id) REFERENCES experiments(id)
+                )
+            """)
             conn.commit()
 
     def _config_hash(self, cfg) -> str:
@@ -143,6 +154,36 @@ class ExperimentTracker:
                 image_name,
                 num_annotations,
                 time_seconds,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def log_ppe_counts(self, exp_id: str, image_filename: str,
+                       person_count: int = 0,
+                       helmet_count_worn: int = 0,
+                       harness_count_worn: int = 0,
+                       closed_footwear_count_worn: int = 0):
+        """Log per-image PPE wear counts for compliance reporting.
+
+        Counts how many detections of each PPE category were found in one
+        image.  The *_worn suffix indicates the number of persons wearing
+        that item (one detection == one wearer).
+        """
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO ppe_counts "
+            "(experiment_id, image_filename, person_count, "
+            "helmet_count_worn, harness_count_worn, closed_footwear_count_worn) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                exp_id,
+                image_filename,
+                person_count,
+                helmet_count_worn,
+                harness_count_worn,
+                closed_footwear_count_worn,
             ),
         )
         conn.commit()
