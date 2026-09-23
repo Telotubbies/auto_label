@@ -34,11 +34,9 @@ log = logging.getLogger(__name__)
 
 COLORS = {
     1: (1, 0, 0, 0.4),       # person
-    2: (0, 1, 0, 0.4),       # safety_boots
-    3: (1, 0.5, 0, 0.4),     # sandals
-    4: (1, 0, 1, 0.4),       # flip_flops
-    5: (1, 1, 0, 0.4),       # helmet
-    6: (0.2, 1, 0.6, 0.4),   # safety_harness
+    2: (1, 1, 0, 0.4),       # helmet
+    3: (0, 1, 0, 0.4),       # closed footwear
+    4: (0.2, 1, 0.6, 0.4),   # harness
 }
 
 # ---------------------------------------------------------------------------
@@ -432,9 +430,9 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
     """Segment a single image with all configured categories.
 
     Optimized for GPU utilization:
-    - All 6 category prompts run on GPU without CPU sync inside the loop
+    - All category prompts run on GPU without CPU sync inside the loop
     - Scores, boxes, masks stay on GPU until after ALL categories are done
-    - Single batched .cpu() transfer at the end (1 sync instead of 18)
+    - Single batched .cpu() transfer at the end (1 sync instead of N)
     - GPU RLE encode + GPU mask IoU NMS (when cfg.inference.gpu_ops=True)
     - This keeps the GPU busy ~90%+ of the time
     """
@@ -446,7 +444,7 @@ def segment_image(processor, image, image_id, start_ann_id, cfg: Config):
          torch.autocast("cuda", dtype=torch.bfloat16, enabled=device_type(device) == "cuda"):
         inference_state = processor.set_image(image)
 
-        # --- Phase 1: Run all 6 text prompts on GPU, collect results ---
+        # --- Phase 1: Run all text prompts on GPU, collect results ---
         # NO .cpu() calls here — keep GPU busy with back-to-back inference
         per_cat_results = []  # list of (cat, keep_indices, scores_gpu, boxes_gpu, masks_bool_gpu)
 

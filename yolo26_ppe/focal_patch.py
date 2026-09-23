@@ -3,7 +3,7 @@
 Replaces the standard BCE classification loss with Focal Loss (gamma=1.5)
 to better handle class imbalance and hard examples in the PPE dataset.
 
-The PPE dataset has class imbalance up to ~54:1 (helmet vs sandals/harness).
+The PPE dataset has class imbalance up to ~54:1 (helmet vs harness).
 Focal Loss down-weights easy examples and focuses training on hard negatives,
 complementing the cls_pw=0.5 class weighting and oversampling already in place.
 
