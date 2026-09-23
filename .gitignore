@@ -14,8 +14,7 @@ venv/
 # SAM 3.1 checkpoint (3.3GB — too large even for LFS, keep local only)
 sam3_auto_label/checkpoints/sam3.1_multiplex.pt
 
-# SAM 3.1 — locked source excluded from repo
-sam3_auto_label/sam3/
+# SAM 3.1 — vendored source is tracked; keep the locked backup zip local
 sam3_auto_label/sam3_source_locked.zip
 
 
