@@ -129,6 +129,23 @@ def eval_model(key, cfg):
     print(f"Results: {json.dumps(metrics, indent=2, default=str)}")
     return model, metrics
 
+def _parse_yolo_label(parts):
+    """Parse one YOLO label line into (cls, cx, cy, w, h, polygon).
+
+    Detection format:  cls cx cy w h            (5 fields)
+    Segmentation format: cls x1 y1 x2 y2 ...    (>=7 fields, polygon)
+    For polygons the enclosing bbox is derived from vertex min/max.
+    """
+    cls = int(parts[0])
+    coords = [float(v) for v in parts[1:]]
+    if len(coords) > 4:
+        xs, ys = coords[0::2], coords[1::2]
+        x1, x2, y1, y2 = min(xs), max(xs), min(ys), max(ys)
+        return cls, (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1, list(zip(xs, ys))
+    x, y, w, h = coords[:4]
+    return cls, x, y, w, h, None
+
+
 def find_failures(key, cfg, model, top_n=10):
     """Find interesting failure cases: missed (FN), small objects, low confidence."""
     print(f"\n{'='*60}")
@@ -145,15 +162,14 @@ def find_failures(key, cfg, model, top_n=10):
         label_path = label_dir / (img_path.stem + ".txt")
         if not label_path.exists():
             continue
-        # Read GT
+        # Read GT — handles both bbox (5 fields) and polygon (seg) labels
         gt_boxes = []
         with open(label_path) as f:
             for line in f:
                 parts = line.strip().split()
                 if len(parts) >= 5:
-                    cls = int(parts[0])
-                    x, y, w, h = map(float, parts[1:5])
-                    gt_boxes.append({"cls": cls, "w": w, "h": h, "x": x, "y": y})
+                    cls, x, y, w, h, poly = _parse_yolo_label(parts)
+                    gt_boxes.append({"cls": cls, "w": w, "h": h, "x": x, "y": y, "poly": poly})
         if not gt_boxes:
             continue
         # Smallest GT box (normalized)
@@ -194,22 +210,26 @@ def find_failures(key, cfg, model, top_n=10):
     # Save visualizations
     for i, f in enumerate(top):
         img = cv2.imread(f["image"])
-        # Draw GT (green)
+        # Draw GT (green) — polygon outline for seg labels, bbox otherwise
         label_path = label_dir / (f["stem"] + ".txt")
         H, W = img.shape[:2]
         with open(label_path) as fp:
             for line in fp:
                 parts = line.strip().split()
                 if len(parts) >= 5:
-                    cls = int(parts[0])
-                    x, y, w, h = map(float, parts[1:5])
+                    cls, x, y, w, h, poly = _parse_yolo_label(parts)
                     x1 = int((x - w/2) * W)
                     y1 = int((y - h/2) * H)
                     x2 = int((x + w/2) * W)
                     y2 = int((y + h/2) * H)
-                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    if poly is not None:
+                        pts = np.array([[int(px * W), int(py * H)] for px, py in poly],
+                                       dtype=np.int32).reshape(-1, 1, 2)
+                        cv2.polylines(img, [pts], True, (0, 255, 0), 2)
+                    else:
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     cv2.putText(img, f"GT:{NAMES[cls]}", (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        # Draw predictions (red)
+        # Draw predictions (red) — mask outlines for seg models, bbox otherwise
         res = model.predict(f["image"], imgsz=640, conf=0.25, iou=0.6, device=0, verbose=False)
         if res[0].boxes is not None:
             boxes = res[0].boxes.xyxy.cpu().numpy()
@@ -218,6 +238,10 @@ def find_failures(key, cfg, model, top_n=10):
             for (x1, y1, x2, y2), c, cl in zip(boxes, confs, clss):
                 cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
                 cv2.putText(img, f"{NAMES[cl]}:{c:.2f}", (int(x1), int(y2)+15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        if res[0].masks is not None:
+            for seg_pts in res[0].masks.xy:
+                pts = seg_pts.astype(np.int32).reshape(-1, 1, 2)
+                cv2.polylines(img, [pts], True, (0, 0, 255), 1)
         out_path = FAIL_DIR / f"{key}_{i:02d}_{f['stem']}.jpg"
         cv2.imwrite(str(out_path), img)
         f["saved_to"] = str(out_path)
