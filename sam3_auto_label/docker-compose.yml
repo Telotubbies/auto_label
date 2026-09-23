@@ -4,7 +4,7 @@
 #
 # Batch CLI mode (no web service). Override the command to run a batch:
 #   docker compose --profile rocm run --rm ppe-rocm \
-#     python src/batch_segment.py -c config/ppe_6class.yaml \
+#     python src/batch_segment.py -c config/ppe_4class.yaml \
 #     --input /app/input/<batch> --output /app/output/<batch> --fresh
 #
 # Usage (default shows help):

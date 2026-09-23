@@ -26,7 +26,7 @@ flipud: 0.0        # no vertical flip (PPE doesn't make sense upside down)
 # Mosaic + mixing — stronger regularization
 mosaic: 1.0        # 4-image mosaic (full strength)
 mixup: 0.15        # light mixup (helps rare classes)
-copy_paste: 0.2    # copy-paste (helps rare classes: sandals, harness)
+copy_paste: 0.2    # copy-paste (helps rare classes: harness)
 close_mosaic: 10   # disable mosaic last 10 epochs (stabilize final convergence)
 
 # Occlusion robustness — stronger

@@ -73,5 +73,5 @@ ENV PYTHONUNBUFFERED=1
 
 # Batch CLI is the entrypoint (no web service)
 # Run: docker run --rm -v ./checkpoints:/app/checkpoints -v ../data/raw:/app/input <image> \
-#          python src/batch_segment.py -c config/ppe_6class.yaml --input /app/input/<batch> --output /app/output/<batch>
+#          python src/batch_segment.py -c config/ppe_4class.yaml --input /app/input/<batch> --output /app/output/<batch>
 CMD ["python", "src/batch_segment.py", "--help"]
