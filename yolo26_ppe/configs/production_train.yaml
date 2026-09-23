@@ -1,13 +1,13 @@
 # YOLO26 PPE — Training config
-# 4 models: yolo26n/s detect + yolo26n/s-seg
+# 4 models: yolo26s/m detect + yolo26s/m-seg (v3 dataset, 4 classes)
 
 # Common training args
 epochs: 150
 imgsz: 640
 batch: 16
 patience: 30          # early stopping if no improvement
-freeze: 10            # freeze backbone (480 images = small dataset)
-cls_pw: 0.5           # class weight (imbalance 10.5:1 after oversampling)
+freeze: 10            # freeze backbone (662 images = small dataset)
+cls_pw: 0.5           # class weight (harness imbalance ~19:1)
 
 # Optimizer (YOLO26 default: MuSGD)
 lr0: 0.01
@@ -46,28 +46,30 @@ val: true
 plots: true
 exist_ok: true
 
-# Models
+# Models — reference only. The authoritative model list and absolute paths
+# live in scripts/pipeline/02_train_models.py (MODELS dict, anchored to BASE),
+# which prevents the nested yolo26_ppe/yolo26_ppe/ tree bug.
 models:
-  nano_detection:
-    weights: yolo26n.pt
-    task: detect
-    data: yolo26_ppe/data/yolo_detection_dataset_version_2/data.yaml
-    project: yolo26_ppe/models/production/nano_detection
-
   small_detection:
-    weights: yolo26s.pt
+    weights: models/pretrained/yolo26s.pt
     task: detect
-    data: yolo26_ppe/data/yolo_detection_dataset_version_2/data.yaml
-    project: yolo26_ppe/models/production/small_detection
+    data: data/yolo_detection_dataset_version_3/data.yaml
+    project: models/production/small_detection
 
-  nano_segmentation:
-    weights: yolo26n-seg.pt
-    task: segment
-    data: yolo26_ppe/data/yolo_segmentation_dataset_version_2/data.yaml
-    project: yolo26_ppe/models/production/nano_segmentation
+  medium_detection:
+    weights: models/pretrained/yolo26m.pt
+    task: detect
+    data: data/yolo_detection_dataset_version_3/data.yaml
+    project: models/production/medium_detection
 
   small_segmentation:
-    weights: yolo26s-seg.pt
+    weights: models/pretrained/yolo26s-seg.pt
     task: segment
-    data: yolo26_ppe/data/yolo_segmentation_dataset_version_2/data.yaml
-    project: yolo26_ppe/models/production/small_segmentation
+    data: data/yolo_segmentation_dataset_version_3/data.yaml
+    project: models/production/small_segmentation
+
+  medium_segmentation:
+    weights: models/pretrained/yolo26m-seg.pt
+    task: segment
+    data: data/yolo_segmentation_dataset_version_3/data.yaml
+    project: models/production/medium_segmentation

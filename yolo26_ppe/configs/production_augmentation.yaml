@@ -1,35 +1,36 @@
-# YOLO26 PPE — Augmentation config (medium-heavy)
-# Robustness: noise + lighting + occlusion
+# YOLO26 PPE — Augmentation config (heavy, precision-optimized v5)
+# Best practices for precision + mAP improvement:
+# - Multi-scale training for size robustness
+# - Stronger mosaic/mixup/copy-paste for rare class coverage
+# - Stronger erasing for occlusion robustness
 # Reference: https://docs.ultralytics.com/guides/yolo-data-augmentation/
 
-# Multi-scale training — varies image size ±0.5× during training for better
-# scale robustness. 0.0 = disabled. 0.5 = ±50% size variation (default 0.0).
-# Disabled (0.0) for speed: medium model is heavy, variable sizes cause 2x+ slowdown.
-# Source: https://docs.ultralytics.com/usage/cfg/
+# Multi-scale training — disabled for speed (TTA at inference covers scale robustness)
+# Note: multi_scale 0.5 caused 170x slowdown (23 min/epoch vs 8s/epoch)
 multi_scale: 0.0
 
-# Color space — lighting robustness
-hsv_h: 0.02        # hue shift (color variation)
+# Color space — stronger lighting robustness
+hsv_h: 0.02        # hue shift
 hsv_s: 0.7         # saturation (bright/dim conditions)
 hsv_v: 0.5         # brightness (day/night/dusk)
 
-# Geometric
-degrees: 5.0       # slight rotation (camera tilt)
-translate: 0.15    # position shift
+# Geometric — stronger for pose robustness
+degrees: 10.0      # rotation (camera tilt, worker angles)
+translate: 0.2     # position shift
 scale: 0.6         # object size variation
-shear: 2.0         # slight shear
+shear: 3.0         # shear
 perspective: 0.0   # no perspective (keep simple)
 fliplr: 0.5        # horizontal flip
 flipud: 0.0        # no vertical flip (PPE doesn't make sense upside down)
 
-# Mosaic + mixing
-mosaic: 0.8        # 4-image mosaic (strong regularization)
-mixup: 0.1         # light mixup
-copy_paste: 0.15   # copy-paste (helps rare classes: sandals, harness)
+# Mosaic + mixing — stronger regularization
+mosaic: 1.0        # 4-image mosaic (full strength)
+mixup: 0.15        # light mixup (helps rare classes)
+copy_paste: 0.2    # copy-paste (helps rare classes: sandals, harness)
 close_mosaic: 10   # disable mosaic last 10 epochs (stabilize final convergence)
 
-# Occlusion robustness
-erasing: 0.3       # random erasing (simulate occlusion)
+# Occlusion robustness — stronger
+erasing: 0.4       # random erasing (simulate occlusion)
 
 # Albumentations (additional noise robustness)
 # Applied automatically by Ultralytics if albumentations installed

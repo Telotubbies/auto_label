@@ -120,7 +120,7 @@ paths and the filesystem. A failure here allows directory traversal attacks.
 
 ADR-002 documents the decision to monkey-patch `v8DetectionLoss.bce` with
 `FocalBCE`. If the patch silently fails, training falls back to standard
-BCE, which underperforms on rare classes (harness, boots). The
+BCE, which underperforms on rare classes (harness). The
 `FOCAL_PATCH_APPLIED` flag is the runtime canary.
 
 #### TestFocalPatchApplication (3 tests)
@@ -164,7 +164,7 @@ reproducible and the reported metrics become invalid.
 
 | Test | Why It Exists | Invariant Protected | Bug Caught If Code Changes |
 | --- | --- | --- | --- |
-| `test_split_produces_correct_ratios` | 80/10/10 of 913 = 730/91/92. If the ratio constants change, the split is wrong and metrics are not comparable across runs. | 730/91/92 for n=913 | Split ratios wrong |
+| `test_split_produces_correct_ratios` | 80/10/10 of 662 = 529/66/67. If the ratio constants change, the split is wrong and metrics are not comparable across runs. | 529/66/67 for n=662 | Split ratios wrong |
 | `test_split_is_lossless` | No image in two splits, all images covered. If the slice logic has an off-by-one, images are lost or duplicated. | Splits are disjoint and complete | Images lost or duplicated |
 | `test_split_is_deterministic` | Same seed = same split. If `random.seed` is removed or the shuffle order changes, results are not reproducible. | Same seed = same output | Non-reproducible training |
 
@@ -177,8 +177,8 @@ reproducible and the reported metrics become invalid.
 ### 2.4 TC-06: Oversampling (`tests/unit/test_dataset_prep.py`)
 
 R-01 (class imbalance) is mitigated by oversampling. If the oversampling
-multiplier is wrong, rare classes (boots, harness) remain underrepresented
-and mAP50 for those classes stays near zero.
+multiplier is wrong, the rare class (harness) remains underrepresented
+and mAP50 for that class stays near zero.
 
 #### TestOversamplingLogic (8 tests)
 
@@ -188,10 +188,10 @@ and mAP50 for those classes stays near zero.
 | `test_multiplier_under_cap` | Normal case: harness 102 -> target 500 = 4x. If the integer division changes to float, the multiplier is wrong. | 500 // 102 = 4 | Wrong duplication count |
 | `test_no_oversample_when_target_met` | If current >= target, no duplication. If this check is removed, already-balanced classes get unnecessary duplication. | Skip when current >= target | Unnecessary duplication |
 | `test_oversampling_increases_class_count` | After oversampling, count = original * multiplier. If the loop logic changes (e.g., multiplier instead of multiplier-1 extra copies), the count is wrong. | total = original * multiplier | Wrong final class count |
-| `test_oversample_targets_defined` | The `OVERSAMPLE_TARGETS` dict must target boots (class 2) and harness (class 4). If someone removes a target, that class stays imbalanced. | boots and harness targeted | Rare classes stay imbalanced |
+| `test_oversample_targets_defined` | The `OVERSAMPLE_TARGETS` dict must target harness (class 3, target 500). If someone removes the target, that class stays imbalanced. | harness targeted | Rare class stays imbalanced |
 | `test_split_ratios_are_80_10_10` | Constants must match the documented 80/10/10. If someone changes the dict, the split is wrong. | {"train": 0.8, "val": 0.1, "test": 0.1} | Wrong split ratios |
 | `test_random_seed_is_42` | Seed must be 42 for reproducibility. If someone changes the seed, all prior results are not reproducible. | RANDOM_SEED == 42 | Non-reproducible training |
-| `test_coco_to_yolo_mapping_complete` | All 5 COCO category IDs (1-5) must map to YOLO IDs (0-4). If a mapping is missing, that class is silently dropped. | {1,2,3,4,5} -> {0,1,2,3,4} | Class silently dropped from training |
+| `test_coco_to_yolo_mapping_complete` | All 4 COCO category IDs (1-4) must map to YOLO IDs (0-3). If a mapping is missing, that class is silently dropped. | {1,2,3,4} -> {0,1,2,3} | Class silently dropped from training |
 
 ### 2.5 TC-09 + TC-12: Config Static (`tests/unit/test_config_static.py`)
 
@@ -266,7 +266,7 @@ model variants. If the dict changes, training produces the wrong models.
 
 | Test | Why It Exists | Invariant Protected | Bug Caught If Code Changes |
 | --- | --- | --- | --- |
-| `test_four_model_directories_exist` | All 4 model dirs must exist after training. If a dir is renamed, the evaluation script cannot find the weights. | 4 dirs: nano/small detection/segmentation | Evaluation cannot find weights |
+| `test_four_model_directories_exist` | All 4 model dirs must exist after training. If a dir is renamed, the evaluation script cannot find the weights. | 4 dirs: small/medium detection/segmentation | Evaluation cannot find weights |
 | `test_best_weights_exist` | Each model must have `best.pt`. If training crashes silently, no weights are saved. | best.pt exists | Training failed silently |
 | `test_model_variants_covered` | At least 1 model must have weights. If all 4 fail, this catches it. | At least 1 model trained | All training failed |
 | `test_pipeline_cli_models_dict_has_four` | The `MODELS` dict must have exactly 4 entries. If someone adds or removes a variant, the pipeline trains the wrong set. | len(MODELS) == 4 | Wrong number of models trained |
@@ -426,7 +426,7 @@ phase 5 exit criteria. Without the test suite:
 | File | Why It Must Exist | What Happens Without It |
 | --- | --- | --- |
 | `test_path_safety.py` | Security boundary tests (ISO 27001 A.14.1.2). Without these, path traversal is untested and regressions are caught only when an attacker exploits them. | Path traversal vulnerability ships to production |
-| `test_focal_patch.py` | Training correctness tests. Without these, a silent focal patch failure means training uses standard BCE and rare classes underperform. | mAP50 for harness/boots degrades silently |
+| `test_focal_patch.py` | Training correctness tests. Without these, a silent focal patch failure means training uses standard BCE and rare classes underperform. | mAP50 for harness degrades silently |
 | `test_dataset_prep.py` | Data integrity tests. Without these, a split bug or bbox conversion bug produces corrupt training data and all downstream metrics are invalid. | All training metrics invalid |
 | `test_config_static.py` | Config consistency tests. Without these, MLflow binds to 0.0.0.0 (network exposure) or the checkpoint path mismatch causes "file not found" at runtime. | Security exposure or runtime crash |
 | `test_security_static.py` | Security audit tests (ISO 27001 A.14.2.1, A.14.2.5). Without these, committed secrets and shell=True injection are caught only by manual review. | Credential leak or command injection |

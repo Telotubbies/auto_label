@@ -1,6 +1,6 @@
 # SAM 3.1 Auto-Labeling
 
-Module for automatic annotation using **SAM 3.1** (Segment Anything Model 3.1) for PPE images with 6 classes
+Module for automatic annotation using **SAM 3.1** (Segment Anything Model 3.1) for PPE images with 4 classes (v3: person, helmet, closed footwear, harness)
 
 Takes raw images from `../data/raw/` → detects via text prompt → exports to COCO/YOLO and 9 other formats → stores at `../data/sam_outputs_ground_truth/`
 
@@ -30,6 +30,7 @@ python setup.py --force-cpu  # force CPU-only
 ```
 
 `setup.py` automatically detects hardware:
+
 - GPU: NVIDIA CUDA / AMD ROCm / Apple MPS / CPU
 - Selects the correct PyTorch index URL
 - Downloads `sam3.1_multiplex.pt` from Hugging Face
@@ -37,7 +38,7 @@ python setup.py --force-cpu  # force CPU-only
 ## How to Run
 
 ```bash
-# Use default config (config/ppe_6class.yaml)
+# Use default config (config/ppe_4class.yaml)
 python src/batch_segment.py
 
 # Resume from checkpoint (if a previous run was interrupted)
@@ -66,7 +67,7 @@ Or run via the main CLI: `../auto_label.sh --sam --batch <batch_name>`
 
 See `config/README.md` for details on each configuration file
 
-Main config: `config/ppe_6class.yaml` — defines 6 classes, threshold, resolution, output format, and paths
+Main config: `config/ppe_4class.yaml` — defines the current 4 classes (the filename is historical), threshold, resolution, output format, and paths
 
 ## Notes
 

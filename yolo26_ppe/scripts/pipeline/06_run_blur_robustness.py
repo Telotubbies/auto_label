@@ -3,7 +3,7 @@
 - Uses SAM-style perceptual colors (generate_colors with seed=42, LAB kmeans)
 - For seg models: draws actual segmentation masks (coef @ proto) + bbox
 - For detect models: draws bbox only
-- Class order from dataset: {0: person, 1: helmet, 2: boots, 3: shoes, 4: harness}
+- Class order from dataset (v3): {0: person, 1: helmet, 2: closed footwear, 3: harness}
 """
 import onnxruntime as ort
 import numpy as np
@@ -19,7 +19,7 @@ ONNX_DIR = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_models/
 INPUT_DIR = Path("/mnt/e/02_Projects/auto_label/data/raw/blurred")
 OUT_BASE = Path("/mnt/e/02_Projects/auto_label/yolo26_ppe/artifacts/onnx_inference_results/blur_robustness")
 
-MODELS = ["medium_detection", "medium_segmentation"]
+MODELS = ["small_detection", "medium_detection", "small_segmentation", "medium_segmentation"]
 # Class order from dataset (verified against ONNX metadata)
 CLASSES = ["person", "helmet", "closed footwear", "harness"]
 

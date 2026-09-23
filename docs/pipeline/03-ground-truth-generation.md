@@ -34,7 +34,7 @@ skinparam ActivityBorderColor #4285F4
 
 start
 :Receive images from data/raw/;
-:SAM 3.1 Auto-Label\n(text prompt 6 classes);
+:SAM 3.1 Auto-Label\n(text prompt 4 classes);
 :Export as COCO + YOLO + 9 other formats;
 :Save to data/sam_outputs_ground_truth/;
 
@@ -45,9 +45,9 @@ else (no)
   :Fix annotation or discard;
 endif
 
-:Dataset Versioning\n(v1 → v2);
+:Dataset Versioning\n(v3, 4 classes);
 :Convert to YOLO format;
-:Split train/val/test\n(335/95/50);
+:Split train/val/test\n(566/48/48);
 :Use as ground truth for YOLO26;
 
 stop
@@ -82,7 +82,7 @@ data/sam_outputs_ground_truth/
 > Source: `yolo26_ppe/reports/source/report.tex:463-475`
 
 1. **Input**: raw images from `data/raw/` (multiple batches: `blurred`, `custom_capture_2026-08-14`, `flip_flops`, `single_test`, `two_test`)
-2. **SAM 3.1 inference**: text prompt per class (person, helmet, boots, shoes, sandals, harness)
+2. **SAM 3.1 inference**: text prompt per class (person, helmet, closed footwear, harness)
 3. **Filtering**: confidence threshold (per-class) + cross-class NMS (IoU=0.5)
 4. **Export**: COCO JSON + YOLO TXT + other formats per config
 5. **Visualization**: overlay mask + box + label + score on every image
@@ -122,20 +122,15 @@ DATASET --> [*]
 
 ## Dataset Versions
 
-### Version 1 (v1)
+### Version 3 (v3) — current
 
-- `yolo_detection_dataset_version_1/`
-- `yolo_segmentation_dataset_version_1/`
-- Used for the first training round
+- `combined_coco_dataset_version_3/`
+- `yolo_detection_dataset_version_3/`
+- `yolo_segmentation_dataset_version_3/`
+- 4 classes: `person`, `helmet`, `closed footwear`, `harness`
+- 662 images (566 train / 48 val / 48 test)
 
-### Version 2 (v2)
-
-- `yolo_detection_dataset_version_2/`
-- `yolo_segmentation_dataset_version_2/`
-- `combined_coco_dataset_version_2/`
-- Improved split + class balancing
-
-> Source: `yolo26_ppe/data/` directory listing
+> Source: `yolo26_ppe/data/` directory listing. v1 (6-class) and v2 (5-class) datasets are no longer present; their trained models are archived under `yolo26_ppe/models/archive/`.
 
 ---
 
@@ -201,4 +196,4 @@ MANUAL --> AUTO : 100x faster
 - `data/sam_outputs_ground_truth/` — output directory
 - `yolo26_ppe/data/` — dataset versions
 - `sam3_auto_label/src/batch_segment.py` — auto-labeling code
-- `sam3_auto_label/config/ppe_6class.yaml` — 6 classes + thresholds
+- `sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) + thresholds

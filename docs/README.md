@@ -159,7 +159,7 @@ The documentation clearly indicates which parts are commonly found in general sy
 | `sam3_auto_label/src/batch_segment.py` | Batch loop + checkpoint + ETA |
 | `sam3_auto_label/src/exporters.py` | 11 export formats |
 | `sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
-| `sam3_auto_label/config/ppe_6class.yaml` | Actual config (6 classes) |
+| `sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
 | `pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
 | `yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
 | `yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |

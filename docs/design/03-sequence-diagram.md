@@ -33,7 +33,7 @@ participant "cross_class_nms" as NMS
 participant "mask_to_rle" as RLE
 
 SI -> PROC : reset_all_prompts(state)
-loop each category (6 classes)
+loop each category (4 classes)
   SI -> PROC : set_text_prompt(state, cat.prompt)
   PROC -> MODEL : forward(image, prompt)
   MODEL --> PROC : masks, boxes, scores

@@ -6,13 +6,13 @@ pipeline. Built with rich + questionary.
 
 Modes:
   SAM   — Auto-label raw images with SAM 3.1 → COCO annotations
-  YOLO  — Train YOLO26 PPE models (4 versions: nano/small × detect/segment)
+  YOLO  — Train YOLO26 PPE models (4 versions: small/medium × detect/segment, v3 4-class)
   PRED  — Run inference with production models → prediction images
 
 Usage:
   python pipeline_cli.py                          # interactive mode
   python pipeline_cli.py --sam --batch blurred    # direct mode
-  python pipeline_cli.py --yolo --model nano_detection,small_detection
+  python pipeline_cli.py --yolo --model small_detection,medium_detection
   python pipeline_cli.py --version                # show version
   python pipeline_cli.py --dry-run --yolo ...     # preview without executing
   python pipeline_cli.py -v --sam ...             # verbose output
@@ -94,73 +94,47 @@ YOLO_PYTHON = os.environ.get("YOLO_PYTHON", SAM_PYTHON)
 
 VERSION = "v4_recipe"
 
+# Canonical model layout (v3 dataset, 4-class):
+#   models/pretrained/                        base weights (yolo26{n,s,m}{,-seg}.pt)
+#   models/production/<name>/stage_2_final_fine_tuning/weights/best.pt
+#   artifacts/onnx_models/production/<name>.onnx
+#   models/archive/                           superseded cohorts (v1, v2 5-class)
+PRODUCTION_MODELS_DIR = YOLO_DIR / "models" / "production"
+PRETRAINED_MODELS_DIR = YOLO_DIR / "models" / "pretrained"
+ONNX_MODELS_DIR = YOLO_DIR / "artifacts" / "onnx_models" / "production"
+_STAGE2_BEST = Path("stage_2_final_fine_tuning") / "weights" / "best.pt"
+
+
+def _production_model(name: str, base: str, task: str, size_label: str,
+                      desc: str, batch: int, data: str) -> dict:
+    return {
+        "weights": str(PRETRAINED_MODELS_DIR / base),
+        "task": task,
+        "label": f"YOLO26{size_label} {'Detect' if task == 'detect' else 'Seg'}",
+        "desc": desc,
+        "dataset": "v3_4class",
+        "project": str(PRODUCTION_MODELS_DIR / name),
+        "best": PRODUCTION_MODELS_DIR / name / _STAGE2_BEST,
+        "onnx": ONNX_MODELS_DIR / f"{name}.onnx",
+        "data": data,
+        "batch": batch,
+        "size": size_label,
+    }
+
+
 MODELS: Dict[str, dict] = {
-    "nano_detection": {
-        "weights": "yolo26n.pt",
-        "task": "detect",
-        "label": "YOLO26n Detect",
-        "desc": "Nano · Object Detection",
-        "project": "yolo26_ppe/models/production/nano_detection",
-        "best": YOLO_DIR / "models" / "production" / "nano_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "data": "/tmp/yolo_detect_data/data.yaml",
-        "batch": 64,
-        "size": "n",
-    },
-    "small_detection": {
-        "weights": "yolo26s.pt",
-        "task": "detect",
-        "label": "YOLO26s Detect",
-        "desc": "Small · Object Detection",
-        "project": "yolo26_ppe/models/production/small_detection",
-        "best": YOLO_DIR / "models" / "production" / "small_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "data": "/tmp/yolo_detect_data/data.yaml",
-        "batch": 48,
-        "size": "s",
-    },
-    "nano_segmentation": {
-        "weights": "yolo26n-seg.pt",
-        "task": "segment",
-        "label": "YOLO26n Seg",
-        "desc": "Nano · Instance Segmentation",
-        "project": "yolo26_ppe/models/production/nano_segmentation",
-        "best": YOLO_DIR / "models" / "production" / "nano_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "data": "/tmp/yolo_seg_data/data.yaml",
-        "batch": 16,
-        "size": "n",
-    },
-    "small_segmentation": {
-        "weights": "yolo26s-seg.pt",
-        "task": "segment",
-        "label": "YOLO26s Seg",
-        "desc": "Small · Instance Segmentation",
-        "project": "yolo26_ppe/models/production/small_segmentation",
-        "best": YOLO_DIR / "models" / "production" / "small_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "data": "/tmp/yolo_seg_data/data.yaml",
-        "batch": 16,
-        "size": "s",
-    },
-    "medium_detection": {
-        "weights": "yolo26m.pt",
-        "task": "detect",
-        "label": "YOLO26m Detect",
-        "desc": "Medium · Object Detection",
-        "project": "yolo26_ppe/models/production/medium_detection",
-        "best": YOLO_DIR / "models" / "production" / "medium_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "data": "/tmp/yolo_detect_data/data.yaml",
-        "batch": 32,
-        "size": "m",
-    },
-    "medium_segmentation": {
-        "weights": "yolo26m-seg.pt",
-        "task": "segment",
-        "label": "YOLO26m Seg",
-        "desc": "Medium · Instance Segmentation",
-        "project": "yolo26_ppe/models/production/medium_segmentation",
-        "best": YOLO_DIR / "models" / "production" / "medium_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
-        "data": "/tmp/yolo_seg_data/data.yaml",
-        "batch": 12,
-        "size": "m",
-    },
+    "small_detection": _production_model(
+        "small_detection", "yolo26s.pt", "detect", "s",
+        "Small · Object Detection", 6, "/tmp/yolo_detect_data/data.yaml"),
+    "small_segmentation": _production_model(
+        "small_segmentation", "yolo26s-seg.pt", "segment", "s",
+        "Small · Instance Segmentation", 6, "/tmp/yolo_seg_data/data.yaml"),
+    "medium_detection": _production_model(
+        "medium_detection", "yolo26m.pt", "detect", "m",
+        "Medium · Object Detection", 6, "/tmp/yolo_detect_data/data.yaml"),
+    "medium_segmentation": _production_model(
+        "medium_segmentation", "yolo26m-seg.pt", "segment", "m",
+        "Medium · Instance Segmentation", 6, "/tmp/yolo_seg_data/data.yaml"),
 }
 
 CLASS_NAMES = ["person", "helmet", "closed footwear", "harness"]
@@ -517,7 +491,7 @@ def render_welcome():
     guide.add_row("                       Place photos → Get COCO annotations")
     guide.add_row("")
     guide.add_row("  [green]🎯 YOLO26[/green]     —  Train PPE detection models")
-    guide.add_row("                       4 versions: nano/small × detect/segment")
+    guide.add_row("                       4 versions: small/medium × detect/segment (v3 4-class)")
     guide.add_row("")
     guide.add_row("  [green]📸 Predict[/green]    —  Run trained models on new images")
     guide.add_row("                       Get annotated prediction images")
@@ -769,8 +743,8 @@ def copy_datasets_to_tmp() -> bool:
 
     import shutil as _shutil
 
-    det_src = YOLO_DIR / "data" / "yolo_detection_dataset_version_2"
-    seg_src = YOLO_DIR / "data" / "yolo_segmentation_dataset_version_2"
+    det_src = YOLO_DIR / "data" / "yolo_detection_dataset_version_3"
+    seg_src = YOLO_DIR / "data" / "yolo_segmentation_dataset_version_3"
 
     # Create target directories first
     targets = []
@@ -1117,7 +1091,7 @@ def interactive_mode():
                 value="sam",
             ),
             questionary.Choice(
-                "🎯  YOLO26 Training\n      Train PPE detection/segmentation models\n      4 versions: nano/small × detect/segment",
+                "🎯  YOLO26 Training\n      Train PPE detection/segmentation models\n      4 versions: small/medium × detect/segment (v3 4-class)",
                 value="yolo",
             ),
             questionary.Choice(
@@ -1591,7 +1565,7 @@ Interactive mode (no args):
 
 Direct mode:
   python pipeline_cli.py --sam --batch blurred,custom_capture_2026-08-14
-  python pipeline_cli.py --yolo --model nano_detection,small_detection --stage 12
+  python pipeline_cli.py --yolo --model small_detection,medium_detection --stage 12
   python pipeline_cli.py --pred --batch blurred --model small_detection
 
 Custom input/output paths (SAM/pred):
@@ -1607,7 +1581,7 @@ Global flags:
   -V, --version    Show version and exit
 
 Custom training (YOLO):
-  python pipeline_cli.py --yolo --model nano_detection \\
+  python pipeline_cli.py --yolo --model medium_detection \\
     --device rocm --epochs 100 --batch-size 32 --optimizer AdamW --lr0 0.001
 """,
     )

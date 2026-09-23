@@ -251,19 +251,17 @@ digraph YOLODataFlow {
 
   SAM_GT [label="SAM 3.1 Output\n(data/sam_outputs_ground_truth/)", fillcolor="#E8F5E9"];
   VERIFY [label="Human Verification\n(manual)"];
-  DS_V1 [label="Dataset v1\n(yolo_detection_dataset_version_1/)"];
-  DS_V2 [label="Dataset v2\n(combined_coco_dataset_version_2/)", fillcolor="#FFF8E1"];
-  CONVERT [label="Convert COCO → YOLO format"];
-  SPLIT [label="Split\ntrain/val/test\n(335/95/50)"];
-  TRAIN [label="Train 4 Models\n(n/s detect + n/s seg)"];
+  DS_V2 [label="Dataset v3\n(combined_coco_dataset_version_3/)", fillcolor="#FFF8E1"];
+  CONVERT [label="Convert COCO → YOLO format\n(4 classes)"];
+  SPLIT [label="Split\ntrain/val/test\n(566/48/48)"];
+  TRAIN [label="Train 4 Models\n(s/m detect + s/m seg)"];
   MLF [label="MLflow\nTracking", shape=cylinder, fillcolor="#FCE8E6"];
   EVAL [label="Evaluate\n(test set)"];
   ONNX [label="ONNX Export"];
   REPORT [label="report.pdf", shape=note, fillcolor="#FFF8E1"];
 
   SAM_GT -> VERIFY;
-  VERIFY -> DS_V1;
-  DS_V1 -> DS_V2 [label="improved"];
+  VERIFY -> DS_V2;
   DS_V2 -> CONVERT;
   CONVERT -> SPLIT;
   SPLIT -> TRAIN;
@@ -278,13 +276,11 @@ digraph YOLODataFlow {
 
 | Version | Path | Used for |
 |---------|------|----------|
-| v1 | `yolo26_ppe/data/yolo_detection_dataset_version_1/` | First training round |
-| v1 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_1/` | First segmentation training round |
-| v2 | `yolo26_ppe/data/yolo_detection_dataset_version_2/` | Improved training round |
-| v2 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_2/` | Improved segmentation training round |
-| v2 combined | `yolo26_ppe/data/combined_coco_dataset_version_2/` | Combined COCO before conversion |
+| v3 combined | `yolo26_ppe/data/combined_coco_dataset_version_3/` | Combined 4-class COCO before conversion |
+| v3 | `yolo26_ppe/data/yolo_detection_dataset_version_3/` | Current detection training round |
+| v3 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_3/` | Current segmentation training round |
 
-> Source: `yolo26_ppe/data/` directory listing
+> Source: `yolo26_ppe/data/` directory listing. Earlier v1 (6-class) and v2 (5-class) datasets are no longer present; their models are archived under `yolo26_ppe/models/archive/`.
 
 ---
 

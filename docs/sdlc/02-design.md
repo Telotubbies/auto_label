@@ -111,7 +111,7 @@ Design decisions:
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Dataset Prep | `scripts/pipeline/01_prepare_dataset.py` | COCO to YOLO conversion, train/val/test split, oversampling |
-| Training | `scripts/pipeline/02_train_models.py` | Train 4 models (2-stage for seg), MLflow logging |
+| Training | `scripts/pipeline/02_train_models.py` | Train models (2-stage for all), MLflow logging |
 | Focal Loss | `focal_patch.py` | Monkey-patch `v8DetectionLoss.bce` with FocalBCE |
 | Evaluation | `scripts/pipeline/03_evaluate_models.py` | Per-class metrics, confusion matrix |
 | ONNX Export | `scripts/pipeline/04_export_onnx.py` | ONNX export + inference benchmark |
@@ -119,8 +119,8 @@ Design decisions:
 
 Design decisions:
 - Focal Loss is a monkey-patch (not a custom trainer) to keep Ultralytics upgrade path open
-- Oversampling duplicates whole images for rare classes (harness, boots)
-- 2-stage training for segmentation: Stage 1 (150 epochs) + Stage 2 fine-tune (50 epochs)
+- Oversampling duplicates whole images for rare classes (harness)
+- 2-stage training for all models: Stage 1 (150 epochs) + Stage 2 fine-tune (50 epochs)
 - MLflow is optional (graceful degradation if import fails)
 
 #### 3.2.3 CLI Orchestrator (`pipeline_cli.py`)
@@ -207,7 +207,7 @@ Alternatives:
 - Manual labeling: Rejected because infeasible for 10k+ images
 
 Consequences:
-- Positive: Zero-shot, no training needed, 6 classes via text prompt
+- Positive: Zero-shot, no training needed, 4 classes via text prompt (v3)
 - Negative: 3.34 GB checkpoint, ~700 ms/image (slow for real-time)
 
 #### ADR-002: Focal Loss as Monkey-Patch (Accepted)
@@ -330,7 +330,7 @@ auto_label/
       exporters.py           # 11 export formats
       tracker.py             # SQLite experiment tracking
     config/
-      ppe_6class.yaml         # 6 PPE classes + thresholds
+      ppe_4class.yaml         # 4 PPE classes + thresholds
   yolo26_ppe/
     focal_patch.py            # Focal Loss monkey-patch
     configs/

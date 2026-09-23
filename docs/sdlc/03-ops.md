@@ -73,7 +73,7 @@ Exit Criteria (met 2026-09-10):
 | TC-03 | Path traversal blocked | CLI running | Pass `--input ../../../etc/passwd` | ValueError raised, path rejected | Must | Done (11 tests) |
 | TC-04 | Focal patch verification | Ultralytics installed | `import focal_patch; assert FOCAL_PATCH_APPLIED` | `FOCAL_PATCH_APPLIED == True` | Must | Done (7 tests) |
 | TC-05 | Dataset split correctness | COCO annotations exist | Run `01_prepare_dataset.py` | 80/10/10 split, no data loss | Must | Done (7 tests) |
-| TC-06 | Oversampling target met | Rare class images exist | Run `01_prepare_dataset.py` | Harness/boots oversampled to target | Should | Done (8 tests) |
+| TC-06 | Oversampling target met | Rare class images exist | Run `01_prepare_dataset.py` | Harness oversampled to target | Should | Done (8 tests) |
 | TC-07 | YOLO training 4 models | Dataset prepared, GPU available | Run `02_train_models.py` | 4 models trained, MLflow logged | Must | Done (6 tests) |
 | TC-08 | ONNX export | Trained models exist | Run `04_export_and_evaluate_onnx.py` | ONNX files created, inference matches | Must | Done (4 tests) |
 | TC-09 | MLflow localhost only | MLflow config loaded | Check `mlflow.yaml` host | Host is 127.0.0.1, not 0.0.0.0 | Must | Done (3 tests) |
@@ -182,7 +182,7 @@ The system is a CLI tool, not a long-running service. The only service component
 | Check prerequisites only | `./setup.sh --check-only` |
 | Setup without launching | `./setup.sh --no-launch` |
 | Run SAM auto-labeling | `./auto_label.sh --sam --batch <name>` |
-| Train YOLO26 | `./auto_label.sh --yolo --model nano_detection,small_detection` |
+| Train YOLO26 | `./auto_label.sh --yolo --model small_detection,medium_detection` |
 | Run prediction | `./auto_label.sh --pred --batch <name> --model small_detection` |
 | Dry run (preview only) | `./auto_label.sh --dry-run --yolo` |
 | Resume SAM batch | `./auto_label.sh --sam --batch <name> --resume` |
@@ -243,15 +243,14 @@ The system is a CLI tool, not a long-running service. The only service component
 ### 7.1 Retrospective
 
 #### What Went Well
-- SAM 3.1 auto-labeling achieved ~0.36 FPS with 6 PPE classes
-- YOLO26s detect achieved mAP50=0.808, exceeding the 0.70 target
-- All 4 models meet latency (<= 35 ms) and size (<= 50 MB) targets
+- SAM 3.1 auto-labeling achieved ~0.36 FPS
+- v3 4-class production cohort trained to completion (s/m detect + s/m seg)
 - 11 export formats implemented and working
 - Checkpoint/resume prevents data loss on crash
-- Full comparison report compiled to 14-page PDF
+- Full comparison report compiled to 15-page PDF
 
 #### What Went Poorly
-- Class imbalance (sandals: 4 images) limited mAP50 for rare classes
+- Class imbalance (harness: 177 annotations, 19:1 ratio) limited mAP50 for the rare class
 - Python 3.13 compatibility required significant setup work
 - Hardcoded paths blocked portability until fixed
 - `run_yolo_predict` silently reported success for failed runs
@@ -275,18 +274,16 @@ The system is a CLI tool, not a long-running service. The only service component
 
 ### 7.2 Performance and Metrics Report
 
-#### Baseline
+#### Baseline (v3, 4-class cohort)
 
-| Metric | Target | Achieved | Delta | Source |
-| --- | --- | --- | --- | --- |
-| Best mAP50 | >= 0.70 | 0.808 | +0.108 | `final_eval_results.json` |
-| Best mAP50-95 | >= 0.50 | 0.644 | +0.144 | `final_eval_results.json` |
-| Inference latency | <= 35 ms | 30.8 ms | -4.2 ms | ONNX benchmark |
-| Model size | <= 50 MB | 10-42 MB | Within | File system |
-| SAM throughput | >= 0.3 FPS | 0.36 FPS | +0.06 | Batch timing |
-| SAM latency (optimized) | < 1000 ms | 672.1 ms | -327.9 ms | Benchmark |
-| SAM latency (zero-shot) | N/A | 2754.6 ms | N/A | Benchmark |
-| SAM model size | N/A | 3340.5 MB | N/A | File system |
+| Metric | Target | Achieved | Source |
+| --- | --- | --- | --- |
+| Best box mAP50 | >= 0.70 | 0.693 (medium_det) | `eval_all.json` |
+| Best box mAP50-95 | >= 0.50 | 0.507 (medium_det) | `eval_all.json` |
+| SAM throughput | >= 0.3 FPS | 0.36 FPS | Batch timing |
+| SAM latency (optimized) | < 1000 ms | 672.1 ms | Benchmark |
+| SAM latency (zero-shot) | N/A | 2754.6 ms | Benchmark |
+| SAM model size | N/A | 3340.5 MB | File system |
 
 #### Methodology
 
@@ -294,33 +291,32 @@ The system is a CLI tool, not a long-running service. The only service component
 | --- | --- |
 | Hardware | AMD RX 7800 XT (ROCm 6.1, WSL2) |
 | PyTorch | 2.5.1+rocm6.1 |
-| Dataset | 913 images, 5 PPE classes |
-| Split | 729 train / 91 val / 92 test |
-| Training | 300 epochs (detect), 150+50 (seg, 2-stage) |
-| Optimizer | SGD (lr0=0.01, lrf=0.01 cosine) |
-| Image size | 640 px |
+| Dataset | 662 images, 4 PPE classes (v3) |
+| Split | 566 train / 48 val / 48 test |
+| Training | 150 + 50 epochs (2-stage) for all models |
+| Optimizer | SGD stage 1, AdamW stage 2 |
+| Image size | 640 px (eval 960 + TTA) |
 | Seed | 42 |
 
-#### Per-Model Results
+#### Per-Model Results (v3, 4-class test set)
 
-| Model | Task | mAP50 | mAP50-95 | Precision | Recall | Inference (ms) | Size (MB) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| YOLO26n | detect | 0.712 | 0.514 | 0.777 | 0.665 | 33.0 | 10.0 |
-| YOLO26s | detect | 0.808 | 0.644 | 0.862 | 0.758 | 31.3 | 38.3 |
-| YOLO26n-seg | segment | 0.547 | 0.365 | 0.720 | 0.522 | 33.8 | 11.3 |
-| YOLO26s-seg | segment | 0.654 | 0.485 | 0.824 | 0.606 | 30.8 | 42.0 |
-| SAM 3.1 | segment | N/A | N/A | N/A | N/A | 700.0 | 3340.0 |
+| Model | Task | Box mAP50 | Box mAP50-95 | Mask mAP50 | Mask mAP50-95 |
+| --- | --- | --- | --- | --- | --- |
+| YOLO26s | detect | 0.670 | 0.479 | — | — |
+| YOLO26m | detect | 0.693 | 0.507 | — | — |
+| YOLO26s-seg | segment | 0.566 | 0.389 | 0.509 | 0.288 |
+| YOLO26m-seg | segment | 0.599 | 0.431 | 0.512 | 0.290 |
 
 #### Conclusions
 
-- Best overall: YOLO26s detect (mAP50=0.808), 100x faster than SAM 3.1
-- Best edge: YOLO26n detect (10 MB), suitable for edge deployment
+- Best overall: YOLO26m detect (box mAP50=0.693), ~100x faster than SAM 3.1
+- Best edge: YOLO26s detect — smaller weights, close accuracy to medium
 - Best zero-shot: SAM 3.1 (no training required, all classes via text prompt)
-- Target mAP50 >= 0.85: Not achieved (dataset size + class imbalance)
+- Target mAP50 >= 0.85: Not achieved (dataset size + harness class imbalance)
 
 #### Recommendations
 
-1. Expand dataset for rare classes (sandals, harness) to improve mAP50
+1. Expand dataset for the rare class (harness) to improve mAP50
 2. ~~Add automated tests to prevent regression~~ — Done: 60 pytest tests implemented
 3. Refactor `pipeline_cli.py` into modules for maintainability
 4. Extend Focal Loss to segmentation mask loss

@@ -34,6 +34,16 @@ os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
 # Without this, torch loads but cannot find /dev/kfd (WSL2 uses /dev/dxg instead)
 os.environ.setdefault("LD_PRELOAD", "/opt/rocm/lib/libamdhip64.so")
 
+# === PyTorch GPU optimization for 100% compute utilization ===
+# Reduce memory fragmentation → allow larger batches → more GPU work per step
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:512")
+# Enable ROCm Triton autotuning for kernel fusion
+os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
+# GPU memory fraction — use 95% of VRAM (leave 5% for system/WSL overhead)
+os.environ.setdefault("PYTORCH_GPU_MEMORY_FRACTION", "0.95")
+# TF32 for faster matmul on Ampere+ (ROCm MI300 also benefits)
+os.environ.setdefault("TORCH_ALLOW_TF32_CUBLAS_OVERRIDE", "1")
+
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Ensure BASE (yolo26_ppe/) is on sys.path so `import focal_patch` resolves
 # regardless of the current working directory.
@@ -66,6 +76,24 @@ try:
 except Exception:
     mlflow = None  # mlflow or its deps may fail due to version mismatches
 
+# === PyTorch GPU compute optimization (100% utilization) ===
+import torch
+# Autotune conv algorithms for fixed input size → faster forward/backward
+torch.backends.cudnn.benchmark = True
+# Non-deterministic but faster kernels (we set seed=42 for reproducibility anyway)
+torch.backends.cudnn.deterministic = False
+# Disable debugging APIs (slow down training)
+torch.autograd.set_detect_anomaly(False)
+# Set GPU memory fraction to maximize batch size
+try:
+    if torch.cuda.is_available():
+        torch.cuda.set_per_process_memory_fraction(0.95, 0)
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        print("GPU optimizations: cudnn.benchmark=True, deterministic=False, channels_last=True, anomaly=False, workers=16, AMP=True, batch=6")
+except Exception as e:
+    print(f"GPU optimization warning: {e}")
+
 try:
     # Disable mlflow integration in ultralytics — our code handles mlflow separately
     # This prevents ultralytics from importing mlflow internally (which may fail due to dep conflicts)
@@ -91,48 +119,40 @@ DATA_DETECT = "/tmp/yolo_detect_data/data.yaml"
 DATA_SEG = "/tmp/yolo_seg_data/data.yaml"
 
 # Model configs — production output dirs (descriptive names)
+# NOTE: `project` must be absolute (anchored to BASE). A relative path here
+# previously created the nested `yolo26_ppe/yolo26_ppe/` tree when the script
+# was run with cwd=yolo26_ppe.
+# Production cohort = v3 dataset, 4 classes (small + medium only).
+_PRETRAINED = os.path.join(BASE, "models", "pretrained")
+_PROD = os.path.join(BASE, "models", "production")
 MODELS = {
-    "nano_detection": {
-        "weights": "yolo26n.pt",
-        "task": "detect",
-        "data": DATA_DETECT,
-        "project": f"yolo26_ppe/models/production/nano_detection",
-        "batch": 64,       # n detect uses ~4GB at 32 → 64 ~8GB (plenty of headroom)
-    },
     "small_detection": {
-        "weights": "yolo26s.pt",
+        "weights": os.path.join(_PRETRAINED, "yolo26s.pt"),
         "task": "detect",
         "data": DATA_DETECT,
-        "project": f"yolo26_ppe/models/production/small_detection",
-        "batch": 48,       # s detect uses ~10GB at 32 → 48 ~15GB (tight but fits 16GB)
-    },
-    "nano_segmentation": {
-        "weights": "yolo26n-seg.pt",
-        "task": "segment",
-        "data": DATA_SEG,
-        "project": f"yolo26_ppe/models/production/nano_segmentation",
-        "batch": 16,       # parallel: n_seg stage2 ~6GB
+        "project": os.path.join(_PROD, "small_detection"),
+        "batch": 6,        # fixed: AMP=True, safe for 16GB VRAM
     },
     "small_segmentation": {
-        "weights": "yolo26s-seg.pt",
+        "weights": os.path.join(_PRETRAINED, "yolo26s-seg.pt"),
         "task": "segment",
         "data": DATA_SEG,
-        "project": f"yolo26_ppe/models/production/small_segmentation",
-        "batch": 16,       # stable: 24 caused deadlock, 16 is safe
+        "project": os.path.join(_PROD, "small_segmentation"),
+        "batch": 6,
     },
     "medium_detection": {
-        "weights": "yolo26m.pt",
+        "weights": os.path.join(_PRETRAINED, "yolo26m.pt"),
         "task": "detect",
         "data": DATA_DETECT,
-        "project": f"yolo26_ppe/models/production/medium_detection",
-        "batch": 16,       # m detect OOM at 32 on 16GB → 16 is safe
+        "project": os.path.join(_PROD, "medium_detection"),
+        "batch": 6,
     },
     "medium_segmentation": {
-        "weights": "yolo26m-seg.pt",
+        "weights": os.path.join(_PRETRAINED, "yolo26m-seg.pt"),
         "task": "segment",
         "data": DATA_SEG,
-        "project": f"yolo26_ppe/models/production/medium_segmentation",
-        "batch": 12,       # m seg is heavier → 12 to stay within 16GB
+        "project": os.path.join(_PROD, "medium_segmentation"),
+        "batch": 6,
     },
 }
 
@@ -163,7 +183,7 @@ def get_stage1_args(batch):
         # fl_gamma is NOT a valid Ultralytics arg; logged to MLflow only.
         # Gradient Accumulation — effective batch 32 (was 64, reduced for speed)
         "nbs": 32,
-        # AMP
+        # AMP — FP16 mixed precision (faster + lower VRAM)
         "amp": True,
         # Label smoothing — SAM auto-labels may have noise; 0.1 calibrates
         "label_smoothing": 0.1,
@@ -177,7 +197,11 @@ def get_stage1_args(batch):
         "exist_ok": True,
         # Cache dataset in RAM (datasets are small, /tmp is fast)
         "cache": True,
-        "workers": 8,
+        "workers": 16,             # more workers → faster data loading → GPU not starved
+        # === GPU compute optimization ===
+        "compile": False,          # torch.compile cold start too slow for 50 epochs
+        "channels_last": True,     # channels_last memory format — faster conv
+        "deterministic": False,    # non-deterministic but faster kernels
         # Seed
         "seed": 42,
     }
@@ -213,8 +237,12 @@ def get_stage2_args(batch):
         # fl_gamma is NOT a valid Ultralytics arg; logged to MLflow only.
         # Gradient Accumulation
         "nbs": 32,
-        # AMP
+        # AMP — FP16 mixed precision (faster + lower VRAM)
         "amp": True,
+        # === GPU compute optimization for 100% utilization ===
+        "compile": False,          # torch.compile cold start too slow for 50 epochs
+        "channels_last": True,     # channels_last memory format — faster conv on GPU
+        "deterministic": False,    # allow non-deterministic but faster kernels
         # Label smoothing + cosine LR (same as stage 1 for consistency)
         "label_smoothing": 0.1,
         "cos_lr": True,
@@ -225,24 +253,25 @@ def get_stage2_args(batch):
         "plots": True,
         "exist_ok": True,
         "cache": True,
-        "workers": 8,
+        "workers": 16,             # more workers → faster data loading → GPU not starved
         "seed": 42,
-        # Reduced augmentation for fine-tuning
-        "hsv_h": 0.015,
-        "hsv_s": 0.5,
-        "hsv_v": 0.4,
-        "degrees": 5.0,
-        "translate": 0.15,
-        "scale": 0.4,
-        "shear": 2.0,
+        # Reduced augmentation for fine-tuning (but stronger for precision)
+        "hsv_h": 0.02,
+        "hsv_s": 0.6,
+        "hsv_v": 0.5,
+        "degrees": 8.0,
+        "translate": 0.2,
+        "scale": 0.5,
+        "shear": 3.0,
         "perspective": 0.0,
         "fliplr": 0.5,
         "flipud": 0.0,
-        "mosaic": 0.5,
-        "mixup": 0.0,
-        "copy_paste": 0.1,
-        "close_mosaic": 5,
-        "erasing": 0.2,
+        "mosaic": 0.8,
+        "mixup": 0.1,
+        "copy_paste": 0.15,
+        "close_mosaic": 10,
+        "erasing": 0.3,
+        "multi_scale": 0.0,  # disabled for speed (TTA at inference covers this)
     }
     # Apply custom CLI overrides
     args.update(_custom_overrides)

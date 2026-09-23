@@ -1,8 +1,8 @@
 # YOLO26 PPE
 
-Training, evaluation, ONNX export, robustness testing, and reporting for five PPE classes:
+Training, evaluation, ONNX export, robustness testing, and reporting for four PPE classes (v3 dataset):
 
-`person`, `helmet`, `boots`, `shoes`, `harness`
+`person`, `helmet`, `closed footwear`, `harness`
 
 ## Start here
 
@@ -23,10 +23,10 @@ Use only models under `models/production` for deployment, evaluation, export, or
 
 | Directory | Meaning | Production weight |
 |---|---|---|
-| `nano_detection` | Smallest bounding-box detector | `models/production/nano_detection/stage_2_final_fine_tuning/weights/best.pt` |
-| `small_detection` | Highest-accuracy bounding-box detector | `models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt` |
-| `nano_segmentation` | Smaller instance-segmentation model | `models/production/nano_segmentation/stage_2_final_fine_tuning/weights/best.pt` |
-| `small_segmentation` | Highest-accuracy instance-segmentation model | `models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt` |
+| `small_detection` | Balanced bounding-box detector (mAP50 0.670) | `models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt` |
+| `medium_detection` | Highest-accuracy bounding-box detector (mAP50 0.693) | `models/production/medium_detection/stage_2_final_fine_tuning/weights/best.pt` |
+| `small_segmentation` | Faster instance-segmentation model | `models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt` |
+| `medium_segmentation` | Highest-accuracy instance-segmentation model | `models/production/medium_segmentation/stage_2_final_fine_tuning/weights/best.pt` |
 
 Each model has two training stages:
 
@@ -94,11 +94,9 @@ yolo26_ppe/
 
 | Directory | Meaning |
 |---|---|
-| `combined_coco_dataset_version_2` | Merged five-class COCO source dataset |
-| `yolo_detection_dataset_version_1` | Historical six-class detection dataset |
-| `yolo_detection_dataset_version_2` | Current five-class detection dataset |
-| `yolo_segmentation_dataset_version_1` | Historical six-class segmentation dataset |
-| `yolo_segmentation_dataset_version_2` | Current five-class segmentation dataset |
+| `combined_coco_dataset_version_3` | Merged four-class COCO source dataset (current) |
+| `yolo_detection_dataset_version_3` | Current four-class detection dataset |
+| `yolo_segmentation_dataset_version_3` | Current four-class segmentation dataset |
 | `dataset_analysis_reports` | Dataset distribution and integrity analysis |
 
 ## Historical model versions
@@ -107,10 +105,7 @@ yolo26_ppe/
 |---|---|---|
 | `models/archive/version_1_initial_baseline` | First baseline and tuning trials | No |
 | `models/archive/version_2_improved_baseline` | Improved data preparation and longer training | No |
+| `models/archive/version_2_5class` | Former production cohort (v2 five-class, nano/small) | No — different class schema |
 | `models/archive/version_3_adamw_experiment` | Incomplete AdamW comparison | No |
 
 Report metrics must come from `artifacts/evaluation/yolo/production_v4_recipe/`.
-
-## Migration status
-
-The directory names are now organized for discoverability. Runtime path references inside Python, YAML, shell, Docker, and LaTeX files still need to be migrated before running the pipeline from this layout.

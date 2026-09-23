@@ -30,8 +30,8 @@ Manual labeling of PPE (Personal Protective Equipment) images is slow and costly
 | ID | Objective | Measurement |
 | --- | --- | --- |
 | BO-01 | Automate PPE annotation with SAM 3.1 text-prompt segmentation | Throughput >= 0.3 FPS on GPU |
-| BO-02 | Train YOLO26 in 4 variants for production | mAP50 >= 0.70 (achieved 0.808) |
-| BO-03 | Generate ground truth from SAM output | 913 images, 5 classes, 11 export formats |
+| BO-02 | Train YOLO26 in 4 variants for production | mAP50 (v3, 4-class: s-det 0.670, m-det 0.693, s-seg 0.566, m-seg 0.599) |
+| BO-03 | Generate ground truth from SAM output | 913 images, 4 classes (v3), 11 export formats |
 | BO-04 | Compare models for edge vs. server deployment | Inference <= 35 ms, size <= 50 MB |
 
 ### 1.3 Stakeholders
@@ -47,6 +47,7 @@ Manual labeling of PPE (Personal Protective Equipment) images is slow and costly
 ### 1.4 Current State vs. Desired State
 
 Current State:
+
 - Manual annotation of PPE images by human labelers
 - No automated pipeline for batch segmentation
 - No trained detection/segmentation models for PPE
@@ -61,8 +62,8 @@ Desired State:
 ### 1.5 Scope
 
 In Scope:
-- SAM 3.1 batch segmentation with 6 PPE classes
-- YOLO26 training (4 variants: n/s detect + n/s seg)
+- SAM 3.1 batch segmentation with 4 PPE classes (v3)
+- YOLO26 training (4 variants: s/m detect + s/m seg, v3)
 - Ground truth generation and dataset versioning
 - ONNX export and inference benchmarking
 - Comparison report (PDF)
@@ -77,9 +78,9 @@ Out of Scope:
 
 | KPI | Target | Achieved | Measurement Method |
 | --- | --- | --- | --- |
-| Best model mAP50 | >= 0.70 | 0.808 (YOLO26s detect) | `final_eval_results.json` |
-| Inference latency | <= 35 ms | 30.8-33.8 ms | ONNX benchmark |
-| Model size | <= 50 MB | 10-42 MB | File system |
+| Best model mAP50 | >= 0.70 | 0.693 (YOLO26m detect, v3 4-class) | `eval_all.json` |
+| Inference latency | <= 35 ms | 8.6-24.1 ms (v3 eval @960+TTA) | `all_metrics.json` |
+| Model size | <= 50 MB | 19-52 MB (.pt) | File system |
 | SAM throughput | >= 0.3 FPS | ~0.36 FPS | Batch timing log |
 | Export formats | >= 8 | 11 | `exporters.py` registry |
 
@@ -87,7 +88,7 @@ Out of Scope:
 
 | ID | Risk | Category | Probability | Impact | Score | Mitigation | Owner | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| R-01 | Class imbalance (sandals: 4 images) | Data | High | High | 8 | Oversampling + Focal Loss | Engineering | Mitigated |
+| R-01 | Class imbalance (harness: 177 annotations, 19:1 ratio) | Data | High | High | 8 | Oversampling + Focal Loss | Engineering | Mitigated |
 | R-02 | Python 3.13 incompatibility | Technical | Medium | High | 6 | setup.sh version detection | Engineering | Mitigated |
 | R-03 | Checkpoint download failure (1-2 GB) | Operations | Medium | Medium | 4 | Manual download fallback | DevOps | Mitigated |
 | R-04 | No automated tests | Quality | High | High | 8 | pytest suite (60 tests, 12 TCs) | QA | Resolved |
@@ -150,7 +151,7 @@ PREP --> TRAIN : dataset
 | ID | Requirement | Priority | Status |
 | --- | --- | --- | --- |
 | FR-01 | Run batch segmentation on image folder | Must | Done |
-| FR-02 | Support multi-class text prompts (6 classes) | Must | Done |
+| FR-02 | Support multi-class text prompts (4 classes, v3) | Must | Done |
 | FR-03 | Generate bounding box + segmentation mask | Must | Done |
 | FR-04 | Export to 11 formats (COCO, YOLO, VOC, ...) | Must | Done |
 | FR-05 | Checkpoint and resume | Must | Done |
@@ -162,7 +163,7 @@ PREP --> TRAIN : dataset
 
 | ID | Requirement | Priority | Status |
 | --- | --- | --- | --- |
-| FR-10 | Train 4 YOLO26 variants (n/s detect + n/s seg) | Must | Done |
+| FR-10 | Train 4 YOLO26 variants (s/m detect + s/m seg, v3) | Must | Done |
 | FR-11 | Dataset preparation from ground truth | Must | Done |
 | FR-12 | MLflow experiment tracking | Should | Done |
 | FR-13 | Hyperparameter tuning (3 trials x 4 models) | Could | Done |
@@ -176,7 +177,7 @@ PREP --> TRAIN : dataset
 | --- | --- | --- | --- |
 | FR-20 | Generate ground truth from SAM 3.1 output | Must | Done |
 | FR-21 | Human verification (manual) | Should | Done |
-| FR-22 | Dataset versioning (v1, v2) | Must | Done |
+| FR-22 | Dataset versioning (v3, 4-class) | Must | Done |
 | FR-23 | Train/val/test split (80/10/10) | Must | Done |
 
 #### Not Implemented
@@ -186,7 +187,7 @@ PREP --> TRAIN : dataset
 | FR-30 | REST API | Not in code |
 | FR-31 | Automated human review queue | Manual only |
 | FR-32 | Multi-model agreement (ensemble) | Report comparison only |
-| FR-33 | mAP50 >= 0.85 target | Max 0.808 (dataset limited) |
+| FR-33 | mAP50 >= 0.85 target | Max 0.693 (v3, dataset limited) |
 
 ### 2.3 Non-Functional Requirements
 
@@ -211,7 +212,7 @@ PREP --> TRAIN : dataset
 | `auto_label.sh` | CLI entry point | Shell wrapper, launches `pipeline_cli.py` |
 | `setup.sh` | Setup script | Detects Python, creates venv, installs deps, downloads checkpoint |
 | `pipeline_cli.py` | Interactive CLI | 3 modes: sam, yolo, pred |
-| `ppe_6class.yaml` | Config | 6 PPE classes, per-class thresholds |
+| `ppe_4class.yaml` | Config | 4 PPE classes, per-class thresholds |
 | `production_train.yaml` | Config | YOLO26 training recipe |
 | `mlflow.yaml` | Config | MLflow tracking server |
 
@@ -222,7 +223,7 @@ PREP --> TRAIN : dataset
 | Raw images | `data/raw/` | Variable | jpg, png, bmp, webp, tiff |
 | SAM checkpoint | HuggingFace | ~3.34 GB | PyTorch .pt |
 | Ground truth | `data/sam_outputs_ground_truth/` | 913 images | COCO JSON + 10 formats |
-| YOLO dataset | `yolo26_ppe/data/` | 913 split 80/10/10 | YOLO txt + data.yaml |
+| YOLO dataset | `yolo26_ppe/data/` | 662 images (v3, 4-class), 566/48/48 split | YOLO txt + data.yaml |
 | Trained models | `yolo26_ppe/models/production/` | 4 models | .pt + .onnx |
 
 ### 2.6 Traceability Matrix
@@ -251,5 +252,5 @@ PREP --> TRAIN : dataset
 - `docs/00-overview.md` - Project overview and 3 requirements
 - `docs/01-requirements.md` - Hardware/software requirements
 - `yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
-- `sam3_auto_label/config/ppe_6class.yaml` - 6-class config
+- `sam3_auto_label/config/ppe_4class.yaml` - 4-class config (v3)
 - `yolo26_ppe/configs/production_train.yaml` - Training config

@@ -6,9 +6,9 @@ Config files for defining classes, thresholds, inference, annotation, and output
 
 | File | Number of classes | When to use |
 |------|-----------|----------|
-| `ppe_6class.yaml` | 6 | default config — used with the main pipeline |
+| `ppe_4class.yaml` | 4 (filename is historical) | default config — used with the main pipeline |
 
-## ppe_6class.yaml Structure
+## ppe_4class.yaml Structure
 
 ```yaml
 categories:        # list of classes + per-class threshold
@@ -38,16 +38,18 @@ Key validation rules:
 - `device` must be `auto`, `cpu`, `cuda`, `rocm`, or `mps`
 - `viz_figsize` must have 2 positive numeric values
 
-## All Classes (6 classes)
+## All Classes (4 classes, v3)
 
 | id | name | prompt | threshold | Description |
 |----|------|--------|-----------|----------|
 | 1 | person | person | 0.7 | Person |
 | 2 | helmet | helmet | 0.25 | Safety helmet |
-| 3 | boots | boots | 0.25 | Safety boots/rubber boots |
-| 4 | shoes | shoes | 0.25 | Canvas shoes/covered-heel shoes |
-| 5 | sandals | flip-flops | 0.3 | Sandals/flip-flops |
-| 6 | harness | safety harness | 0.25 | Safety harness/lanyard |
+| 3 | closed footwear | closed footwear | 0.25 | Boots/shoes merged (closed footwear) |
+| 4 | harness | safety harness | 0.25 | Safety harness/lanyard |
+
+Earlier versions used 6 classes (`boots`, `shoes`, `sandals` separate). In v3 the
+footwear classes were merged into `closed footwear` and `sandals` was dropped as
+a non-PPE class.
 
 ## threshold
 
@@ -76,7 +78,7 @@ python src/batch_segment.py --input <path> --output <path>
 
 If you need a new set of classes or thresholds:
 
-1. Copy `ppe_6class.yaml` to a new file
+1. Copy `ppe_4class.yaml` to a new file
 2. Modify categories/thresholds as needed
 3. Run: `python src/batch_segment.py --config config/<new_file>.yaml`
 4. Remember to update `SUPPORTED_FORMATS` in `src/config.py` if adding a new format

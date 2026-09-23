@@ -273,7 +273,7 @@ def fig_blurred_latency():
 # ─── Figure 8: Training curves (if results.csv exists) ────────
 def fig_training_curves():
     import csv
-    csv_path = "/mnt/e/02_Projects/auto_label/yolo26_ppe/yolo26_ppe/models/production/medium_detection/stage_2_final_fine_tuning/results.csv"
+    csv_path = "/mnt/e/02_Projects/auto_label/yolo26_ppe/models/production/medium_detection/stage_2_final_fine_tuning/results.csv"
     if not Path(csv_path).exists():
         # Try alternate path
         for p in Path("/mnt/e/02_Projects/auto_label/yolo26_ppe").rglob("results.csv"):

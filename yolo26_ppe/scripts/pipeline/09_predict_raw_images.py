@@ -31,18 +31,27 @@ os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
 from ultralytics import YOLO
 
 BASE = Path("/mnt/e/02_Projects/auto_label")
-PRODUCTION_DIR = BASE / "yolo26_ppe" / "yolo26_ppe" / "models" / "production"
+PRODUCTION_DIR = BASE / "yolo26_ppe" / "models" / "production"
 PREDICTIONS_DIR = BASE / "yolo26_ppe" / "data" / "predictions"
 RAW_DIR = BASE / "data" / "raw"
 
-# Production models — final weights from stage_2_final_fine_tuning
+# Production models (v3, 4-class) — final weights from stage_2_final_fine_tuning
+_STAGE2_BEST = Path("stage_2_final_fine_tuning") / "weights" / "best.pt"
 MODELS = {
+    "small_detection": {
+        "weights": PRODUCTION_DIR / "small_detection" / _STAGE2_BEST,
+        "task": "detect",
+    },
+    "small_segmentation": {
+        "weights": PRODUCTION_DIR / "small_segmentation" / _STAGE2_BEST,
+        "task": "segment",
+    },
     "medium_detection": {
-        "weights": PRODUCTION_DIR / "medium_detection" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
+        "weights": PRODUCTION_DIR / "medium_detection" / _STAGE2_BEST,
         "task": "detect",
     },
     "medium_segmentation": {
-        "weights": PRODUCTION_DIR / "medium_segmentation" / "stage_2_final_fine_tuning" / "weights" / "best.pt",
+        "weights": PRODUCTION_DIR / "medium_segmentation" / _STAGE2_BEST,
         "task": "segment",
     },
 }
