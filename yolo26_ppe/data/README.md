@@ -1,57 +1,54 @@
 # yolo26_ppe/data — Datasets for YOLO26
 
-Prepared datasets for training and evaluating YOLO26 PPE (5 classes).
+Prepared datasets for training and evaluating YOLO26 PPE (4 classes, v3).
 
 ## Structure
 
 ```text
 data/
-├── combined_coco_dataset_version_2/      # Merged 5-class COCO (source)
-├── yolo_detection_dataset_version_1/     # Detection v1 (6 classes — historical)
-│   └── labels/
-├── yolo_detection_dataset_version_2/     # Detection v2 (5 classes — current)
+├── combined_coco_dataset_version_3/      # Merged 4-class COCO (source)
+├── yolo_detection_dataset_version_3/     # Detection v3 (4 classes — current)
 │   ├── images/
-│   └── labels/
-├── yolo_segmentation_dataset_version_1/  # Segmentation v1 (6 classes — historical)
-│   └── labels/
-├── yolo_segmentation_dataset_version_2/  # Segmentation v2 (5 classes — current)
+│   ├── labels/
+│   └── data.yaml
+├── yolo_segmentation_dataset_version_3/  # Segmentation v3 (4 classes — current)
 │   ├── images/
-│   └── labels/
-├── dataset_analysis_reports/             # Distribution/integrity analysis reports
+│   ├── labels/
+│   └── data.yaml
 └── predictions/                          # Inference results from production models
     ├── blurred/
     ├── custom_capture_2026-08-14/
-    ├── flip_flops/
-    ├── single_test/
-    └── two_test/
+    └── ...
 ```
 
-## Current Datasets (version 2)
+## Current Datasets (version 3, 4 classes)
 
 | Dataset | Classes | Used by |
 |---------|---------|---------|
-| `yolo_detection_dataset_version_2` | 5 classes | `nano_detection`, `small_detection` |
-| `yolo_segmentation_dataset_version_2` | 5 classes | `nano_segmentation`, `small_segmentation` |
+| `yolo_detection_dataset_version_3` | 4 classes | `small_detection`, `medium_detection` |
+| `yolo_segmentation_dataset_version_3` | 4 classes | `small_segmentation`, `medium_segmentation` |
 
-5 classes: person, helmet, boots, shoes, harness (no sandals)
+4 classes: `person`, `helmet`, `closed footwear`, `harness`
 
-## Historical Datasets (version 1)
-
-`*_version_1` uses 6 classes (including sandals), retained for reference only — **do not use for production training**
+Class-history note: v1 used 6 classes, v2 merged `sandals` into `shoes` (5 classes), and
+v3 merged `boots`+`shoes` into `closed footwear` and dropped `sandals` (non-PPE).
+v1/v2 datasets are no longer present in this directory; the corresponding models are
+archived under `../models/archive/version_2_5class/`.
 
 ## Data Source
 
 ```text
 ../data/sam_outputs_ground_truth/   (COCO from SAM 3.1)
         │
-        │  scripts/pipeline/01_prepare_dataset.py
+        │  scripts/pipeline/00_combine_sam_outputs.py
         ▼
-combined_coco_dataset_version_2/    (Merged 5-class COCO)
+combined_coco_dataset_version_3/    (Merged 4-class COCO)
         │
-        │  Convert + split train/val/test + oversampling
+        │  scripts/pipeline/01_prepare_dataset.py
+        │  Convert + split train/val/test + oversampling (harness)
         ▼
-yolo_detection_dataset_version_2/   (YOLO format)
-yolo_segmentation_dataset_version_2/
+yolo_detection_dataset_version_3/   (YOLO format)
+yolo_segmentation_dataset_version_3/
 ```
 
 ## predictions/
@@ -68,5 +65,4 @@ Each dataset has a `data.yaml` for Ultralytics — defines paths, class names, a
 
 - Do not edit datasets directly — use `01_prepare_dataset.py` to regenerate if needed
 - If changing the number of classes, update `data.yaml` and `configs/production_train.yaml`
-- `dataset_analysis_reports/` contains distribution reports — read before deciding on oversampling
 - This folder is very large — it is in `.gitignore` or uses Git LFS

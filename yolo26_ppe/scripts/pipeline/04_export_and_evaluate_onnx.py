@@ -35,24 +35,26 @@ ONNX_DIR.mkdir(parents=True, exist_ok=True)
 EVAL_OUT = BASE / "artifacts" / "evaluation" / "yolo" / f"production_{VERSION}" / "onnx"
 EVAL_OUT.mkdir(parents=True, exist_ok=True)
 
+_PROD = BASE / "models" / "production"
+_STAGE2_BEST = Path("stage_2_final_fine_tuning") / "weights" / "best.pt"
 MODELS = {
     "medium_detection": {
-        "weights": BASE / "yolo26_ppe/models/production/medium_detection/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "medium_detection" / _STAGE2_BEST,
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
     "medium_segmentation": {
-        "weights": BASE / "yolo26_ppe/models/production/medium_segmentation/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "medium_segmentation" / _STAGE2_BEST,
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },
     "small_detection": {
-        "weights": BASE / "yolo26_ppe/models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "small_detection" / _STAGE2_BEST,
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
     "small_segmentation": {
-        "weights": BASE / "yolo26_ppe/models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "small_segmentation" / _STAGE2_BEST,
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },

@@ -23,24 +23,26 @@ OUT.mkdir(parents=True, exist_ok=True)
 FAIL_DIR = OUT / "all_failure_case_images"
 FAIL_DIR.mkdir(exist_ok=True)
 
+_PROD = BASE / "models" / "production"
+_STAGE2_BEST = Path("stage_2_final_fine_tuning") / "weights" / "best.pt"
 MODELS = {
     "medium_detection": {
-        "weights": BASE / "yolo26_ppe/models/production/medium_detection/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "medium_detection" / _STAGE2_BEST,
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
     "medium_segmentation": {
-        "weights": BASE / "yolo26_ppe/models/production/medium_segmentation/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "medium_segmentation" / _STAGE2_BEST,
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },
     "small_detection": {
-        "weights": BASE / "yolo26_ppe/models/production/small_detection/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "small_detection" / _STAGE2_BEST,
         "data": "/tmp/yolo_detect_data/data.yaml",
         "task": "detect",
     },
     "small_segmentation": {
-        "weights": BASE / "yolo26_ppe/models/production/small_segmentation/stage_2_final_fine_tuning/weights/best.pt",
+        "weights": _PROD / "small_segmentation" / _STAGE2_BEST,
         "data": "/tmp/yolo_seg_data/data.yaml",
         "task": "segment",
     },
@@ -50,14 +52,15 @@ NAMES = ["person", "helmet", "closed footwear", "harness"]
 
 def eval_model(key, cfg):
     print(f"\n{'='*60}")
-    print(f"Evaluating: {key}")
+    print(f"Evaluating: {key} (with TTA + imgsz=960)")
     print(f"{'='*60}")
     model = YOLO(str(cfg["weights"]))
-    # Run validation on test split
+    # Run validation on test split with TTA (Test-Time Augmentation) + higher resolution
+    # Best practice: train at 640, evaluate at 960 with augment=True for precision boost
     results = model.val(
         data=cfg["data"],
         split="test",
-        imgsz=640,
+        imgsz=960,
         batch=16,
         conf=0.001,
         iou=0.6,
@@ -65,8 +68,9 @@ def eval_model(key, cfg):
         verbose=True,
         save_json=False,
         plots=True,
+        augment=True,  # TTA: flip + multi-scale inference
         project=str(OUT / key),
-        name="test_eval",
+        name="test_eval_tta",
         exist_ok=True,
     )
     # Collect metrics — Ultralytics API uses lowercase property names

@@ -51,7 +51,7 @@ CLI flags:
 - `--resume` — resume from checkpoint
 - `--fresh` — start fresh, clear checkpoint
 - `--threshold <float>` — override confidence threshold
-- `--config <path>` — specify config file (default: `config/ppe_6class.yaml`)
+- `--config <path>` — specify config file (default: `config/ppe_4class.yaml`)
 
 `checkpoint.enabled`, `checkpoint.auto_resume`, and `checkpoint.clear_on_success` directly affect checkpoint behavior. Image export must succeed before an image is marked as processed, and the batch will return a non-zero exit code when there are images that failed to process or export
 

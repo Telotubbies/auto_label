@@ -1,5 +1,11 @@
 # Release v1.0.0 — Auto-Label PPE Pipeline
 
+> **Note (current state)**: This document describes the original v1.0.0 release.
+> The current production cohort uses the **v3 dataset with 4 classes**
+> (`person`, `helmet`, `closed footwear`, `harness`) and **4 models**
+> (small + medium × detect/segment). See `yolo26_ppe/models/README.md` and
+> `yolo26_ppe/reports/final/report.pdf` for the current state.
+
 ## Overview
 
 Automatic PPE (Personal Protective Equipment) image-labeling, training, evaluation, and production recommendation pipeline using **SAM 3.1** and **YOLO26**.

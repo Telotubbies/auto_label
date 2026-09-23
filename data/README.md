@@ -21,7 +21,7 @@ data/
 │   ├── coco/                   # Combined COCO
 │   └── viz/                    # Combined visualization
 └── processed/                  # Processed dataset
-    └── combined_coco_dataset_version_1/
+    └── combined_coco_dataset_version_3/
         ├── images/
         └── annotations.json
 ```
@@ -67,7 +67,7 @@ Subfolder structure mirrors `raw/` — each batch contains:
 
 ## processed/
 
-Combined and processed datasets, such as `combined_coco_dataset_version_1` with `annotations.json` aggregating all batches
+Combined and processed datasets, such as `combined_coco_dataset_version_3` with `annotations.json` aggregating all batches (4 classes: person, helmet, closed footwear, harness)
 
 ## Notes
 

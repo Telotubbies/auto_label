@@ -19,7 +19,7 @@ Run in numeric order by filename:
 | Step | File | Purpose |
 | ---- | ---- | ------- |
 | 01 | `01_prepare_dataset.py` | Convert COCO → YOLO format, split train/val/test, oversampling |
-| 02 | `02_train_models.py` | Train 4 models (nano/small × detect/segment) |
+| 02 | `02_train_models.py` | Train 4 models (small/medium × detect/segment, v3 4-class) |
 | 03 | `03_evaluate_models.py` | Measure P/R/F1/mAP50/mAP50-95, confusion matrix |
 | 04 | `04_export_and_evaluate_onnx.py` | Export ONNX + evaluate against PyTorch |
 | 05 | `05_generate_failure_montage.py` | Generate montage of failure cases |

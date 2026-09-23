@@ -121,9 +121,7 @@ package "Typical Approach" #FFF4E5 {
 |----------|-----------|-------|---------|
 | `person` | $0.7$ | High | large object, clearly visible → set high to reduce false positives |
 | `helmet` | $0.25$ | Low | small object → set low to avoid missing |
-| `boots` | $0.25$ | Low | same |
-| `shoes` | $0.25$ | Low | same |
-| `sandals` | $0.3$ | Medium | relatively rare |
+| `closed footwear` | $0.25$ | Low | same (v3: boots+shoes merged) |
 | `harness` | $0.25$ | Low | rare + complex appearance |
 | Global | $0.25$ | Low | fallback |
 
@@ -137,4 +135,4 @@ package "Typical Approach" #FFF4E5 {
 - `src/inference.py:416` — threshold logic
 - `src/inference.py:421` — filter
 - `src/inference.py:512` — score in annotation
-- `config/ppe_6class.yaml` — threshold values
+- `config/ppe_4class.yaml` — threshold values

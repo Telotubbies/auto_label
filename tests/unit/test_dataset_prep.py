@@ -53,7 +53,7 @@ class TestSplitRatios:
 
     def test_split_produces_correct_ratios(self):
         """Replicate the split algorithm and verify 80/10/10."""
-        n = 913  # actual dataset size
+        n = 662  # v3 dataset size (4-class)
         random.seed(42)
         img_ids = list(range(n))
         random.shuffle(img_ids)
@@ -65,10 +65,10 @@ class TestSplitRatios:
         val = img_ids[n_train:n_train + n_val]
         test = img_ids[n_train + n_val:]
 
-        # 80/10/10 of 913 → 730/91/92
-        assert len(train) == 730
-        assert len(val) == 91
-        assert len(test) == 92
+        # 80/10/10 of 662 → 529/66/67
+        assert len(train) == 529
+        assert len(val) == 66
+        assert len(test) == 67
         assert len(train) + len(val) + len(test) == n
 
     def test_split_is_lossless(self):
@@ -125,9 +125,9 @@ class TestEndToEndSplitWithSyntheticData:
                 "id": i, "file_name": fname,
                 "width": 640, "height": 480,
             })
-            # 2 annotations per image, cycling through classes 1-5
+            # 2 annotations per image, cycling through classes 1-4
             for j in range(2):
-                cat_id = ((i + j) % 5) + 1
+                cat_id = ((i + j) % 4) + 1
                 annotations.append({
                     "id": ann_id,
                     "image_id": i,
@@ -140,8 +140,8 @@ class TestEndToEndSplitWithSyntheticData:
                 ann_id += 1
         categories = [
             {"id": k, "name": name}
-            for k, name in zip(range(1, 6),
-                               ["person", "helmet", "boots", "shoes", "harness"])
+            for k, name in zip(range(1, 5),
+                               ["person", "helmet", "closed footwear", "harness"])
         ]
         data = {"images": images, "annotations": annotations, "categories": categories}
         ann_path = tmp_path / "annotations.json"
@@ -190,11 +190,11 @@ class TestOversamplingLogic:
         assert multiplier == 10, "Multiplier must be capped at 10x to prevent overfitting"
 
     def test_multiplier_under_cap(self, prepare_dataset_module):
-        """Normal case: harness current=102, target=500 → 500//102=4."""
-        current = 102
+        """Normal case: harness current=177, target=500 → 500//177=2 (v3)."""
+        current = 177
         target = 500
         multiplier = min(target // current, 10)
-        assert multiplier == 4
+        assert multiplier == 2
 
     def test_no_oversample_when_target_met(self):
         """If current >= target, multiplier should be 1 (no duplication)."""
@@ -223,13 +223,11 @@ class TestOversamplingLogic:
         assert len(oversample_imgs) == 30
 
     def test_oversample_targets_defined(self, prepare_dataset_module):
-        """The OVERSAMPLE_TARGETS dict must target boots and harness."""
+        """The OVERSAMPLE_TARGETS dict must target harness (rare class in v3)."""
         targets = prepare_dataset_module.OVERSAMPLE_TARGETS
-        assert 2 in targets, "boots (YOLO class 2) must be an oversample target"
-        assert 4 in targets, "harness (YOLO class 4) must be an oversample target"
+        assert 3 in targets, "harness (YOLO class 3) must be an oversample target"
         # Targets should be reasonable (not exceeding common class counts)
-        assert targets[2] <= 1000
-        assert targets[4] <= 1000
+        assert targets[3] <= 1000
 
     def test_split_ratios_are_80_10_10(self, prepare_dataset_module):
         assert prepare_dataset_module.SPLIT_RATIOS == {"train": 0.8, "val": 0.1, "test": 0.1}
@@ -238,7 +236,7 @@ class TestOversamplingLogic:
         assert prepare_dataset_module.RANDOM_SEED == 42
 
     def test_coco_to_yolo_mapping_complete(self, prepare_dataset_module):
-        """All 5 COCO category IDs must map to YOLO class IDs 0-4."""
+        """All 4 COCO category IDs must map to YOLO class IDs 0-3 (v3)."""
         mapping = prepare_dataset_module.COCO_TO_YOLO
-        assert set(mapping.keys()) == {1, 2, 3, 4, 5}
-        assert set(mapping.values()) == {0, 1, 2, 3, 4}
+        assert set(mapping.keys()) == {1, 2, 3, 4}
+        assert set(mapping.values()) == {0, 1, 2, 3}

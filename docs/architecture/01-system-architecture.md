@@ -51,13 +51,13 @@ package "RQ2 — YOLO26 Training" as YOLO_PKG #FCE8E6 {
   component "MLflow\nTracking" as MLF
   component "ONNX Export" as ONNX
   component "Evaluate" as EVAL
-  database "YOLO26 Models\n(n/s detect+seg)" as YMODELS
+  database "YOLO26 Models\n(s/m detect+seg)" as YMODELS
 }
 
 package "RQ3 — Ground Truth" as GT_PKG #FFF8E1 {
   database "data/raw/" as RAW
   database "data/sam_outputs_ground_truth/" as GT
-  database "yolo26_ppe/data/\n(v1, v2)" as DS
+  database "yolo26_ppe/data/\n(v3, 4-class)" as DS
 }
 
 USER --> ORCH : python pipeline_cli.py
@@ -109,7 +109,7 @@ package "sam3_auto_label/src/" {
   [tracker.py\n(SQLite + JSON)] as TRK
 }
 
-file "config/ppe_6class.yaml" as YAML
+file "config/ppe_4class.yaml" as YAML
 database "sam3.1_multiplex.pt" as CKPT
 database "sam3/\n(vendored)" as SAM3
 
@@ -147,7 +147,7 @@ package "yolo26_ppe/" {
   [Report Generator\n(XeLaTeX)] as REPORT
 }
 
-database "yolo26_ppe/data/\n(v1, v2)" as DS
+database "yolo26_ppe/data/\n(v3, 4-class)" as DS
 database "yolo26_ppe/models/" as MODELS
 database "yolo26_ppe/reports/\nfinal/report.pdf" as PDF
 
@@ -191,7 +191,7 @@ case (sam)
 case (yolo)
   :YOLO26 Training;
   :Prepare dataset from ground truth;
-  :Train 4 models (n/s detect+seg);
+  :Train 4 models (s/m detect+seg);
   :Evaluate on test set;
   :Export ONNX;
   :Generate report.pdf;

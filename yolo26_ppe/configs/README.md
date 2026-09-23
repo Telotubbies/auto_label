@@ -6,7 +6,7 @@ YAML configs for training, augmentation, and MLflow.
 
 | File | Purpose |
 | ---- | ------- |
-| `production_train.yaml` | Main config — epochs, lr, optimizer, loss weights, 4 models |
+| `production_train.yaml` | Main config — epochs, lr, optimizer, loss weights |
 | `production_augmentation.yaml` | Augmentation recipe (HSV, mosaic, mixup, erasing) |
 | `mlflow.yaml` | MLflow tracking server config |
 
@@ -31,12 +31,12 @@ fl_gamma: 1.5        # Helps with class imbalance + hard examples
 # Gradient accumulation
 nbs: 64              # Effective batch = 64 (batch=16 → 4x accumulation)
 
-# 4 models
+# 4 production models (v3 dataset, 4 classes) — defined in scripts/pipeline/02_train_models.py
 models:
-  nano_detection:    yolo26n.pt, detect
-  small_detection:   yolo26s.pt, detect
-  nano_segmentation: yolo26n-seg.pt, segment
-  small_segmentation: yolo26s-seg.pt, segment
+  small_detection:     yolo26s.pt, detect
+  small_segmentation:  yolo26s-seg.pt, segment
+  medium_detection:    yolo26m.pt, detect
+  medium_segmentation: yolo26m-seg.pt, segment
 ```
 
 ## production_augmentation.yaml
@@ -64,7 +64,7 @@ Reference: https://docs.ultralytics.com/guides/yolo26-training-recipe/
 tracking_uri: sqlite:///yolo26_ppe/artifacts/mlflow/backend/mlflow.db
 artifact_root: yolo26_ppe/artifacts/mlflow
 experiment_name: yolo26_ppe
-host: 0.0.0.0, port: 5000
+host: 127.0.0.1, port: 5000
 ```
 
 Ultralytics auto-log: lr0, batch, epochs, mAP50, mAP50-95, P, R, loss, best.pt, confusion_matrix
@@ -72,6 +72,6 @@ Ultralytics auto-log: lr0, batch, epochs, mAP50, mAP50-95, P, R, loss, best.pt, 
 ## Cautions
 
 - If changing config, run tests and validation before using in production
-- `cls_pw` and `fl_gamma` are tuned for class imbalance — see `data/dataset_analysis_reports/`
+- `cls_pw` and `fl_gamma` are tuned for class imbalance (harness is the rare class in v3)
 - If GPU has low VRAM, reduce `batch` or increase `nbs` (accumulation)
-- Do not change `imgsz` without testing — impacts small object detection (boots/shoes)
+- Do not change `imgsz` without testing — impacts small object detection (closed footwear, harness)

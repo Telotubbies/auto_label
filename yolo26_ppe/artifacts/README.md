@@ -49,14 +49,21 @@ See config: `../configs/mlflow.yaml`
 
 ## onnx_models/production/
 
-ONNX exports of the 4 production models, used for deployment.
+ONNX exports of the current production models, used for deployment.
+
+- `medium_detection.onnx`, `medium_segmentation.onnx` — v3 4-class exports (present)
+- `small_detection.onnx`, `small_segmentation.onnx` — **need re-export** from the v3 weights; the previous files were v2 5-class exports and were moved to `onnx_models/archive_v2_5class/`
+
+## onnx_models/archive_v2_5class/
+
+ONNX exports of the retired v2 5-class cohort (nano + small). Kept for reference only — do not deploy.
 
 ## onnx_inference_results/blur_robustness/
 
 ONNX inference results on blurred images, per model:
 
-- `nano_detection/`, `nano_segmentation/`
-- `small_detection/`, `small_segmentation/`
+- `small_detection/`, `small_segmentation/`, `medium_detection/`, `medium_segmentation/`
+- `nano_detection/`, `nano_segmentation/` (older v2 run — retained for reference)
 
 ## ultralytics_training_runs/
 

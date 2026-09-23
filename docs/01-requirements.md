@@ -113,7 +113,7 @@ any --> cpu : torch==2.5.1+cpu
 | ID | Requirement | Status |
 |----|---------|-------|
 | FR-01 | Run batch segmentation on an image folder | ✅ |
-| FR-02 | Support multi-class text prompts | ✅ (6 classes) |
+| FR-02 | Support multi-class text prompts | ✅ (4 classes, v3) |
 | FR-03 | Generate bounding box + segmentation mask | ✅ |
 | FR-04 | Export to 11 formats | ✅ |
 | FR-05 | Checkpoint/resume | ✅ |
@@ -125,13 +125,13 @@ any --> cpu : torch==2.5.1+cpu
 
 | ID | Requirement | Status |
 |----|---------|-------|
-| FR-10 | Train 4 YOLO26 variants (n/s detect + n/s seg) | ✅ (300 epochs) |
-| FR-11 | Dataset preparation from ground truth | ✅ (v1, v2) |
+| FR-10 | Train 4 YOLO26 variants (s/m detect + s/m seg, v3 4-class) | ✅ (two-stage 150+50 epochs) |
+| FR-11 | Dataset preparation from ground truth | ✅ (current: v3) |
 | FR-12 | MLflow experiment tracking | ✅ |
-| FR-13 | Hyperparameter tuning | ✅ (3 trials × 4 models) |
+| FR-13 | Hyperparameter tuning | ✅ (3 trials × models) |
 | FR-14 | ONNX export | ✅ |
 | FR-15 | Comparison report (PDF) | ✅ (`report.pdf`) |
-| FR-16 | Class balancing (oversampling) | ✅ (sandals, harness) |
+| FR-16 | Class balancing (oversampling) | ✅ (harness) |
 
 ### RQ3 — Ground Truth Generation
 
@@ -139,8 +139,8 @@ any --> cpu : torch==2.5.1+cpu
 |----|---------|-------|
 | FR-20 | Generate ground truth from SAM 3.1 output | ✅ |
 | FR-21 | Human verification | ✅ (manual) |
-| FR-22 | Dataset versioning | ✅ (v1, v2 in `yolo26_ppe/data/`) |
-| FR-23 | Train/val/test split | ✅ (335/95/50) |
+| FR-22 | Dataset versioning | ✅ (v3 in `yolo26_ppe/data/`) |
+| FR-23 | Train/val/test split | ✅ (566/48/48 on v3) |
 
 ### Not Implemented
 
@@ -169,10 +169,10 @@ any --> cpu : torch==2.5.1+cpu
 | ID | Requirement | Status |
 |----|---------|-------|
 | NFR-10 | Training reproducible (seed=42) | ✅ |
-| NFR-11 | Inference $\leq 35$ ms for all models | ✅ (30.8–33.8 ms) |
-| NFR-12 | Model size $\leq 50$ MB | ✅ (10–42 MB) |
-| NFR-13 | ONNX export for deployment | ✅ |
-| NFR-14 | mAP50 ≥ 0.85 | ❌ Max 0.808 (s_detect) |
+| NFR-11 | Inference $\leq 35$ ms for all models | ✅ (8.6–24.1 ms, v3 eval @960+TTA) |
+| NFR-12 | Model size $\leq 50$ MB | ⚠️ 19–52 MB (.pt); medium_segmentation is 52 MB |
+| NFR-13 | ONNX export for deployment | ⚠️ medium exported; small needs re-export (v3) |
+| NFR-14 | mAP50 ≥ 0.85 | ❌ Max 0.693 (medium_detection, v3) |
 
 ---
 

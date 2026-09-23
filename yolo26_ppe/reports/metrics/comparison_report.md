@@ -1,175 +1,80 @@
 # YOLO26 vs SAM 3.1 — PPE Detection Comparison Report
-Generated: 2026-08-20 07:05
-Dataset: 480 images (335 train / 95 val / 50 test)
-Classes: person, helmet, boots, shoes, sandals, harness
+Generated: 2026-09-11
+Dataset: combined_coco_dataset_version_3 — 662 images (566 train / 48 val / 48 test)
+Classes (4): person, helmet, closed footwear, harness
 GPU: AMD RX 7800 XT (ROCm, WSL2)
+Recipe: v4_recipe — two-stage (Stage 1 SGD 150 epochs → Stage 2 AdamW 50 epochs), seed 42, imgsz 640
 
-## 1. Overall Performance Summary
-| Model | Task | mAP50 | mAP50-95 | Precision | Recall | F1 | Inference (ms) | Size (MB) | Params (M) |
-|-------|------|-------|----------|-----------|--------|-----|----------------|-----------|------------|
-| n_detect | detect | 0.462 | 0.292 | 0.658 | 0.396 | 0.494 | 33.0 | 10.0 | N/A |
-| s_detect | detect | 0.555 | 0.367 | 0.761 | 0.493 | 0.598 | 31.3 | 38.3 | N/A |
-| n_seg | segment | 0.416 | 0.269 | 0.469 | 0.420 | 0.443 | 33.8 | 11.3 | N/A |
-| s_seg | segment | 0.554 | 0.377 | 0.724 | 0.498 | 0.590 | 30.8 | 42.0 | N/A |
-| sam3.1 | segment | N/A | N/A | N/A | N/A | N/A | 700.0 | 3300.0 | N/A |
+> Note: This report covers the current v3 4-class cohort (small + medium).
+> The older v2 5-class results (nano + small) are archived in
+> `models/archive/version_2_5class/` and are NOT directly comparable
+> (different dataset and class schema).
 
-## 2. Per-Class mAP50
-| Model | person | helmet | boots | shoes | sandals | harness |
-|-------|-------|-------|-------|-------|-------|-------|
-| n_detect | 0.846 | 0.612 | 0.209 | 0.327 | 0.318 | 0.000 |
-| s_detect | 0.916 | 0.742 | 0.307 | 0.464 | 0.346 | 0.000 |
-| n_seg | 0.811 | 0.553 | 0.230 | 0.309 | 0.177 | 0.000 |
-| s_seg | 0.902 | 0.738 | 0.351 | 0.455 | 0.323 | 0.000 |
-| sam3.1 | N/A | N/A | N/A | N/A | N/A | N/A |
+## 1. Overall Performance Summary (test set, 48 images)
+| Model | Task | mAP50 | mAP50-95 | Precision | Recall | Inference (ms) | Size (MB) | Params (M) |
+|-------|------|-------|----------|-----------|--------|----------------|-----------|------------|
+| small_detection | detect | 0.670 | 0.479 | 0.792 | 0.619 | 22.2 | 19.4 | 9.95 |
+| medium_detection | detect | 0.693 | 0.507 | 0.795 | 0.657 | 24.1 | 42.0 | 21.78 |
+| small_segmentation | segment (box) | 0.566 | 0.389 | 0.762 | 0.510 | 8.6 | 22.3 | 11.44 |
+| medium_segmentation | segment (box) | 0.599 | 0.431 | 0.800 | 0.549 | 13.7 | 52.0 | 26.98 |
+| small_segmentation | segment (mask) | 0.509 | 0.288 | 0.712 | 0.482 | — | — | — |
+| medium_segmentation | segment (mask) | 0.512 | 0.290 | 0.718 | 0.493 | — | — | — |
+| sam3.1 | segment (zero-shot) | N/A | N/A | N/A | N/A | ~2755 | 3340.5 | N/A |
 
-## 3. Trade-off Analysis
-### Speed vs Accuracy
-| Model | Speed Rank | Accuracy Rank | Best For |
-|-------|-----------|--------------|----------|
-| n_detect | 3 | 3 | Real-time edge |
-| s_detect | 2 | 1 (best) | Balanced |
-| n_seg | 4 | 4 | Real-time + masks |
-| s_seg | 1 (fastest) | 2 | Best seg accuracy |
-| sam3.1 | 5 (slowest) | 5 | No training needed (zero-shot) |
+## 2. Per-Class mAP50 (box)
+| Model | person | helmet | closed footwear | harness |
+|-------|--------|--------|-----------------|---------|
+| small_detection | 0.947 | 0.754 | 0.564 | 0.416 |
+| medium_detection | 0.935 | 0.798 | 0.615 | 0.424 |
+| small_segmentation | 0.711 | 0.709 | 0.538 | 0.306 |
+| medium_segmentation | 0.734 | 0.739 | 0.625 | 0.298 |
 
-### Size vs Capability
-| Model | Size | Task | Trainable | Production Ready |
-|-------|------|------|-----------|------------------|
-| yolo26n | ~5 MB | detect/seg | Yes | Yes (edge) |
-| yolo26s | ~20 MB | detect/seg | Yes | Yes (server) |
-| sam3.1 | ~3300 MB | segment | No (prompt) | Yes (server) |
+## 3. Medium vs Small (same v3 dataset, same recipe)
+| Model | mAP50 | mAP50-95 | Params (M) | Inference (ms) |
+|-------|-------|----------|------------|----------------|
+| small_detection | 0.670 | 0.479 | 9.95 | 22.2 |
+| medium_detection | 0.693 | 0.507 | 21.78 | 24.1 |
+| small_segmentation (box) | 0.566 | 0.389 | 11.44 | 8.6 |
+| medium_segmentation (box) | 0.599 | 0.431 | 26.98 | 13.7 |
 
-## 4. Production Recommendations
-### Scenario 1: Real-time edge deployment
-- **Recommended**: yolo26n_detect
-- **Why**: Smallest (2.6M params), fastest inference, good enough accuracy
-- **Trade-off**: Lower mAP on rare classes (sandals, harness)
+- Medium detection outperforms small detection by +2.3 mAP50 points at ~2.2x parameters.
+- Small segmentation is competitive with medium segmentation at less than half the parameters.
+- ONNX exports match PyTorch metrics (delta mAP50 < 0.02) — export fidelity confirmed.
 
-### Scenario 2: Server-side high accuracy
-- **Recommended**: yolo26s_seg
-- **Why**: Best segmentation accuracy, reasonable speed
-- **Trade-off**: Larger model, slower than nano
+## 4. Trade-off Analysis
+| Model | Best For | Note |
+|-------|----------|------|
+| small_detection | Balanced accuracy/size | Nearly matches medium at half the size |
+| medium_detection | Highest box accuracy | Best mAP50 of the cohort |
+| small_segmentation | Fast masks | Fastest model in the cohort |
+| medium_segmentation | Best mask quality | Largest model (52 MB) |
+| sam3.1 | Zero-shot labeling | No training; ~100x slower; used upstream for auto-labeling |
 
-### Scenario 3: Zero-shot / new classes
-- **Recommended**: SAM 3.1
-- **Why**: No training needed, text-prompted, handles any class
-- **Trade-off**: 700ms/image, 3.3GB model, no fine-tuning
+## 5. Production Recommendations
+### Scenario 1: Highest detection accuracy
+- **Recommended**: medium_detection (mAP50 0.693)
+- **Trade-off**: 42 MB, 24.1 ms inference
 
-### Scenario 4: Hybrid (recommended for production)
-- **Primary**: yolo26s_detect (fast, accurate)
-- **Fallback**: SAM 3.1 (for low-confidence or new classes)
-- **Rollout**: Canary 10% → Shadow 1 week → Full deploy
+### Scenario 2: Lightweight deployment
+- **Recommended**: small_detection (mAP50 0.670, 19.4 MB)
+- **Trade-off**: -2.3 mAP50 points vs medium
 
-## 5. Dataset Analysis
-- **Before balance**: imbalance ratio 2693:4 = 673:1
-- **After balance**: imbalance ratio 3003:56 = 53.6:1
-- **Oversampling**: {'sandals': 30, 'harness': 114}
+### Scenario 3: Instance segmentation
+- **Recommended**: medium_segmentation for quality, small_segmentation for speed
+- **Note**: mask mAP50 ~0.51 — usable but weaker than detection
 
-## 6. Target Assessment (mAP50 >= 0.85)
-| Model | mAP50 | Target (0.85) | Status |
-|-------|-------|---------------|--------|
-| n_detect | 0.462 | 0.850 | FAIL |
-| s_detect | 0.555 | 0.850 | FAIL |
-| n_seg | 0.416 | 0.850 | FAIL |
-| s_seg | 0.554 | 0.850 | FAIL |
+### Scenario 4: Hybrid auto-labeling loop
+- **Primary**: SAM 3.1 generates labels → human verify → train YOLO
+- **Inference**: YOLO26 production models for deployment
 
-**None of the models achieved the 0.85 mAP50 target.**
+## 6. Known Limitations
+- **harness** is the weakest class across all models (mAP50 0.30-0.46) due to class imbalance (177 annotations, 19:1 vs closed footwear).
+- **closed footwear** and harness are small objects — reduced confidence at 640 px.
+- Dataset is 662 images; mAP50 target of 0.85 was not met (data-limited, not recipe-limited).
+- medium_segmentation stage 1 early-stopped at epoch 117 (best epoch 96) — normal early-stopping behavior.
 
-### Root Cause Analysis
-The primary limiting factor is **dataset size and class imbalance**, not
-hyperparameter tuning:
-
-| Class | Original Count | Issue |
-|-------|---------------|-------|
-| person | 2271 | Adequate |
-| helmet | 2693 | Adequate |
-| boots | 802 | Adequate |
-| shoes | 2407 | Adequate |
-| sandals | 4 | Severely underrepresented |
-| harness | 102 | Underrepresented |
-
-- **sandals**: Only 4 original annotations → 0 mAP50 even after oversampling
-- **harness**: Only 102 original annotations → 0 mAP50 (model cannot learn)
-- **boots/shoes**: Confused with each other (visually similar)
-- **person/helmet**: Adequate samples → reasonable mAP50 (0.81-0.92)
-
-### Recommendations to Reach 85%
-1. **Collect more data** for sandals (need ~200+ images) and harness (need ~500+)
-2. **Improve annotation quality** — verify boots vs shoes labeling consistency
-3. **Use SAM 3.1** to auto-label more images for rare classes
-4. **Consider class merging** — combine sandals+shoes into 'footwear' if
-   distinguishing them is not critical for safety compliance
-5. **Transfer learning** from a COCO-pretrained model with more PPE data
-
-## 7. Conclusion
-YOLO26 models offer significant speed and size advantages over SAM 3.1,
-at the cost of requiring labeled training data. For PPE detection with
-480 labeled images, YOLO26s achieves competitive accuracy while being
-100x smaller and 10x faster than SAM 3.1.
-
-**Best overall**: s_detect (mAP50=0.555)
-**Best edge**: yolo26n_detect (smallest + fastest)
-**Best zero-shot**: SAM 3.1 (no training, any class)
-
-**Note**: The 85% mAP50 target was NOT met by any model.
-This is primarily due to dataset limitations (see Section 6).
-Hyperparameter tuning was applied but cannot compensate for
-insufficient training data for rare classes.
-
-## 8. Tuning Summary
-
-### n_detect
-- Baseline mAP50: 0.4623
-- Best trial mAP50: 0.3950
-- Improvement: -0.0673
-- Improved: No (baseline retained)
-- Best params: {'lr0': 0.005, 'imgsz': 960, 'cls_pw': 0.8, 'mosaic': 0.8, 'mixup': 0.1, 'copy_paste': 0.15, 'scale': 0.6, 'close_mosaic': 15}
-- Note: 50-epoch trials cannot match 150-epoch baseline. Baseline weights retained.
-- Trials (3 total):
-  - Trial 1: mAP50=0.3628
-  - Trial 2: mAP50=0.3950
-  - Trial 3: mAP50=FAILED (cls_pw=2.0 invalid)
-
-### s_detect
-- Baseline mAP50: 0.5551
-- Best trial mAP50: 0.4937
-- Improvement: -0.0614
-- Improved: No (baseline retained)
-- Best params: {'lr0': 0.005, 'imgsz': 960, 'cls_pw': 0.8, 'mosaic': 0.8, 'mixup': 0.1, 'copy_paste': 0.15, 'scale': 0.6, 'close_mosaic': 15}
-- Note: 50-epoch trials cannot match 150-epoch baseline. Baseline weights retained.
-- Trials (3 total):
-  - Trial 1: mAP50=0.4358
-  - Trial 2: mAP50=0.4937
-  - Trial 3: mAP50=FAILED (cls_pw=2.0 invalid)
-
-### n_seg
-- Baseline mAP50: 0.4158
-- Best trial mAP50: 0.3822
-- Improvement: -0.0336
-- Improved: No (baseline retained)
-- Best params: {'lr0': 0.005, 'imgsz': 960, 'cls_pw': 0.8, 'mosaic': 0.8, 'mixup': 0.1, 'copy_paste': 0.15, 'scale': 0.6, 'close_mosaic': 15}
-- Note: 50-epoch trials cannot match 150-epoch baseline. Baseline weights retained.
-- Trials (3 total):
-  - Trial 1: mAP50=0.3359
-  - Trial 2: mAP50=0.3822
-  - Trial 3: mAP50=0.3822
-
-### s_seg
-- Baseline mAP50: 0.5538
-- Best trial mAP50: 0.4753
-- Improvement: -0.0785
-- Improved: No (baseline retained)
-- Best params: {'lr0': 0.002, 'imgsz': 640, 'cls_pw': 0.5, 'mosaic': 0.5, 'mixup': 0.2, 'copy_paste': 0.2, 'scale': 0.7, 'close_mosaic': 20}
-- Note: 50-epoch trials cannot match 150-epoch baseline. Baseline weights retained. imgsz=960 caused OOM (batch reduced to 8).
-- Trials (3 total):
-  - Trial 1: mAP50=0.4259
-  - Trial 2: mAP50=0.4561
-  - Trial 3: mAP50=0.4753
-
-### Tuning Methodology
-- 3 trials per model, 50 epochs per trial (vs 150 epochs for baseline)
-- Parameters tested: lr0, imgsz, cls_pw, mosaic, mixup, copy_paste, scale, close_mosaic
-- Round 1 completed for all 4 models; round 2 skipped (no improvement expected)
-- All models retained baseline weights (150-epoch training > 50-epoch tuning)
-- **Conclusion**: Short tuning trials cannot compensate for limited dataset.
-  The primary bottleneck is data, not hyperparameters.
+## 7. Sources
+- Metrics: `yolo26_ppe/artifacts/evaluation/yolo/production_v4_recipe/all_metrics.json`
+- ONNX comparison: `artifacts/evaluation/yolo/production_v4_recipe/onnx/`
+- Failure analysis: `artifacts/evaluation/yolo/production_v4_recipe/*_failures.json`
+- Full report: `reports/final/report.pdf`

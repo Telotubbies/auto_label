@@ -75,9 +75,7 @@ $$
 |----------|-----------|---------|
 | `person` | $0.7$ | High because person is clearly visible |
 | `helmet` | $0.25$ | Low because object is small |
-| `boots` | $0.25$ | Low |
-| `shoes` | $0.25$ | Low |
-| `sandals` | $0.3$ | Medium |
+| `closed footwear` | $0.25$ | Low (v3: boots+shoes merged) |
 | `harness` | $0.25$ | Low because rare |
 | Global fallback | $0.25$ | Used when `cat.threshold = -1` |
 
@@ -153,7 +151,7 @@ Typical approach: check mask quality before confirming
 | Risk | Level | Note |
 |-----------|-------|---------|
 | False positive contamination | High | low threshold (0.25) + no review → noise enters dataset |
-| Overlap between boots/shoes/sandals | Medium | NMS helps somewhat, but if $\text{IoU} < 0.5$ both are kept |
+| Overlap between footwear variants | Medium | Resolved in v3: boots/shoes merged into `closed footwear`, `sandals` dropped |
 | Unknown label reliability | High | no separate quality score — only raw model score |
 | Changing prompt changes labels | Medium | no prompt versioning — must check config_json in experiments.db |
 
@@ -165,4 +163,4 @@ Typical approach: check mask quality before confirming
 - `src/inference.py:416` — per-category threshold
 - `src/inference.py:470-474` — cross-class NMS
 - `src/inference.py:491-520` — annotation construction
-- `config/ppe_6class.yaml` — thresholds
+- `config/ppe_4class.yaml` — thresholds
