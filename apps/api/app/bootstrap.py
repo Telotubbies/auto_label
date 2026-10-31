@@ -1,0 +1,73 @@
+"""Schema creation + first-run demo seed."""
+import logging
+import os
+from pathlib import Path
+
+from sqlalchemy import select
+
+from .config import REPO_ROOT, SEED_DEMO
+from .db import Base, SessionLocal, engine
+from .models import User
+
+log = logging.getLogger("labeldesk")
+DEMO_EMAIL, DEMO_PW = "demo@labeldesk.dev", "demo1234"
+
+
+def init_db():
+    Base.metadata.create_all(engine)
+    _backfill_image_classes()
+    if SEED_DEMO:
+        seed()
+
+
+def seed():
+    from .deps import Ctx
+    from .routers.auth import create_workspace
+    from .routers.images import ingest
+    from .models import LabelClass, Member, Project
+    from .security import hash_password
+
+    with SessionLocal() as db:
+        if db.scalar(select(User.id).limit(1)):
+            return
+        admin = User(email=DEMO_EMAIL, name="Demo Admin", pw_hash=hash_password(DEMO_PW))
+        labeler = User(email="labeler@labeldesk.dev", name="Lee Labeler", pw_hash=hash_password(DEMO_PW))
+        reviewer = User(email="reviewer@labeldesk.dev", name="Rae Reviewer", pw_hash=hash_password(DEMO_PW))
+        db.add_all([admin, labeler, reviewer]); db.flush()
+        ws = create_workspace(db, admin, "LabelDesk Demo")
+        db.add_all([Member(workspace_id=ws.id, user_id=labeler.id, role="annotator"),
+                    Member(workspace_id=ws.id, user_id=reviewer.id, role="reviewer")])
+        p = Project(workspace_id=ws.id, slug="ppe-detection", name="PPE Detection", type="object-detection",
+                    annotation_group="ppe", settings={})
+        db.add(p); db.flush()
+        for name, color in (("person", "#8b5cf6"), ("helmet", "#22c55e"), ("closed footwear", "#3b82f6"), ("harness", "#f97316")):
+            db.add(LabelClass(project_id=p.id, name=name, color=color))
+        db.commit()
+
+        # sample images + SAM ground truth from the repo's PPE data, when present
+        src = Path(os.environ.get("LD_SEED_IMAGES", REPO_ROOT / "data" / "raw" / "custom_capture"))
+        ann = src.parent.parent / "sam_outputs_ground_truth" / src.name / "coco"
+        files = []
+        for f in sorted(src.glob("*.jpg"))[:40] if src.exists() else []:
+            files.append((f.name, f.read_bytes()))
+            if (ann / f"{f.stem}.json").exists():
+                files.append((f"{f.stem}.json", (ann / f"{f.stem}.json").read_bytes()))
+        if files:
+            ctx = Ctx(user=admin, ws=ws, role="admin", db=db, project=p)
+            res = ingest(db, ctx, files, "Demo seed", "auto", [], to_dataset=False, user_id=admin.id)
+            log.info("seeded demo project with %s images", res["uploaded"])
+        log.info("demo login: %s / %s", DEMO_EMAIL, DEMO_PW)
+
+
+def _backfill_image_classes():
+    """DBs created before the image_classes index existed: build it once."""
+    from .models import Image, ImageClass, set_annotations
+    with SessionLocal() as db:
+        if db.scalar(select(ImageClass.image_id).limit(1)) or not db.scalar(select(Image.id).where(Image.n_annotations > 0).limit(1)):
+            return
+        for img in db.scalars(select(Image).where(Image.n_annotations > 0, Image.deleted_at.is_(None))):
+            updated = img.updated
+            set_annotations(db, img, img.annotations or [])
+            img.updated = updated
+        db.commit()
+        log.info("backfilled image_classes index")

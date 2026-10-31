@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pyjwt>=2.8
+python-multipart>=0.0.9
+pillow>=10
+numpy>=1.26
+opencv-python-headless>=4.8
+# ultralytics pulls torch; the Dockerfile installs the CPU torch wheel first so it isn't the 2 GB CUDA build
+ultralytics>=8.3
