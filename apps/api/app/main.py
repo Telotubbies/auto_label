@@ -51,6 +51,7 @@ async def security_headers(request, call_next):
 
 for r in (auth, workspaces, projects, images, versions, training, remote, registry, playground):
     app.include_router(r.router)
+app.include_router(registry.gpu_router)
 
 
 @app.get("/api/health")

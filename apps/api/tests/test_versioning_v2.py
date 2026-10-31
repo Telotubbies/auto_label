@@ -142,7 +142,7 @@ def _add_image(iid, rel, split, ann_cls):
     from sqlalchemy import select
     from app.models import Image, Project
     with SessionLocal() as db:
-        pid = db.scalars(select(Project.id)).first()
+        pid = db.scalars(select(Project.id).where(Project.slug == "ppe-detection")).first()   # not the "other" test project
         db.add(Image(id=iid, project_id=pid, name=f"{iid}.png", sha256=iid * 2, width=64, height=64, path=rel,
                      thumb=rel, split=split, status="done",
                      annotations=[{"id": "a", "classId": ann_cls,

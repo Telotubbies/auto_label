@@ -18,6 +18,8 @@ log = logging.getLogger("labeldesk.segment")
 _sam = {"proc": None, "err": None}
 _sam_lock = threading.Lock()
 
+SAM_VRAM_MB = 3000      # spec 3.6 says 3-4 GB; 4 GB could never coexist with a detector in the 4.5 GB budget
+
 
 # --- geometry helpers ---------------------------------------------------------
 
@@ -101,6 +103,43 @@ def sam_status() -> dict:
     return {"loaded": _sam["proc"] is not None, "error": _sam["err"]}
 
 
+def _require_sam():
+    proc = _load_sam()
+    if proc is None:
+        raise RuntimeError(f"SAM 3.1 is not available on this worker ({_sam['err']})")
+    return proc
+
+
+def lease_sam():
+    """Account for SAM in the GPU VRAM ledger (every caller loads through here)."""
+    from ..gpu import scheduler                  # imported lazily: app.gpu imports the adapters package
+    return scheduler.lease("sam3", SAM_VRAM_MB, _require_sam, lambda _proc: unload_sam())
+
+
+def _try_lease_sam():
+    if SAM_ENABLED == "0":
+        return None
+    try:
+        return lease_sam()
+    except RuntimeError:
+        return None
+
+
+def unload_sam() -> None:
+    """Drop the cached model so the GPU scheduler can reclaim its VRAM (training is exclusive)."""
+    with _sam_lock:
+        if _sam["proc"] is not None:
+            _sam["proc"] = None
+            _sam["err"] = None
+    import gc
+    gc.collect()
+    try:
+        import torch
+        torch.cuda.empty_cache()
+    except Exception:                      # CPU-only installs have nothing to free
+        pass
+
+
 def _masks(output) -> list[tuple[np.ndarray, float]]:
     masks, scores = output.get("masks"), output.get("scores")
     if masks is None or len(masks) == 0:
@@ -111,7 +150,7 @@ def _masks(output) -> list[tuple[np.ndarray, float]]:
 
 
 def smart_polygon(im: PImage.Image, points: list[list[float]], negatives=None) -> tuple[list[float] | None, str]:
-    proc = None if SAM_ENABLED == "0" else _load_sam()
+    proc = _try_lease_sam()
     if proc is not None and len(points) >= 1:
         try:
             xs, ys = [p[0] for p in points], [p[1] for p in points]
@@ -135,7 +174,7 @@ def smart_polygon(im: PImage.Image, points: list[list[float]], negatives=None) -
 
 def sam_text(im: PImage.Image, prompts: list[str], threshold: float = 0.4) -> list[tuple[int, list[float], float]]:
     """-> [(prompt index, normalized polygon, score)]; raises if SAM can't load."""
-    proc = _load_sam()
+    proc = lease_sam()
     if proc is None:
         raise RuntimeError(f"SAM 3.1 is not available on this worker ({_sam['err']})")
     state = proc.set_image(im)
@@ -152,7 +191,7 @@ def sam_text(im: PImage.Image, prompts: list[str], threshold: float = 0.4) -> li
 
 def sam_box(im: PImage.Image, box_xyxy_px: tuple[float, float, float, float]) -> tuple[list[float] | None, float]:
     """Box prompt -> (normalized flat polygon, score); (None, 0.0) when SAM is unavailable or finds nothing."""
-    proc = None if SAM_ENABLED == "0" else _load_sam()
+    proc = _try_lease_sam()
     if proc is None:
         return None, 0.0
     try:

@@ -1,5 +1,7 @@
 """Static model zoo + registry: what exists, under which license, and whether it can run now."""
 
+import time
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,19 @@ from .base import ADAPTERS, Availability, Resolved, parse_ref
 
 _LICENSE = {"ultralytics": "AGPL-3.0", "sam3": "SAM License", "vlm": "Apache-2.0"}
 _VLM_CAPS = {"vlm", "detect", "caption"}       # until the vlm adapter registers and reports its own
+
+_PROBE_TTL = 15.0                               # a black-holed vLLM probe takes 3 s; don't pay it every request
+_now = time.monotonic
+_probes: dict[str, tuple[float, Availability]] = {}
+
+
+def _probe(family: str, adapter) -> Availability:
+    hit = _probes.get(family)
+    if hit and _now() - hit[0] < _PROBE_TTL:
+        return hit[1]
+    av = adapter.probe()
+    _probes[family] = (_now(), av)
+    return av
 
 
 def _zoo() -> list[tuple[str, str, str]]:
@@ -25,7 +40,7 @@ def _zoo() -> list[tuple[str, str, str]]:
 
 
 def catalog(db: Session, workspace_id: str) -> list[dict]:
-    probes: dict[str, Availability] = {f: a.probe() for f, a in ADAPTERS.items()}
+    probes: dict[str, Availability] = {f: _probe(f, a) for f, a in ADAPTERS.items()}
     items = []
     for fam, variant, name in _zoo():
         ad = ADAPTERS.get(fam)

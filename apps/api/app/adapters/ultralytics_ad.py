@@ -3,7 +3,6 @@ import importlib.util
 import shutil
 import threading
 import time
-from collections import OrderedDict
 from pathlib import Path
 
 from PIL import Image as PImage
@@ -55,8 +54,8 @@ def train(model_id: str, version_dir: Path, project_type: str, opts: dict, on_ep
 
 # --- inference ------------------------------------------------------------------
 
-_cache: "OrderedDict[str, object]" = OrderedDict()
-_lock = threading.Lock()
+VRAM_MB = 1400                                    # YOLO / RT-DETR inference, upper end of spec 3.6
+_lock = threading.Lock()                          # serialises YOLO-World vocabulary changes (the scheduler may evict between calls)
 
 
 def _cls_name(variant: str) -> str:
@@ -69,17 +68,21 @@ def _cls_name(variant: str) -> str:
 
 
 def _load(weights: str, cls_name: str = "YOLO"):
-    import ultralytics
-    key = f"{cls_name}|{weights}"
-    with _lock:
-        if key in _cache:
-            _cache.move_to_end(key)
-            return _cache[key]
-        m = getattr(ultralytics, cls_name)(weights)
-        _cache[key] = m
-        while len(_cache) > 4:
-            _cache.popitem(last=False)
-        return m
+    """Load through the GPU scheduler so its VRAM ledger can evict the LRU model."""
+    from ..gpu import scheduler                  # lazy: keeps app.gpu importable before the adapters package
+
+    def _make():
+        import ultralytics
+        return getattr(ultralytics, cls_name)(weights)
+
+    def _drop(_model):
+        try:
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:                         # CPU-only installs have nothing to free
+            pass
+
+    return scheduler.lease(f"{cls_name}|{weights}", VRAM_MB, _make, _drop)
 
 
 def _run(m, im: PImage.Image, confidence: float, overlap: float) -> dict:

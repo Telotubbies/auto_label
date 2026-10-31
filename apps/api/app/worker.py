@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from .adapters import ADAPTERS
 from .config import DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
+from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, now, set_annotations
 from .services import exporters, ml, segment, versioning, imaging
 
@@ -83,9 +84,11 @@ def run_train(job: Job):
                 s.execute(update(Job).where(Job.id == job.id).values(progress=round(ep / total * 100, 1)))
                 s.commit()
         try:
-            res = ADAPTERS[tm.family or "ultralytics"].train(
-                tm.variant or tm.arch, versioning.version_dir(v), ml.TASK[p.type],
-                {**job.params.get("options", {}), "model_id": tm.id}, on_epoch, lambda: _cancelled(job.id))
+            variant = tm.variant or tm.arch
+            with scheduler.exclusive(f"training {variant}"):
+                res = ADAPTERS[tm.family or "ultralytics"].train(
+                    variant, versioning.version_dir(v), ml.TASK[p.type],
+                    {**job.params.get("options", {}), "model_id": tm.id}, on_epoch, lambda: _cancelled(job.id))
         except Exception:
             tm.status = "failed"; db.commit(); raise
         db.refresh(tm)

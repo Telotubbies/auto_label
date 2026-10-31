@@ -15,14 +15,14 @@ class Sam3Adapter:
             return Availability(False, "disabled by LD_SAM_ENABLED=0")
         st = segment.sam_status()
         if st["loaded"]:
-            return Availability(True, vram_mb=4000)
+            return Availability(True, vram_mb=segment.SAM_VRAM_MB)
         if st["error"]:
             return Availability(False, st["error"])
         if importlib.util.find_spec("torch") is None:
             return Availability(False, "torch not installed")
         if not (SAM_ROOT / "checkpoints" / "sam3.1_multiplex.pt").exists():
             return Availability(False, f"SAM checkpoint missing under {SAM_ROOT / 'checkpoints'}")
-        return Availability(True, vram_mb=4000)
+        return Availability(True, vram_mb=segment.SAM_VRAM_MB)
 
     def capabilities(self, variant: str) -> set[str]:
         return {"segment", "text-prompt", "box-prompt"}
