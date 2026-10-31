@@ -178,8 +178,8 @@ EXPORTERS = {
 }
 
 
-def export(fmt: str, version_dir: Path, out: Path) -> Path:
-    """Export version_dir/manifest.json into `out` and return the zip path."""
+def build_dir(fmt: str, version_dir: Path, out: Path) -> Path:
+    """Lay version_dir/manifest.json out in `fmt` under a fresh `out` directory."""
     m = json.loads((version_dir / "manifest.json").read_text())
     if out.exists():
         shutil.rmtree(out)
@@ -188,4 +188,24 @@ def export(fmt: str, version_dir: Path, out: Path) -> Path:
     (out / "README.labeldesk.txt").write_text(
         f"Exported from LabelDesk\nformat: {FORMATS[fmt]['label']}\nclasses: {', '.join(m['classes'])}\n"
         f"images: {len(m['items'])}\n")
+    return out
+
+
+def export(fmt: str, version_dir: Path, out: Path) -> Path:
+    """Export version_dir/manifest.json into `out` and return the zip path."""
+    build_dir(fmt, version_dir, out)
     return Path(shutil.make_archive(str(out), "zip", out))
+
+
+def cached_export(version_dir: Path, fmt: str) -> Path:
+    """versions/<id>/exports/<fmt>/, built once (atomic rename; regenerating a version wipes it)."""
+    dst = version_dir / "exports" / fmt
+    if dst.exists():
+        return dst
+    tmp = version_dir / "exports" / f".{fmt}.tmp"
+    build_dir(fmt, version_dir, tmp)
+    try:
+        tmp.rename(dst)
+    except OSError:                      # lost a race with a concurrent builder
+        shutil.rmtree(tmp, ignore_errors=True)
+    return dst

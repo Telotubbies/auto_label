@@ -1,4 +1,5 @@
 """Generate a frozen dataset version: rebalance splits, preprocess, augment (train only)."""
+import hashlib
 import json
 import random
 import shutil
@@ -10,11 +11,79 @@ from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
 from ..models import Image, LabelClass, Project, Version
-from . import imaging
+from . import exporters, imaging
 
 
 def version_dir(v: Version) -> Path:
     return DATA_DIR / "versions" / v.id
+
+
+def cached_export(v: Version, fmt: str) -> Path:
+    return exporters.cached_export(version_dir(v), fmt)
+
+
+def stratified_split(items: list, ratios: dict, seed: int, groups: dict | None = None) -> dict:
+    """Greedy iterative stratification. items = [(image_id, {class ids})] -> {image_id: split}.
+    Images sharing a group id are placed together. Unlabeled images form their own pseudo-class."""
+    rng = random.Random(seed)
+    UNL = -1
+    members: dict = {}
+    for iid, cs in items:
+        members.setdefault((groups or {}).get(iid, iid), []).append((iid, set(cs) or {UNL}))
+    units = []                                   # (ids, {class: images containing it})
+    for g, mem in members.items():
+        cnt = Counter(c for _, cs in mem for c in cs)
+        units.append(([i for i, _ in mem], cnt))
+    total = Counter()
+    for _, cnt in units:
+        total.update(cnt)
+    ssum = sum(ratios.values()) or 1
+    desired = {s: {c: r / ssum * total[c] for c in total} for s, r in ratios.items()}
+    out: dict = {}
+    remaining = units[:]
+    rng.shuffle(remaining)
+    while remaining:
+        left = Counter(c for _, cnt in remaining for c in cnt)
+        c = min(left, key=lambda k: (left[k], k))
+        for u in [u for u in remaining if c in u[1]]:
+            best = max(desired, key=lambda s: (desired[s][c], sum(desired[s].values()), rng.random()))
+            for i in u[0]:
+                out[i] = best
+            for k, n in u[1].items():
+                desired[best][k] -= n
+            remaining.remove(u)
+    return out
+
+
+def phash_groups(rows: list, max_dist: int = 6) -> dict:
+    """image id -> group id; union-find over perceptual-hash Hamming distance <= max_dist."""
+    import imagehash
+    from PIL import Image as PImage
+    ids, hashes = [], []
+    for r in rows:
+        try:
+            with PImage.open(DATA_DIR / r.path) as im:
+                hashes.append(imagehash.phash(im))
+            ids.append(r.id)
+        except Exception:                        # unreadable file: stays in its own group
+            continue
+    parent = {i: i for i in ids}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for a in range(len(ids)):
+        for b in range(a + 1, len(ids)):
+            if hashes[a] - hashes[b] <= max_dist:
+                ra, rb = find(ids[a]), find(ids[b])
+                if ra != rb:
+                    parent[max(ra, rb)] = min(ra, rb)
+    out = {i: find(i) for i in ids}
+    for r in rows:
+        out.setdefault(r.id, r.id)
+    return out
 
 
 def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
@@ -32,9 +101,9 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
     rng = random.Random(cfg.get("seed", 42))
     split_cfg = cfg.get("split")
     if split_cfg:                                # rebalance: {"train":70,"valid":20,"test":10}
-        order = rows[:]; rng.shuffle(order)
-        n = len(order); n_tr = round(n * split_cfg["train"] / 100); n_va = round(n * split_cfg["valid"] / 100)
-        splits = {r.id: ("train" if i < n_tr else "valid" if i < n_tr + n_va else "test") for i, r in enumerate(order)}
+        items_cls = [(r.id, {cls_idx[a["classId"]] for a in (r.annotations or []) if a.get("classId") in cls_idx})
+                     for r in rows]
+        splits = stratified_split(items_cls, split_cfg, cfg.get("seed", 42), phash_groups(rows))
     else:
         splits = {r.id: r.split for r in rows}
 
@@ -42,6 +111,9 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
     if out.exists():
         shutil.rmtree(out)
     pre, aug = cfg.get("preprocessing", {}), cfg.get("augmentation", {})
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "recipe.json").write_text(json.dumps(
+        {"resize": pre.get("resize"), "grayscale": bool(pre.get("grayscale")), "contrast": pre.get("contrast")}))
     has_aug = any(val for k, val in aug.items() if k != "outputs")
     # outputs = images produced per training example (original + outputs-1 augmented; 1 = replace with augmented)
     copies = max(1, min(int(aug.get("outputs", 3) or 1), 5))
@@ -70,7 +142,9 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
                 per_class[classes[cls_idx[a["classId"]]].name] += 1
         progress((n + 1) / len(rows))
 
-    manifest = {"classes": [c.name for c in classes], "type": p.type, "items": items}
+    blob = json.dumps(cfg, sort_keys=True, default=str) + "|" + ",".join(sorted(r.sha256 for r in rows))
+    version_hash = hashlib.sha256(blob.encode()).hexdigest()
+    manifest = {"classes": [c.name for c in classes], "type": p.type, "items": items, "version_hash": version_hash}
     (out / "manifest.json").write_text(json.dumps(manifest))
     return {"images": len(items), "source_images": len(rows), "splits": dict(per_split),
             "classes": dict(per_class), "class_names": manifest["classes"]}
