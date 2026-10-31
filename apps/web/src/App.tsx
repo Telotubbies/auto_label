@@ -10,6 +10,8 @@ import type { Role } from '@/lib/types'
 import { AppLayout } from '@/components/shell'
 import { Spinner } from '@/components/ui'
 import { Login, Signup, AcceptInvite } from '@/features/auth/Auth'
+const Landing = lazy(() => import('@/features/landing/Landing'))
+const LandingPreview = lazy(() => import('@/features/landing/Landing').then((m) => ({ default: m.LandingPreview })))
 import Home from '@/features/workspace/Home'
 const WorkspaceModels = lazy(() => import('@/features/workspace/WorkspacePages').then((m) => ({ default: m.WorkspaceModels })))
 const Deployments = lazy(() => import('@/features/workspace/WorkspacePages').then((m) => ({ default: m.Deployments })))
@@ -70,11 +72,16 @@ export default function App() {
   const authed = useApp((s) => s.authed)
   if (!authed) {
     return (
-      <Routes>
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/invite/:token" element={<AcceptInvite />} />
-        <Route path="*" element={<Login />} />
-      </Routes>
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/invite/:token" element={<AcceptInvite />} />
+          {import.meta.env.DEV && <Route path="/__preview/:section" element={<LandingPreview />} />}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     )
   }
   return (
