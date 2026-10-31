@@ -8,6 +8,8 @@ Each exporter lays files out under `out` the way Roboflow's download zip does.
 import csv
 import json
 import shutil
+import threading
+import uuid
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -197,15 +199,22 @@ def export(fmt: str, version_dir: Path, out: Path) -> Path:
     return Path(shutil.make_archive(str(out), "zip", out))
 
 
+_LOCKS: dict = {}
+_LOCKS_GUARD = threading.Lock()
+
+
 def cached_export(version_dir: Path, fmt: str) -> Path:
-    """versions/<id>/exports/<fmt>/, built once (atomic rename; regenerating a version wipes it)."""
+    """versions/<id>/exports/<fmt>/, built once under a per-(version, fmt) lock into a unique temp dir."""
     dst = version_dir / "exports" / fmt
-    if dst.exists():
-        return dst
-    tmp = version_dir / "exports" / f".{fmt}.tmp"
-    build_dir(fmt, version_dir, tmp)
-    try:
-        tmp.rename(dst)
-    except OSError:                      # lost a race with a concurrent builder
-        shutil.rmtree(tmp, ignore_errors=True)
+    with _LOCKS_GUARD:
+        lock = _LOCKS.setdefault((str(version_dir), fmt), threading.Lock())
+    with lock:
+        if dst.exists():
+            return dst
+        tmp = version_dir / "exports" / f".{fmt}.{uuid.uuid4().hex}.tmp"
+        try:
+            build_dir(fmt, version_dir, tmp)
+            tmp.rename(dst)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
     return dst

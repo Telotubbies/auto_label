@@ -100,12 +100,23 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
 
     rng = random.Random(cfg.get("seed", 42))
     split_cfg = cfg.get("split")
+    leakage_moved = 0
     if split_cfg:                                # rebalance: {"train":70,"valid":20,"test":10}
         items_cls = [(r.id, {cls_idx[a["classId"]] for a in (r.annotations or []) if a.get("classId") in cls_idx})
                      for r in rows]
         splits = stratified_split(items_cls, split_cfg, cfg.get("seed", 42), phash_groups(rows))
     else:
         splits = {r.id: r.split for r in rows}
+        members: dict = {}
+        for gid_img, gid in phash_groups(rows).items():
+            members.setdefault(gid, []).append(gid_img)
+        for ids in members.values():
+            vals = {splits[i] for i in ids}
+            if len(vals) > 1:                    # near-copies must not straddle train and eval
+                tgt = "train" if "train" in vals else "valid" if "valid" in vals else "test"
+                for i in ids:
+                    if splits[i] != tgt:
+                        splits[i] = tgt; leakage_moved += 1
 
     out = version_dir(v)
     if out.exists():
@@ -142,9 +153,17 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
                 per_class[classes[cls_idx[a["classId"]]].name] += 1
         progress((n + 1) / len(rows))
 
-    blob = json.dumps(cfg, sort_keys=True, default=str) + "|" + ",".join(sorted(r.sha256 for r in rows))
-    version_hash = hashlib.sha256(blob.encode()).hexdigest()
-    manifest = {"classes": [c.name for c in classes], "type": p.type, "items": items, "version_hash": version_hash}
+    sources = [{"id": r.id, "sha256": r.sha256} for r in rows]
+    canon = {"config": cfg, "classes": [c.name for c in classes],
+             "images": sorted([r.id, r.sha256, [a for a in (r.annotations or []) if a.get("classId") in cls_idx],
+                               splits[r.id]] for r in rows)}
+    # class ids are replaced by index so renames show up via "classes" and ids stay out of the hash
+    for row in canon["images"]:
+        row[2] = [{**a, "classId": cls_idx[a["classId"]]} for a in row[2]]
+    version_hash = hashlib.sha256(json.dumps(canon, sort_keys=True, default=str).encode()).hexdigest()
+    manifest = {"classes": [c.name for c in classes], "type": p.type, "items": items, "version_hash": version_hash,
+                "config": cfg, "sources": sources}
     (out / "manifest.json").write_text(json.dumps(manifest))
     return {"images": len(items), "source_images": len(rows), "splits": dict(per_split),
-            "classes": dict(per_class), "class_names": manifest["classes"]}
+            "classes": dict(per_class), "class_names": manifest["classes"],
+            "leakage_moved": leakage_moved}

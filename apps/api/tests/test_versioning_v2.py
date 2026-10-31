@@ -129,3 +129,75 @@ def test_cached_export_built_once(c):
         m = (p1 / "data.yaml").stat().st_mtime_ns
         assert versioning.cached_export(ver, "yolo") == p1
         assert (p1 / "data.yaml").stat().st_mtime_ns == m
+
+
+def _class_id():
+    from sqlalchemy import select
+    from app.models import LabelClass
+    with SessionLocal() as db:
+        return db.scalars(select(LabelClass)).first().id
+
+
+def _add_image(iid, rel, split, ann_cls):
+    from sqlalchemy import select
+    from app.models import Image, Project
+    with SessionLocal() as db:
+        pid = db.scalars(select(Project.id)).first()
+        db.add(Image(id=iid, project_id=pid, name=f"{iid}.png", sha256=iid * 2, width=64, height=64, path=rel,
+                     thumb=rel, split=split, status="done",
+                     annotations=[{"id": "a", "classId": ann_cls,
+                                   "shape": {"kind": "bbox", "x": .1, "y": .1, "w": .3, "h": .3}}]))
+        db.commit()
+
+
+def test_keep_path_moves_near_duplicate_out_of_eval(c):
+    rng = np.random.default_rng(42)
+    arr = np.kron(rng.integers(0, 255, (8, 8, 3), dtype=np.uint8), np.ones((8, 8, 1), dtype=np.uint8))
+    a, b = _save("leak_a", arr), _save("leak_b", arr.copy())
+    cid = _class_id()
+    base = make_version(c, {"preprocessing": {}, "augmentation": {}})["stats"]["leakage_moved"]   # seeded flat images
+    _add_image("leakaaaa", a.path, "train", cid)
+    _add_image("leakbbbb", b.path, "test", cid)
+    v = make_version(c, {"preprocessing": {}, "augmentation": {}})
+    m = manifest(v)
+    assert {it["split"] for it in m["items"] if it["source"] in ("leakaaaa", "leakbbbb")} == {"train"}
+    assert v["stats"]["leakage_moved"] - base == 1
+
+
+def test_hash_changes_on_relabel_and_class_rename(c):
+    from sqlalchemy import select
+    from app.models import Image, LabelClass
+    s = {"split": RATIOS, "seed": 5, "preprocessing": {}, "augmentation": {}}
+    m0 = manifest(make_version(c, s))
+    assert m0["config"] == s and m0["sources"]
+    with SessionLocal() as db:
+        im = db.get(Image, "leakaaaa")
+        im.annotations = [{**im.annotations[0], "shape": {"kind": "bbox", "x": .5, "y": .5, "w": .2, "h": .2}}]
+        db.commit()
+    h1 = manifest(make_version(c, s))["version_hash"]
+    assert h1 != m0["version_hash"]
+    with SessionLocal() as db:
+        lc = db.scalars(select(LabelClass)).first()
+        lc.name = lc.name + "_renamed"
+        db.commit()
+    assert manifest(make_version(c, s))["version_hash"] != h1
+
+
+def test_cached_export_concurrent_builders(tmp_path, monkeypatch):
+    import threading
+    from app.services import exporters
+    calls = []
+
+    def fake_build(fmt, vdir, out):
+        calls.append(1)
+        time.sleep(0.3)
+        out.mkdir(parents=True)
+        (out / "done").write_text("x")
+        return out
+    monkeypatch.setattr(exporters, "build_dir", fake_build)
+    res = []
+    ts = [threading.Thread(target=lambda: res.append(exporters.cached_export(tmp_path, "yolo"))) for _ in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert len(calls) == 1 and all((p / "done").exists() for p in res)
+    assert [p.name for p in (tmp_path / "exports").iterdir()] == ["yolo"]
