@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database, FolderGit2, Layers, LogOut,
+  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database, FlaskConical, FolderGit2, Layers, LogOut,
   Monitor, Moon, Plus, Rocket, Settings, Sun, Tag, Tags, Upload, User, X, Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
@@ -16,6 +16,7 @@ import { Button, Dropdown, Input, Modal, Progress, toast } from './ui'
 const mainNav = [
   { to: '', label: 'Projects', icon: Layers, end: true },
   { to: 'models', label: 'Models', icon: Boxes },
+  { to: 'playground', label: 'Playground', icon: FlaskConical },
   { to: 'deployments', label: 'Deployments', icon: Rocket },
 ]
 

@@ -27,6 +27,7 @@ const Models = lazy(() => import('@/features/project/Models'))
 const Deploy = lazy(() => import('@/features/project/Deploy'))
 import ProjectSettings from '@/features/project/ProjectSettings'
 const Editor = lazy(() => import('@/features/editor/Editor'))
+const Playground = lazy(() => import('@/features/playground/Playground'))
 
 function LightOnly({ children }: { children: React.ReactNode }) {
   useLightOnly()
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="models" element={<WorkspaceModels />} />
           <Route path="deployments" element={<Deployments />} />
           <Route path="activity" element={<Activity />} />
+          <Route path="playground" element={<Playground />} />
           <Route path="settings/*" element={<Settings />} />
           <Route path=":project" element={<ProjectLayout />}>
             <Route index element={<Navigate to="browse" replace />} />

@@ -67,3 +67,15 @@ export interface Analytics {
 }
 
 export interface Prediction { x: number; y: number; width: number; height: number; confidence: number; class: string; class_id: number; points?: { x: number; y: number }[] }
+
+export interface RegistryItem {
+  ref: string; family: string; variant: string; name: string; capabilities: string[]; license: string
+  available: boolean; reason: string; kind: 'zoo' | 'vlm' | 'trained'
+}
+export interface PlaygroundPrediction {
+  model: string; time: number; image: { width: number; height: number }
+  predictions: Prediction[]; text?: string; top?: string
+}
+export interface PlaygroundResult {
+  ref: string; prediction: PlaygroundPrediction | null; latency_ms: number; error: string | null
+}

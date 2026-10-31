@@ -1,8 +1,8 @@
 // Typed API client. VITE_API_URL points at the API origin when web and api are on
 // different hosts (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 import type {
-  Annotation, Analytics, Batch, Board, ImageItem, Job, LabelClass, Me, Member, ModelItem, Project, Version,
-  WorkspaceInfo,
+  Annotation, Analytics, Batch, Board, ImageItem, Job, LabelClass, Me, Member, ModelItem, PlaygroundResult, Project,
+  RegistryItem, Version, WorkspaceInfo,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -104,5 +104,7 @@ export const api = {
   jobs: (ws: string, p: string, kind = '') => get<Job[]>(`${P(ws, p)}/jobs${kind ? `?kind=${kind}` : ''}`),
   analytics: (ws: string, p: string) => get<Analytics>(`${P(ws, p)}/analytics`),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),
+  registry: (ws: string) => get<RegistryItem[]>(`/ws/${ws}/registry`),
+  playgroundPredict: (ws: string, form: FormData) => post<{ results: PlaygroundResult[] }>(`/ws/${ws}/playground/predict`, form),
   P,
 }

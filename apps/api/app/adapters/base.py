@@ -79,8 +79,9 @@ def validate_prediction(d: dict) -> None:
     preds = d.get("predictions")
     if not isinstance(preds, list):
         raise ValueError("predictions: list required")
+    keys = _PRED_KEYS[:3] if "top" in d else _PRED_KEYS     # classification results carry no box
     for p in preds:
-        missing = [k for k in _PRED_KEYS if not isinstance(p, dict) or k not in p]
+        missing = [k for k in keys if not isinstance(p, dict) or k not in p]
         if missing:
             raise ValueError(f"prediction missing {missing}")
     if "text" in d and not isinstance(d["text"], str):
