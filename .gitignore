@@ -91,3 +91,4 @@ design-ref/
 
 # Agent worktrees and SDD scratch
 .claude/worktrees/
+.claude/settings.local.json
