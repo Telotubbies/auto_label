@@ -9,6 +9,12 @@ Zones: ``{"id": str, "points": [x1, y1, x2, y2, ...]}``. ``vlm`` rules are
 ignored here (the manager evaluates them). Events are
 ``{"rule": index, "kind", "summary", "track_id"?}``, de-duplicated by
 ``cooldown_s`` per (rule, track), or per rule for ``count``.
+
+Line direction: "in" = the anchor moves to the right-hand side of the vector
+p1->p2 as drawn on screen (image y points down); swapping p1/p2 flips in/out.
+Per-track state (line side, dwell timer, count timer) survives gaps of up to
+``track_ttl_s`` seconds without the track (or, for dwell, outside the zone);
+dwell fires once the time inside is strictly greater than ``seconds``.
 """
 import operator
 
@@ -35,36 +41,36 @@ def _cross(ax, ay, bx, by) -> float:
     return ax * by - ay * bx
 
 
-def _crossing(prev, cur, line) -> int:
-    """0 if the move prev->cur does not cross the line segment, else the
-    sign of the movement relative to the line direction (+1 = "in")."""
+def _side(pt, line) -> int:
+    x1, y1, x2, y2 = line
+    v = _cross(x2 - x1, y2 - y1, pt[0] - x1, pt[1] - y1)
+    return (v > 0) - (v < 0)
+
+
+def _hits_segment(prev, cur, line) -> bool:
+    """Does the move prev->cur cross the finite segment of the line?"""
     x1, y1, x2, y2 = line
     dx, dy = x2 - x1, y2 - y1
-    s_prev = _cross(dx, dy, prev[0] - x1, prev[1] - y1)
-    s_cur = _cross(dx, dy, cur[0] - x1, cur[1] - y1)
-    if s_prev == s_cur or (s_prev > 0) == (s_cur > 0) and s_prev != 0 and s_cur != 0:
-        return 0
-    if s_prev == 0:  # started exactly on the line: not a crossing yet
-        return 0
-    # segment prev->cur must also hit the finite line segment
     mx, my = cur[0] - prev[0], cur[1] - prev[1]
-    t_b = _cross(mx, my, dx, dy)
-    if t_b == 0:
-        return 0
-    u = _cross(x1 - prev[0], y1 - prev[1], mx, my) / t_b
-    if not 0 <= u <= 1:
-        return 0
-    return 1 if s_cur > 0 else -1
+    den = _cross(mx, my, dx, dy)
+    if den == 0:
+        return False
+    u = _cross(x1 - prev[0], y1 - prev[1], mx, my) / den
+    return 0 <= u <= 1
 
 
 class Engine:
-    def __init__(self, rules: list[dict], zones: list[dict], cooldown_s: float = 30):
+    def __init__(self, rules: list[dict], zones: list[dict], cooldown_s: float = 30,
+                 track_ttl_s: float = 2.0):
         self.rules = rules
         self.zones = {z["id"]: z["points"] for z in zones}
         self.cooldown_s = cooldown_s
+        self.track_ttl_s = track_ttl_s
         self._last_fire: dict[tuple, float] = {}
-        self._prev: dict[tuple, tuple] = {}      # (rule, track) -> last anchor
-        self._since: dict[tuple, float] = {}     # dwell / count start times
+        # (rule, track) -> (last non-zero side, anchor at that time, last_seen)
+        self._side: dict[tuple, tuple] = {}
+        # (rule, track|None) -> (start, last_active) for dwell and count timers
+        self._timer: dict[tuple, tuple[float, float]] = {}
 
     def _fire(self, ts, key) -> bool:
         last = self._last_fire.get(key)
@@ -73,7 +79,15 @@ class Engine:
         self._last_fire[key] = ts
         return True
 
+    def _expire(self, ts, i, seen):
+        for d, idx in ((self._side, 2), (self._timer, 1)):
+            for k in [k for k, v in d.items()
+                      if k[0] == i and k not in seen and ts - v[idx] > self.track_ttl_s]:
+                del d[k]
+
     def step(self, ts: float, preds: list[dict]) -> list[dict]:
+        self._last_fire = {k: t for k, t in self._last_fire.items()
+                           if ts - t < self.cooldown_s}
         events: list[dict] = []
         for i, r in enumerate(self.rules):
             kind = r.get("kind")
@@ -101,11 +115,14 @@ class Engine:
     def _count(self, i, r, ts, hits, events):
         key = (i, None)
         if _OPS[r.get("op", ">=")](len(hits), r["k"]):
-            start = self._since.setdefault(key, ts)
+            start, last = self._timer.get(key, (ts, ts))
+            if ts - last > self.track_ttl_s:
+                start = ts
+            self._timer[key] = (start, ts)
             if ts - start >= r.get("for_s", 0) and self._fire(ts, key):
                 events.append(self._ev(i, "count", f"{len(hits)} {r['class']} {r.get('op', '>=')} {r['k']}"))
         else:
-            self._since.pop(key, None)
+            self._expire(ts, i, set())
 
     def _line(self, i, r, ts, hits, events):
         want = {"in": 1, "out": -1}.get(r.get("direction", "both"))
@@ -117,15 +134,19 @@ class Engine:
             key = (i, tid)
             seen.add(key)
             cur = _anchor(p)
-            prev = self._prev.get(key)
-            self._prev[key] = cur
-            if prev is None:
+            side = _side(cur, r["line"])
+            st = self._side.get(key)
+            if st is not None and ts - st[2] > self.track_ttl_s:
+                st = None
+            if side == 0:  # on the line: keep the last real side
+                if st is not None:
+                    self._side[key] = (st[0], st[1], ts)
                 continue
-            c = _crossing(prev, cur, r["line"])
-            if c and (want is None or c == want) and self._fire(ts, key):
-                events.append(self._ev(i, "line", f"{r['class']} crossed line ({'in' if c > 0 else 'out'})", p))
-        for key in [k for k in self._prev if k[0] == i and k not in seen]:
-            del self._prev[key]
+            if st is not None and st[0] != side and _hits_segment(st[1], cur, r["line"]):
+                if (want is None or side == want) and self._fire(ts, key):
+                    events.append(self._ev(i, "line", f"{r['class']} crossed line ({'in' if side > 0 else 'out'})", p))
+            self._side[key] = (side, cur, ts)
+        self._expire(ts, i, seen)
 
     def _dwell(self, i, r, ts, hits, events):
         pts = self.zones.get(r.get("zone_id"))
@@ -136,8 +157,10 @@ class Engine:
                 continue
             key = (i, tid)
             seen.add(key)
-            start = self._since.setdefault(key, ts)
-            if ts - start >= r["seconds"] and self._fire(ts, key):
+            start, last = self._timer.get(key, (ts, ts))
+            if ts - last > self.track_ttl_s:
+                start = ts
+            self._timer[key] = (start, ts)
+            if ts - start > r["seconds"] and self._fire(ts, key):
                 events.append(self._ev(i, "dwell", f"{r['class']} #{tid} dwelled {ts - start:.0f}s in zone {r['zone_id']}", p))
-        for key in [k for k in self._since if k[0] == i and k not in seen]:
-            del self._since[key]
+        self._expire(ts, i, seen)
