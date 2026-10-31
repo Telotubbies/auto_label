@@ -153,7 +153,7 @@ export function Progress({ value, className }: { value: number; className?: stri
 
 export function PageHeader({ title, desc, actions }: { title: ReactNode; desc?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 px-8 pb-4 pt-6">
+    <div className="mx-8 mb-4 mt-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-gradient-to-r from-secondary to-tertiary-container px-5 py-4 text-secondary-foreground">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         {desc && <p className="mt-1 text-sm text-muted-foreground">{desc}</p>}
@@ -165,7 +165,7 @@ export function PageHeader({ title, desc, actions }: { title: ReactNode; desc?: 
 
 export function Stat({ label, value, sub }: { label: ReactNode; value: ReactNode; sub?: ReactNode }) {
   return (
-    <Card className="p-4">
+    <Card className="border-l-4 border-l-primary p-4">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-bold tracking-tight">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}

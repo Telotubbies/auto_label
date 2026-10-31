@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronsLeft, Cpu, Database, FolderGit2, Layers, LogOut,
+  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database, FolderGit2, Layers, LogOut,
   Monitor, Moon, Plus, Rocket, Settings, Sun, Tag, Tags, Upload, User, X, Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
@@ -94,7 +94,7 @@ export function AppSidebar() {
           <Settings className="h-4 w-4" />{!collapsed && 'Settings'}
         </NavLink>
         <div className="flex items-center gap-2 px-2.5 py-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-tertiary text-[11px] font-bold text-white">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
           {!collapsed && <span className="flex-1 truncate text-[12px]">{me?.name}</span>}
           {!collapsed && (
             <Dropdown align="right" trigger={<button className="cursor-pointer" aria-label="Account menu"><ChevronDown className="h-3.5 w-3.5" /></button>}
@@ -139,7 +139,7 @@ export function ProjectPanel({ project }: { project: Project }) {
   const me = useApp((s) => s.me)
   const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? ws
   return (
-    <Glass as="div" className="glass-sidebar m-2 mr-0 flex h-[calc(100%-1rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl">
+    <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 flex h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl">
       <div className="px-3 pt-3">
         <Link to={`/${ws}`} className="text-[11px] font-semibold tracking-wide text-muted-foreground hover:text-foreground">← {wsName.toUpperCase()}</Link>
       </div>
@@ -191,17 +191,37 @@ export function GpuBadge() {
   return <span className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title="GPU holder"><Cpu className="h-3.5 w-3.5" aria-hidden />{text}</span>
 }
 
+const pageLabels: Record<string, string> = { models: 'Models', deployments: 'Deployments', activity: 'Activity', settings: 'Settings' }
+
 export function TopBar() {
   const { ws = '' } = useParams()
   const me = useApp((s) => s.me)
+  const m = useMatch('/:ws/:project/*')
+  const slug = m?.params.project ?? ''
+  const isProject = !!slug && !RESERVED.has(slug)
+  const proj = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug), enabled: isProject })
+  const rest = (m?.params['*'] ?? '').split('/')[0]
+  const page = isProject ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label : pageLabels[slug]
+  const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'
   const { mode } = useThemePrefs()
-  const next = THEME_CYCLE[(THEME_CYCLE.findIndex((m) => m.id === mode) + 1) % THEME_CYCLE.length]
-  const cur = THEME_CYCLE.find((m) => m.id === mode) ?? THEME_CYCLE[0]
+  const next = THEME_CYCLE[(THEME_CYCLE.findIndex((x) => x.id === mode) + 1) % THEME_CYCLE.length]
+  const cur = THEME_CYCLE.find((x) => x.id === mode) ?? THEME_CYCLE[0]
   const Icon = cur.icon
+  const crumbs = [{ label: wsName, to: `/${ws}` }, ...(isProject ? [{ label: proj.data?.name ?? slug, to: `/${ws}/${slug}` }] : []), ...(page ? [{ label: page, to: '' }] : [])]
   return (
-    <Glass as="header" className="m-2 mb-0 flex h-11 shrink-0 items-center gap-3 rounded-2xl px-4">
-      <span className="truncate text-sm font-semibold">{me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'}</span>
+    <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4">
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex min-w-0 items-center gap-1.5">
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+            {c.to && i < crumbs.length - 1
+              ? <Link to={c.to} className="truncate text-muted-foreground hover:text-foreground">{c.label}</Link>
+              : <span className="truncate font-semibold" aria-current={i === crumbs.length - 1 ? 'page' : undefined}>{c.label}</span>}
+          </span>
+        ))}
+      </nav>
       <div className="ml-auto flex items-center gap-2">
+        <div id="topbar-actions" className="flex items-center gap-2" />
         <GpuBadge />
         <button type="button" onClick={() => setThemePrefs({ mode: next.id })} aria-label={`${cur.label}. Switch to ${next.label.toLowerCase()}`}
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground">
@@ -251,12 +271,15 @@ export function JobTray() {
 }
 
 export function AppLayout() {
+  const m = useMatch('/:ws/:project/*')
+  const isProject = !!m?.params.project && !RESERVED.has(m.params.project)
   return (
     <div className="app-bg flex h-screen overflow-hidden">
       <AppSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative min-w-0 flex-1">
         <TopBar />
-        <main className="min-h-0 flex-1 overflow-y-auto"><Outlet /></main>
+        {/* Content scrolls underneath the floating glass bar, so the blur has something to blur. Project pages scroll inside ProjectLayout. */}
+        <main data-scroll className={cn('h-full', isProject ? 'overflow-hidden' : 'overflow-y-auto pt-14')}><Outlet /></main>
       </div>
       <JobTray />
     </div>

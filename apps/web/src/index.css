@@ -84,61 +84,80 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-* { border-color: var(--border); }
-html { color-scheme: light dark; }
-body { font-family: var(--font-ui); background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; line-height: 1.5; }
-:lang(th) { line-height: 1.6; word-break: normal; overflow-wrap: anywhere; }
+/* Rules live in layers so Tailwind utilities (border-input, border-destructive, outline-none ...) can override them. */
+@layer base {
+  * { border-color: var(--border); }
+  html { color-scheme: light dark; }
+  body { font-family: var(--font-ui); background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  :lang(th) { line-height: 1.6; word-break: normal; overflow-wrap: anywhere; }
+  @media (prefers-contrast: more) { * { border-color: var(--foreground); } }
+}
 /* Thai is never cut with slice(): clip with CSS instead */
 .truncate-th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 3:1 focus ring; scroll-padding keeps focused items clear of the sticky top bar and the job tray */
-:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-main, [data-scroll] { scroll-padding: 4rem 1rem 7rem; }
-button, [role=button], [role=switch] { min-height: 24px; min-width: 24px; }
+@layer components {
+  /* 3:1 focus ring; scroll-padding keeps focused items clear of the floating top bar and the job tray */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  main, [data-scroll] { scroll-padding: 4rem 1rem 7rem; }
+  button, [role=button], [role=switch] { min-height: 24px; min-width: 24px; }
+
+  /* ===== Liquid Glass (chrome only) =====
+     Solid by default. Blur turns on only where supported, and is switched back off for prefers-reduced-transparency
+     and the Settings toggle (html[data-reduce-transparency], needed because Safari ignores the media query).
+     Literal blur values: Safari wants the -webkit- prefix and static numbers. Max blur 20px; motion never animates blur. */
+  .glass {
+    --glass-solid: color-mix(in oklab, var(--popover) 92%, var(--foreground));
+    --glass-tint: color-mix(in oklab, var(--popover) 58%, transparent);
+    --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / .55), rgb(255 255 255 / .08) 38%, transparent 62%);
+    --glass-hi: rgb(255 255 255 / .7);
+    --glass-edge: color-mix(in oklab, var(--foreground) 14%, transparent);
+    background-color: var(--glass-solid);
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 rgb(0 0 0 / .05), 0 10px 30px -14px rgb(0 0 0 / .35);
+  }
+  .dark .glass { --glass-hi: rgb(255 255 255 / .22); --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / .16), rgb(255 255 255 / .03) 38%, transparent 62%); --glass-tint: color-mix(in oklab, var(--popover) 62%, transparent); }
+  .glass-overlay { --glass-tint: color-mix(in oklab, var(--popover) 80%, transparent); }
+  .dark .glass-overlay { --glass-tint: color-mix(in oklab, var(--popover) 84%, transparent); }
+  .glass-sidebar { --glass-solid: var(--sidebar); --glass-tint: color-mix(in oklab, var(--sidebar) 58%, transparent); }
+  .dark .glass-sidebar { --glass-tint: color-mix(in oklab, var(--sidebar) 60%, transparent); }
+
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass { background-color: var(--glass-tint); background-image: var(--glass-sheen); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%); }
+    .glass-overlay { -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass, .glass-overlay { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .app-bg { background: var(--background); }
+  }
+  html[data-reduce-transparency] .glass, html[data-reduce-transparency] .glass-overlay { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html[data-reduce-transparency] .app-bg { background: var(--background); }
+
+  /* Ambient wash behind the chrome so the glass has something to refract. Content cards stay solid on top. */
+  .app-bg {
+    background:
+      radial-gradient(60rem 36rem at 8% -10%, color-mix(in oklab, var(--primary) 24%, transparent), transparent 70%),
+      radial-gradient(48rem 30rem at 100% 0%, color-mix(in oklab, var(--tertiary) 20%, transparent), transparent 70%),
+      var(--background);
+  }
+  .dark .app-bg {
+    background:
+      radial-gradient(60rem 38rem at 8% -10%, color-mix(in oklab, var(--primary) 38%, transparent), transparent 70%),
+      radial-gradient(48rem 32rem at 100% 0%, color-mix(in oklab, var(--tertiary) 30%, transparent), transparent 70%),
+      var(--background);
+  }
+}
+
+/* Higher-contrast preference: 2px borders on every bordered control, not only glass (utilities layer so they win over .border) */
+@layer utilities {
+  @media (prefers-contrast: more) {
+    .border, .glass { border-width: 2px; }
+    .glass { border-color: var(--foreground); }
+  }
+}
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--foreground) 22%, transparent); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--foreground) 38%, transparent); }
-
-/* ===== Liquid Glass (chrome only) =====
-   Solid by default. Blur turns on only where supported, and is switched back off for prefers-reduced-transparency
-   and the Settings toggle (html[data-reduce-transparency], needed because Safari ignores the media query).
-   Literal blur values: Safari wants the -webkit- prefix and static numbers. Max blur 20px; motion never animates blur. */
-.glass {
-  --glass-solid: color-mix(in oklab, var(--popover) 92%, var(--foreground));
-  --glass-tint: color-mix(in oklab, var(--popover) 74%, transparent);
-  --glass-hi: rgb(255 255 255 / .55);
-  --glass-edge: color-mix(in oklab, var(--foreground) 14%, transparent);
-  background: var(--glass-solid);
-  border: 1px solid var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 8px 24px -12px rgb(0 0 0 / .3);
-}
-.dark .glass { --glass-hi: rgb(255 255 255 / .14); }
-.glass-overlay { --glass-tint: color-mix(in oklab, var(--popover) 86%, transparent); }
-.glass-sidebar { --glass-solid: var(--sidebar); --glass-tint: color-mix(in oklab, var(--sidebar) 70%, transparent); }
-
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .glass { background: var(--glass-tint); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%); }
-  .glass-overlay { -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .glass, .glass-overlay { background: var(--glass-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .app-bg { background: var(--background); }
-}
-html[data-reduce-transparency] .glass, html[data-reduce-transparency] .glass-overlay { background: var(--glass-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
-html[data-reduce-transparency] .app-bg { background: var(--background); }
-@media (prefers-contrast: more) {
-  .glass { border-width: 2px; border-color: var(--foreground); }
-  * { border-color: var(--foreground); }
-}
-
-/* Ambient wash behind the chrome so the glass has something to refract. Content cards stay solid on top. */
-.app-bg {
-  background:
-    radial-gradient(60rem 36rem at 8% -10%, color-mix(in oklab, var(--primary) 22%, transparent), transparent 70%),
-    radial-gradient(48rem 30rem at 100% 0%, color-mix(in oklab, var(--tertiary) 18%, transparent), transparent 70%),
-    var(--background);
-}
 
 /* ===== Motion layer — opacity/transform only, blur is never animated ===== */
 @keyframes ldFadeIn { from { opacity: 0 } to { opacity: 1 } }

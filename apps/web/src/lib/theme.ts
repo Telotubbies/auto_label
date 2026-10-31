@@ -1,5 +1,5 @@
 // Material dynamic colour (HCT) -> OKLCH CSS variables, plus the class/heatmap palettes and theme preferences.
-import { useSyncExternalStore } from 'react'
+import { useLayoutEffect, useSyncExternalStore } from 'react'
 import {
   Hct, MaterialDynamicColors as M, SchemeExpressive, SchemeTonalSpot, SchemeVibrant, TonalPalette, argbFromHex,
   type DynamicScheme,
@@ -62,8 +62,8 @@ export function applyTheme(seed: string, mode: Mode, contrast: Contrast = 0, sch
     '--sidebar-foreground': c(M.onSurface),
     '--sidebar-primary': c(M.primary),
     '--sidebar-primary-foreground': c(M.onPrimary),
-    '--sidebar-accent': c(M.secondaryContainer),
-    '--sidebar-accent-foreground': c(M.onSecondaryContainer),
+    '--sidebar-accent': c(M.primaryContainer),
+    '--sidebar-accent-foreground': c(M.onPrimaryContainer),
     '--sidebar-border': c(M.outlineVariant),
     '--sidebar-ring': c(M.primary),
     '--success': status(145, dark ? 80 : 35),
@@ -122,6 +122,14 @@ export function initTheme(): void {
     for (const q of ['(prefers-color-scheme: dark)', '(prefers-contrast: more)'])
       matchMedia(q).addEventListener('change', paint)
   }
+}
+
+/** Screens not yet reskinned for dark (the annotation editor, until Task 17) render light regardless of the preference. */
+export function useLightOnly(): void {
+  useLayoutEffect(() => {
+    applyTheme(prefs.seed, 'light', prefs.contrast, prefs.scheme)
+    return () => paint()
+  }, [])
 }
 
 export function useThemePrefs(): ThemePrefs {
