@@ -4,7 +4,7 @@ A batch pipeline for generating PPE datasets from raw images using SAM 3.1, huma
 
 This repository covers the full workflow from **raw image → auto-label → verified dataset → training → evaluation → ONNX export → engineering report**, with emphasis on reproducibility, checkpoint recovery, explicit configuration, and traceable artifacts.
 
-> **Implementation status:** The core system runs as an offline batch CLI and already has production model artifacts, but it is not a multi-user production service. See [Known limitations and operational risks](#known-limitations-and-operational-risks) before deploying.
+> **Implementation status:** The core pipeline runs as an offline batch CLI. The multi-user labeling platform built on top of it, **LabelDesk**, lives in [`apps/`](apps/README.md); deployment guide: [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## Table of contents
 
@@ -35,7 +35,7 @@ This repository covers the full workflow from **raw image → auto-label → ver
 | Evaluation | Precision, recall, mAP50, mAP50-95, per-class results, and failure artifacts | Implemented |
 | Deployment artifacts | Four production `.pt` models and four ONNX exports | Available |
 | Root orchestration | Interactive/direct CLI with `sam`, `yolo`, and `pred` modes | Implemented for the configured WSL2 environment |
-| REST API, job queue, review UI | No runtime implementation | Not implemented |
+| REST API, job queue, review UI | LabelDesk SaaS in [`apps/`](apps/README.md): FastAPI + React, multi-workspace, annotate → review → version → train → deploy | Implemented |
 
 ## Architecture
 
