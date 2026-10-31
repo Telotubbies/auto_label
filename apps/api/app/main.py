@@ -8,10 +8,11 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
+from .gpu import GpuBusy
 from .routers import auth, images, playground, projects, registry, remote, training, versions, workspaces
 from .security import check_signature
 
@@ -31,6 +32,14 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="LabelDesk API", version="1.0.0", lifespan=lifespan)
+
+
+@app.exception_handler(GpuBusy)
+async def gpu_busy(_request, exc: GpuBusy):
+    """A training lease owns the card: inference is unavailable (spec 3.6)."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                    allow_credentials=CORS_ORIGINS != ["*"])

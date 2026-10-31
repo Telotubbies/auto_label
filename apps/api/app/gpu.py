@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 log = logging.getLogger("labeldesk.gpu")
 
 
+class GpuBusy(RuntimeError):
+    """A model lease was refused because something else holds the GPU."""
+
+
 def gpu_label(holder: str | None, vlm_sleeping: bool | None) -> str:
     """Human-readable badge text for GET /api/gpu (the web GpuBadge renders `label` verbatim)."""
     if holder:
@@ -50,6 +54,7 @@ class GpuScheduler:
         self._pause: Callable[[], None] = lambda: None
         self._resume: Callable[[], None] = lambda: None
         self._lock = threading.RLock()
+        self._local = threading.local()                              # training_scope marker
 
     @property
     def vlm_sleeping(self) -> bool | None:
@@ -64,12 +69,14 @@ class GpuScheduler:
               unloader: Callable[[Any], None]) -> Any:
         """Return the cached object for `key`, loading it after LRU-evicting other leases."""
         with self._lock:
+            # the holder check comes before the cache hit: while training owns the card, API requests
+            # must get GpuBusy even if evaluation cached the very same model a moment ago
+            if self.holder is not None and not getattr(self._local, "training", False):
+                raise GpuBusy(f"GPU busy: {self.holder}")
             hit = self._leases.get(key)
             if hit is not None:
                 self._leases.move_to_end(key)
                 return hit.obj
-            if self.holder is not None:
-                raise RuntimeError(f"GPU busy: {self.holder}")
             if vram_mb > self.budget_mb:
                 raise RuntimeError(f"{key} needs {vram_mb} MiB but the GPU budget is {self.budget_mb} MiB")
             while self._used_mb + vram_mb > self.budget_mb:
@@ -93,6 +100,20 @@ class GpuScheduler:
                     "leases": [{"key": k, "vram_mb": l.vram_mb} for k, l in self._leases.items()]}
 
     # ---- exclusive access (training)
+    @contextmanager
+    def training_scope(self) -> Iterator[None]:
+        """Let the training thread load models through the normal lease path.
+
+        Training evaluates the model it just produced while it still owns the card. Only this
+        thread-local scope bypasses the holder check, so API requests keep getting GpuBusy.
+        """
+        previous = getattr(self._local, "training", False)
+        self._local.training = True
+        try:
+            yield
+        finally:
+            self._local.training = previous
+
     @contextmanager
     def exclusive(self, reason: str) -> Iterator[None]:
         """Unload every model, pause streams and put vLLM to sleep while `reason` owns the GPU."""

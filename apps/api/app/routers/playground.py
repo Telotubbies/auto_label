@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..adapters import resolve, validate_prediction
 from ..deps import Ctx, ws_ctx
+from ..gpu import GpuBusy
 from ..services.imaging import open_image
 
 router = APIRouter(prefix="/api/ws/{ws}/playground", tags=["playground"])
@@ -42,6 +43,8 @@ def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | 
         pred = r.predict(im, **kw)
         validate_prediction(pred)
         out["prediction"] = pred
+    except GpuBusy:         # training owns the card: every model is unavailable, so 503 the request
+        raise
     except Exception as e:  # one model failing must not fail the others
         out["error"] = _message(e)
     out["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)

@@ -54,11 +54,48 @@ def _base_variant(variant: str) -> str:
     return variant
 
 
+def _lean_metrics(metrics: dict | None) -> dict:
+    """The list endpoint drops per-image detections; /models/{id} carries them for the UI slider."""
+    out = dict(metrics or {})
+    ev = out.get("eval")
+    if isinstance(ev, dict) and "detections" in ev:
+        out["eval"] = {k: v for k, v in ev.items() if k != "detections"}
+    return out
+
+
 def model_out(m: TrainedModel) -> dict:
     return {"id": m.id, "name": m.name, "arch": m.arch, "task": m.task, "status": m.status, "metrics": m.metrics,
             "history": m.history, "classes": m.classes, "versionId": m.version_id, "jobId": m.job_id,
             "family": m.family, "variant": m.variant, "license": m.license,
             "created": m.created, "weightsUrl": sign_path(m.weights) if m.weights else None}
+
+
+def _files_in(obj) -> list[str]:
+    """Collect image file names from an eval detail (worst rows, confusion cells, detections)."""
+    if isinstance(obj, str):
+        return [obj]
+    if isinstance(obj, dict):
+        if isinstance(obj.get("file"), str):
+            return [obj["file"]]
+        return [f for value in obj.values() for f in _files_in(value)]
+    if isinstance(obj, (list, tuple)):
+        return [f for value in obj for f in _files_in(value)]
+    return []
+
+
+def _eval_images(m: TrainedModel) -> dict:
+    """Signed URLs for every image the eval report shows (worst, confusion matrix, detections)."""
+    ev = (m.metrics or {}).get("eval") or {}
+    split = ev.get("split")
+    if not split:
+        return {}
+    files: list[str] = []
+    for row in ev.get("worst") or []:
+        files += _files_in(row)
+    files += _files_in((ev.get("confusion") or {}).get("images"))
+    for det in ev.get("detections") or []:
+        files += _files_in(det)
+    return {f: sign_path(f"versions/{m.version_id}/{split}/{f}") for f in dict.fromkeys(files)}
 
 
 @router.get(P + "/models")
@@ -68,11 +105,37 @@ def models(c: Ctx = Depends(project_ctx)):
     out = []
     for m in rows:
         d = model_out(m)
+        d["metrics"] = _lean_metrics(m.metrics)
         v = c.db.get(Version, m.version_id)
         d["version"] = v.number if v else None
         j = c.db.get(Job, m.job_id) if m.job_id else None
         d["job"] = job_out(j) if j else None
         out.append(d)
+    return out
+
+
+@router.get(P + "/leaderboard")
+def leaderboard(c: Ctx = Depends(project_ctx)):
+    """Every model of the project, best eval COCO AP first; comparable = same dataset version as the winner."""
+    rows = c.db.scalars(select(TrainedModel).where(TrainedModel.project_id == c.project.id)).all()
+    out = []
+    for m in rows:
+        ev = (m.metrics or {}).get("eval") or {}
+        note = str(ev.get("note") or "").lower()
+        scored = bool(ev.get("coco")) and "not evaluated" not in note and "skipped" not in note
+        ap = (ev.get("coco") or {}).get("AP") if scored else None
+        latency = ev.get("latency_ms") if scored else None
+        v = c.db.get(Version, m.version_id)
+        out.append({"id": m.id, "name": m.name, "variant": m.variant, "task": m.task, "status": m.status,
+                    "version": v.number if v else None, "versionId": m.version_id,
+                    "ap": float(ap) if isinstance(ap, (int, float)) else None,
+                    "latency_ms": float(latency) if isinstance(latency, (int, float)) else None,
+                    "created": m.created})
+    out.sort(key=lambda r: (r["ap"] is None, -(r["ap"] or 0.0), -(r["created"] or 0.0)))
+    best = next((r for r in out if r["ap"] is not None), None)
+    for r in out:
+        # only models scored on the winner's dataset version are directly comparable
+        r["comparable"] = bool(best and r["ap"] is not None and r["versionId"] == best["versionId"])
     return out
 
 
@@ -166,7 +229,8 @@ def _model(c: Ctx, mid: str) -> TrainedModel:
 
 @router.get(P + "/models/{mid}")
 def get_model(mid: str, c: Ctx = Depends(project_ctx)):
-    return model_out(_model(c, mid))
+    m = _model(c, mid)
+    return {**model_out(m), "evalImages": _eval_images(m)}
 
 
 @router.delete(P + "/models/{mid}")

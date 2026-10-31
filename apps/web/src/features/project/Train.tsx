@@ -17,11 +17,19 @@ export default function Train() {
   const opts = useQuery({ queryKey: ['train-opts', ws, project.slug], queryFn: () => get<TrainOptions>(`${api.P(ws, project.slug)}/train/options`) })
   const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug) })
   const ready = (versions.data ?? []).filter((v) => v.status === 'ready')
-  const [f, setF] = useState({ version_id: sp.get('version') ?? '', family: 'yolo', variant: 'yolo26n', epochs: 50, imgsz: 640, batch: 16, name: '', max_minutes: '', resume_from: '' })
+  const [preset, setPreset] = useState<'fast' | 'advanced'>('fast')
+  const [f, setF] = useState({ version_id: sp.get('version') ?? '', family: 'yolo', variant: 'yolo26n', epochs: 10, imgsz: 640, batch: 16, name: '', max_minutes: '', resume_from: '' })
   const fams = opts.data?.families ?? []
   const fam = fams.find((x) => x.family === f.family)
   const resumable = (models.data ?? []).filter((m) => m.status === 'ready' && m.task === opts.data?.task && !!m.variant)
   const pickFamily = (id: string) => { const n = fams.find((x) => x.family === id); if (n?.available) setF({ ...f, family: id, variant: n.variants[0].id, resume_from: '' }) }
+  const pickPreset = (p: 'fast' | 'advanced') => {
+    setPreset(p)
+    if (p === 'fast') setF((x) => ({ ...x, epochs: 10, imgsz: 640, batch: 16 }))
+  }
+  const version = ready.find((v) => v.id === f.version_id)
+  const trainImages = version?.stats.splits?.train ?? 0
+  const estMinutes = trainImages > 0 ? Math.max(1, Math.round((trainImages * f.epochs * (f.imgsz / 640) ** 2) / 600)) : null
   const resumeTarget = (m: ModelItem) => {
     for (const x of fams) { const v = x.variants.find((y) => y.id === m.variant); if (v) return { family: x.family, variant: v.id } }
     for (const x of fams) { const v = x.variants.find((y) => m.variant?.startsWith(y.id)); if (v) return { family: x.family, variant: v.id } }
@@ -77,11 +85,29 @@ export default function Train() {
               {fam && <p className="mt-3 text-xs text-muted-foreground">Weights: <span className="font-mono">{fam.variants.find((v) => v.id === f.variant)?.weights}</span></p>}
             </Card>
             <Card className="p-5">
-              <h3 className="mb-3 font-semibold">3. Hyperparameters</h3>
-              <div className="grid gap-4 md:grid-cols-4">
-                <Field label="Epochs"><Input type="number" min={1} max={500} value={f.epochs} onChange={(e) => setF({ ...f, epochs: +e.target.value })} /></Field>
-                <Field label="Image size"><Select className="w-full" value={f.imgsz} onChange={(e) => setF({ ...f, imgsz: +e.target.value })}>{[320, 416, 512, 640, 800, 1024].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-                <Field label="Batch"><Select className="w-full" value={f.batch} onChange={(e) => setF({ ...f, batch: +e.target.value })}>{[2, 4, 8, 16, 32, 64].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-semibold">3. Hyperparameters</h3>
+                <div role="group" aria-label="Training preset" className="inline-flex rounded-lg border bg-muted p-0.5">
+                  {(['fast', 'advanced'] as const).map((p) => (
+                    <button key={p} type="button" aria-pressed={preset === p} onClick={() => pickPreset(p)}
+                      className={cn('cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors', preset === p ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                      {p === 'fast' ? 'Fast' : 'Advanced'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {preset === 'fast' ? (
+                <p className="rounded-md border bg-muted/60 px-3 py-2 text-sm">
+                  Runs <b>10 epochs</b> at <b>640 px</b> with batch <b>16</b>, starting from COCO-pretrained weights — no tuning needed.
+                </p>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field label="Epochs"><Input type="number" min={1} max={500} value={f.epochs} onChange={(e) => setF({ ...f, epochs: +e.target.value })} /></Field>
+                  <Field label="Image size"><Select className="w-full" value={f.imgsz} onChange={(e) => setF({ ...f, imgsz: +e.target.value })}>{[320, 416, 512, 640, 800, 1024].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+                  <Field label="Batch"><Select className="w-full" value={f.batch} onChange={(e) => setF({ ...f, batch: +e.target.value })}>{[2, 4, 8, 16, 32, 64].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+                </div>
+              )}
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
                 <Field label="Name (optional)"><Input value={f.name} placeholder={`${project.slug}/…`} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
                 <Field label="Max minutes (optional)"><Input type="number" min={1} value={f.max_minutes} placeholder="no limit" onChange={(e) => setF({ ...f, max_minutes: e.target.value })} /></Field>
                 <Field label="Continue from model (optional)">
@@ -93,7 +119,14 @@ export default function Train() {
               </div>
               <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Cpu className="h-3.5 w-3.5" /> Costs 3 credits. Starts from COCO-pretrained weights (transfer learning). The max-minutes cap stops training after the current epoch and keeps the best weights.</p>
             </Card>
-            <div className="flex justify-end"><Button size="md" disabled={!f.version_id} onClick={start}><BrainCircuit className="h-4 w-4" /> Start Training</Button></div>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {estMinutes != null && (
+                <p className="text-xs text-muted-foreground" title="Rough estimate: train images × epochs × (image size ÷ 640)² ÷ 600, using typical YOLO throughput on an RTX 3080 Ti. Your hardware and dataset will differ.">
+                  ≈ <b className="font-semibold text-foreground">{estMinutes} min</b> on an RTX 3080 Ti
+                </p>
+              )}
+              <Button size="md" disabled={!f.version_id} onClick={start}><BrainCircuit className="h-4 w-4" /> Start Training</Button>
+            </div>
           </>
         )}
       </div>

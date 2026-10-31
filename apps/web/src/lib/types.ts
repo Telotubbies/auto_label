@@ -37,9 +37,10 @@ export interface Batch { id: string; name: string; source: string; created: numb
 export interface BoardCard { batchId: string | null; batchName: string; created: number; assigneeId: string | null; assignee: string | null; images: number; annotated: number }
 export interface Board { columns: Record<Status, BoardCard[]>; members: { id: string; name: string }[] }
 
+export interface JobStage { status: 'done' | 'running' | 'failed'; t: number; note?: string }
 export interface Job {
   id: string; kind: 'version' | 'export' | 'train' | 'autolabel'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
-  progress: number; params: Record<string, any>; result: Record<string, any>; error: string; created: number
+  progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
 export interface Version {
@@ -47,12 +48,45 @@ export interface Version {
   stats: { images?: number; source_images?: number; splits?: Record<string, number>; classes?: Record<string, number>; class_names?: string[] }
   created: number; job: Job | null; exports: Record<string, Job & { url: string | null }>
 }
+export interface ModelEvalDetection {
+  file: string; width: number; height: number
+  gt: { cls: string; bbox: number[] }[]
+  pred: { cls: string; conf: number; bbox: number[] }[]
+}
+export interface ModelEval {
+  split: 'test' | 'valid'
+  note: string
+  coco: {
+    AP: number; AP50: number; AP75: number; APs: number; APm: number; APl: number
+    AR1: number; AR10: number; AR100: number; ARs: number; ARm: number; ARl: number
+  }
+  per_class: { class: string; AP: number; AP50: number }[]
+  f1_best: { conf: number; f1: number }
+  /** images[gtRow][predCol] = file names; the last label is "background". */
+  confusion: { labels: string[]; matrix: number[][]; images: string[][][] }
+  pr_curve: { recall: number; precision: number }[]
+  worst: string[]
+  latency_ms: number
+  /** Number of images in the evaluated split (detections may be capped below it). */
+  split_images?: number
+  detections?: ModelEvalDetection[]
+}
 export interface ModelItem {
   id: string; name: string; arch: string; task: 'detect' | 'segment' | 'classify'; status: 'queued' | 'training' | 'ready' | 'failed'
-  metrics: { map50?: number; map5095?: number; precision?: number; recall?: number; accuracy_top1?: number; accuracy_top5?: number }
+  metrics: {
+    map50?: number; map5095?: number; precision?: number; recall?: number; accuracy_top1?: number; accuracy_top5?: number
+    eval?: ModelEval
+  }
   history: Record<string, number>[]; classes: string[]; versionId: string; version?: number; jobId: string | null
   created: number; weightsUrl: string | null; job?: Job | null; project?: string; project_name?: string
   family?: string; variant?: string; license?: string
+  /** Detail endpoint only: eval file name -> signed "/api/files/…" path. */
+  evalImages?: Record<string, string>
+}
+export interface LeaderboardRow {
+  id: string; name: string; variant: string; task: ModelItem['task']; status: ModelItem['status']
+  version: number | null; versionId: string; ap: number | null; latency_ms: number | null
+  comparable: boolean; created: number
 }
 export interface TrainVariant { id: string; label: string; weights: string }
 export interface TrainFamily { family: string; label: string; license: string; available: boolean; reason: string; variants: TrainVariant[] }

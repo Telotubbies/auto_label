@@ -1,8 +1,8 @@
 // Typed API client. VITE_API_URL points at the API origin when web and api are on
 // different hosts (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 import type {
-  Annotation, Analytics, Batch, Board, ImageItem, Job, LabelClass, Me, Member, ModelItem, PlaygroundResult, Project,
-  RegistryItem, Version, WorkspaceInfo,
+  Annotation, Analytics, Batch, Board, ImageItem, Job, LabelClass, LeaderboardRow, Me, Member, ModelItem, PlaygroundResult,
+  Project, RegistryItem, Version, WorkspaceInfo,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -101,6 +101,8 @@ export const api = {
   versions: (ws: string, p: string) => get<Version[]>(`${P(ws, p)}/versions`),
   formats: (ws: string, p: string) => get<{ id: string; label: string }[]>(`${P(ws, p)}/versions/formats`),
   models: (ws: string, p: string) => get<ModelItem[]>(`${P(ws, p)}/models`),
+  model: (ws: string, p: string, id: string) => get<ModelItem>(`${P(ws, p)}/models/${id}`),
+  leaderboard: (ws: string, p: string) => get<LeaderboardRow[]>(`${P(ws, p)}/leaderboard`),
   jobs: (ws: string, p: string, kind = '') => get<Job[]>(`${P(ws, p)}/jobs${kind ? `?kind=${kind}` : ''}`),
   analytics: (ws: string, p: string) => get<Analytics>(`${P(ws, p)}/analytics`),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),

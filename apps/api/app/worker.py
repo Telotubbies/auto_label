@@ -4,6 +4,7 @@ Run standalone (`python -m app.worker`) on the GPU host, or embedded in the api
 process (LD_EMBEDDED_WORKER=1, the dev default).
 """
 import logging
+import statistics
 import threading
 import time
 import traceback
@@ -11,14 +12,72 @@ import traceback
 from sqlalchemy import select, update
 
 from .adapters import ADAPTERS
+from .adapters.ultralytics_ad import _start_weights
 from .config import DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
 from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, now, set_annotations
 from .services import exporters, ml, segment, versioning, imaging
+from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
 POLL = 1.5
+WATCHDOG_MIN_S = 120.0                      # never call a run stalled sooner than this
+WATCHDOG_POLL_S = 0.01                      # floor for the adaptive poll (tests shrink the limit)
+
+
+def _stall_limit(epoch_secs: list[float]) -> float:
+    """A run is stalled after 3x its median epoch, but never sooner than WATCHDOG_MIN_S."""
+    return max(WATCHDOG_MIN_S, 3 * statistics.median(epoch_secs)) if epoch_secs else WATCHDOG_MIN_S
+
+
+class _Watchdog:
+    """Daemon thread that flips `stalled` when on_epoch callbacks stop arriving."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True, name="labeldesk-train-watchdog")
+        self.last = time.monotonic()
+        self.epoch_secs: list[float] = []
+        self._seen_epoch = False
+        self.limit = WATCHDOG_MIN_S
+        self.stalled = False
+
+    def start(self) -> "_Watchdog":
+        self._thread.start()
+        return self
+
+    def tick(self) -> None:
+        """Record an on_epoch callback; the gap since the previous one feeds the limit."""
+        now = time.monotonic()
+        with self._lock:
+            if self._seen_epoch:                 # the first gap is model load, not an epoch duration
+                self.epoch_secs.append(now - self.last)
+            self._seen_epoch = True
+            self.last = now
+
+    def reset(self) -> None:
+        with self._lock:
+            self.last = time.monotonic()
+            self.epoch_secs.clear()
+            self._seen_epoch = False
+            self.limit = WATCHDOG_MIN_S
+            self.stalled = False
+
+    def _run(self) -> None:
+        while True:
+            with self._lock:
+                self.limit = _stall_limit(self.epoch_secs)
+                limit = self.limit
+                if time.monotonic() - self.last > limit:
+                    self.stalled = True
+            # poll a few times per limit (max 1 s) so a long run does not spin
+            if self._stop.wait(min(1.0, max(WATCHDOG_POLL_S, limit / 4))):
+                return
+
+    def stop(self) -> None:
+        self._stop.set()
 
 
 def _claim():
@@ -69,34 +128,115 @@ def run_export(job: Job):
         return {"version_id": v.id, "format": fmt, "file": z.relative_to(DATA_DIR).as_posix(), "bytes": z.stat().st_size}
 
 
+def _is_oom(exc: BaseException) -> bool:
+    """torch.cuda.OutOfMemoryError, matched by name so tests need no torch import."""
+    if type(exc).__name__ == "OutOfMemoryError":
+        return True
+    try:
+        import torch
+    except ImportError:
+        return False
+    return isinstance(exc, torch.cuda.OutOfMemoryError)
+
+
 def run_train(job: Job):
+    """Train, evaluate and register one model, recording progress stages for the UI."""
+    t0 = time.monotonic()
+    stages: dict[str, dict] = {}
+
+    def mark(name: str, status: str = "done", note: str | None = None):
+        entry = {"status": status, "t": round(time.monotonic() - t0, 2)}
+        if note:
+            entry["note"] = note
+        stages[name] = entry
+        _set(job.id, result={"stages": stages})     # the UI polls job.result mid-run
+
+    mark("queue")
     with SessionLocal() as db:
         tm = db.get(TrainedModel, job.params["model_id"])
         v = db.get(Version, tm.version_id)
         p = db.get(Project, tm.project_id)
         tm.status = "training"; db.commit()
         history: list[dict] = []
+        variant = tm.variant or tm.arch
+        family = tm.family or "ultralytics"
+        watchdog = _Watchdog()
+        train_note = None
 
         def on_epoch(ep, total, metrics):
+            watchdog.tick()
             history[:] = [h for h in history if h["epoch"] != ep] + [{"epoch": ep, **metrics}]   # final val re-fires the last epoch
             with SessionLocal() as s:
                 s.execute(update(TrainedModel).where(TrainedModel.id == tm.id).values(history=history))
                 s.execute(update(Job).where(Job.id == job.id).values(progress=round(ep / total * 100, 1)))
                 s.commit()
+
+        def should_stop():
+            return _cancelled(job.id) or watchdog.stalled
+
         try:
-            variant = tm.variant or tm.arch
+            mark("acquire_gpu", "running")
             with scheduler.exclusive(f"training {variant}"):
-                res = ADAPTERS[tm.family or "ultralytics"].train(
-                    variant, versioning.version_dir(v), ml.TASK[p.type],
-                    {**job.params.get("options", {}), "model_id": tm.id}, on_epoch, lambda: _cancelled(job.id))
+                mark("acquire_gpu")
+                mark("materialise", "running")
+                versioning.cached_export(v, "coco")      # also proves the dataset is readable
+                mark("materialise")
+                mark("resolve_weights", "running")
+                if family == "ultralytics":
+                    start = _start_weights(variant, tm.task, job.params.get("options", {}).get("resume_from"))
+                    mark("resolve_weights", note=str(start))
+                else:
+                    mark("resolve_weights", note="adapter default")
+                mark("build_config", "running")
+                opts = {**job.params.get("options", {}), "model_id": tm.id}
+                opts.update(batch=int(opts.get("batch", 8)), epochs=int(opts.get("epochs", 30)),
+                            imgsz=int(opts.get("imgsz", 640)), max_minutes=opts.get("max_minutes"),
+                            resume_from=opts.get("resume_from"))
+                mark("build_config")
+                mark("train", "running")
+                watchdog.start()
+                try:
+                    attempts = 0
+                    while True:
+                        try:
+                            res = ADAPTERS[family].train(variant, versioning.version_dir(v), ml.TASK[p.type],
+                                                         opts, on_epoch, should_stop)
+                            break
+                        except Exception as e:
+                            if watchdog.stalled:
+                                raise RuntimeError(f"no training progress for {watchdog.limit:g} s") from e
+                            if not (_is_oom(e) and attempts == 0 and not history and opts["batch"] >= 2):
+                                raise
+                            attempts += 1
+                            opts["batch"] //= 2
+                            train_note = f"retried with batch={opts['batch']}"
+                            watchdog.reset()
+                finally:
+                    watchdog.stop()
+                if watchdog.stalled:
+                    raise RuntimeError(f"no training progress for {watchdog.limit:g} s")
+                mark("train", note=train_note)
+                mark("evaluate", "running")
+                tm.weights, tm.status = res.weights, "ready"     # resolve() only accepts ready models
+                db.commit()
+                with scheduler.training_scope():                  # the holder may load its own model for eval
+                    ev = evaluate(f"trained:{tm.id}", versioning.version_dir(v), tm.task,
+                                  db=db, workspace_id=tm.workspace_id)
+                tm.metrics = {**ml.final_metrics(history, tm.task), "eval": ev}
+                tm.history = history
+                mark("evaluate")
+                mark("register", "running")
+                db.commit()
+                mark("register")
+            mark("release")
         except Exception:
-            tm.status = "failed"; db.commit(); raise
-        db.refresh(tm)
-        tm.weights, tm.status = res.weights, "ready"
-        tm.history = history
-        tm.metrics = ml.final_metrics(history, tm.task)
-        db.commit()
-        return {"model_id": tm.id, **tm.metrics}
+            tm.status = "failed"; db.commit()
+            for name, entry in list(stages.items()):
+                if entry["status"] == "running":
+                    mark(name, "failed")
+            mark("release")                 # the exclusive context has already released the GPU
+            raise
+        return {"model_id": tm.id, **tm.metrics, "stages": stages}
 
 
 def run_autolabel(job: Job):
