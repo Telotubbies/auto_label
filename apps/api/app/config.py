@@ -29,6 +29,9 @@ SAM_ENABLED = _env("LD_SAM_ENABLED", "auto")                  # auto | 1 | 0
 PRETRAINED_DIR = Path(_env("LD_PRETRAINED_DIR", str(REPO_ROOT / "yolo26_ppe" / "models" / "pretrained")))
 TRAIN_DEVICE = _env("LD_TRAIN_DEVICE", "")                    # "" = ultralytics auto, "cpu", "0"
 
+VLM_URL = _env("LD_VLM_URL", "http://localhost:8000/v1").rstrip("/")
+VLM_MODEL = _env("LD_VLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct-AWQ")
+
 # Plans — limits enforced server-side; billing integration is out of scope
 PLANS = {
     "free":       {"label": "Free",       "projects": 3,   "images": 10_000,    "seats": 3,   "credits": 30},

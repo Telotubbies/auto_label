@@ -9,3 +9,4 @@ numpy>=1.26
 opencv-python-headless>=4.8
 # ultralytics pulls torch; the Dockerfile installs the CPU torch wheel first so it isn't the 2 GB CUDA build
 ultralytics>=8.3
+httpx>=0.27

@@ -42,7 +42,7 @@ def test_catalog_lists_families_with_license(c):
     sam = next(i for i in items if i["ref"] == "sam3:sam3.1")
     assert sam["available"] is False and "LD_SAM_ENABLED" in sam["reason"]
     vlm = next(i for i in items if i["ref"] == "vlm:qwen2.5-vl-7b")
-    assert vlm["available"] is False and vlm["reason"] == "vlm adapter not installed" and vlm["kind"] == "vlm"
+    assert vlm["kind"] == "vlm" and vlm["license"] == "Apache-2.0"  # availability depends on a live vLLM
     assert "yolo26l" not in {i["variant"] for i in items}
 
 
