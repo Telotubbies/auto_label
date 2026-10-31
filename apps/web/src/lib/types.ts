@@ -52,7 +52,11 @@ export interface ModelItem {
   metrics: { map50?: number; map5095?: number; precision?: number; recall?: number; accuracy_top1?: number; accuracy_top5?: number }
   history: Record<string, number>[]; classes: string[]; versionId: string; version?: number; jobId: string | null
   created: number; weightsUrl: string | null; job?: Job | null; project?: string; project_name?: string
+  family?: string; variant?: string; license?: string
 }
+export interface TrainVariant { id: string; label: string; weights: string }
+export interface TrainFamily { family: string; label: string; license: string; available: boolean; reason: string; variants: TrainVariant[] }
+export interface TrainOptions { supported: boolean; reason?: string; task?: string; families?: TrainFamily[] }
 export interface Member { id: string; name: string; email: string; role: Role; owner: boolean; joined: number }
 
 export interface Analytics {

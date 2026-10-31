@@ -12,6 +12,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
 
+from ..adapters import resolve
 from ..config import MAX_UPLOAD_MB
 from ..db import get_db
 from ..deps import Ctx, audit, current_user, image_ctx, plan, project_ctx
@@ -453,5 +454,5 @@ def label_assist(image_id: str, body: AssistIn, u: User = Depends(current_user),
         if name not in by_name:
             by_name[name] = ensure_class(db, c.project, name).id
     db.commit()
-    pred = ml.predict(m.weights, imaging.load(img.path), body.confidence)
+    pred = resolve(f"trained:{m.id}", db).predict(imaging.load(img.path), conf=body.confidence, classes=m.classes)
     return {"annotations": ml.to_annotations(pred, by_name)}

@@ -1,6 +1,7 @@
 """Adapter protocol, catalog and registry."""
 import os
 import tempfile
+import time
 
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
@@ -144,3 +145,99 @@ def test_yolo_world_calls_see_their_own_vocabulary(fake_loader):
     ad, im = ADAPTERS["ultralytics"], PImage.new("RGB", (8, 8))
     assert ad.predict("yolov8s-worldv2", im, classes=["cat"])["vocab"] == ["cat"]
     assert ad.predict("yolov8s-worldv2", im, classes=["dog", "car"])["vocab"] == ["dog", "car"]
+
+
+# --- Task 2: train families, run cap, resume ----------------------------------------------
+
+PR = "ppe-detection"
+BASE = f"/api/ws/{WS}/projects/{PR}"
+
+
+def wait_job(c, jid, timeout=900):
+    t = time.time()
+    while time.time() - t < timeout:
+        j = c.get(f"{BASE}/jobs/{jid}").json()
+        if j["status"] in ("done", "failed", "cancelled"):
+            assert j["status"] == "done", j
+            return j
+        time.sleep(1)
+    raise TimeoutError(jid)
+
+
+@pytest.fixture(scope="module")
+def version_id(c):
+    imgs = c.get(f"{BASE}/images", params={"status": "review"}).json()["items"]
+    if imgs:    # approve the seeded batch so a version has data (standalone-safe)
+        cls = c.get(f"{BASE}/classes").json()[0]
+        ann = [{"id": "x1", "classId": cls["id"], "shape": {"kind": "bbox", "x": .1, "y": .1, "w": .3, "h": .3}}]
+        c.put(f"/api/images/{imgs[0]['id']}/annotations", json={"annotations": ann})
+        c.post(f"/api/images/{imgs[0]['id']}/review", json={"approved": True})
+        c.post(f"{BASE}/board/move", json={"batch_id": imgs[0]["batchId"], "from_status": "review", "to_status": "done"})
+    v = c.post(f"{BASE}/versions", json={"settings": {
+        "split": {"train": 70, "valid": 20, "test": 10},
+        "preprocessing": {"resize": {"width": 320, "height": 320, "mode": "fit"}},
+        "augmentation": {"outputs": 1}}}).json()
+    wait_job(c, v["job"]["id"])
+    yield v["id"]
+    if imgs:    # hand the seeded batch back to review so other modules see the original state
+        c.post(f"{BASE}/board/move", json={"batch_id": imgs[0]["batchId"], "from_status": "done", "to_status": "review"})
+
+
+def test_train_options_groups_families(c):
+    o = c.get(f"{BASE}/train/options").json()
+    fams = {f["family"]: f for f in o["families"]}
+    assert {"yolo", "rtdetr", "yolo-world"} <= set(fams)
+    assert fams["rtdetr"]["license"] == "AGPL-3.0"
+    assert all({"label", "available", "reason", "variants"} <= set(f) for f in fams.values())
+    assert fams["rtdetr"]["variants"][0]["id"] == "rtdetr-l"
+
+
+@pytest.mark.slow
+def test_train_rtdetr_one_epoch_cpu(c, version_id, tmp_path, monkeypatch):
+    if os.environ.get("LD_SLOW_TESTS") != "1":
+        pytest.skip("slow: set LD_SLOW_TESTS=1 to run (downloads rtdetr-l.pt, trains on CPU)")
+    monkeypatch.chdir(tmp_path)
+    try:
+        from ultralytics.utils.downloads import attempt_download_asset
+        attempt_download_asset("rtdetr-l.pt")
+    except Exception as e:
+        pytest.skip(f"rtdetr-l.pt unavailable offline: {e}")
+    if not (tmp_path / "rtdetr-l.pt").exists():
+        pytest.skip("rtdetr-l.pt could not be downloaded (offline)")
+    m = c.post(f"{BASE}/train", json={"version_id": version_id, "family": "ultralytics", "variant": "rtdetr-l",
+                                      "epochs": 1, "imgsz": 160, "batch": 2}).json()
+    assert m["arch"] == "rtdetr-l"
+    wait_job(c, m["jobId"])
+    assert c.get(f"{BASE}/models/{m['id']}").json()["status"] == "ready"
+
+
+def test_max_minutes_stops_and_keeps_best(c, version_id, monkeypatch):
+    from app.adapters import ultralytics_ad as ul
+    ticks = iter([0.0])
+    monkeypatch.setattr(ul, "_now", lambda: next(ticks, 1e9))      # deadline set at t=0, passed by the first check
+    m = c.post(f"{BASE}/train", json={"version_id": version_id, "variant": "yolo26n", "epochs": 3, "imgsz": 160,
+                                      "batch": 4, "max_minutes": 1}).json()
+    wait_job(c, m["jobId"])
+    got = c.get(f"{BASE}/models/{m['id']}").json()
+    assert got["status"] == "ready" and [h["epoch"] for h in got["history"]] == [1] and got["weightsUrl"]
+
+
+def test_old_size_field_still_works(c, version_id):
+    m = c.post(f"{BASE}/train", json={"version_id": version_id, "size": "n", "epochs": 1, "imgsz": 160, "batch": 4}).json()
+    assert m["variant"] == "yolo26n" and m["family"] == "ultralytics" and m["license"] == "AGPL-3.0"
+    wait_job(c, m["jobId"])
+
+
+def test_resume_from_continues_from_last_weights(c, version_id):
+    parent = c.post(f"{BASE}/train", json={"version_id": version_id, "epochs": 1, "imgsz": 160, "batch": 4}).json()
+    wait_job(c, parent["jobId"])
+    child = c.post(f"{BASE}/train", json={"version_id": version_id, "epochs": 1, "imgsz": 160, "batch": 4,
+                                          "resume_from": parent["id"]}).json()
+    wait_job(c, child["jobId"])
+    assert c.get(f"{BASE}/models/{child['id']}").json()["status"] == "ready"
+    assert c.post(f"{BASE}/train", json={"version_id": version_id, "resume_from": "nope"}).status_code == 400
+
+
+def test_bad_variant_and_max_minutes_rejected(c, version_id):
+    assert c.post(f"{BASE}/train", json={"version_id": version_id, "variant": "gpt-9"}).status_code == 400
+    assert c.post(f"{BASE}/train", json={"version_id": version_id, "max_minutes": 0}).status_code == 400

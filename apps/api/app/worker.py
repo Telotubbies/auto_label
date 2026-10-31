@@ -10,6 +10,7 @@ import traceback
 
 from sqlalchemy import select, update
 
+from .adapters import ADAPTERS
 from .config import DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, now, set_annotations
@@ -82,12 +83,13 @@ def run_train(job: Job):
                 s.execute(update(Job).where(Job.id == job.id).values(progress=round(ep / total * 100, 1)))
                 s.commit()
         try:
-            res = ml.train(tm.id, versioning.version_dir(v), p.type, job.params.get("options", {}),
-                           on_epoch, lambda: _cancelled(job.id))
+            res = ADAPTERS[tm.family or "ultralytics"].train(
+                tm.variant or tm.arch, versioning.version_dir(v), ml.TASK[p.type],
+                {**job.params.get("options", {}), "model_id": tm.id}, on_epoch, lambda: _cancelled(job.id))
         except Exception:
             tm.status = "failed"; db.commit(); raise
         db.refresh(tm)
-        tm.weights, tm.status = res["weights"], "ready"
+        tm.weights, tm.status = res.weights, "ready"
         tm.history = history
         tm.metrics = ml.final_metrics(history, tm.task)
         db.commit()
