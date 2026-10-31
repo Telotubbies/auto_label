@@ -88,3 +88,6 @@ sam3_auto_label/dinov3/
 
 # Design capture reference (large, dev-only)
 design-ref/
+
+# Agent worktrees and SDD scratch
+.claude/worktrees/
