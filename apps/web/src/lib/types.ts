@@ -1,0 +1,65 @@
+export type Role = 'admin' | 'reviewer' | 'annotator'
+export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classification'
+export type Split = 'train' | 'valid' | 'test'
+export type Status = 'unassigned' | 'annotating' | 'review' | 'done'
+
+export interface WorkspaceRef { id: string; slug: string; name: string; role: Role; plan: string; plan_label: string; owner: boolean }
+export interface Me { id: string; email: string; name: string; workspaces: WorkspaceRef[] }
+
+export interface Usage {
+  plan: string; plan_label: string; limits: { projects: number; images: number; seats: number; credits: number; label: string }
+  credits_used: number; credits_left: number; period: string; projects: number; images: number; seats: number; models: number
+  daily?: Record<string, number | string>[]
+}
+export interface WorkspaceInfo { id: string; slug: string; name: string; role: Role; owner_id: string; usage: Usage }
+
+export interface LabelClass { id: string; name: string; color: string; count: number }
+export interface Project {
+  id: string; slug: string; name: string; type: ProjectType; visibility: 'public' | 'private'; license: string
+  annotationGroup: string; multilabel: boolean; folderId: string | null; images: number; models: number
+  created: number; updated: number; thumbnail: string | null; settings: Record<string, any>
+  classes?: LabelClass[]; statusCounts?: Partial<Record<Status, number>>; role?: Role
+}
+
+export type Shape =
+  | { kind: 'bbox'; x: number; y: number; w: number; h: number }
+  | { kind: 'polygon'; points: number[] }
+  | { kind: 'class' }
+export interface Annotation { id: string; classId: string; shape: Shape; attributes?: Record<string, boolean>; confidence?: number }
+
+export interface ImageItem {
+  id: string; name: string; width: number; height: number; split: Split; status: Status; assigneeId: string | null
+  review: 'approved' | 'rejected' | null; tags: string[]; batchId: string | null; annotated: boolean
+  annotationCount: number; created: number; thumbnail: string; url: string; classIds: string[]
+}
+export interface Batch { id: string; name: string; source: string; created: number; images: number }
+
+export interface BoardCard { batchId: string | null; batchName: string; created: number; assigneeId: string | null; assignee: string | null; images: number; annotated: number }
+export interface Board { columns: Record<Status, BoardCard[]>; members: { id: string; name: string }[] }
+
+export interface Job {
+  id: string; kind: 'version' | 'export' | 'train' | 'autolabel'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
+  progress: number; params: Record<string, any>; result: Record<string, any>; error: string; created: number
+  started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
+}
+export interface Version {
+  id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed'
+  stats: { images?: number; source_images?: number; splits?: Record<string, number>; classes?: Record<string, number>; class_names?: string[] }
+  created: number; job: Job | null; exports: Record<string, Job & { url: string | null }>
+}
+export interface ModelItem {
+  id: string; name: string; arch: string; task: 'detect' | 'segment' | 'classify'; status: 'queued' | 'training' | 'ready' | 'failed'
+  metrics: { map50?: number; map5095?: number; precision?: number; recall?: number; accuracy_top1?: number; accuracy_top5?: number }
+  history: Record<string, number>[]; classes: string[]; versionId: string; version?: number; jobId: string | null
+  created: number; weightsUrl: string | null; job?: Job | null; project?: string; project_name?: string
+}
+export interface Member { id: string; name: string; email: string; role: Role; owner: boolean; joined: number }
+
+export interface Analytics {
+  images: number; annotations: number; null_images: number; avg_annotations: number; avg_width: number; avg_height: number
+  median_size: string; classes: LabelClass[]; imbalance_ratio: number
+  annotations_per_image: { n: number | string; images: number }[]; sizes: { bucket: string; images: number }[]
+  aspect: { bucket: string; images: number }[]; splits: Record<string, number>; statuses: Record<string, number>; heatmap: number[][]
+}
+
+export interface Prediction { x: number; y: number; width: number; height: number; confidence: number; class: string; class_id: number; points?: { x: number; y: number }[] }
