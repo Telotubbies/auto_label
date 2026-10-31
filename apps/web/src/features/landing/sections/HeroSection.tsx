@@ -307,10 +307,10 @@ export default function HeroSection() {
         )}
       </header>
 
-      <section aria-labelledby="hero-title" className="relative overflow-hidden pb-20 pt-14 sm:pb-28 sm:pt-20">
+      <section aria-labelledby="hero-title" className="relative overflow-hidden pb-12 pt-14 sm:pb-16 sm:pt-20">
         <TileField />
 
-        <div className="relative mx-auto w-full max-w-[1400px] px-5 sm:px-8 xl:flex xl:min-h-[540px] xl:flex-col xl:justify-center">
+        <div className="relative mx-auto w-full max-w-[1400px] px-5 sm:px-8 xl:flex xl:min-h-[500px] xl:flex-col xl:justify-center">
           {/* Floating instrument cards — xl and up only. */}
           <div aria-hidden className="pointer-events-none absolute inset-0 hidden xl:block">
             <div ref={(el) => { cardRefs.current[0] = el }} className="absolute left-5 top-[6%] w-56 min-[1400px]:left-8 min-[1400px]:w-60">

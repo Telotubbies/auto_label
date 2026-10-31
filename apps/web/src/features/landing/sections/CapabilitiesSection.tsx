@@ -104,7 +104,7 @@ function CapabilityCard({ tone, icon: Icon, title, lead, detail, href, linkLabel
   return (
     <article
       className={cn(
-        'group relative flex h-full min-h-[24rem] flex-col overflow-hidden rounded-3xl p-6 transition-transform transition-shadow lift sm:p-7',
+        'group relative flex h-full min-h-[24rem] flex-col overflow-hidden rounded-3xl p-6 transition-[transform,box-shadow] duration-200 ease-out lift sm:p-7',
         tone,
       )}
     >

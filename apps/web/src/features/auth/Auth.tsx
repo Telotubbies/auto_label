@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { get, post } from '@/lib/api'
@@ -32,11 +32,25 @@ function useSubmit(fn: () => Promise<void>) {
   return { busy, err, run }
 }
 
+/** Post-login destination from ?next=; only same-origin paths are accepted. */
+function useNext(): string {
+  const { search } = useLocation()
+  const raw = new URLSearchParams(search).get('next') ?? ''
+  return raw.startsWith('/') && !raw.startsWith('//') ? raw : '/'
+}
+
+const withNext = (path: string, next: string) => next === '/' ? path : `${path}?next=${encodeURIComponent(next)}`
+
 export function Login() {
   const signIn = useApp((s) => s.signIn)
+  const nav = useNavigate()
+  const next = useNext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const { busy, err, run } = useSubmit(() => signIn('login', { email, password }))
+  const { busy, err, run } = useSubmit(async () => {
+    await signIn('login', { email, password })
+    nav(next, { replace: true })
+  })
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<{ signup_enabled: boolean }>('/config') })
   return (
     <Frame title="Sign in" sub="to continue to your workspace">
@@ -47,7 +61,7 @@ export function Login() {
         <Button type="submit" className="w-full" disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Sign In</Button>
       </form>
       {cfg.data?.signup_enabled && (
-        <p className="mt-5 text-center text-sm text-muted-foreground">New here? <Link to="/signup" className="font-medium text-primary hover:underline">Create an account</Link></p>
+        <p className="mt-5 text-center text-sm text-muted-foreground">New here? <Link to={withNext('/signup', next)} className="font-medium text-primary hover:underline">Create an account</Link></p>
       )}
     </Frame>
   )
@@ -55,8 +69,13 @@ export function Login() {
 
 export function Signup() {
   const signIn = useApp((s) => s.signIn)
+  const nav = useNavigate()
+  const next = useNext()
   const [f, setF] = useState({ name: '', email: '', password: '', workspace: '' })
-  const { busy, err, run } = useSubmit(() => signIn('signup', { ...f, workspace: f.workspace || `${f.name.split(' ')[0]}'s Workspace` }))
+  const { busy, err, run } = useSubmit(async () => {
+    await signIn('signup', { ...f, workspace: f.workspace || `${f.name.split(' ')[0]}'s Workspace` })
+    nav(next, { replace: true })
+  })
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value })
   return (
     <Frame title="Create your account" sub="Free plan · 3 projects · 10,000 images">
@@ -68,7 +87,7 @@ export function Signup() {
         {err && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{err}</p>}
         <Button type="submit" className="w-full" disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Create Account</Button>
       </form>
-      <p className="mt-5 text-center text-sm text-muted-foreground">Already have an account? <Link to="/login" className="font-medium text-primary hover:underline">Sign in</Link></p>
+      <p className="mt-5 text-center text-sm text-muted-foreground">Already have an account? <Link to={withNext('/login', next)} className="font-medium text-primary hover:underline">Sign in</Link></p>
     </Frame>
   )
 }

@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 // Light, frequently used pages load eagerly: React 19 holds each Suspense fallback for ~300 ms,
 // so nested lazy routes cost a visible delay. Heavy pages (konva editor, recharts) stay lazy.
-import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useLightOnly } from '@/lib/theme'
@@ -38,6 +38,13 @@ function LightOnly({ children }: { children: React.ReactNode }) {
 
 function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
+}
+
+/** Anonymous deep link: remember the path so login can return to it. */
+function LoginRedirect() {
+  const { pathname, search, hash } = useLocation()
+  const next = `${pathname}${search}${hash}`
+  return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />
 }
 
 /** Loads /me, picks the workspace from the URL and publishes the caller's role in it. */
@@ -79,7 +86,7 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/invite/:token" element={<AcceptInvite />} />
           {import.meta.env.DEV && <Route path="/__preview/:section" element={<LandingPreview />} />}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<LoginRedirect />} />
         </Routes>
       </Suspense>
     )

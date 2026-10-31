@@ -1,4 +1,4 @@
-import { MapPin, ShieldCheck, Sparkles } from 'lucide-react'
+import { MapPin, Sparkles } from 'lucide-react'
 import { Glass } from '@/components/glass'
 import { CornerMarks, DotGrid, Reveal, SectionShell, TagPill } from '../primitives'
 
@@ -132,10 +132,6 @@ export function FooterSection() {
 
         <div className="mt-10 flex flex-col gap-4 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">© 2026 LabelDesk</p>
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">
-            <ShieldCheck aria-hidden className="h-3.5 w-3.5" />
-            Data stays in Thailand
-          </span>
         </div>
       </div>
     </footer>
