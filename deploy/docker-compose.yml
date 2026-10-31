@@ -1,0 +1,72 @@
+# LabelDesk production stack for one VM (e.g. Oracle Cloud Always Free).
+#   cp .env.example .env && edit it, then:  docker compose up -d --build
+# Caddy obtains HTTPS certificates automatically for LD_DOMAIN.
+# GPU training runs elsewhere via `labeldesk-worker` (see docs/DEPLOY.md).
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      LD_DOMAIN: ${LD_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [web, api]
+
+  web:
+    build:
+      context: ../apps/web
+      args: { VITE_API_URL: "" }        # same origin — nginx proxies /api
+    restart: unless-stopped
+    depends_on: [api]
+
+  api:
+    build: ../apps/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://labeldesk:${POSTGRES_PASSWORD}@db:5432/labeldesk
+      LD_SECRET: ${LD_SECRET}
+      LD_PUBLIC_URL: https://${LD_DOMAIN}
+      LD_CORS_ORIGINS: ${LD_CORS_ORIGINS:-https://${LD_DOMAIN}}
+      LD_WORKER_TOKEN: ${LD_WORKER_TOKEN}
+      LD_EMBEDDED_WORKER: "0"            # jobs run in the `worker` service so exports never slow requests
+      LD_SIGNUP_ENABLED: ${LD_SIGNUP_ENABLED:-1}
+      LD_SEED_DEMO: ${LD_SEED_DEMO:-0}
+      LD_SUPERADMINS: ${LD_SUPERADMINS:-}
+      LD_SAM_ENABLED: "0"
+    volumes: [labeldesk_data:/data]
+    depends_on:
+      db: { condition: service_healthy }
+
+  worker:
+    build: ../apps/api
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: postgresql://labeldesk:${POSTGRES_PASSWORD}@db:5432/labeldesk
+      LD_SECRET: ${LD_SECRET}
+      LD_LOCAL_JOBS: ${LD_LOCAL_JOBS:-version,export}
+      LD_SEED_DEMO: "0"
+      LD_SAM_ENABLED: "0"
+    volumes: [labeldesk_data:/data]
+    depends_on:
+      db: { condition: service_healthy }
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: labeldesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: labeldesk
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labeldesk"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  caddy_data:
+  labeldesk_data:
+  pgdata:
