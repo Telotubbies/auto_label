@@ -40,7 +40,7 @@ function PredictionCanvas({ pred, img, threshold }: { pred: PlaygroundPrediction
     return () => ro.disconnect()
   }, [box])
 
-  const shown = pred.predictions.filter((p) => p.confidence >= threshold)
+  const shown = pred.top ? [] : pred.predictions.filter((p) => p.confidence >= threshold)
   const k = width / pred.image.width
   const height = Math.round(pred.image.height * k)
   return (
@@ -108,7 +108,7 @@ function ResultCard({ result, img, threshold, name }: {
                 ))}
               </ul>
             )}
-            {!!pred?.predictions.length && (
+            {!pred?.top && !!pred?.predictions.length && (
               <p className="text-xs text-muted-foreground">
                 {shown.length} of {pred.predictions.length} boxes ≥ {Math.round(threshold * 100)}%
                 {' · '}{pred.time.toFixed(2)} s on the server

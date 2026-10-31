@@ -50,13 +50,16 @@ def catalog(db: Session, workspace_id: str) -> list[dict]:
 _TASK_VARIANT = {"detect": "yolo26n", "segment": "yolo26n-seg", "classify": "yolo26n-cls"}
 
 
-def resolve(model_ref: str, db: Session) -> Resolved:
-    """Bind a model_ref to its adapter; trained:<id> also carries the model's variant and weights."""
+def resolve(model_ref: str, db: Session, *, workspace_id: str | None = None) -> Resolved:
+    """Bind a model_ref to its adapter; trained:<id> also carries the model's variant and weights.
+
+    With workspace_id the ref is scoped: a trained model of another workspace, or one that is not
+    ready, is reported as unknown — same message as a missing id, so ids don't leak across tenants."""
     fam, rest = parse_ref(model_ref)
     weights = None
     if fam == "trained":
         m = db.get(TrainedModel, rest)
-        if m is None:
+        if m is None or (workspace_id is not None and (m.workspace_id != workspace_id or m.status != "ready")):
             raise ValueError(f"unknown trained model {rest!r}")
         fam, rest, weights = m.family or "ultralytics", m.variant or _TASK_VARIANT[m.task], m.weights
     if fam not in ADAPTERS:

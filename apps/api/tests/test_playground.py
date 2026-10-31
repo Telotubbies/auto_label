@@ -19,8 +19,8 @@ URL = f"/api/ws/{WS}/playground/predict"
 
 
 class FakeAd:
-    def __init__(self, family, fail=False, caps=("detect",)):
-        self.family, self.fail, self.caps, self.calls = family, fail, set(caps), []
+    def __init__(self, family, fail=False, caps=("detect",), boom: Exception | None = None):
+        self.family, self.fail, self.caps, self.calls, self.boom = family, fail, set(caps), [], boom
 
     def probe(self):
         return Availability(True)
@@ -30,6 +30,8 @@ class FakeAd:
 
     def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5):
         self.calls.append({"classes": classes, "prompt": prompt, "conf": conf})
+        if self.boom:
+            raise self.boom
         if self.fail:
             raise RuntimeError("vLLM not reachable at http://x")
         base = {"model": f"{self.family}:{variant}", "time": 0.01, "image": {"width": im.width, "height": im.height}}
@@ -76,7 +78,7 @@ def test_one_failing_model_does_not_fail_others(c):
     assert r.status_code == 200
     ok, bad = r.json()["results"]
     assert ok["error"] is None and len(ok["prediction"]["predictions"]) == 1 and ok["latency_ms"] >= 0
-    assert "not reachable" in bad["error"] and bad["prediction"] is None
+    assert bad["error"] == "model unavailable" and bad["prediction"] is None
 
 
 def test_vlm_question_returns_text(c):
@@ -94,7 +96,81 @@ def test_vlm_grounding_needs_classes_and_gets_them(c):
 
 def test_unknown_ref_is_per_model_error(c):
     res = post(c, "nope:x,ok:det").json()["results"]
-    assert res[0]["error"] and res[1]["error"] is None
+    assert res[0]["error"] == "model unavailable" and res[1]["error"] is None
+
+
+def test_unexpected_failure_is_reported_generically(c, monkeypatch):
+    monkeypatch.setitem(ADAPTERS, "boom", FakeAd("boom", boom=KeyError("/srv/secret/weights.pt")))
+    res = post(c, "boom:x").json()["results"][0]
+    assert res["error"] == "inference failed" and res["prediction"] is None
+
+
+def test_duplicate_refs_are_deduped(c):
+    res = post(c, "ok:det,ok:det").json()["results"]
+    assert len(res) == 1 and res[0]["error"] is None
+
+
+def test_upload_is_exif_oriented(c):
+    im = PImage.new("RGB", (40, 20), "red")
+    exif = im.getexif()
+    exif[274] = 6                                  # rotate 90° CW on display
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", exif=exif)
+    r = c.post(URL, files={"file": ("a.jpg", buf.getvalue(), "image/jpeg")}, data={"model_refs": "ok:det"})
+    assert r.json()["results"][0]["prediction"]["image"] == {"width": 20, "height": 40}
+
+
+@pytest.fixture
+def trained_rows():
+    """A ready model in another workspace and a still-training one here; both removed afterwards."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Project, TrainedModel, Version, Workspace
+
+    with SessionLocal() as db:
+        proj = db.scalar(select(Project).where(Project.slug == "ppe-detection"))
+        demo = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        other = Workspace(slug="isolation-check", name="Isolation check", owner_id=demo.owner_id)
+        ver = Version(project_id=proj.id, number=990001, name="isolation", status="ready")
+        db.add_all([other, ver])
+        db.flush()
+        rows = [TrainedModel(id="isofix-foreign-ready-00000000001", workspace_id=other.id, project_id=proj.id,
+                             version_id=ver.id, name="other workspace", arch="yolo26n", task="detect",
+                             status="ready", family="ultralytics", variant="yolo26n", weights="models/o/best.pt"),
+                TrainedModel(id="isofix-demo-training-00000000002", workspace_id=demo.id, project_id=proj.id,
+                             version_id=ver.id, name="still training", arch="yolo26n", task="detect",
+                             status="training", family="ultralytics", variant="yolo26n", weights="models/t/best.pt")]
+        db.add_all(rows)
+        db.commit()
+        ids, ver_id, ws_id = [r.id for r in rows], ver.id, other.id
+    yield ids
+    with SessionLocal() as db:
+        for mid in ids:
+            row = db.get(TrainedModel, mid)
+            if row:
+                db.delete(row)
+        db.commit()
+        for row in (db.get(Version, ver_id), db.get(Workspace, ws_id)):
+            if row:
+                db.delete(row)
+        db.commit()
+
+
+def test_trained_model_from_another_workspace_is_not_resolved(c, monkeypatch, trained_rows):
+    fake = FakeAd("ultralytics")
+    monkeypatch.setitem(ADAPTERS, "ultralytics", fake)
+    res = post(c, f"trained:{trained_rows[0]}").json()["results"][0]
+    assert res["prediction"] is None and "unknown trained model" in res["error"]
+    assert fake.calls == []
+
+
+def test_model_that_is_not_ready_is_not_resolved(c, monkeypatch, trained_rows):
+    fake = FakeAd("ultralytics")
+    monkeypatch.setitem(ADAPTERS, "ultralytics", fake)
+    res = post(c, f"trained:{trained_rows[1]}").json()["results"][0]
+    assert res["prediction"] is None and "unknown trained model" in res["error"]
+    assert fake.calls == []
 
 
 def test_confidence_is_forwarded(c):
