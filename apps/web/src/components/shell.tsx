@@ -136,13 +136,8 @@ export const typeLabel = (t: string) =>
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()
   const can = useApp((s) => s.can)
-  const me = useApp((s) => s.me)
-  const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? ws
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 flex h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl">
-      <div className="px-3 pt-3">
-        <Link to={`/${ws}`} className="text-[11px] font-semibold tracking-wide text-muted-foreground hover:text-foreground">← {wsName.toUpperCase()}</Link>
-      </div>
       <div className="p-3">
         <div className="overflow-hidden rounded-lg border">
           <div className="relative h-20 bg-muted">
@@ -201,13 +196,16 @@ export function TopBar() {
   const isProject = !!slug && !RESERVED.has(slug)
   const proj = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug), enabled: isProject })
   const rest = (m?.params['*'] ?? '').split('/')[0]
-  const page = isProject ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label : pageLabels[slug]
+  const page = isProject ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label : (slug ? pageLabels[slug] : 'Projects')
   const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'
   const { mode } = useThemePrefs()
   const next = THEME_CYCLE[(THEME_CYCLE.findIndex((x) => x.id === mode) + 1) % THEME_CYCLE.length]
   const cur = THEME_CYCLE.find((x) => x.id === mode) ?? THEME_CYCLE[0]
   const Icon = cur.icon
-  const crumbs = [{ label: wsName, to: `/${ws}` }, ...(isProject ? [{ label: proj.data?.name ?? slug, to: `/${ws}/${slug}` }] : []), ...(page ? [{ label: page, to: '' }] : [])]
+  // The workspace switcher already names the workspace; the breadcrumb root only appears on project pages.
+  const crumbs = isProject
+    ? [{ label: wsName, to: `/${ws}` }, { label: proj.data?.name ?? slug, to: `/${ws}/${slug}` }, ...(page ? [{ label: page, to: '' }] : [])]
+    : page ? [{ label: page, to: '' }] : []
   return (
     <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4">
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">

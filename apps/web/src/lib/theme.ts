@@ -100,11 +100,13 @@ export function resolveMode(p: ThemePrefs = prefs): Mode {
   return p.mode === 'system' ? (mq('(prefers-color-scheme: dark)') ? 'dark' : 'light') : p.mode
 }
 
+let forceLight = false
+
 function paint() {
   const root = document.documentElement
   // OS "increase contrast" lifts the scheme to the high-contrast level unless the user already chose one.
   const contrast: Contrast = prefs.contrast || (mq('(prefers-contrast: more)') ? 1 : 0)
-  applyTheme(prefs.seed, resolveMode(), contrast, prefs.scheme)
+  applyTheme(prefs.seed, forceLight ? 'light' : resolveMode(), contrast, prefs.scheme)
   // Safari ignores prefers-reduced-transparency, so the Settings toggle sets this attribute.
   if (prefs.reduceTransparency) root.setAttribute('data-reduce-transparency', '')
   else root.removeAttribute('data-reduce-transparency')
@@ -127,8 +129,8 @@ export function initTheme(): void {
 /** Screens not yet reskinned for dark (the annotation editor, until Task 17) render light regardless of the preference. */
 export function useLightOnly(): void {
   useLayoutEffect(() => {
-    applyTheme(prefs.seed, 'light', prefs.contrast, prefs.scheme)
-    return () => paint()
+    forceLight = true; paint()
+    return () => { forceLight = false; paint() }
   }, [])
 }
 

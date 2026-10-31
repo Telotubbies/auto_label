@@ -86,7 +86,7 @@ export default function Home() {
   }, [projects.data, q, type, sort, folder])
   const refresh = () => { qc.invalidateQueries({ queryKey: ['projects', ws] }); qc.invalidateQueries({ queryKey: ['folders', ws] }) }
   const act = (fn: () => Promise<unknown>, ok?: string) => fn().then(() => { refresh(); ok && toast.ok(ok) }).catch(toast.err)
-  const name = me?.workspaces.find((w) => w.slug === ws)?.name
+  const name = 'Projects'; void me
   const currentFolder = folders.data?.find((x) => x.id === folder)
 
   return (

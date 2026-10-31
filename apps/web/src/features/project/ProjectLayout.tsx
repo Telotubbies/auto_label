@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -19,7 +19,7 @@ export default function ProjectLayout() {
   const can = useApp((s) => s.can)
   const q = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug) })
   const [slot, setSlot] = useState<HTMLElement | null>(null)
-  useEffect(() => { setSlot(document.getElementById('topbar-actions')) }, [])
+  useLayoutEffect(() => { setSlot(document.getElementById('topbar-actions')) }, [])
   if (q.isLoading) return <div className="flex h-full items-center justify-center"><Spinner /></div>
   if (!q.data) return <EmptyState title="Project not found" hint={(q.error as Error)?.message} />
   const project = q.data
@@ -33,7 +33,7 @@ export default function ProjectLayout() {
             {can('reviewer') && review > 0 && (
               <Button variant="outline" size="sm" onClick={() => nav(`/${ws}/${slug}/annotate`)}><Eye className="h-4 w-4" /> {review} awaiting review</Button>
             )}
-            {can('admin') && (
+            {can('admin') && !location.pathname.endsWith('/train') && (
               <Button size="sm" onClick={() => nav(`/${ws}/${slug}/train`)}>
                 <BrainCircuit className="h-4 w-4" /> Train Model
               </Button>
