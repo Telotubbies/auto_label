@@ -11,7 +11,7 @@ os.environ["LD_SAM_ENABLED"] = "0"
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, select
 
 from app.adapters import ADAPTERS, parse_ref, validate_prediction
 from app.bootstrap import ensure_columns
@@ -241,3 +241,44 @@ def test_resume_from_continues_from_last_weights(c, version_id):
 def test_bad_variant_and_max_minutes_rejected(c, version_id):
     assert c.post(f"{BASE}/train", json={"version_id": version_id, "variant": "gpt-9"}).status_code == 400
     assert c.post(f"{BASE}/train", json={"version_id": version_id, "max_minutes": 0}).status_code == 400
+
+
+def test_remote_worker_mode_rejects_unsupported_options(c, version_id, monkeypatch):
+    from app.routers import training
+    monkeypatch.setattr(training, "LOCAL_JOB_KINDS", ["version", "export", "autolabel"])
+    for body in ({"variant": "rtdetr-l"}, {"variant": "yolov8s-worldv2"}, {"variant": "yolo11s"},
+                 {"max_minutes": 5}, {"resume_from": "any-model"}):
+        r = c.post(f"{BASE}/train", json={"version_id": version_id, **body})
+        assert r.status_code == 400 and r.json()["detail"] == "not supported on remote GPU workers yet", body
+
+
+def test_remote_worker_mode_queues_size_for_yolo26(c, version_id, monkeypatch):
+    from app import worker
+    from app.routers import training
+    off = ["version", "export", "autolabel"]
+    monkeypatch.setattr(training, "LOCAL_JOB_KINDS", off)
+    monkeypatch.setattr(worker, "LOCAL_JOB_KINDS", off)      # keep the embedded worker off this job
+    m = c.post(f"{BASE}/train", json={"version_id": version_id, "variant": "yolo26s", "epochs": 1, "imgsz": 160,
+                                      "batch": 4}).json()
+    j = c.get(f"{BASE}/jobs/{m['jobId']}").json()
+    assert j["params"]["options"]["variant"] == "yolo26s" and j["params"]["options"]["size"] == "s"
+    assert c.post(f"{BASE}/jobs/{m['jobId']}/cancel").json()["status"] == "cancelled"
+
+
+def test_resume_from_rejects_other_project_and_workspace(c, version_id):
+    from app.db import SessionLocal
+    from app.models import Project, TrainedModel, Workspace, new_id
+    with SessionLocal() as s:
+        ws = s.scalar(select(Workspace).where(Workspace.slug == WS))
+        other = Project(workspace_id=ws.id, slug=f"other-{new_id()}", name="Other")
+        ws2 = Workspace(id=new_id(), slug=f"ws-{new_id()}", name="Other WS", owner_id=ws.owner_id)
+        s.add_all([other, ws2]); s.flush()
+        common = dict(task="detect", status="ready", arch="yolo26n", family="ultralytics", variant="yolo26n",
+                      license="AGPL-3.0", classes=[], version_id=version_id)
+        foreign_project = TrainedModel(workspace_id=ws.id, project_id=other.id, name="other-project", **common)
+        foreign_ws = TrainedModel(workspace_id=ws2.id, project_id=other.id, name="other-workspace", **common)
+        s.add_all([foreign_project, foreign_ws]); s.commit()
+        ids = (foreign_project.id, foreign_ws.id)
+    for mid in ids:
+        assert c.post(f"{BASE}/train", json={"version_id": version_id, "resume_from": mid}).status_code == 400
+

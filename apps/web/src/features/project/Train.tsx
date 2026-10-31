@@ -20,12 +20,17 @@ export default function Train() {
   const [f, setF] = useState({ version_id: sp.get('version') ?? '', family: 'yolo', variant: 'yolo26n', epochs: 50, imgsz: 640, batch: 16, name: '', max_minutes: '', resume_from: '' })
   const fams = opts.data?.families ?? []
   const fam = fams.find((x) => x.family === f.family)
-  const resumable = (models.data ?? []).filter((m) => m.status === 'ready' && m.task === opts.data?.task)
+  const resumable = (models.data ?? []).filter((m) => m.status === 'ready' && m.task === opts.data?.task && !!m.variant)
   const pickFamily = (id: string) => { const n = fams.find((x) => x.family === id); if (n?.available) setF({ ...f, family: id, variant: n.variants[0].id, resume_from: '' }) }
+  const resumeTarget = (m: ModelItem) => {
+    for (const x of fams) { const v = x.variants.find((y) => y.id === m.variant); if (v) return { family: x.family, variant: v.id } }
+    for (const x of fams) { const v = x.variants.find((y) => m.variant?.startsWith(y.id)); if (v) return { family: x.family, variant: v.id } }
+    return null
+  }
   const pickResume = (id: string) => {
     const m = resumable.find((x) => x.id === id)
-    const g = m && fams.find((x) => x.variants.some((v) => m.variant && (v.id === m.variant || m.variant.startsWith(v.id))))
-    setF(m && g ? { ...f, resume_from: id, family: g.family, variant: g.variants.find((v) => m.variant?.startsWith(v.id))!.id } : { ...f, resume_from: '' })
+    const g = m && resumeTarget(m)
+    setF(g ? { ...f, resume_from: id, family: g.family, variant: g.variant } : { ...f, resume_from: '' })
   }
   useEffect(() => { if (!f.version_id && ready[0]) setF((x) => ({ ...x, version_id: ready[0].id })) }, [ready, f.version_id])
   const start = async () => {

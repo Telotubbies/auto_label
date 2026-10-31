@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..adapters import ADAPTERS, resolve
-from ..config import CREDIT_COST
+from ..config import CREDIT_COST, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
 from ..ratelimit import client_ip, limit
@@ -38,6 +38,9 @@ FAMILIES = [
      "variants": [{"id": "yolov8s-worldv2", "label": "YOLO-World v2 Small"}, {"id": "yolov8m-worldv2", "label": "YOLO-World v2 Medium"}]},
 ]
 _BASE_VARIANTS = {v["id"] for f in FAMILIES for v in f["variants"]}
+_YOLO26 = {f"yolo26{s}" for s in "nsmlx"}
+_SUFFIX = {"detect": "", "segment": "-seg", "classify": "-cls"}
+_REMOTE_UNSUPPORTED = "not supported on remote GPU workers yet"
 
 
 def _family_of(variant: str) -> str:
@@ -122,12 +125,17 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
     if fam["detect_only"] and task != "detect":
         raise HTTPException(400, f"{fam['label']} trains detection projects only")
     if not fam["detect_only"]:
-        variant = base + {"detect": "", "segment": "-seg", "classify": "-cls"}[task]
+        variant = base + _SUFFIX[task]
+    if "train" not in LOCAL_JOB_KINDS:      # remote pip worker: v1 cli only understands YOLO + size
+        if variant not in {v + _SUFFIX[task] for v in _YOLO26} \
+                or body.max_minutes is not None or body.resume_from:
+            raise HTTPException(400, _REMOTE_UNSUPPORTED)
     resume = None
     if body.resume_from:
         resume = c.db.get(TrainedModel, body.resume_from)
-        if not resume or resume.workspace_id != c.ws.id or resume.status != "ready" or resume.task != task:
-            raise HTTPException(400, "resume_from must be a ready model of the same task in this workspace")
+        if not resume or resume.workspace_id != c.ws.id or resume.project_id != c.project.id \
+                or resume.status != "ready" or resume.task != task:
+            raise HTTPException(400, "resume_from must be a ready model of the same task in this project")
         if resume.variant != variant:
             raise HTTPException(400, f"resume_from is a {resume.variant} model; pick the same variant")
     charge(c.db, c.ws, CREDIT_COST["train"])
@@ -136,10 +144,12 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
                      arch=variant, family="ultralytics", variant=variant, license=LICENSE,
                      status="queued", classes=v.stats.get("class_names", []))
     c.db.add(m); c.db.flush()
+    options = {"family": "ultralytics", "variant": variant, "epochs": body.epochs, "imgsz": body.imgsz,
+               "batch": body.batch, "max_minutes": body.max_minutes, "resume_from": body.resume_from}
+    if base in _YOLO26:
+        options["size"] = base[len("yolo26"):]      # v1 remote worker still reads size
     j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="train", created_by=c.user.id,
-            params={"model_id": m.id, "version_id": v.id,
-                    "options": {"family": "ultralytics", "variant": variant, "epochs": body.epochs, "imgsz": body.imgsz,
-                                   "batch": body.batch, "max_minutes": body.max_minutes, "resume_from": body.resume_from}})
+            params={"model_id": m.id, "version_id": v.id, "options": options})
     c.db.add(j); c.db.flush()
     m.job_id = j.id
     audit(c.db, c.ws.id, c.user.id, "train.start", m.name, epochs=body.epochs, variant=variant)
