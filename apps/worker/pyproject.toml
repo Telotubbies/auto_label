@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labeldesk-worker"
+version = "1.0.0"
+description = "Run LabelDesk training and auto-label jobs on your own GPU (home box, Kaggle, Colab)"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31", "ultralytics>=8.3", "opencv-python-headless>=4.8", "pillow>=10"]
+
+[project.scripts]
+labeldesk-worker = "labeldesk_worker.cli:main"
+
+[tool.setuptools]
+packages = ["labeldesk_worker"]

@@ -1,0 +1,1 @@
+"""LabelDesk remote worker."""
