@@ -6,7 +6,8 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { api, del, get, patch, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
-import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Stat, fmtAgo, fmtDate, toast } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Stat, Switch, fmtAgo, fmtDate, toast } from '@/components/ui'
+import { DEFAULT_SEED, setThemePrefs, useThemePrefs, type Contrast, type ModePref, type Scheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 const copy = (s: string) => { navigator.clipboard.writeText(s); toast.ok('Copied') }
@@ -29,6 +30,56 @@ function Account() {
         <Input type="password" placeholder="Current password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} />
         <Input type="password" placeholder="New password (8+)" value={pw.password} onChange={(e) => setPw({ ...pw, password: e.target.value })} />
         <Button disabled={pw.password.length < 8} onClick={() => patch('/me', pw).then(() => { setPw({ current_password: '', password: '' }); toast.ok('Password changed') }).catch(toast.err)}>Update password</Button>
+      </Card>
+    </div>
+  )
+}
+
+const SEEDS = [
+  { hex: '#3b6cf6', name: 'Blue' }, { hex: '#7c4dff', name: 'Violet' }, { hex: '#0b8f8f', name: 'Teal' },
+  { hex: '#1e8e3e', name: 'Green' }, { hex: '#e8710a', name: 'Orange' }, { hex: '#d93378', name: 'Magenta' },
+]
+
+function Appearance() {
+  const p = useThemePrefs()
+  const seg = <T extends string | number>(label: string, value: T, opts: { v: T; l: string }[], set: (v: T) => void) => (
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg border border-input p-0.5">
+      {opts.map((o) => (
+        <button key={String(o.v)} type="button" role="radio" aria-checked={value === o.v} onClick={() => set(o.v)}
+          className={cn('h-8 cursor-pointer rounded-md px-3 text-sm', value === o.v ? 'bg-primary text-primary-foreground' : 'hover:bg-accent hover:text-accent-foreground')}>{o.l}</button>
+      ))}
+    </div>
+  )
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-4 p-5">
+        <h3 className="font-semibold">Colour</h3>
+        <Field label="Seed colour" hint="The whole palette (light and dark) is generated from this colour with Material HCT.">
+          <div className="flex flex-wrap items-center gap-2">
+            {SEEDS.map((s) => (
+              <button key={s.hex} type="button" aria-label={s.name} aria-pressed={p.seed.toLowerCase() === s.hex} onClick={() => setThemePrefs({ seed: s.hex })}
+                className={cn('h-8 w-8 cursor-pointer rounded-full border-2', p.seed.toLowerCase() === s.hex ? 'border-foreground' : 'border-transparent')} style={{ background: s.hex }} />
+            ))}
+            <input type="color" aria-label="Custom seed colour" value={p.seed} onChange={(e) => setThemePrefs({ seed: e.target.value })} className="h-8 w-10 cursor-pointer rounded-md border border-input bg-card p-0.5" />
+            <Button variant="ghost" size="sm" onClick={() => setThemePrefs({ seed: DEFAULT_SEED })}>Reset</Button>
+          </div>
+        </Field>
+        <div className="flex flex-wrap gap-x-8 gap-y-4">
+          <div><div className="mb-1.5 text-sm font-medium">Mode</div>{seg<ModePref>('Mode', p.mode, [{ v: 'system', l: 'System' }, { v: 'light', l: 'Light' }, { v: 'dark', l: 'Dark' }], (mode) => setThemePrefs({ mode }))}</div>
+          <div><div className="mb-1.5 text-sm font-medium">Style</div>{seg<Scheme>('Style', p.scheme, [{ v: 'vibrant', l: 'Vibrant' }, { v: 'tonal-spot', l: 'Tonal' }, { v: 'expressive', l: 'Expressive' }], (scheme) => setThemePrefs({ scheme }))}</div>
+          <div><div className="mb-1.5 text-sm font-medium">Contrast</div>{seg<Contrast>('Contrast', p.contrast, [{ v: 0, l: 'Standard' }, { v: 0.5, l: 'Medium' }, { v: 1, l: 'High' }], (contrast) => setThemePrefs({ contrast }))}</div>
+        </div>
+      </Card>
+      <Card className="space-y-4 p-5">
+        <h3 className="font-semibold">Display</h3>
+        <div className="flex items-center justify-between gap-4">
+          <div><div className="text-sm font-medium">Reduce transparency</div><div className="text-xs text-muted-foreground">Turns the glass sidebar, top bar, dialogs and job tray into solid surfaces. Also follows your system setting.</div></div>
+          <Switch label="Reduce transparency" checked={p.reduceTransparency} onChange={(reduceTransparency) => setThemePrefs({ reduceTransparency })} />
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div><div className="text-sm font-medium">Buddhist Era dates</div><div className="text-xs text-muted-foreground">Show years as B.E. (2569) instead of Gregorian (2026).</div></div>
+          <Switch label="Buddhist Era dates" checked={p.buddhistEra} onChange={(buddhistEra) => setThemePrefs({ buddhistEra })} />
+        </div>
       </Card>
     </div>
   )
@@ -210,6 +261,7 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
   if (firstRun) return <FirstRun />
   const tabs = [
     { to: 'account', label: 'Account', show: true },
+    { to: 'appearance', label: 'Appearance', show: true },
     { to: 'workspace', label: 'Workspace', show: can('admin') },
     { to: 'members', label: 'Members', show: true },
     { to: 'api', label: 'API Keys', show: can('admin') },
@@ -227,6 +279,7 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
           <Routes>
             <Route index element={<Navigate to="account" replace />} />
             <Route path="account" element={<Account />} />
+            <Route path="appearance" element={<Appearance />} />
             <Route path="workspace" element={<Workspace />} />
             <Route path="members" element={<Members />} />
             <Route path="api" element={<ApiKeys />} />

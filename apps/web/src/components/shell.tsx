@@ -1,15 +1,17 @@
-import { useState } from 'react'
-import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronsLeft, Database, FolderGit2, Layers, LogOut,
-  Plus, Rocket, Settings, Tag, Tags, Upload, User, Zap, Wrench,
+  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronsLeft, Cpu, Database, FolderGit2, Layers, LogOut,
+  Monitor, Moon, Plus, Rocket, Settings, Sun, Tag, Tags, Upload, User, X, Zap, Wrench,
 } from 'lucide-react'
-import { api, fileUrl, post } from '@/lib/api'
+import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
-import type { Project, Role } from '@/lib/types'
+import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
+import type { Job, Project, Role } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { Button, Dropdown, Input, Modal, toast } from './ui'
+import { Glass } from './glass'
+import { Button, Dropdown, Input, Modal, Progress, toast } from './ui'
 
 const mainNav = [
   { to: '', label: 'Projects', icon: Layers, end: true },
@@ -47,13 +49,13 @@ export function AppSidebar() {
   const u = info.data?.usage
   const pct = u ? (u.credits_used / u.limits.credits) * 100 : 0
   return (
-    <aside className={cn('relative flex h-screen shrink-0 flex-col bg-sidebar text-sidebar-foreground transition-all dark-scroll', collapsed ? 'w-14' : 'w-56')}>
+    <Glass as="aside" className={cn('glass-sidebar relative m-2 mr-0 flex h-[calc(100vh-1rem)] shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width]', collapsed ? 'w-14' : 'w-56')}>
       <div className="p-2">
         <Dropdown
           trigger={
-            <button className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-sidebar-border/50 bg-sidebar-accent/40 px-2 py-1.5 text-sm hover:bg-sidebar-accent">
+            <button className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/50 px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sidebar-primary text-[11px] font-bold text-sidebar-primary-foreground">{current?.name?.[0]?.toUpperCase() ?? 'L'}</span>
-              {!collapsed && <><span className="flex-1 truncate text-left font-medium">{current?.name ?? 'LabelDesk'}</span><ChevronDown className="h-3.5 w-3.5 opacity-60" /></>}
+              {!collapsed && <><span className="flex-1 truncate text-left font-medium">{current?.name ?? 'LabelDesk'}</span><ChevronDown className="h-3.5 w-3.5" /></>}
             </button>
           }
           items={[
@@ -71,7 +73,7 @@ export function AppSidebar() {
           <NavLink key={label} to={`/${ws}/${to}`} end={end}
             className={({ isActive }) => cn(
               'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-all duration-150',
-              isActive ? 'border border-sidebar-border/60 bg-sidebar-accent/60 font-medium text-white' : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-white',
+              isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
               collapsed && 'justify-center px-0',
             )}>
             <Icon className="h-4 w-4 shrink-0" />{!collapsed && label}
@@ -80,32 +82,32 @@ export function AppSidebar() {
       </nav>
       <div className="space-y-0.5 p-2">
         {!collapsed && u && (
-          <Link to={`/${ws}/settings/usage`} className="mb-2 block rounded-lg border border-sidebar-border/50 px-3 py-2 text-[12px] hover:bg-sidebar-accent/40">
-            <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium text-white"><Zap className="h-3.5 w-3.5 text-upgrade" /> {u.plan_label} plan</span><span>{Math.round(u.credits_left)} cr</span></div>
-            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', pct > 80 ? 'bg-red-400' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, pct)}%` }} /></div>
+          <Link to={`/${ws}/settings/usage`} className="mb-2 block rounded-lg border border-sidebar-border px-3 py-2 text-[12px] hover:bg-sidebar-accent/60">
+            <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium"><Zap className="h-3.5 w-3.5 text-warning" /> {u.plan_label} plan</span><span>{Math.round(u.credits_left)} cr</span></div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', pct > 80 ? 'bg-destructive' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, pct)}%` }} /></div>
           </Link>
         )}
-        <NavLink to={`/${ws}/activity`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground/80 hover:bg-sidebar-accent/40', collapsed && 'justify-center px-0')}>
+        <NavLink to={`/${ws}/activity`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
           <Bell className="h-4 w-4" />{!collapsed && 'Activity'}
         </NavLink>
-        <NavLink to={`/${ws}/settings`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground/80 hover:bg-sidebar-accent/40', collapsed && 'justify-center px-0')}>
+        <NavLink to={`/${ws}/settings`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
           <Settings className="h-4 w-4" />{!collapsed && 'Settings'}
         </NavLink>
         <div className="flex items-center gap-2 px-2.5 py-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 text-[11px] font-bold text-white">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-tertiary text-[11px] font-bold text-white">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
           {!collapsed && <span className="flex-1 truncate text-[12px]">{me?.name}</span>}
           {!collapsed && (
-            <Dropdown align="right" trigger={<button className="cursor-pointer" aria-label="Account menu"><ChevronDown className="h-3.5 w-3.5 opacity-60" /></button>}
+            <Dropdown align="right" trigger={<button className="cursor-pointer" aria-label="Account menu"><ChevronDown className="h-3.5 w-3.5" /></button>}
               items={[{ label: <><User className="h-3.5 w-3.5" /> Account</>, onClick: () => nav(`/${ws}/settings/account`) },
                 { label: <><LogOut className="h-3.5 w-3.5" /> Sign Out</>, onClick: logout, danger: true }]} />
           )}
         </div>
       </div>
-      <button onClick={toggleSidebar} aria-label="Toggle sidebar" className="absolute -right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border bg-card p-0.5 text-muted-foreground shadow hover:text-foreground">
+      <button onClick={toggleSidebar} aria-label="Toggle sidebar" className="absolute -right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border bg-card p-1 text-muted-foreground shadow hover:text-foreground">
         <ChevronsLeft className={cn('h-3.5 w-3.5 transition-transform', collapsed && 'rotate-180')} />
       </button>
       <NewWorkspace open={newWs} onClose={() => setNewWs(false)} />
-    </aside>
+    </Glass>
   )
 }
 
@@ -137,15 +139,15 @@ export function ProjectPanel({ project }: { project: Project }) {
   const me = useApp((s) => s.me)
   const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? ws
   return (
-    <div className="flex h-screen w-56 shrink-0 flex-col overflow-y-auto border-r bg-card">
+    <Glass as="div" className="glass-sidebar m-2 mr-0 flex h-[calc(100%-1rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl">
       <div className="px-3 pt-3">
-        <Link to={`/${ws}`} className="text-[10px] font-semibold tracking-wide text-muted-foreground hover:text-foreground">← {wsName.toUpperCase()}</Link>
+        <Link to={`/${ws}`} className="text-[11px] font-semibold tracking-wide text-muted-foreground hover:text-foreground">← {wsName.toUpperCase()}</Link>
       </div>
       <div className="p-3">
         <div className="overflow-hidden rounded-lg border">
           <div className="relative h-20 bg-muted">
             {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
-            <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">{typeLabel(project.type)}</span>
+            <span className="absolute left-2 top-2 rounded bg-scrim/70 px-1.5 py-0.5 text-[10px] text-white">{typeLabel(project.type)}</span>
           </div>
           <div className="px-2.5 py-2 text-sm font-semibold">{project.name}</div>
         </div>
@@ -155,11 +157,11 @@ export function ProjectPanel({ project }: { project: Project }) {
           const items = g.items.filter((i) => can(i.min))
           return items.length ? (
             <div key={g.group} className="mb-3">
-              <div className="px-2 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
+              <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
               {items.map(({ to, label, icon: Icon, count }) => (
                 <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
                   className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
-                    isActive ? 'bg-accent font-medium text-accent-foreground' : 'text-foreground/80 hover:bg-muted')}>
+                    isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
                   <Icon className="h-4 w-4 text-muted-foreground" />
                   <span className="flex-1">{label}</span>
                   {count && <span className="text-[11px] text-muted-foreground">{project.images}</span>}
@@ -169,15 +171,94 @@ export function ProjectPanel({ project }: { project: Project }) {
           ) : null
         })}
       </nav>
-    </div>
+    </Glass>
+  )
+}
+
+const THEME_CYCLE: { id: ModePref; icon: typeof Sun; label: string }[] = [
+  { id: 'system', icon: Monitor, label: 'System theme' }, { id: 'light', icon: Sun, label: 'Light theme' }, { id: 'dark', icon: Moon, label: 'Dark theme' },
+]
+
+/** Shows who holds the GPU. GET /api/gpu may not exist yet: on any error the badge renders nothing and stops polling. */
+export function GpuBadge() {
+  const q = useQuery({
+    queryKey: ['gpu'], retry: false, staleTime: 5_000,
+    queryFn: () => get<{ label?: string; holder?: string; state?: string }>('/gpu'),
+    refetchInterval: (query) => (query.state.status === 'error' ? false : 10_000),
+  })
+  const text = q.data && (q.data.label ?? q.data.holder ?? q.data.state)
+  if (!text) return null
+  return <span className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title="GPU holder"><Cpu className="h-3.5 w-3.5" aria-hidden />{text}</span>
+}
+
+export function TopBar() {
+  const { ws = '' } = useParams()
+  const me = useApp((s) => s.me)
+  const { mode } = useThemePrefs()
+  const next = THEME_CYCLE[(THEME_CYCLE.findIndex((m) => m.id === mode) + 1) % THEME_CYCLE.length]
+  const cur = THEME_CYCLE.find((m) => m.id === mode) ?? THEME_CYCLE[0]
+  const Icon = cur.icon
+  return (
+    <Glass as="header" className="m-2 mb-0 flex h-11 shrink-0 items-center gap-3 rounded-2xl px-4">
+      <span className="truncate text-sm font-semibold">{me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'}</span>
+      <div className="ml-auto flex items-center gap-2">
+        <GpuBadge />
+        <button type="button" onClick={() => setThemePrefs({ mode: next.id })} aria-label={`${cur.label}. Switch to ${next.label.toLowerCase()}`}
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground">
+          <Icon className="h-4 w-4" />
+        </button>
+      </div>
+    </Glass>
+  )
+}
+
+const RESERVED = new Set(['models', 'deployments', 'activity', 'settings'])
+const JOB_LABEL: Record<Job['kind'], string> = { train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export' }
+const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])
+
+/** Bottom-right glass tray with determinate progress for long jobs, so users can leave the page. Reads the current project's jobs. */
+export function JobTray() {
+  const m = useMatch('/:ws/:project/*')
+  const ws = m?.params.ws ?? '', project = m?.params.project ?? ''
+  const enabled = !!ws && !!project && !RESERVED.has(project)
+  const seen = useRef(new Map<string, Job>())
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const q = useQuery({
+    queryKey: ['jobs-tray', ws, project], enabled, retry: false,
+    queryFn: () => api.jobs(ws, project),
+    refetchInterval: (query) => ((query.state.data ?? []).some((j) => ACTIVE.has(j.status)) ? 2500 : 15_000),
+  })
+  for (const j of q.data ?? []) if (ACTIVE.has(j.status) || seen.current.has(j.id)) seen.current.set(j.id, j)
+  const rows = enabled ? [...seen.current.values()].filter((j) => !dismissed.has(j.id) && (q.data ?? []).some((x) => x.id === j.id)) : []
+  if (!rows.length) return null
+  return (
+    <Glass as="section" aria-label="Background jobs" className="fixed bottom-4 right-4 z-[150] w-80 space-y-2.5 rounded-2xl p-3">
+      {rows.map((j) => {
+        const live = ACTIVE.has(j.status)
+        return (
+          <div key={j.id} className="text-sm">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate font-medium">{JOB_LABEL[j.kind]}{j.project_name ? ` · ${j.project_name}` : ''}</span>
+              <span className={cn('text-xs tabular-nums', j.status === 'failed' ? 'text-destructive' : 'text-muted-foreground')}>{live ? `${Math.round(j.progress)}%` : j.status}</span>
+              {!live && <button type="button" aria-label="Dismiss" onClick={() => setDismissed((d) => new Set(d).add(j.id))} className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full hover:bg-accent"><X className="h-3.5 w-3.5" /></button>}
+            </div>
+            {live && <Progress className="mt-1.5" value={j.progress} />}
+          </div>
+        )
+      })}
+    </Glass>
   )
 }
 
 export function AppLayout() {
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="app-bg flex h-screen overflow-hidden">
       <AppSidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto"><Outlet /></main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar />
+        <main className="min-h-0 flex-1 overflow-y-auto"><Outlet /></main>
+      </div>
+      <JobTray />
     </div>
   )
 }

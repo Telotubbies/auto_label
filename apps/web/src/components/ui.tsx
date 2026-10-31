@@ -1,5 +1,7 @@
 import { cn } from '@/lib/utils'
 import { X } from 'lucide-react'
+import { dateLocale } from '@/lib/theme'
+import { Glass } from './glass'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export function Button({ variant = 'primary', size = 'md', className, ...props }: {
@@ -9,7 +11,7 @@ export function Button({ variant = 'primary', size = 'md', className, ...props }
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none disabled:opacity-50 disabled:pointer-events-none cursor-pointer',
+        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer',
         variant === 'primary' && 'bg-primary text-primary-foreground hover:bg-primary/90',
         variant === 'secondary' && 'bg-secondary text-secondary-foreground hover:bg-secondary/70',
         variant === 'outline' && 'border border-input bg-card hover:bg-accent hover:text-accent-foreground',
@@ -27,7 +29,7 @@ export function Button({ variant = 'primary', size = 'md', className, ...props }
 }
 
 export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn('h-9 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring placeholder:text-muted-foreground', className)} {...props} />
+  return <input className={cn('h-9 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:border-ring placeholder:text-muted-foreground', className)} {...props} />
 }
 
 export function Badge({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
@@ -38,9 +40,9 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return <div className={cn('rounded-lg border bg-card text-card-foreground shadow-sm transition-shadow', className)} {...props} />
 }
 
-export function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
       className={cn('relative h-5 w-9 rounded-full transition-colors cursor-pointer', checked ? 'bg-primary' : 'bg-input')}>
       <span className={cn('absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', checked && 'translate-x-4')} />
     </button>
@@ -77,14 +79,14 @@ export function Dropdown({ trigger, items, align = 'left' }: {
     <div ref={ref} className="relative">
       <div onClick={() => setOpen(!open)}>{trigger}</div>
       {open && (
-        <div className={cn('anim-pop absolute z-50 mt-1 min-w-44 rounded-md border bg-popover py-1 shadow-lg', align === 'right' ? 'right-0' : 'left-0')}>
+        <Glass strength="overlay" className={cn('anim-pop absolute z-50 mt-1 min-w-44 rounded-lg py-1 text-popover-foreground', align === 'right' ? 'right-0' : 'left-0')}>
           {items.map((it, i) => it.divider ? <div key={i} className="my-1 border-t" /> : (
             <button key={i} onClick={() => { it.onClick?.(); setOpen(false) }}
-              className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent cursor-pointer', it.danger && 'text-destructive')}>
+              className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer', it.danger && 'text-destructive')}>
               {it.label}
             </button>
           ))}
-        </div>
+        </Glass>
       )}
     </div>
   )
@@ -98,12 +100,12 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   }, [onClose])
   if (!open) return null
   return (
-    <div className="anim-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/40" onMouseDown={onClose}>
-      <div className={cn('anim-modal relative my-8 w-full rounded-xl bg-card shadow-2xl', wide ? 'max-w-5xl' : 'max-w-lg')} onMouseDown={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:bg-accent cursor-pointer"><X className="h-5 w-5" /></button>
+    <div className="anim-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-scrim/40" onMouseDown={onClose}>
+      <Glass strength="overlay" role="dialog" aria-modal="true" className={cn('anim-modal relative my-8 w-full rounded-2xl text-popover-foreground shadow-2xl', wide ? 'max-w-5xl' : 'max-w-lg')} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
+        <button onClick={onClose} aria-label="Close" className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:bg-accent cursor-pointer"><X className="h-5 w-5" /></button>
         {title && <div className="px-6 pt-5 text-xl font-semibold">{title}</div>}
         <div className="p-6">{children}</div>
-      </div>
+      </Glass>
     </div>
   )
 }
@@ -117,14 +119,14 @@ export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; ti
     <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center">
       {icon}
       <p className="text-sm text-muted-foreground">{title}</p>
-      {hint && <p className="max-w-xs text-xs text-muted-foreground/70">{hint}</p>}
+      {hint && <p className="max-w-xs text-xs text-muted-foreground">{hint}</p>}
       {action}
     </div>
   )
 }
 
 export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn('h-9 rounded-md border border-input bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring/30', className)} {...props} />
+  return <select className={cn('h-9 rounded-md border border-input bg-card px-2 text-sm outline-none focus:border-ring', className)} {...props} />
 }
 
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
@@ -143,7 +145,7 @@ export function Spinner({ className }: { className?: string }) {
 
 export function Progress({ value, className }: { value: number; className?: string }) {
   return (
-    <div className={cn('h-1.5 w-full overflow-hidden rounded-full bg-muted', className)}>
+    <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value)} className={cn('h-1.5 w-full overflow-hidden rounded-full bg-secondary', className)}>
       <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
     </div>
   )
@@ -173,10 +175,10 @@ export function Stat({ label, value, sub }: { label: ReactNode; value: ReactNode
 
 export function StatusPill({ status }: { status: string }) {
   const tone: Record<string, string> = {
-    done: 'bg-green-100 text-green-800', ready: 'bg-green-100 text-green-800', approved: 'bg-green-100 text-green-800',
-    running: 'bg-blue-100 text-blue-800', training: 'bg-blue-100 text-blue-800', generating: 'bg-blue-100 text-blue-800',
-    queued: 'bg-amber-100 text-amber-800', cancelling: 'bg-amber-100 text-amber-800',
-    failed: 'bg-red-100 text-red-800', rejected: 'bg-red-100 text-red-800', cancelled: 'bg-gray-100 text-gray-700',
+    done: 'bg-success/15 text-success', ready: 'bg-success/15 text-success', approved: 'bg-success/15 text-success',
+    running: 'bg-info/15 text-info', training: 'bg-info/15 text-info', generating: 'bg-info/15 text-info',
+    queued: 'bg-warning/15 text-warning', cancelling: 'bg-warning/15 text-warning',
+    failed: 'bg-destructive/15 text-destructive', rejected: 'bg-destructive/15 text-destructive', cancelled: 'bg-secondary text-secondary-foreground',
   }
   return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize', tone[status] ?? 'bg-secondary text-secondary-foreground')}>{status}</span>
 }
@@ -198,15 +200,15 @@ export function Toaster() {
     }
   }, [])
   return (
-    <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2">
+    <div className="fixed bottom-4 left-1/2 z-[200] flex -translate-x-1/2 flex-col gap-2">
       {items.map((t) => (
-        <div key={t.id} className={cn('anim-toast max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg', t.tone === 'ok' ? 'bg-card' : 'border-destructive/40 bg-red-50 text-red-900')}>{t.text}</div>
+        <Glass strength="overlay" key={t.id} role={t.tone === 'ok' ? 'status' : 'alert'} className={cn('anim-toast max-w-sm rounded-xl px-4 py-3 text-sm text-popover-foreground', t.tone === 'err' && 'border-destructive')}>{t.text}</Glass>
       ))}
     </div>
   )
 }
 
-export const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+export const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })
 export const fmtAgo = (t: number) => {
   const s = Date.now() / 1000 - t
   if (s < 60) return 'just now'
