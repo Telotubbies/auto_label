@@ -56,6 +56,8 @@ export interface ModelEvalDetection {
 export interface ModelEval {
   split: 'test' | 'valid'
   note: string
+  /** COCOeval iouType: segmentation projects score masks, detection projects score boxes. */
+  iou?: 'bbox' | 'segm'
   coco: {
     AP: number; AP50: number; AP75: number; APs: number; APm: number; APl: number
     AR1: number; AR10: number; AR100: number; ARs: number; ARm: number; ARl: number
@@ -76,6 +78,8 @@ export interface ModelItem {
   metrics: {
     map50?: number; map5095?: number; precision?: number; recall?: number; accuracy_top1?: number; accuracy_top5?: number
     eval?: ModelEval
+    /** Evaluation crashed after training: the weights are still usable, the metrics are not. */
+    eval_error?: string
   }
   history: Record<string, number>[]; classes: string[]; versionId: string; version?: number; jobId: string | null
   created: number; weightsUrl: string | null; job?: Job | null; project?: string; project_name?: string

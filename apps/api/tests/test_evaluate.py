@@ -87,11 +87,16 @@ def test_matches_pycocotools_reference(tmp_path, monkeypatch):
     root = make_version(tmp_path / "v1", REF_ITEMS)
     _use_model(monkeypatch, FakeModel(root, REF_PREDS))
     out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
-    # Reference produced once with pycocotools COCOeval(iouType="bbox") directly on this
-    # exact export + these fixed predictions, with annotation ids renumbered to 1-based
-    # (pycocotools treats gt id 0 as unmatched); the throwaway script was not kept.
+    # Reference produced once with pycocotools COCOeval(iouType="bbox") directly on this exact
+    # export + these fixed predictions, with annotation ids renumbered to 1-based (pycocotools
+    # treats gt id 0 as unmatched; the throwaway script was not kept). The two-class AP is the
+    # mean of the per-class precision samples: helmet 34/101 = 0.3366 and vest 67/101 = 0.6634
+    # (101 recall samples, interpolated precision) -> 0.5. A 0-based reference gives 0.3317.
     assert out["coco"]["AP"] == pytest.approx(0.5)
     assert out["coco"]["AP50"] == pytest.approx(0.5)
+    helmet, vest = (c["AP"] for c in out["per_class"])
+    assert helmet == pytest.approx(34 / 101, abs=1e-3)
+    assert vest == pytest.approx(67 / 101, abs=1e-3)
     keys = {"AP", "AP50", "AP75", "APs", "APm", "APl", "AR1", "AR10", "AR100", "ARs", "ARm", "ARl"}
     assert set(out["coco"]) == keys
     assert all(isinstance(v, float) for v in out["coco"].values())
@@ -187,6 +192,65 @@ def test_no_eval_data_does_not_crash(tmp_path, monkeypatch):
     assert all(v == 0.0 for v in out["coco"].values())
     assert out["f1_best"] == {"conf": 0.4, "f1": 0.0}
     assert out["detections"] == []
+
+
+SEG_ITEMS = [
+    {"file": "test/s1.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [{"cls": 0, "shape": {"kind": "polygon",
+                                   "points": [0.2, 0.2, 0.6, 0.2, 0.6, 0.6, 0.2, 0.6]}}]},
+]
+SEG_PREDS = {"s1.jpg": [{"class": "helmet", "class_id": 0, "confidence": 0.9,
+                         "x": 80, "y": 80, "width": 80, "height": 80,
+                         "points": [{"x": 40, "y": 40}, {"x": 120, "y": 40},
+                                    {"x": 120, "y": 120}, {"x": 40, "y": 120}]}]}
+
+
+def test_segmentation_uses_mask_iou(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", SEG_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, SEG_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n-seg", root, "segment")
+    assert out["iou"] == "segm"
+    assert out["coco"]["AP"] == pytest.approx(1.0)
+    assert out["coco"]["AP50"] == pytest.approx(1.0)
+
+
+THIN_ITEMS = [
+    {"file": "test/t1.jpg", "split": "test", "width": 200, "height": 200,
+     # a thin diagonal mask that still spans the full 80x80 box
+     "anns": [{"cls": 0, "shape": {"kind": "polygon",
+                                   "points": [0.2, 0.2, 0.22, 0.2, 0.6, 0.58, 0.58, 0.6]}}]},
+]
+FULL_BOX_PRED = {"t1.jpg": [{"class": "helmet", "class_id": 0, "confidence": 0.9,
+                             "x": 80, "y": 80, "width": 80, "height": 80,
+                             "points": [{"x": 40, "y": 40}, {"x": 120, "y": 40},
+                                        {"x": 120, "y": 120}, {"x": 40, "y": 120}]}]}
+
+
+def test_segm_and_bbox_disagree_when_masks_do(tmp_path, monkeypatch):
+    """Same boxes (IoU 1.0), different masks (thin strip vs full square): only segm rejects it."""
+    root = make_version(tmp_path / "v1", THIN_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, FULL_BOX_PRED))
+    seg = evaluate_mod.evaluate("ultralytics:yolo26n-seg", root, "segment")
+    box = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    assert seg["iou"] == "segm" and box["iou"] == "bbox"
+    assert seg["coco"]["AP50"] == 0.0
+    assert box["coco"]["AP50"] == pytest.approx(1.0)
+
+
+WORST_ITEMS = [
+    {"file": "test/good.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/miss.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.40, 0.40, 0.20, 0.20)]},
+]
+WORST_PREDS = {"good.jpg": [_pred("helmet", 0.9, 40, 40, 40, 40)], "miss.jpg": []}
+
+
+def test_worst_lists_only_images_with_errors(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", WORST_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, WORST_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    assert out["worst"] == ["miss.jpg"]
 
 
 def test_pr_curve_sorted_by_recall(tmp_path, monkeypatch):

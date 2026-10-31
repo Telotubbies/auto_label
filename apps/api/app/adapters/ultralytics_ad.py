@@ -26,6 +26,21 @@ def base_weights(task: str, size: str, family: str = "yolo26") -> str:
 _now = time.monotonic      # indirection so tests can fake the run-cap clock
 
 
+class TrainingStalled(RuntimeError):
+    """Raised from a batch callback when the worker's watchdog stopped seeing progress."""
+
+
+def _stop_probe(trainer, should_stop, stalled) -> None:
+    """Per-batch check: a stall aborts immediately, a cancel stops cleanly at the next checkpoint.
+
+    Ultralytics only consults `trainer.stop` between epochs, so a run that stops making progress
+    mid-epoch (slow batch, hung dataloader) needs a callback that raises instead."""
+    if stalled is not None and stalled():
+        raise TrainingStalled("training stalled")
+    if should_stop():
+        trainer.stop = True
+
+
 def _start_weights(variant: str, task: str, resume_from: str | None = None) -> str:
     """Starting checkpoint: a previous run's last.pt (fine-tune continuation), a local pretrained copy, else the hub name."""
     if resume_from:
@@ -157,6 +172,7 @@ class UltralyticsAdapter:
             started[0] = trainer.epoch + 1
 
         def _cb(trainer):
+            _stop_probe(trainer, should_stop, opts.get("stalled"))
             if trainer.epoch + 1 > started[0]:
                 return       # ultralytics re-fires this hook as epoch N+1 for its post-training best.pt validation
             m = {k: float(v) for k, v in (trainer.metrics or {}).items() if isinstance(v, (int, float))}
@@ -172,8 +188,14 @@ class UltralyticsAdapter:
             if should_stop() or (deadline is not None and _now() > deadline):
                 trainer.stop = True        # honoured by ultralytics at epoch end; best.pt is kept
 
+        def _batch(trainer):
+            _stop_probe(trainer, should_stop, opts.get("stalled"))
+
         model.add_callback("on_train_epoch_start", _started)
         model.add_callback("on_fit_epoch_end", _cb)
+        # a stall must end the run mid-epoch, not at the next epoch boundary
+        model.add_callback("on_train_batch_end", _batch)
+        model.add_callback("on_val_batch_end", _batch)
         kw = dict(data=data, epochs=epochs, imgsz=int(opts.get("imgsz", 640)), batch=int(opts.get("batch", 8)),
                   project=str(run_dir.parent), name=run_dir.name, exist_ok=True, verbose=False, plots=True,
                   workers=0, patience=int(opts.get("patience", 50)))

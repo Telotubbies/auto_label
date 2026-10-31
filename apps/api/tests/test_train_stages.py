@@ -141,6 +141,7 @@ def _run_setup(with_data: bool = True, batch: int = 8):
 
 def test_oom_retries_with_half_batch(client, monkeypatch):
     batches: list[int] = []
+    cleaned: list[str] = []
 
     class FakeAdapter:
         family = "ultralytics"
@@ -151,6 +152,9 @@ def test_oom_retries_with_half_batch(client, monkeypatch):
                 raise OutOfMemoryError("CUDA out of memory")
             return SimpleNamespace(weights="models/x/best.pt", run_dir="", history=[])
 
+    import torch
+    monkeypatch.setattr(worker.gc, "collect", lambda: cleaned.append("gc"))
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: cleaned.append("empty_cache"))
     mid, vid, jid = _run_setup(batch=8)
     monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": FakeAdapter()})
     monkeypatch.setattr(worker, "evaluate", lambda *a, **kw: _eval_stub())
@@ -161,8 +165,35 @@ def test_oom_retries_with_half_batch(client, monkeypatch):
         out = worker.run_train(job)
         assert batches == [8, 4]
         assert "retried with batch=4" in out["stages"]["train"].get("note", "")
+        assert cleaned == ["gc", "empty_cache"]          # free the failed attempt before retrying
         with SessionLocal() as db:
             assert db.get(TrainedModel, mid).status == "ready"
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
+
+
+def test_failed_train_removes_dataset_copy(client, monkeypatch):
+    class Boom:
+        family = "ultralytics"
+
+        def train(self, *a, **kw):
+            raise RuntimeError("boom")
+
+    mid, vid, jid = _run_setup()
+    leftover = DATA_DIR / "train_data" / mid
+    leftover.mkdir(parents=True, exist_ok=True)
+    (leftover / "data.yaml").write_text("names: ['person']\n")
+    monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": Boom()})
+    monkeypatch.setattr(worker, "evaluate", lambda *a, **kw: _eval_stub())
+    monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
+    try:
+        with SessionLocal() as db:
+            job = db.get(Job, jid)
+        with pytest.raises(RuntimeError, match="boom"):
+            worker.run_train(job)
+        assert not leftover.exists()
+        with SessionLocal() as db:
+            assert db.get(TrainedModel, mid).status == "failed"
     finally:
         _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
 
@@ -182,6 +213,7 @@ def test_watchdog_fails_stalled_run(client, monkeypatch):
     monkeypatch.setattr(worker, "evaluate", lambda *a, **kw: _eval_stub())
     monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
     monkeypatch.setattr(worker, "_stall_limit", lambda _secs: 0.05)
+    monkeypatch.setattr(worker, "_first_limit", lambda *_a: 0.05)
     try:
         with SessionLocal() as db:
             job = db.get(Job, jid)
@@ -189,6 +221,117 @@ def test_watchdog_fails_stalled_run(client, monkeypatch):
             worker.run_train(job)
         with SessionLocal() as db:
             assert db.get(TrainedModel, mid).status == "failed"
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
+
+
+def test_watchdog_fires_mid_epoch_through_the_real_adapter(client, monkeypatch):
+    """The real UltralyticsAdapter only sees should_stop via callbacks; a stalled epoch must
+    end the run from a batch callback (not wait for the next epoch boundary) and release the GPU."""
+    import sys
+    from app.adapters.ultralytics_ad import UltralyticsAdapter
+
+    class FakeYOLO:
+        def __init__(self, _weights):
+            self.cbs: dict = {}
+
+        def add_callback(self, name, fn):
+            self.cbs[name] = fn
+
+        def train(self, **_kw):
+            trainer = SimpleNamespace(epoch=0, metrics={}, tloss=None, stop=False)
+            for _ in range(2000):                    # a long epoch: no on_fit_epoch_end in sight
+                self.cbs["on_train_batch_end"](trainer)
+                time.sleep(0.005)
+            raise AssertionError("the watchdog never aborted the epoch")
+
+    mid, vid, jid = _run_setup()
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": UltralyticsAdapter()})
+    monkeypatch.setattr(worker, "evaluate", lambda *a, **kw: _eval_stub())
+    s = GpuScheduler(4500, None)
+    monkeypatch.setattr(worker, "scheduler", s)
+    monkeypatch.setattr(worker, "_stall_limit", lambda _secs: 0.05)
+    monkeypatch.setattr(worker, "_first_limit", lambda *_a: 0.05)
+    try:
+        with SessionLocal() as db:
+            job = db.get(Job, jid)
+        with pytest.raises(RuntimeError, match="no training progress"):
+            worker.run_train(job)
+        assert s.state()["holder"] is None                 # the lease was released
+        with SessionLocal() as db:
+            assert db.get(TrainedModel, mid).status == "failed"
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
+
+
+def test_first_epoch_grace_follows_the_train_page_estimate():
+    assert worker._first_limit(1, 1, 640) == worker.FIRST_EPOCH_MIN_S
+    # 1000 images x 10 epochs / 600 = 16.7 min -> 1000 s estimate -> 2x = 2000 s
+    assert worker._first_limit(1000, 10, 640) == pytest.approx(2000)
+    # 4x the pixels = 4x the estimate
+    assert worker._first_limit(1000, 10, 1280) == pytest.approx(8000)
+
+
+def test_resolved_predict_uses_the_evaluated_threshold(client, monkeypatch):
+    from app.adapters import base as base_mod
+    from app.adapters import resolve
+
+    seen: list[float] = []
+
+    class Fake:
+        family = "ultralytics"
+
+        def predict(self, variant, im, **kw):
+            seen.append(kw.get("conf", 0.4))
+            return {"predictions": [], "time": 0.0, "image": {"width": 1, "height": 1}}
+
+    monkeypatch.setitem(base_mod.ADAPTERS, "ultralytics", Fake())
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        tuned = _new_model(db, ws, p, v, status="ready",
+                           metrics={"eval": {"f1_best": {"conf": 0.62, "f1": 0.8}}})
+        plain = _new_model(db, ws, p, v, status="ready", metrics={})
+        db.commit()
+        ids, vid = [tuned.id, plain.id], v.id
+    try:
+        with SessionLocal() as db:
+            resolve(f"trained:{tuned.id}", db).predict(object())
+            resolve(f"trained:{plain.id}", db).predict(object())
+            resolve(f"trained:{tuned.id}", db).predict(object(), conf=0.9)   # explicit always wins
+        assert seen == [0.62, 0.4, 0.9]
+    finally:
+        _drop(model_ids=ids, version_ids=[vid])
+
+
+def test_eval_failure_keeps_the_model_ready(client, monkeypatch):
+    class HappyAdapter:
+        family = "ultralytics"
+
+        def train(self, variant, dataset_dir, task, opts, on_epoch, should_stop):
+            on_epoch(1, 1, {"metrics/mAP50(B)": 0.5})
+            return SimpleNamespace(weights="models/x/best.pt", run_dir="", history=[])
+
+    mid, vid, jid = _run_setup()
+    monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": HappyAdapter()})
+    monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
+    monkeypatch.setattr(worker, "_first_limit", lambda *_a: 0.05)
+
+    def boom(*_a, **_kw):
+        raise ValueError("bad export")
+
+    monkeypatch.setattr(worker, "evaluate", boom)
+    try:
+        with SessionLocal() as db:
+            job = db.get(Job, jid)
+        out = worker.run_train(job)
+        assert out["stages"]["evaluate"]["status"] == "failed"
+        with SessionLocal() as db:
+            tm = db.get(TrainedModel, mid)
+            assert tm.status == "ready"                    # weights are still usable
+            assert "bad export" in tm.metrics["eval_error"]
+            assert "eval" not in tm.metrics
     finally:
         _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
 

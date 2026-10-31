@@ -3,7 +3,9 @@
 Run standalone (`python -m app.worker`) on the GPU host, or embedded in the api
 process (LD_EMBEDDED_WORKER=1, the dev default).
 """
+import gc
 import logging
+import shutil
 import statistics
 import threading
 import time
@@ -11,7 +13,7 @@ import traceback
 
 from sqlalchemy import select, update
 
-from .adapters import ADAPTERS
+from .adapters import ADAPTERS, model_conf
 from .adapters.ultralytics_ad import _start_weights
 from .config import DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
@@ -22,26 +24,37 @@ from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
 POLL = 1.5
-WATCHDOG_MIN_S = 120.0                      # never call a run stalled sooner than this
+WATCHDOG_MIN_S = 120.0                      # later epochs: never call a run stalled sooner than this
+FIRST_EPOCH_MIN_S = 600.0                   # the first epoch also pays for export + model load
 WATCHDOG_POLL_S = 0.01                      # floor for the adaptive poll (tests shrink the limit)
 
 
 def _stall_limit(epoch_secs: list[float]) -> float:
-    """A run is stalled after 3x its median epoch, but never sooner than WATCHDOG_MIN_S."""
+    """Later epochs: stalled after 3x the median epoch, but never sooner than WATCHDOG_MIN_S."""
     return max(WATCHDOG_MIN_S, 3 * statistics.median(epoch_secs)) if epoch_secs else WATCHDOG_MIN_S
+
+
+def _first_limit(train_images: int, epochs: int, imgsz: int) -> float:
+    """First-epoch grace: max(600 s, 2x the estimate the Train page shows).
+
+    The Train page estimates `train_images * epochs * (imgsz/640)^2 / 600` minutes; the first epoch
+    also pays for the dataset export and the model load, so it gets the larger of the two budgets."""
+    estimate_s = train_images * max(1, epochs) * (imgsz / 640) ** 2 / 600 * 60
+    return max(FIRST_EPOCH_MIN_S, 2 * estimate_s)
 
 
 class _Watchdog:
     """Daemon thread that flips `stalled` when on_epoch callbacks stop arriving."""
 
-    def __init__(self):
+    def __init__(self, first_limit: float = FIRST_EPOCH_MIN_S):
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="labeldesk-train-watchdog")
+        self.first_limit = float(first_limit)
         self.last = time.monotonic()
         self.epoch_secs: list[float] = []
         self._seen_epoch = False
-        self.limit = WATCHDOG_MIN_S
+        self.limit = self.first_limit
         self.stalled = False
 
     def start(self) -> "_Watchdog":
@@ -52,8 +65,7 @@ class _Watchdog:
         """Record an on_epoch callback; the gap since the previous one feeds the limit."""
         now = time.monotonic()
         with self._lock:
-            if self._seen_epoch:                 # the first gap is model load, not an epoch duration
-                self.epoch_secs.append(now - self.last)
+            self.epoch_secs.append(now - self.last)      # the first gap includes load/export: a generous seed
             self._seen_epoch = True
             self.last = now
 
@@ -62,13 +74,13 @@ class _Watchdog:
             self.last = time.monotonic()
             self.epoch_secs.clear()
             self._seen_epoch = False
-            self.limit = WATCHDOG_MIN_S
+            self.limit = self.first_limit
             self.stalled = False
 
     def _run(self) -> None:
         while True:
             with self._lock:
-                self.limit = _stall_limit(self.epoch_secs)
+                self.limit = _stall_limit(self.epoch_secs) if self._seen_epoch else self.first_limit
                 limit = self.limit
                 if time.monotonic() - self.last > limit:
                     self.stalled = True
@@ -160,7 +172,13 @@ def run_train(job: Job):
         history: list[dict] = []
         variant = tm.variant or tm.arch
         family = tm.family or "ultralytics"
-        watchdog = _Watchdog()
+        opts = {**job.params.get("options", {}), "model_id": tm.id}
+        opts.update(batch=int(opts.get("batch", 8)), epochs=int(opts.get("epochs", 30)),
+                    imgsz=int(opts.get("imgsz", 640)), max_minutes=opts.get("max_minutes"),
+                    resume_from=opts.get("resume_from"))
+        train_images = int((v.stats or {}).get("splits", {}).get("train") or 0)
+        watchdog = _Watchdog(_first_limit(train_images, opts["epochs"], opts["imgsz"]))
+        opts["stalled"] = lambda: watchdog.stalled     # read by the adapter's per-batch callbacks
         train_note = None
 
         def on_epoch(ep, total, metrics):
@@ -188,10 +206,6 @@ def run_train(job: Job):
                 else:
                     mark("resolve_weights", note="adapter default")
                 mark("build_config", "running")
-                opts = {**job.params.get("options", {}), "model_id": tm.id}
-                opts.update(batch=int(opts.get("batch", 8)), epochs=int(opts.get("epochs", 30)),
-                            imgsz=int(opts.get("imgsz", 640)), max_minutes=opts.get("max_minutes"),
-                            resume_from=opts.get("resume_from"))
                 mark("build_config")
                 mark("train", "running")
                 watchdog.start()
@@ -210,6 +224,12 @@ def run_train(job: Job):
                             attempts += 1
                             opts["batch"] //= 2
                             train_note = f"retried with batch={opts['batch']}"
+                            gc.collect()                       # drop the failed attempt's tensors first
+                            try:
+                                import torch
+                                torch.cuda.empty_cache()
+                            except Exception:                  # CPU-only installs have nothing to free
+                                pass
                             watchdog.reset()
                 finally:
                     watchdog.stop()
@@ -219,18 +239,25 @@ def run_train(job: Job):
                 mark("evaluate", "running")
                 tm.weights, tm.status = res.weights, "ready"     # resolve() only accepts ready models
                 db.commit()
-                with scheduler.training_scope():                  # the holder may load its own model for eval
-                    ev = evaluate(f"trained:{tm.id}", versioning.version_dir(v), tm.task,
-                                  db=db, workspace_id=tm.workspace_id)
-                tm.metrics = {**ml.final_metrics(history, tm.task), "eval": ev}
+                base = ml.final_metrics(history, tm.task)
+                try:
+                    with scheduler.training_scope():              # the holder may load its own model for eval
+                        ev = evaluate(f"trained:{tm.id}", versioning.version_dir(v), tm.task,
+                                      db=db, workspace_id=tm.workspace_id)
+                    tm.metrics = {**base, "eval": ev}
+                    mark("evaluate")
+                except Exception as e:                            # a broken eval must not discard good weights
+                    log.exception("evaluation failed for model %s", tm.id)
+                    tm.metrics = {**base, "eval_error": f"{type(e).__name__}: {e}"}
+                    mark("evaluate", "failed", note="model kept ready without evaluation")
                 tm.history = history
-                mark("evaluate")
                 mark("register", "running")
                 db.commit()
                 mark("register")
             mark("release")
         except Exception:
             tm.status = "failed"; db.commit()
+            shutil.rmtree(DATA_DIR / "train_data" / tm.id, ignore_errors=True)   # adapter only cleans on success
             for name, entry in list(stages.items()):
                 if entry["status"] == "running":
                     mark(name, "failed")
@@ -252,10 +279,13 @@ def run_autolabel(job: Job):
         if P.get("only_unannotated", True):
             q = q.where(Image.n_annotations == 0)
         rows = db.scalars(q).all()
-        conf = float(P.get("confidence", 0.4))
         model = db.get(TrainedModel, P["model_id"]) if P.get("method") == "model" else None
         if P.get("method") == "model" and (not model or model.status != "ready"):
             raise RuntimeError("selected model is not ready")
+        conf = P.get("confidence")
+        if conf is None:                              # no explicit threshold: the model's best-F1 confidence
+            conf = model_conf(model) if model else None
+        conf = 0.4 if conf is None else float(conf)
         wanted = [c for c in classes if not P.get("class_ids") or c.id in P["class_ids"]]
         by_name = {c.name: c.id for c in classes}
         done = 0

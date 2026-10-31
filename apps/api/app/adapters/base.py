@@ -50,13 +50,19 @@ def parse_ref(ref: str) -> tuple[str, str]:
 
 @dataclass
 class Resolved:
-    """A model_ref bound to its adapter. weights (DATA_DIR-relative) is set for trained models only."""
+    """A model_ref bound to its adapter. weights (DATA_DIR-relative) is set for trained models only.
+
+    conf is the model's own default threshold (the evaluator's best-F1 confidence); None keeps the
+    adapter default. Callers that pass conf= explicitly always win."""
     adapter: Adapter
     variant: str
     weights: str | None
     ref: str
+    conf: float | None = None
 
     def predict(self, im: PImage.Image, **kw) -> dict:
+        if self.conf is not None and "conf" not in kw:
+            kw["conf"] = self.conf
         out = self.adapter.predict(self.variant, im, weights=self.weights, **kw)
         out["model"] = self.ref
         return out

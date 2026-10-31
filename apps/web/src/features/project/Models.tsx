@@ -296,7 +296,8 @@ function ConfusionCard({ ev, matrix, cellFiles, conf, onConf, f1, onOpen }: {
   )
 }
 
-function EvalPanel({ ev, images }: { ev: ModelEval; images?: Record<string, string> }) {
+function EvalPanel({ ev, images, task }: { ev: ModelEval; images?: Record<string, string>; task: ModelItem['task'] }) {
+  const mask = (ev.iou ?? (task === 'segment' ? 'segm' : 'bbox')) === 'segm'
   const [conf, setConf] = useState(() => Math.min(0.95, Math.max(0.05, ev.f1_best?.conf ?? 0.25)))
   const [viewer, setViewer] = useState<ViewerState>(null)
   const dets = useMemo(() => new Map((ev.detections ?? []).map((d) => [d.file, d])), [ev.detections])
@@ -330,13 +331,15 @@ function EvalPanel({ ev, images }: { ev: ModelEval; images?: Record<string, stri
 
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold">COCO metrics</h3>
+          <h3 className="text-sm font-semibold">COCO {mask ? 'mask' : 'box'} metrics</h3>
           <span className="text-xs tabular-nums text-muted-foreground">Inference {ev.latency_ms.toFixed(1)} ms per image</span>
         </div>
         <div className="grid grid-cols-3 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4 lg:grid-cols-6">
           {COCO_METRICS.map(([key, label]) => (
             <div key={key} className={cn('bg-card px-2.5 py-2', key === 'AP' && 'bg-accent/40')}>
-              <div className="text-[10px] leading-tight text-muted-foreground">{label}</div>
+              <div className="text-[10px] leading-tight text-muted-foreground">
+                {key === 'AP' ? (mask ? 'Mask AP' : 'Box AP') : key === 'AP50' ? (mask ? 'Mask AP50' : 'Box AP50') : label}
+              </div>
               <div className={cn('tabular-nums', key === 'AP' ? 'text-lg font-bold text-primary' : 'text-sm font-semibold')}>{num3(ev.coco[key])}</div>
             </div>
           ))}
@@ -384,7 +387,7 @@ function EvalPanel({ ev, images }: { ev: ModelEval; images?: Record<string, stri
               </ResponsiveContainer>
             ) : <p className="grid h-full place-items-center text-xs text-muted-foreground">No detections to plot.</p>}
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">Precision vs recall across confidence thresholds.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Precision vs recall across the confidence sweep (0.05–0.95).</p>
         </Card>
       </div>
 
@@ -587,7 +590,15 @@ export default function Models() {
                       ? <Card className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
                           <Info className="h-4 w-4 shrink-0" /> {ev.note || 'COCO evaluation is not available for this model.'}
                         </Card>
-                      : <EvalPanel key={m.id} ev={ev} images={detail.data?.evalImages} />
+                      : <EvalPanel key={m.id} ev={ev} images={detail.data?.evalImages} task={m.task} />
+                  ) : m.metrics.eval_error ? (
+                    <Card className="flex items-start gap-2 border-warning/60 bg-warning/10 p-4 text-sm">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                      <div>
+                        <p className="font-medium">Evaluation failed — the model is still usable</p>
+                        <p className="mt-0.5 break-words text-muted-foreground">{m.metrics.eval_error}</p>
+                      </div>
+                    </Card>
                   ) : m.status === 'ready' && (
                     <Card className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
                       <Info className="h-4 w-4 shrink-0" /> Evaluation runs after training — refresh once the job finishes.

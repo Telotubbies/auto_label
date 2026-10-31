@@ -26,7 +26,8 @@ def _message(e: Exception) -> str:
     return "inference failed"
 
 
-def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | None, conf: float) -> dict:
+def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | None,
+         conf: float | None) -> dict:
     t0 = time.perf_counter()
     out = {"ref": ref, "prediction": None, "latency_ms": 0.0, "error": None}
     try:
@@ -35,7 +36,11 @@ def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | 
         needs_classes = (is_vlm and not prompt) or "world" in r.variant
         if needs_classes and not classes:
             raise ValueError("this model needs classes (comma-separated) to detect")
-        kw: dict = {"conf": conf}
+        kw: dict = {}
+        if conf is not None:
+            kw["conf"] = conf
+        elif r.conf is None:                # no model default: keep the playground's historical 0.25
+            kw["conf"] = 0.25
         if prompt and is_vlm:
             kw["prompt"] = prompt
         if needs_classes:
@@ -53,7 +58,7 @@ def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | 
 
 @router.post("/predict")
 def predict(file: UploadFile = File(...), model_refs: str = Form(""), prompt: str | None = Form(None),
-            classes: str | None = Form(None), confidence: float = Form(0.25), c: Ctx = Depends(ws_ctx)):
+            classes: str | None = Form(None), confidence: float | None = Form(None), c: Ctx = Depends(ws_ctx)):
     refs = list(dict.fromkeys(r.strip() for r in model_refs.split(",") if r.strip()))
     if not 1 <= len(refs) <= MAX_MODELS:
         raise HTTPException(400, f"choose 1 to {MAX_MODELS} models")

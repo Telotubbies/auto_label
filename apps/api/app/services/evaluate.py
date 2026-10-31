@@ -40,8 +40,9 @@ def evaluate(model_ref: str, version_dir: Path, task: str, db=None,
     if "skipped" in note:
         return _empty(split, note)
 
+    iou_type = "segm" if task == "segment" else "bbox"
     ann_path = coco_dir / split / "_annotations.coco.json"
-    coco, images = _load_ground_truth(ann_path)
+    coco, images = _load_ground_truth(ann_path, iou_type)
     categories = coco.dataset["categories"]
     names = [c["name"] for c in categories]
     cat_ids = {c["name"]: c["id"] for c in categories}
@@ -61,24 +62,29 @@ def evaluate(model_ref: str, version_dir: Path, task: str, db=None,
                 continue
             box = [p["x"] - p["width"] / 2, p["y"] - p["height"] / 2, p["width"], p["height"]]
             preds.append({"cls": p["class"], "conf": float(p["confidence"]), "bbox": box})
-            detections.append({"image_id": img["id"], "category_id": cat_ids[p["class"]],
-                               "bbox": box, "score": float(p["confidence"])})
+            det = {"image_id": img["id"], "category_id": cat_ids[p["class"]],
+                   "bbox": box, "score": float(p["confidence"])}
+            if iou_type == "segm":
+                det["segmentation"] = [_polygon(p, box)]
+            detections.append(det)
         records.append({"file": img["file_name"], "width": img["width"], "height": img["height"],
                         "gt": [{"cls": cat_names[a["category_id"]], "bbox": list(a["bbox"])}
                                for a in coco.imgToAnns.get(img["id"], [])],
                         "pred": preds})
 
-    dt = coco.loadRes(detections) if detections else None
-    stats = _coco_stats(coco, dt)
+    with contextlib.redirect_stdout(io.StringIO()):        # loadRes prints progress too
+        dt = coco.loadRes(detections) if detections else None
+    stats = _coco_stats(coco, dt, iou_type)
     per_class = []
     for cat in categories:
-        s = _coco_stats(coco, dt, [cat["id"]])
+        s = _coco_stats(coco, dt, iou_type, [cat["id"]])
         per_class.append({"class": cat["name"], "AP": _stat(s[0]), "AP50": _stat(s[1])})
 
-    curve, f1_best = _sweep(records)
+    curve, f1_best = _sweep(records)        # F1/confusion stay box-based: the UI shows boxes
     return {
         "split": split,
         "note": note,
+        "iou": iou_type,
         "coco": {k: _stat(stats[i]) for i, k in enumerate(COCO_KEYS)},
         "per_class": per_class,
         "f1_best": f1_best,
@@ -92,7 +98,7 @@ def evaluate(model_ref: str, version_dir: Path, task: str, db=None,
 
 
 def _empty(split: str, note: str) -> dict:
-    return {"split": split, "note": note,
+    return {"split": split, "note": note, "iou": "bbox",
             "coco": {k: 0.0 for k in COCO_KEYS},
             "per_class": [], "f1_best": {"conf": 0.4, "f1": 0.0},
             "confusion": {"labels": [], "matrix": [], "images": []},
@@ -116,20 +122,42 @@ def _pick_split(coco_dir: Path) -> tuple[str, str]:
     return "valid", "no test or valid images — evaluation skipped"
 
 
-def _load_ground_truth(path: Path) -> tuple[COCO, list]:
+def _load_ground_truth(path: Path, iou_type: str = "bbox") -> tuple[COCO, list]:
     data = json.loads(path.read_text())
     for i, ann in enumerate(data["annotations"]):
         ann["id"] = i + 1                    # pycocotools treats gt id 0 as "unmatched"
+        if iou_type == "segm":
+            if not ann.get("segmentation"):  # bbox-only annotation in a segmentation project
+                x, y, w, h = ann["bbox"]
+                ann["segmentation"] = [[x, y, x + w, y, x + w, y + h, x, y + h]]
+            ann["area"] = max(_poly_area(ann["segmentation"][0]), 1.0)
     coco = COCO()
     coco.dataset = data
-    coco.createIndex()
+    with contextlib.redirect_stdout(io.StringIO()):
+        coco.createIndex()
     return coco, data["images"]
 
 
-def _coco_stats(coco: COCO, dt, cat_ids: list[int] | None = None) -> list[float]:
+def _polygon(p: dict, box: list[float]) -> list[float]:
+    """Prediction mask polygon in pixels; a box rectangle when the adapter returned no mask points."""
+    pts = p.get("points")
+    if pts and len(pts) >= 3:
+        return [v for q in pts for v in (q["x"], q["y"])]
+    x, y, w, h = box
+    return [x, y, x + w, y, x + w, y + h, x, y + h]
+
+
+def _poly_area(flat: list[float]) -> float:
+    """Shoelace area of a flat [x1,y1,x2,y2,...] polygon."""
+    xs, ys = flat[0::2], flat[1::2]
+    return abs(sum(xs[i] * ys[(i + 1) % len(xs)] - xs[(i + 1) % len(xs)] * ys[i]
+                   for i in range(len(xs)))) / 2 if len(xs) >= 3 else 0.0
+
+
+def _coco_stats(coco: COCO, dt, iou_type: str = "bbox", cat_ids: list[int] | None = None) -> list[float]:
     if dt is None:
         return [0.0] * len(COCO_KEYS)
-    ev = COCOeval(coco, dt, "bbox")
+    ev = COCOeval(coco, dt, iou_type)
     if cat_ids is not None:
         ev.params.catIds = list(cat_ids)
     with contextlib.redirect_stdout(io.StringIO()):    # pycocotools prints a table per call
@@ -231,7 +259,9 @@ def _worst(records: list[dict], conf: float) -> list[str]:
     for r in records:
         pairs = _match(r["gt"], r["pred"], conf)
         above = sum(1 for p in r["pred"] if p["conf"] >= conf)
-        scored.append(((above - len(pairs)) + (len(r["gt"]) - len(pairs)), r["file"]))
+        errors = (above - len(pairs)) + (len(r["gt"]) - len(pairs))
+        if errors > 0:                       # only images the model actually got wrong
+            scored.append((errors, r["file"]))
     scored.sort(key=lambda item: -item[0])
     return [name for _, name in scored[:MAX_WORST]]
 

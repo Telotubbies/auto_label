@@ -243,14 +243,17 @@ def delete_model(mid: str, c: Ctx = Depends(project_ctx)):
 
 
 @router.post(P + "/models/{mid}/predict")
-async def test_predict(mid: str, file: UploadFile = File(...), confidence: float = Form(0.4),
+async def test_predict(mid: str, file: UploadFile = File(...), confidence: float | None = Form(None),
                        overlap: float = Form(0.5), c: Ctx = Depends(project_ctx)):
     m = _model(c, mid)
     if m.status != "ready":
         raise HTTPException(409, "model is not ready")
     charge(c.db, c.ws, CREDIT_COST["infer"]); c.db.commit()
     im = imaging.open_image(await file.read())
-    return resolve(f"trained:{m.id}", c.db).predict(im, conf=confidence, iou=overlap, classes=m.classes)
+    kw = {"iou": overlap, "classes": m.classes}
+    if confidence is not None:                     # no slider value: Resolved uses the model's best-F1 threshold
+        kw["conf"] = confidence
+    return resolve(f"trained:{m.id}", c.db).predict(im, **kw)
 
 
 class AutoLabelIn(BaseModel):
@@ -259,7 +262,7 @@ class AutoLabelIn(BaseModel):
     batch_id: str | None = None
     image_ids: list[str] = []
     class_ids: list[str] = []
-    confidence: float = 0.4
+    confidence: float | None = None   # None = the model's best-F1 threshold (0.4 when it has no eval)
     only_unannotated: bool = True
     send_to_review: bool = True
 
@@ -322,7 +325,7 @@ async def _image_from_request(request: Request, file: UploadFile | None, image: 
 
 
 @router.post("/api/v1/models/{mid}/predict")
-async def hosted_predict(mid: str, request: Request, api_key: str | None = Query(None), confidence: float = 0.4,
+async def hosted_predict(mid: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
                          overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
                          db: Session = Depends(get_db)):
     ws = key_ws(db, api_key or request.headers.get("x-api-key"), request)
@@ -332,7 +335,10 @@ async def hosted_predict(mid: str, request: Request, api_key: str | None = Query
     charge(db, ws, CREDIT_COST["infer"])
     data = await _image_from_request(request, file, image)
     im = imaging.open_image(data)
-    out = resolve(f"trained:{m.id}", db).predict(im, conf=confidence, iou=overlap, classes=m.classes)
+    kw = {"iou": overlap, "classes": m.classes}
+    if confidence is not None:                     # omitted: the model's evaluated best-F1 threshold
+        kw["conf"] = confidence
+    out = resolve(f"trained:{m.id}", db).predict(im, **kw)
     audit(db, ws.id, None, "infer.hosted", m.name, n=len(out["predictions"]))
     _active_learning(db, ws, db.get(Project, m.project_id), data, out)
     db.commit()
