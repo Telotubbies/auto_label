@@ -60,6 +60,10 @@ def classes_out(db: Session, p: Project) -> list[dict]:
     return [{"id": c.id, "name": c.name, "color": c.color, "count": int(counts.get(c.id) or 0)} for c in rows]
 
 
+# project slugs must not shadow workspace pages (mirrors apps/web/src/components/shell.tsx)
+RESERVED = {"models", "deployments", "activity", "settings"}
+
+
 def slugify(name: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:80] or "project"
     return f"{s}-project" if s in RESERVED else s

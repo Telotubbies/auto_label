@@ -5,7 +5,8 @@ import { Bot, CheckCheck, Inbox, PencilLine, Send, Sparkles, UserPlus } from 'lu
 import { api, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import type { BoardCard, Status } from '@/lib/types'
-import { Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Progress, Select, StatusPill, fmtAgo, toast } from '@/components/ui'
+import { Button, Card, Dropdown, EmptyState, Input, Modal, PageHeader, Progress, Select, StatusPill, fmtAgo, toast } from '@/components/ui'
+import { AutoLabelDialog } from './AutoLabelDialog'
 import { useProject } from './ProjectLayout'
 
 const COLS: { id: Status; title: string; hint: string }[] = [
@@ -14,51 +15,6 @@ const COLS: { id: Status; title: string; hint: string }[] = [
   { id: 'review', title: 'Review', hint: 'Waiting for approval' },
   { id: 'done', title: 'Dataset', hint: 'Approved — used in versions' },
 ]
-
-export function AutoLabelModal({ open, onClose, batchId, imageIds }: { open: boolean; onClose: () => void; batchId?: string | null; imageIds?: string[] }) {
-  const { project, ws } = useProject()
-  const qc = useQueryClient()
-  const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug), enabled: open })
-  const ready = (models.data ?? []).filter((m) => m.status === 'ready')
-  const [method, setMethod] = useState<'model' | 'sam'>('model')
-  const [modelId, setModelId] = useState('')
-  const [conf, setConf] = useState(40)
-  const [only, setOnly] = useState(true)
-  const run = async () => {
-    try {
-      await post(`${api.P(ws, project.slug)}/autolabel`, {
-        method, model_id: method === 'model' ? modelId || ready[0]?.id : null, batch_id: batchId ?? null,
-        image_ids: imageIds ?? [], confidence: conf / 100, only_unannotated: only,
-      })
-      toast.ok('Auto-label job queued — results land in Review'); qc.invalidateQueries({ queryKey: ['jobs', ws, project.slug] }); onClose()
-    } catch (e) { toast.err(e as Error) }
-  }
-  return (
-    <Modal open={open} onClose={onClose} title={<span className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /> Auto Label</span>}>
-      <p className="mb-4 text-sm text-muted-foreground">Pre-label images with AI. Results go to Review so a human approves them before they enter the dataset.</p>
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2">
-          {(['model', 'sam'] as const).map((m) => (
-            <button key={m} onClick={() => setMethod(m)} className={`cursor-pointer rounded-lg border p-3 text-left text-sm ${method === m ? 'border-primary bg-accent/40' : 'hover:bg-muted'}`}>
-              <div className="font-semibold">{m === 'model' ? 'Your trained model' : 'SAM 3.1 (text prompts)'}</div>
-              <div className="text-xs text-muted-foreground">{m === 'model' ? 'Fast, uses a model trained in this project.' : 'Zero-shot — each class name is the prompt. Needs a GPU worker.'}</div>
-            </button>
-          ))}
-        </div>
-        {method === 'model' && (
-          ready.length ? (
-            <Field label="Model"><Select className="w-full" value={modelId || ready[0].id} onChange={(e) => setModelId(e.target.value)}>
-              {ready.map((m) => <option key={m.id} value={m.id}>{m.name} {m.metrics.map50 != null ? `· mAP50 ${(m.metrics.map50 * 100).toFixed(1)}%` : ''}</option>)}
-            </Select></Field>
-          ) : <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">No trained model yet — train one first, or use SAM 3.1.</p>
-        )}
-        <Field label={`Confidence threshold: ${conf}%`}><input type="range" min={5} max={95} value={conf} onChange={(e) => setConf(+e.target.value)} className="w-full accent-primary" /></Field>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} className="accent-primary" /> Only images without annotations</label>
-      </div>
-      <div className="mt-6 flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={method === 'model' && !ready.length} onClick={run}><Bot className="h-4 w-4" /> Start Auto Label</Button></div>
-    </Modal>
-  )
-}
 
 export default function AnnotateBoard() {
   const { project, ws } = useProject()
@@ -81,8 +37,8 @@ export default function AnnotateBoard() {
     post<{ moved: number }>(`${api.P(ws, project.slug)}/board/move`, { batch_id: card.batchId, from_status: from, to_status: to, assignee_id: card.assigneeId ?? '', ...extra })
       .then((r) => { toast.ok(`Moved ${r.moved} images`); refresh() }).catch(toast.err)
   const open = (card: BoardCard, status: Status, review = false) => {
-    const q = new URLSearchParams({ status, ...(card.batchId ? { batch: card.batchId } : {}), ...(card.assigneeId ? { assignee: card.assigneeId } : {}), ...(review ? { review: 'true' } : {}) })
-    api.images(ws, project.slug, { status, ...(card.batchId ? { batch_id: card.batchId } : {}), limit: 1 }).then((r) => {
+    const q = new URLSearchParams({ status, ...(card.batchId ? { batch: card.batchId } : {}), ...(card.assigneeId ? { assignee: card.assigneeId } : {}), ...(review ? { review: 'true', sort: 'review' } : {}) })
+    api.images(ws, project.slug, { status, ...(card.batchId ? { batch_id: card.batchId } : {}), ...(review ? { sort: 'review' } : {}), limit: 1 }).then((r) => {
       if (r.items[0]) nav(`/${ws}/${project.slug}/images/${r.items[0].id}?${q}`)
       else toast.err('No images in this card')
     })
@@ -99,7 +55,7 @@ export default function AnnotateBoard() {
         </>} />
       {running.map((j) => (
         <div key={j.id} className="mx-8 mb-3 flex items-center gap-3 rounded-lg border bg-accent/30 px-4 py-2 text-sm">
-          <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({j.params.method === 'sam' ? 'SAM 3.1' : 'model'}) <StatusPill status={j.status} />
+          <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({j.params.model_ref ?? (j.params.method === 'sam' ? 'SAM 3.1' : 'model')}) <StatusPill status={j.status} />
           <Progress className="w-48" value={j.progress} /> <span className="text-xs text-muted-foreground">{Math.round(j.progress)}%</span>
         </div>
       ))}
@@ -160,7 +116,7 @@ export default function AnnotateBoard() {
         <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={() => setAssign(null)}>Cancel</Button>
           <Button disabled={!assignee} onClick={() => { move(assign!, 'unassigned', 'annotating', { set_assignee: assignee }); setAssign(null) }}>Assign</Button></div>
       </Modal>
-      <AutoLabelModal open={!!auto} onClose={() => setAuto(null)} batchId={auto?.batchId} />
+      <AutoLabelDialog open={!!auto} onClose={() => setAuto(null)} batchId={auto?.batchId ?? null} />
     </div>
   )
 }

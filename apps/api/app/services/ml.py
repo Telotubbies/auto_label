@@ -23,11 +23,13 @@ def to_annotations(pred: dict, class_ids: dict[str, str]) -> list[dict]:
     """Convert a predict() response to editor annotations (normalized); class_ids maps name -> project class id."""
     import secrets
     W, H = pred["image"]["width"], pred["image"]["height"]
+    source = pred.get("model") or "human"
     out = []
     if "top" in pred:
         top = pred["predictions"][0]["class"] if pred["predictions"] else None
         if top in class_ids:
-            out.append({"id": "a" + secrets.token_hex(5), "classId": class_ids[top], "shape": {"kind": "class"}})
+            out.append({"id": "a" + secrets.token_hex(5), "classId": class_ids[top],
+                        "shape": {"kind": "class"}, "source": source})
         return out
     for p in pred["predictions"]:
         cid = class_ids.get(p["class"])
@@ -39,5 +41,5 @@ def to_annotations(pred: dict, class_ids: dict[str, str]) -> list[dict]:
         else:
             shape = {"kind": "bbox", "x": (p["x"] - p["width"] / 2) / W, "y": (p["y"] - p["height"] / 2) / H,
                      "w": p["width"] / W, "h": p["height"] / H}
-        out.append({"id": aid, "classId": cid, "shape": shape, "confidence": p["confidence"]})
+        out.append({"id": aid, "classId": cid, "shape": shape, "confidence": p["confidence"], "source": source})
     return out

@@ -12,9 +12,11 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ..config import DATA_DIR, WORKER_TOKEN, REMOTE_JOB_KINDS
+from ..adapters import model_conf
+from ..config import CREDIT_COST, DATA_DIR, WORKER_TOKEN, REMOTE_JOB_KINDS
 from ..db import get_db
-from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, now, set_annotations
+from ..deps import charge
+from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
 from ..security import sign_path
 from ..services import exporters, ml, versioning
 
@@ -48,6 +50,11 @@ def _payload(db: Session, j: Job) -> dict:
                 "dataset_url": sign_path(zp.relative_to(DATA_DIR).as_posix(), ttl=24 * 3600)}
     if j.kind == "autolabel":
         P = j.params
+        ref = P.get("model_ref") or ""
+        mid = P.get("model_id") or (ref[len("trained:"):] if ref.startswith("trained:") else None)
+        m = db.get(TrainedModel, mid) if mid else None
+        if mid and (not m or not m.weights):
+            raise HTTPException(400, "trained model has no weights")
         classes = db.scalars(select(LabelClass).where(LabelClass.project_id == j.project_id).order_by(LabelClass.created)).all()
         q = select(Image).where(Image.project_id == j.project_id, Image.deleted_at.is_(None))
         if P.get("image_ids"):
@@ -56,9 +63,11 @@ def _payload(db: Session, j: Job) -> dict:
             q = q.where(Image.batch_id == P["batch_id"])
         if P.get("only_unannotated", True):
             q = q.where(Image.n_annotations == 0)
-        m = db.get(TrainedModel, P["model_id"]) if P.get("method") == "model" else None
         wanted = [c for c in classes if not P.get("class_ids") or c.id in P["class_ids"]]
-        return {"method": P.get("method"), "confidence": P.get("confidence", 0.4),
+        conf = P.get("confidence")
+        if conf is None:                     # no explicit threshold: the model's best-F1 confidence
+            conf = model_conf(m) if m else None
+        return {"method": "model" if m else "sam", "confidence": 0.4 if conf is None else float(conf),
                 "project_type": db.get(Project, j.project_id).type,
                 "weights_url": sign_path(m.weights, ttl=24 * 3600) if m else None,
                 "classes": {c.name: c.id for c in classes}, "prompts": [{"id": c.id, "name": c.name} for c in wanted],
@@ -115,10 +124,15 @@ def annotations(jid: str, body: AnnIn, db: Session = Depends(get_db)):
     if not j or not img or img.project_id != j.project_id:
         raise HTTPException(404, "not found")
     if body.annotations:
-        set_annotations(db, img, (img.annotations or []) + body.annotations)
+        P = j.params
+        src = P.get("model_ref") or (f"trained:{P['model_id']}" if P.get("model_id") else "sam3")
+        set_annotations(db, img, (img.annotations or []) + [{**a, "source": a.get("source") or src}
+                                                            for a in body.annotations])
         if img.status == "unassigned":
             img.status = "review" if j.params.get("send_to_review", True) else "annotating"
         img.updated = now()
+        # remote runs charge per labeled image as the work lands (the embedded worker charges at the end)
+        charge(db, db.get(Workspace, j.workspace_id), CREDIT_COST["autolabel_image"])
     db.commit()
     return {"ok": True}
 

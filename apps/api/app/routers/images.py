@@ -103,13 +103,14 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
         if p.type == "classification":
             cls = importers.folder_class(path)
             if cls and bundle.images and "/" in path:
-                anns.append({"id": "a" + h[:10], "classId": ensure_class(db, p, cls).id, "shape": {"kind": "class"}})
+                anns.append({"id": "a" + h[:10], "classId": ensure_class(db, p, cls).id, "shape": {"kind": "class"},
+                             "source": "human"})
         for k, (cls, shape) in enumerate(importers.annotations_for(bundle, path, im.width, im.height)):
             if p.type == "object-detection" and shape["kind"] == "polygon":
                 pts = shape["points"]
                 xs, ys = pts[0::2], pts[1::2]
                 shape = {"kind": "bbox", "x": min(xs), "y": min(ys), "w": max(xs) - min(xs), "h": max(ys) - min(ys)}
-            anns.append({"id": f"a{h[:8]}{k}", "classId": ensure_class(db, p, cls).id, "shape": shape})
+            anns.append({"id": f"a{h[:8]}{k}", "classId": ensure_class(db, p, cls).id, "shape": shape, "source": "human"})
         img.split = (importers.split_of(path) if split == "keep" else None) or (
             split if split in SPLITS else ("train" if (r := rng.random()) < 0.7 else "valid" if r < 0.9 else "test"))
         if anns:
@@ -171,10 +172,28 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
         s = s.where(cast(Image.tags, String).like(f"%{pat}%", escape="\\"))
     total = c.db.scalar(select(func.count()).select_from(s.subquery()))
-    order = {"newest": Image.created.desc(), "oldest": Image.created, "name": Image.name,
-             "most": Image.n_annotations.desc(), "least": Image.n_annotations}.get(sort, Image.created.desc())
-    rows = c.db.scalars(s.options(defer(Image.annotations)).order_by(order, Image.id)
-                        .offset(max(0, offset)).limit(max(1, min(limit, 1000)))).all()
+    start, size = max(0, offset), max(1, min(limit, 1000))
+    if sort == "review":
+        # active learning: lowest-confidence AI work first, then VLM+SAM items, then the rest; newest first within a tier.
+        # Ranking needs annotation JSON, so bound the scan instead of hydrating the whole project.
+        conf = float((c.project.settings or {}).get("autolabel_conf", 0.4))
+        rows = c.db.scalars(s.order_by(Image.created.desc(), Image.id).limit(2000)).all()
+
+        def rank(img):
+            anns = img.annotations or []
+            low = any(a.get("source") not in (None, "human", "vlm+sam3") and isinstance(a.get("confidence"), (int, float))
+                      and a["confidence"] < conf + 0.15 for a in anns)
+            vlm = any(a.get("source") == "vlm+sam3" for a in anns)
+            return (0 if low else 1 if vlm else 2, -img.created)
+
+        rows.sort(key=rank)
+        rows = rows[start:start + size]
+        rows = rows[start:start + size]
+    else:
+        order = {"newest": Image.created.desc(), "oldest": Image.created, "name": Image.name,
+                 "most": Image.n_annotations.desc(), "least": Image.n_annotations}.get(sort, Image.created.desc())
+        rows = c.db.scalars(s.options(defer(Image.annotations)).order_by(order, Image.id)
+                            .offset(start).limit(size)).all()
     by_img: dict[str, list[str]] = {}
     if rows:
         for iid, cid in c.db.execute(select(ImageClass.image_id, ImageClass.class_id)
@@ -326,6 +345,9 @@ def _check_ann(a: dict) -> dict:
         out["attributes"] = {str(k)[:40]: bool(v) for k, v in list(attrs.items())[:32]}
     if _num(a.get("confidence")):
         out["confidence"] = float(a["confidence"])
+    # every annotation is attributed; a human edit defaults to "human"
+    src = a.get("source")
+    out["source"] = src.strip()[:64] if isinstance(src, str) and src.strip() else "human"
     return out
 
 

@@ -9,7 +9,7 @@ import type { ImageItem } from '@/lib/types'
 import { Badge, Button, Dropdown, EmptyState, Input, PageHeader, Select, Spinner, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useProject } from './ProjectLayout'
-import { AutoLabelModal } from './AnnotateBoard'
+import { AutoLabelDialog } from './AutoLabelDialog'
 
 const SPLIT_TONE: Record<string, string> = { train: 'bg-violet-600', valid: 'bg-blue-600', test: 'bg-orange-500' }
 
@@ -121,7 +121,7 @@ export default function Dataset() {
           ))}
         </div>
       </div>
-      <AutoLabelModal open={auto} onClose={() => setAuto(false)} imageIds={sel.size ? [...sel] : undefined} />
+      <AutoLabelDialog open={auto} onClose={() => setAuto(false)} batchId={null} imageIds={sel.size ? [...sel] : undefined} />
     </div>
   )
 }

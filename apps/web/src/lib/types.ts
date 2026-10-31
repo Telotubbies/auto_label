@@ -25,7 +25,11 @@ export type Shape =
   | { kind: 'bbox'; x: number; y: number; w: number; h: number }
   | { kind: 'polygon'; points: number[] }
   | { kind: 'class' }
-export interface Annotation { id: string; classId: string; shape: Shape; attributes?: Record<string, boolean>; confidence?: number }
+export interface Annotation {
+  id: string; classId: string; shape: Shape; attributes?: Record<string, boolean>; confidence?: number
+  /** 'human' | 'sam3' | 'vlm+sam3' | 'trained:<id>' | '<family>:<variant>' */
+  source?: string
+}
 
 export interface ImageItem {
   id: string; name: string; width: number; height: number; split: Split; status: Status; assigneeId: string | null
@@ -110,6 +114,22 @@ export interface RegistryItem {
   ref: string; family: string; variant: string; name: string; capabilities: string[]; license: string
   available: boolean; reason: string; kind: 'zoo' | 'vlm' | 'trained'
 }
+export interface AutoLabelInput {
+  model_ref?: string
+  prompt?: string | null
+  vlm_verify?: boolean
+  batch_id?: string | null
+  image_ids?: string[]
+  class_ids?: string[]
+  confidence?: number
+  only_unannotated?: boolean
+  send_to_review?: boolean
+}
+export interface AutoLabelPreview {
+  images: { id: string; url: string; annotations: Annotation[] }[]
+  counts: Record<string, number>
+}
+
 export interface PlaygroundPrediction {
   model: string; time: number; image: { width: number; height: number }
   predictions: Prediction[]; text?: string; top?: string

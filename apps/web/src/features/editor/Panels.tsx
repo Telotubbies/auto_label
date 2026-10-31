@@ -20,6 +20,21 @@ export interface LogEntry {
 
 export const ATTRIBUTE_KEYS = ['occluded', 'truncated', 'difficult', 'crowd'] as const
 
+/** Where an annotation came from: shape kind for human edits, a compact model chip otherwise. */
+export function SourceChip({ source, confidence, kind }: { source?: string; confidence?: number; kind: string }) {
+  if (!source || source === 'human') return <span className="shrink-0 text-[10px] text-muted-foreground">{kind}</span>
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <span title={source} className="max-w-24 truncate rounded border border-violet-500/40 bg-violet-500/10 px-1 py-px font-mono text-[10px] leading-4 text-foreground">
+        {source}
+      </span>
+      {source === 'vlm+sam3'
+        ? <span className="rounded bg-secondary px-1 py-px text-[9px] leading-4 text-muted-foreground">no confidence</span>
+        : confidence != null && <span className="text-[10px] text-muted-foreground">{Math.round(confidence * 100)}%</span>}
+    </span>
+  )
+}
+
 const fmtTime = (t: number) =>
   new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 

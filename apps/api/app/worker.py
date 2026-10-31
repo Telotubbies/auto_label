@@ -13,13 +13,15 @@ import traceback
 
 from sqlalchemy import select, update
 
-from .adapters import ADAPTERS, model_conf
+from .adapters import ADAPTERS
+from .adapters.refine import label_image, sam_available
 from .adapters.ultralytics_ad import _start_weights
-from .config import DATA_DIR, LOCAL_JOB_KINDS
+from .config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
+from .deps import charge
 from .gpu import scheduler
-from .models import Image, Job, LabelClass, Project, TrainedModel, Version, now, set_annotations
-from .services import exporters, ml, segment, versioning, imaging
+from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
+from .services import exporters, ml, versioning, imaging
 from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
@@ -279,43 +281,26 @@ def run_autolabel(job: Job):
         if P.get("only_unannotated", True):
             q = q.where(Image.n_annotations == 0)
         rows = db.scalars(q).all()
-        model = db.get(TrainedModel, P["model_id"]) if P.get("method") == "model" else None
-        if P.get("method") == "model" and (not model or model.status != "ready"):
-            raise RuntimeError("selected model is not ready")
-        conf = P.get("confidence")
-        if conf is None:                              # no explicit threshold: the model's best-F1 confidence
-            conf = model_conf(model) if model else None
-        conf = 0.4 if conf is None else float(conf)
-        wanted = [c for c in classes if not P.get("class_ids") or c.id in P["class_ids"]]
-        by_name = {c.name: c.id for c in classes}
-        done = 0
+        sam_ok = sam_available()
+        labeled = total = 0
         for i, img in enumerate(rows):
             if _cancelled(job.id):
                 break
-            im = imaging.load(img.path)
-            if model:
-                anns = ml.to_annotations(ml.predict(model.weights, im, conf), by_name)
-            else:
-                import secrets
-                prompts = [c.name for c in wanted]
-                anns = [{"id": "a" + secrets.token_hex(5), "classId": wanted[ci].id, "confidence": round(sc, 4),
-                         "shape": {"kind": "polygon", "points": poly} if p.type != "object-detection" else
-                                  dict(kind="bbox", **dict(zip("xywh", _poly_box(poly))))}
-                        for ci, poly, sc in segment.sam_text(im, prompts, conf)]
+            anns = label_image(imaging.load(img.path), project_type=p.type, params=P, classes=classes,
+                               db=db, workspace_id=job.workspace_id, sam_ok=sam_ok)
             if anns:
                 set_annotations(db, img, (img.annotations or []) + anns)
                 if img.status == "unassigned":
                     img.status = "review" if P.get("send_to_review", True) else "annotating"
                 img.updated = now()
-                done += 1
-            db.commit()
+                labeled += 1
+                total += len(anns)
+                db.commit()          # keep earlier images even if a later VLM call dies
+                # bill per committed image: a run that dies midway is still charged for what it labeled
+                charge(db, db.get(Workspace, job.workspace_id), CREDIT_COST["autolabel_image"])
+                db.commit()
             _set(job.id, progress=round((i + 1) / max(1, len(rows)) * 100, 1))
-        return {"images": len(rows), "labeled": done}
-
-
-def _poly_box(poly):
-    xs, ys = poly[0::2], poly[1::2]
-    return min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+        return {"images": len(rows), "labeled": labeled, "annotations": total}
 
 
 HANDLERS = {"version": run_version, "export": run_export, "train": run_train, "autolabel": run_autolabel}

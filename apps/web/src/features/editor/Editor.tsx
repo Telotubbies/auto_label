@@ -12,12 +12,13 @@ import { useApp } from '@/lib/store'
 import type { Annotation, LabelClass, Shape } from '@/lib/types'
 import { Badge, Button, Input, Select, StatusPill, Tabs, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, type EditorComment, type LogEntry } from './Panels'
+import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, SourceChip, type EditorComment, type LogEntry } from './Panels'
 import { ShortcutModal } from './ShortcutModal'
 
 const W = 1000                      // canvas width in stage units; height follows the image aspect
 const SMART = '#7c3aed'
 const uid = () => 'a' + Math.random().toString(36).slice(2, 12)
+const isAi = (a: Annotation) => !!a.source && a.source !== 'human'
 
 function useHtmlImage(src: string) {
   const [img, setImg] = useState<HTMLImageElement | null>(null)
@@ -142,7 +143,7 @@ export default function Editor() {
   const redo = () => { if (!future.length) return; setHistory((h) => [...h, anns]); setAnns(future[0]); setFuture((f) => f.slice(1)); setDirty(true); record('Redo') }
   const addShape = (shape: Shape, action: string, classId = selClass) => {
     if (!classId) { toast.err('Create a class first'); return }
-    push([...anns, { id: uid(), classId, shape }], action, cls(classId).name)
+    push([...anns, { id: uid(), classId, shape, source: 'human' }], action, cls(classId).name)
   }
   const pointer = () => {
     const st = stageRef.current
@@ -186,12 +187,12 @@ export default function Editor() {
     setPolyPts([])
   }
   const remove = (id: string) => { push(anns.filter((a) => a.id !== id), 'Delete annotation'); if (selId === id) setSelId(null) }
-  const editShape = (id: string, shape: Shape) => push(anns.map((a) => (a.id === id ? { ...a, shape } : a)), 'Edit annotation')
-  const relabel = (id: string, classId: string) => push(anns.map((a) => (a.id === id ? { ...a, classId } : a)), 'Change class', cls(classId).name)
+  const editShape = (id: string, shape: Shape) => push(anns.map((a) => (a.id === id ? { ...a, shape, source: 'human' } : a)), 'Edit annotation')
+  const relabel = (id: string, classId: string) => push(anns.map((a) => (a.id === id ? { ...a, classId, source: 'human' } : a)), 'Change class', cls(classId).name)
   const toggleClassLabel = (classId: string) => {
     const has = anns.some((a) => a.classId === classId)
     if (has) push(anns.filter((a) => a.classId !== classId), 'Remove label', cls(classId).name)
-    else push([...(proj.data?.multilabel ? anns : []), { id: uid(), classId, shape: { kind: 'class' } }], 'Set label', cls(classId).name)
+    else push([...(proj.data?.multilabel ? anns : []), { id: uid(), classId, shape: { kind: 'class' }, source: 'human' }], 'Set label', cls(classId).name)
   }
 
   const createClass = async () => {
@@ -301,7 +302,12 @@ export default function Editor() {
           {rail === 'labels' && (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               <div className="px-4 pt-4"><h3 className="text-sm font-semibold">{isCls ? 'Image label' : 'Annotations'} <Badge>{anns.length}</Badge></h3>
-                <p className="pt-1 text-xs text-muted-foreground">Group: {proj.data?.annotationGroup}</p></div>
+                <p className="pt-1 text-xs text-muted-foreground">Group: {proj.data?.annotationGroup}</p>
+                {!isCls && anns.some(isAi) && (
+                  <p className="flex items-center gap-1.5 pt-1 text-[11px] text-muted-foreground">
+                    <span aria-hidden className="inline-block w-4 border-t-2 border-dashed border-muted-foreground" /> Dashed = AI-generated
+                  </p>
+                )}</div>
               <div className="px-4 pt-2"><Tabs tabs={[{ id: 'classes', label: 'Classes' }, { id: 'layers', label: 'Layers' }]} active={tab} onChange={setTab} /></div>
               {tab === 'classes' ? (
                 <div className="px-4 py-2">
@@ -328,7 +334,7 @@ export default function Editor() {
                     <div key={a.id} onClick={() => setSelId(a.id)} className={cn('flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm', selId === a.id ? 'bg-accent' : 'hover:bg-muted')}>
                       <span className="h-2.5 w-2.5 rounded-full" style={{ background: cls(a.classId).color }} />
                       <span className="flex-1 truncate">{cls(a.classId).name}</span>
-                      <span className="text-[10px] text-muted-foreground">{a.shape.kind}{a.confidence != null ? ` ${(a.confidence * 100).toFixed(0)}%` : ''}</span>
+                      <SourceChip source={a.source} confidence={a.confidence} kind={a.shape.kind} />
                       <button onClick={(e) => { e.stopPropagation(); remove(a.id) }} className="cursor-pointer text-muted-foreground hover:text-destructive" aria-label="Delete"><X className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
@@ -357,7 +363,7 @@ export default function Editor() {
           )}
           {rail === 'attrs' && (
             <AttributesPanel anns={anns as any} selId={selId} onSelect={setSelId} classOf={cls as any} values={sel?.attributes ?? {}}
-              onToggle={(k) => sel && push(anns.map((a) => (a.id === sel.id ? { ...a, attributes: { ...(a.attributes ?? {}), [k]: !a.attributes?.[k] } } : a)), 'Edit attributes', k)} />
+              onToggle={(k) => sel && push(anns.map((a) => (a.id === sel.id ? { ...a, attributes: { ...(a.attributes ?? {}), [k]: !a.attributes?.[k] }, source: 'human' } : a)), 'Edit attributes', k)} />
           )}
           {rail === 'comments' && <CommentsPanel comments={commentsQ.data ?? []} onAdd={addComment} />}
           {rail === 'history' && <HistoryPanel log={log} />}
@@ -377,13 +383,15 @@ export default function Editor() {
                 if (a.shape.kind === 'bbox') {
                   const s = a.shape
                   return <Rect key={a.id} id={a.id} x={s.x * W} y={s.y * H} width={s.w * W} height={s.h * H} stroke={color} strokeWidth={2 / zoom}
+                    dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined}
                     fill={selId === a.id ? color + '22' : undefined} draggable={tool !== 'pan' && selId === a.id} onMouseDown={(e) => { if (tool === 'smart' || tool === 'polygon') return; e.cancelBubble = true; setSelId(a.id) }}
                     onDragEnd={(e) => editShape(a.id, { ...s, x: e.target.x() / W, y: e.target.y() / H })}
                     onTransformEnd={(e) => { const n = e.target; const sx = n.scaleX(), sy = n.scaleY(); n.scaleX(1); n.scaleY(1); editShape(a.id, { ...s, x: n.x() / W, y: n.y() / H, w: (s.w * sx), h: (s.h * sy) }) }} />
                 }
                 if (a.shape.kind === 'polygon') {
                   const s = a.shape
-                  return <Line key={a.id} id={a.id} points={s.points.map((v, i) => v * (i % 2 ? H : W))} closed stroke={color} strokeWidth={2 / zoom} fill={color + (selId === a.id ? '55' : '33')}
+                  return <Line key={a.id} id={a.id} points={s.points.map((v, i) => v * (i % 2 ? H : W))} closed stroke={color} strokeWidth={2 / zoom}
+                    dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined} fill={color + (selId === a.id ? '55' : '33')}
                     draggable={tool !== 'pan' && selId === a.id} onMouseDown={(e) => { if (tool === 'smart' || tool === 'polygon') return; e.cancelBubble = true; setSelId(a.id) }}
                     onDragEnd={(e) => { const dx = e.target.x(), dy = e.target.y(); e.target.position({ x: 0, y: 0 }); editShape(a.id, { ...s, points: s.points.map((v, i) => v + (i % 2 ? dy / H : dx / W)) }) }} />
                 }

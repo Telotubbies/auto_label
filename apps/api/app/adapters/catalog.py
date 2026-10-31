@@ -51,7 +51,7 @@ def catalog(db: Session, workspace_id: str) -> list[dict]:
         items.append({"ref": f"{fam}:{variant}", "family": fam, "variant": variant, "name": name,
                       "capabilities": sorted(caps), "license": _LICENSE[fam], "available": av.ok,
                       "reason": av.reason, "kind": "vlm" if fam == "vlm" else "zoo"})
-    for m in db.scalars(select(TrainedModel).where(TrainedModel.workspace_id == workspace_id, TrainedModel.status == "done")):
+    for m in db.scalars(select(TrainedModel).where(TrainedModel.workspace_id == workspace_id, TrainedModel.status == "ready")):
         fam = m.family or "ultralytics"
         ad = ADAPTERS.get(fam)
         av = probes.get(fam) or Availability(False, f"{fam} adapter not installed")

@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..adapters import ADAPTERS, resolve
+from ..adapters.refine import label_image
 from ..config import CREDIT_COST, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
 from ..ratelimit import client_ip, limit
-from ..models import ApiKey, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
+from ..models import ApiKey, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
 from ..security import api_key_hash, sign_path
 from ..services import imaging, ml, safefetch
 from .projects import job_out
@@ -259,6 +260,9 @@ async def test_predict(mid: str, file: UploadFile = File(...), confidence: float
 class AutoLabelIn(BaseModel):
     method: str = "model"           # model | sam
     model_id: str | None = None
+    model_ref: str | None = None    # <family>:<variant> | trained:<id>; wins over method/model_id
+    prompt: str | None = None       # free text, parsed into SAM/VLM prompts
+    vlm_verify: bool = False
     batch_id: str | None = None
     image_ids: list[str] = []
     class_ids: list[str] = []
@@ -267,21 +271,86 @@ class AutoLabelIn(BaseModel):
     send_to_review: bool = True
 
 
+class AutoLabelPreviewIn(AutoLabelIn):
+    sample: int = 4                 # clamped to 3..5
+
+
+def _autolabel_target(c: Ctx, body: AutoLabelIn):
+    """v1 validation + resolve the ref; 400 for anything the user can fix."""
+    if body.method == "model" and not (body.model_id or body.model_ref):
+        raise HTTPException(400, "choose a trained model")
+    if body.method == "sam" and not c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id)):
+        raise HTTPException(400, "add classes first — SAM uses class names as text prompts")
+    ref = body.model_ref or (f"trained:{body.model_id}" if body.method == "model" else "sam3:sam3.1")
+    try:
+        r = resolve(ref, c.db, workspace_id=c.ws.id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if r.adapter.family in ("sam3", "vlm") and c.project.type == "classification":
+        raise HTTPException(400, f"{'SAM' if r.adapter.family == 'sam3' else 'VLM'} auto-label needs "
+                                 "a detection or segmentation project")
+    if r.adapter.family == "vlm":
+        sam = ADAPTERS.get("sam3")
+        if not (sam and sam.probe().ok):
+            raise HTTPException(400, "VLM auto-label needs SAM 3.1 to refine its boxes — enable SAM on this worker")
+    if r.adapter.family in ("sam3", "vlm") and not c.db.scalar(
+            select(LabelClass.id).where(LabelClass.project_id == c.project.id)):
+        raise HTTPException(400, "add classes first — auto-label attaches results to a project class")
+    if "autolabel" not in LOCAL_JOB_KINDS:
+        # the pip worker only knows trained ultralytics weights and SAM text prompts (Phase 7 ports adapters)
+        remote_ok = not (body.prompt or "").strip() and not body.vlm_verify and (
+            r.adapter.family == "sam3" or (r.adapter.family == "ultralytics" and r.ref.startswith("trained:")))
+        if not remote_ok:
+            raise HTTPException(400, _REMOTE_UNSUPPORTED)
+    return r
+
+
+def _autolabel_images(c: Ctx, body: AutoLabelIn, limit: int):
+    q = select(Image).where(Image.project_id == c.project.id, Image.deleted_at.is_(None))
+    if body.image_ids:
+        q = q.where(Image.id.in_(body.image_ids))
+    if body.batch_id:
+        q = q.where(Image.batch_id == body.batch_id)
+    if body.only_unannotated:
+        q = q.where(Image.n_annotations == 0)
+    return c.db.scalars(q.order_by(Image.created.desc()).limit(limit)).all()
+
+
 @router.post(P + "/autolabel")
 def autolabel(body: AutoLabelIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
-    if body.method == "model" and not body.model_id:
-        raise HTTPException(400, "choose a trained model")
-    if body.method == "sam" and c.project.type == "classification":
-        raise HTTPException(400, "SAM auto-label needs a detection or segmentation project")
-    if body.method == "sam" and not c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id)):
-        raise HTTPException(400, "add classes first — SAM uses class names as text prompts")
-    charge(c.db, c.ws, CREDIT_COST["autolabel_image"] * max(1, len(body.image_ids) or 100))
+    _autolabel_target(c, body)
     j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="autolabel", params=body.model_dump(), created_by=c.user.id)
     c.db.add(j)
-    audit(c.db, c.ws.id, c.user.id, "autolabel.start", c.project.name, method=body.method)
+    audit(c.db, c.ws.id, c.user.id, "autolabel.start", c.project.name,
+          method=body.method, model_ref=body.model_ref or body.model_id)
     c.db.commit()
     return job_out(j)
+
+
+@router.post(P + "/autolabel/preview")
+def autolabel_preview(body: AutoLabelPreviewIn, c: Ctx = Depends(project_ctx)):
+    c.need("reviewer")
+    _autolabel_target(c, body)
+    from .images import image_out                      # local import: images imports projects -> no cycle at module load
+    classes = c.db.scalars(select(LabelClass).where(LabelClass.project_id == c.project.id)
+                           .order_by(LabelClass.created)).all()
+    names = {x.id: x.name for x in classes}
+    images, counts = [], {}
+    for img in _autolabel_images(c, body, max(3, min(5, body.sample))):
+        try:
+            anns = label_image(imaging.load(img.path), project_type=c.project.type, params=body.model_dump(),
+                               classes=classes, db=c.db, workspace_id=c.ws.id)
+        except RuntimeError as e:      # model runtime down (vLLM / SAM): a readable 503, not a 500
+            raise HTTPException(503, str(e))
+        except ValueError as e:        # our own adapter validation, e.g. YOLO-World without classes
+            raise HTTPException(400, str(e))
+        for a in anns:
+            name = names.get(a["classId"])
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+        images.append({"id": img.id, "url": image_out(img)["url"], "annotations": anns})
+    return {"images": images, "counts": counts}
 
 
 # --- hosted API (api_key auth, Roboflow-style) ------------------------------------------------

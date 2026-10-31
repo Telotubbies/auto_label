@@ -131,18 +131,25 @@ def test_cached_export_built_once(c):
         assert (p1 / "data.yaml").stat().st_mtime_ns == m
 
 
+def _project_id():
+    """The demo project's id: random hex PKs mean an unordered first() picks another project."""
+    from sqlalchemy import select
+    from app.models import Project
+    with SessionLocal() as db:
+        return db.scalars(select(Project.id).where(Project.slug == PR)).first()
+
+
 def _class_id():
     from sqlalchemy import select
     from app.models import LabelClass
     with SessionLocal() as db:
-        return db.scalars(select(LabelClass)).first().id
+        return db.scalars(select(LabelClass).where(LabelClass.project_id == _project_id())).first().id
 
 
 def _add_image(iid, rel, split, ann_cls):
-    from sqlalchemy import select
-    from app.models import Image, Project
+    from app.models import Image
     with SessionLocal() as db:
-        pid = db.scalars(select(Project.id).where(Project.slug == "ppe-detection")).first()   # not the "other" test project
+        pid = _project_id()
         db.add(Image(id=iid, project_id=pid, name=f"{iid}.png", sha256=iid * 2, width=64, height=64, path=rel,
                      thumb=rel, split=split, status="done",
                      annotations=[{"id": "a", "classId": ann_cls,
@@ -177,7 +184,7 @@ def test_hash_changes_on_relabel_and_class_rename(c):
     h1 = manifest(make_version(c, s))["version_hash"]
     assert h1 != m0["version_hash"]
     with SessionLocal() as db:
-        lc = db.scalars(select(LabelClass)).first()
+        lc = db.scalars(select(LabelClass).where(LabelClass.project_id == _project_id())).first()
         lc.name = lc.name + "_renamed"
         db.commit()
     assert manifest(make_version(c, s))["version_hash"] != h1
