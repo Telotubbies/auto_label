@@ -3,7 +3,7 @@ import logging
 import os
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from .config import REPO_ROOT, SEED_DEMO
 from .db import Base, SessionLocal, engine
@@ -15,9 +15,21 @@ DEMO_EMAIL, DEMO_PW = "demo@labeldesk.dev", "demo1234"
 
 def init_db():
     Base.metadata.create_all(engine)
+    ensure_columns(engine, "trained_models", {
+        "family": "VARCHAR(32) DEFAULT 'ultralytics'", "variant": "VARCHAR(64) DEFAULT ''",
+        "license": "VARCHAR(64) DEFAULT 'AGPL-3.0'", "runtime_refs": "JSON"})
     _backfill_image_classes()
     if SEED_DEMO:
         seed()
+
+
+def ensure_columns(eng, table: str, cols: dict[str, str]) -> None:
+    """Idempotent ALTER TABLE ... ADD COLUMN; cols maps name -> DDL fragment (type + default)."""
+    have = {c["name"] for c in inspect(eng).get_columns(table)}
+    with eng.begin() as cn:
+        for name, ddl in cols.items():
+            if name not in have:
+                cn.exec_driver_sql(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}')
 
 
 def seed():

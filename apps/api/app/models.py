@@ -229,6 +229,10 @@ class TrainedModel(Base):
     history: Mapped[list] = mapped_column(JSON, default=list)
     classes: Mapped[list] = mapped_column(JSON, default=list)
     weights: Mapped[str] = mapped_column(String(1024), default="")
+    family: Mapped[str] = mapped_column(String(32), default="ultralytics")
+    variant: Mapped[str] = mapped_column(String(64), default="")
+    license: Mapped[str] = mapped_column(String(64), default="AGPL-3.0")
+    runtime_refs: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[float] = mapped_column(Float, default=now)
 
 

@@ -148,3 +148,23 @@ def sam_text(im: PImage.Image, prompts: list[str], threshold: float = 0.4) -> li
                 if poly:
                     out.append((i, poly, score))
     return out
+
+
+def sam_box(im: PImage.Image, box_xyxy_px: tuple[float, float, float, float]) -> tuple[list[float] | None, float]:
+    """Box prompt -> (normalized flat polygon, score); (None, 0.0) when SAM is unavailable or finds nothing."""
+    proc = None if SAM_ENABLED == "0" else _load_sam()
+    if proc is None:
+        return None, 0.0
+    try:
+        x1, y1, x2, y2 = box_xyxy_px
+        W, H = im.width, im.height
+        state = proc.set_image(im)
+        out = proc.add_geometric_prompt([(x1 + x2) / 2 / W, (y1 + y2) / 2 / H, (x2 - x1) / W, (y2 - y1) / H], True, state)
+        best = max(_masks(out), key=lambda c: c[1], default=None)
+        if best is not None:
+            poly = mask_to_polygon(best[0].astype("uint8"))
+            if poly:
+                return poly, best[1]
+    except Exception as e:
+        log.warning("SAM box prompt failed: %s", e)
+    return None, 0.0
