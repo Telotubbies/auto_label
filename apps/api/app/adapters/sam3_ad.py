@@ -27,7 +27,7 @@ class Sam3Adapter:
     def capabilities(self, variant: str) -> set[str]:
         return {"segment", "text-prompt", "box-prompt"}
 
-    def predict(self, variant, im, *, classes=None, prompt=None, conf=0.4, iou=0.5) -> dict:
+    def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
         t0 = time.time()
         prompts = list(classes) if classes else ([prompt] if prompt else [])
         if not prompts:

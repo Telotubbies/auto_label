@@ -147,15 +147,18 @@ class UltralyticsAdapter:
             caps.add("open-vocab")
         return caps
 
-    def predict(self, variant, im, *, classes=None, prompt=None, conf=0.4, iou=0.5) -> dict:
-        if variant.endswith(".pt"):                    # trained model: DATA_DIR-relative path from resolve()
-            weights, cls = str(DATA_DIR / variant), "YOLO"
+    def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
+        cls = _cls_name(variant)
+        if cls == "YOLOWorld" and not classes:
+            raise ValueError("YOLO-World needs classes")
+        if weights:                                    # trained model: DATA_DIR-relative path
+            path = str(DATA_DIR / weights)
         else:
             local = PRETRAINED_DIR / f"{variant}.pt"
-            weights, cls = (str(local) if local.exists() else f"{variant}.pt"), _cls_name(variant)
-        m = _load(weights, cls)
-        if cls == "YOLOWorld" and classes:
-            with _lock:                                # set_classes mutates the cached model
+            path = str(local) if local.exists() else f"{variant}.pt"
+        m = _load(path, cls)
+        if cls == "YOLOWorld":
+            with _lock:                                # vocabulary lives on the cached model: set + run atomically
                 m.set_classes(list(classes))
                 out = _run(m, im, conf, iou)
         else:

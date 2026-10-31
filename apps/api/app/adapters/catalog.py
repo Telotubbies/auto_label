@@ -1,12 +1,10 @@
 """Static model zoo + registry: what exists, under which license, and whether it can run now."""
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config import DATA_DIR
 from ..models import TrainedModel
-from .base import ADAPTERS, Adapter, Availability, parse_ref
+from .base import ADAPTERS, Availability, Resolved, parse_ref
 
 _LICENSE = {"ultralytics": "AGPL-3.0", "sam3": "SAM License", "vlm": "Apache-2.0"}
 _VLM_CAPS = {"vlm", "detect", "caption"}       # until the vlm adapter registers and reports its own
@@ -49,14 +47,18 @@ def catalog(db: Session, workspace_id: str) -> list[dict]:
     return items
 
 
-def resolve(model_ref: str, db: Session) -> tuple[Adapter, str]:
-    """-> (adapter, variant); for trained:<id> the variant is the model's weights path (relative to DATA_DIR)."""
+_TASK_VARIANT = {"detect": "yolo26n", "segment": "yolo26n-seg", "classify": "yolo26n-cls"}
+
+
+def resolve(model_ref: str, db: Session) -> Resolved:
+    """Bind a model_ref to its adapter; trained:<id> also carries the model's variant and weights."""
     fam, rest = parse_ref(model_ref)
+    weights = None
     if fam == "trained":
         m = db.get(TrainedModel, rest)
         if m is None:
             raise ValueError(f"unknown trained model {rest!r}")
-        fam, rest = m.family or "ultralytics", m.weights
+        fam, rest, weights = m.family or "ultralytics", m.variant or _TASK_VARIANT[m.task], m.weights
     if fam not in ADAPTERS:
         raise ValueError(f"no adapter for family {fam!r}")
-    return ADAPTERS[fam], rest
+    return Resolved(ADAPTERS[fam], rest, weights, model_ref)

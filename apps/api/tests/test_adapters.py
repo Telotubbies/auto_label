@@ -73,3 +73,74 @@ def test_ensure_columns_is_idempotent(tmp_path):
     ensure_columns(eng, "t", {"family": "VARCHAR(32) DEFAULT 'ultralytics'"})
     ensure_columns(eng, "t", {"family": "VARCHAR(32)"})
     assert "family" in [col["name"] for col in inspect(eng).get_columns("t")]
+
+
+# --- resolve / Resolved / YOLO-World vocabulary ---------------------------------------
+
+class _FakeModel:
+    def __init__(self, log):
+        self.log = log
+        self.vocab = None
+
+    def set_classes(self, classes):
+        self.vocab = list(classes)
+
+
+@pytest.fixture
+def fake_loader(monkeypatch):
+    from app.adapters import ultralytics_ad as ul
+    calls, model = [], _FakeModel([])
+    monkeypatch.setattr(ul, "_load", lambda weights, cls="YOLO": calls.append((weights, cls)) or model)
+    monkeypatch.setattr(ul, "_run", lambda m, im, conf, iou: {
+        "predictions": [], "time": 0.0, "image": {"width": im.width, "height": im.height}, "vocab": list(m.vocab or [])})
+    return calls, model
+
+
+class _FakeDb:
+    """resolve() only needs db.get(TrainedModel, id)."""
+    def __init__(self, row):
+        self.row = row
+
+    def get(self, _model, _id):
+        return self.row
+
+
+def _trained_db(**kw):
+    from app.models import TrainedModel
+    m = TrainedModel(id="abc123", workspace_id="w", project_id="p", version_id="v", name="t", arch="l",
+                     task=kw.pop("task", "detect"), status="done", weights="models/x/best.pt", **kw)
+    return _FakeDb(m)
+
+
+def test_resolve_trained_rtdetr_keeps_variant_and_class(fake_loader):
+    from app.adapters import resolve
+    calls, _ = fake_loader
+    r = resolve("trained:abc123", _trained_db(variant="rtdetr-l"))
+    assert (r.variant, r.weights, r.ref) == ("rtdetr-l", "models/x/best.pt", "trained:abc123")
+    out = r.predict(PImage.new("RGB", (8, 8)))
+    assert calls[-1][1] == "RTDETR" and calls[-1][0].endswith("best.pt")
+    assert out["model"] == "trained:abc123"
+
+
+def test_resolve_old_trained_row_derives_variant_from_task():
+    from app.adapters import resolve
+    assert resolve("trained:abc123", _trained_db(variant="", task="segment")).variant == "yolo26n-seg"
+    assert resolve("trained:abc123", _trained_db(variant="", task="classify")).variant == "yolo26n-cls"
+    assert resolve("trained:abc123", _trained_db(variant="", task="detect")).variant == "yolo26n"
+
+
+def test_resolve_zoo_ref_has_no_weights():
+    from app.adapters import resolve
+    r = resolve("ultralytics:rtdetr-l", _FakeDb(None))
+    assert (r.variant, r.weights, r.ref) == ("rtdetr-l", None, "ultralytics:rtdetr-l")
+
+
+def test_yolo_world_requires_classes(fake_loader):
+    with pytest.raises(ValueError, match="YOLO-World needs classes"):
+        ADAPTERS["ultralytics"].predict("yolov8s-worldv2", PImage.new("RGB", (8, 8)))
+
+
+def test_yolo_world_calls_see_their_own_vocabulary(fake_loader):
+    ad, im = ADAPTERS["ultralytics"], PImage.new("RGB", (8, 8))
+    assert ad.predict("yolov8s-worldv2", im, classes=["cat"])["vocab"] == ["cat"]
+    assert ad.predict("yolov8s-worldv2", im, classes=["dog", "car"])["vocab"] == ["dog", "car"]

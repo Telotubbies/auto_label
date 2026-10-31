@@ -28,7 +28,8 @@ class Adapter(Protocol):
     def probe(self) -> Availability: ...
     def capabilities(self, variant: str) -> set[str]: ...
     def predict(self, variant: str, im: PImage.Image, *, classes: list[str] | None = None,
-                prompt: str | None = None, conf: float = 0.4, iou: float = 0.5) -> dict: ...
+                prompt: str | None = None, weights: str | None = None, conf: float = 0.4,
+                iou: float = 0.5) -> dict: ...
 
 
 ADAPTERS: dict[str, Adapter] = {}
@@ -45,6 +46,20 @@ def parse_ref(ref: str) -> tuple[str, str]:
     if not sep or not fam or not rest:
         raise ValueError(f"bad model ref {ref!r}; expected '<family>:<variant>' or 'trained:<id>'")
     return fam, rest
+
+
+@dataclass
+class Resolved:
+    """A model_ref bound to its adapter. weights (DATA_DIR-relative) is set for trained models only."""
+    adapter: Adapter
+    variant: str
+    weights: str | None
+    ref: str
+
+    def predict(self, im: PImage.Image, **kw) -> dict:
+        out = self.adapter.predict(self.variant, im, weights=self.weights, **kw)
+        out["model"] = self.ref
+        return out
 
 
 _PRED_KEYS = ("class", "class_id", "confidence", "x", "y", "width", "height")
