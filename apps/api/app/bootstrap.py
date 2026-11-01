@@ -1,9 +1,10 @@
 """Schema creation + first-run demo seed."""
 import logging
 import os
+import time
 from pathlib import Path
 
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, update
 
 from .config import REPO_ROOT, SEED_DEMO
 from .db import Base, SessionLocal, engine
@@ -20,11 +21,37 @@ def init_db():
         "license": "VARCHAR(64) DEFAULT 'AGPL-3.0'", "runtime_refs": "JSON"})
     ensure_columns(engine, "api_keys", {"scopes": "JSON", "publishable": "BOOLEAN DEFAULT FALSE"})
     ensure_columns(engine, "connectors", {"last_sync": "FLOAT", "last_status": "VARCHAR(16) DEFAULT ''"})
+    ensure_columns(engine, "users", {
+        "email_verified": "FLOAT", "totp_secret": "VARCHAR(255)", "mfa_enabled": "BOOLEAN DEFAULT FALSE",
+        "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0"})
+    ensure_columns(engine, "workspaces", {"require_mfa": "BOOLEAN DEFAULT FALSE"})
+    ensure_columns(engine, "refresh_tokens", {
+        "created": "FLOAT DEFAULT 0", "last_seen": "FLOAT DEFAULT 0",
+        "ip": "VARCHAR(64) DEFAULT ''", "user_agent": "VARCHAR(255) DEFAULT ''"})
+    _widen_totp_secret()
+    _backfill_sessions()
     from .services.secretbox import migrate as _encrypt_secrets
-    _encrypt_secrets()                      # one-time upgrade of pre-encryption connector/webhook secrets
+    # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
+    _encrypt_secrets()
     _backfill_image_classes()
     if SEED_DEMO:
         seed()
+
+
+def _backfill_sessions():
+    """Sessions created before Task 21 have no metadata; give them a real timestamp instead of 1970."""
+    from .models import RefreshToken
+    with SessionLocal() as db:
+        db.execute(update(RefreshToken).where(RefreshToken.created == 0)
+                   .values(created=time.time(), last_seen=time.time()))
+        db.commit()
+
+
+def _widen_totp_secret():
+    """Ciphertext is longer than the old 64-char plaintext column. SQLite ignores the length."""
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as cn:
+            cn.exec_driver_sql("ALTER TABLE users ALTER COLUMN totp_secret TYPE VARCHAR(255)")
 
 
 def ensure_columns(eng, table: str, cols: dict[str, str]) -> None:
@@ -46,9 +73,11 @@ def seed():
     with SessionLocal() as db:
         if db.scalar(select(User.id).limit(1)):
             return
-        admin = User(email=DEMO_EMAIL, name="Demo Admin", pw_hash=hash_password(DEMO_PW))
-        labeler = User(email="labeler@labeldesk.dev", name="Lee Labeler", pw_hash=hash_password(DEMO_PW))
-        reviewer = User(email="reviewer@labeldesk.dev", name="Rae Reviewer", pw_hash=hash_password(DEMO_PW))
+        admin = User(email=DEMO_EMAIL, name="Demo Admin", pw_hash=hash_password(DEMO_PW), email_verified=time.time())
+        labeler = User(email="labeler@labeldesk.dev", name="Lee Labeler", pw_hash=hash_password(DEMO_PW),
+                       email_verified=time.time())
+        reviewer = User(email="reviewer@labeldesk.dev", name="Rae Reviewer", pw_hash=hash_password(DEMO_PW),
+                        email_verified=time.time())
         db.add_all([admin, labeler, reviewer]); db.flush()
         ws = create_workspace(db, admin, "LabelDesk Demo")
         db.add_all([Member(workspace_id=ws.id, user_id=labeler.id, role="annotator"),

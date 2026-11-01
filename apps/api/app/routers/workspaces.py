@@ -14,6 +14,7 @@ from ..deps import Ctx, audit, credits_left, plan, ws_ctx
 from ..models import (API_SCOPES, ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project, TrainedModel,
                       User, Workspace)
 from ..security import new_api_key
+from .. import mailer
 
 router = APIRouter(prefix="/api/ws/{ws}", tags=["workspace"])
 SUPERADMINS = {e.strip().lower() for e in os.environ.get("LD_SUPERADMINS", "").split(",") if e.strip()}
@@ -35,12 +36,13 @@ def usage(db: Session, ws: Workspace) -> dict:
 @router.get("")
 def get_ws(c: Ctx = Depends(ws_ctx)):
     return {"id": c.ws.id, "slug": c.ws.slug, "name": c.ws.name, "role": c.role, "owner_id": c.ws.owner_id,
-            "usage": usage(c.db, c.ws)}
+            "require_mfa": c.ws.require_mfa, "usage": usage(c.db, c.ws)}
 
 
 class WsPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     plan: str | None = None
+    require_mfa: bool | None = None
 
 
 @router.patch("")
@@ -55,9 +57,15 @@ def patch_ws(body: WsPatch, c: Ctx = Depends(ws_ctx)):
         if body.plan not in PLANS:
             raise HTTPException(400, "unknown plan")
         c.ws.plan = body.plan
+    if body.require_mfa is not None:
+        # Turning enforcement on locks out every member who has not enrolled — including this admin.
+        if body.require_mfa and not c.user.mfa_enabled:
+            raise HTTPException(400, "enable two-factor authentication on your own account first")
+        c.ws.require_mfa = body.require_mfa
+        audit(c.db, c.ws.id, c.user.id, "workspace.mfa", "required" if body.require_mfa else "optional")
     audit(c.db, c.ws.id, c.user.id, "workspace.update", c.ws.name)
     c.db.commit()
-    return {"slug": c.ws.slug, "name": c.ws.name, "plan": c.ws.plan}
+    return {"slug": c.ws.slug, "name": c.ws.name, "plan": c.ws.plan, "require_mfa": c.ws.require_mfa}
 
 
 @router.get("/usage")
@@ -110,7 +118,11 @@ def invite(body: InviteIn, c: Ctx = Depends(ws_ctx)):
     c.db.add(inv)
     audit(c.db, c.ws.id, c.user.id, "member.invite", email, role=body.role)
     c.db.commit()
-    return {"token": inv.token, "email": email, "role": body.role, "link": f"{PUBLIC_URL}/invite/{inv.token}"}
+    link = f"{PUBLIC_URL}/invite/{inv.token}"
+    mailer.send(email, f"Join {c.ws.name} on LabelDesk",
+                f"{c.user.name} invited you to {c.ws.name} as {body.role}.\n\nAccept the invite:\n{link}\n\n"
+                f"The link is tied to this email address.", link=link, kind="invite")
+    return {"token": inv.token, "email": email, "role": body.role, "link": link}
 
 
 @router.delete("/invites/{token}")

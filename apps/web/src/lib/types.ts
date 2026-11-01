@@ -3,15 +3,18 @@ export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classi
 export type Split = 'train' | 'valid' | 'test'
 export type Status = 'unassigned' | 'annotating' | 'review' | 'done'
 
-export interface WorkspaceRef { id: string; slug: string; name: string; role: Role; plan: string; plan_label: string; owner: boolean }
-export interface Me { id: string; email: string; name: string; workspaces: WorkspaceRef[] }
+export interface WorkspaceRef { id: string; slug: string; name: string; role: Role; plan: string; plan_label: string; owner: boolean; mfa_required: boolean }
+export interface Me { id: string; email: string; name: string; email_verified: number | null; mfa_enabled: boolean; workspaces: WorkspaceRef[] }
+export interface SessionRow { id: string; created: number; last_seen: number; ip: string; user_agent: string }
+export interface LoginEvent { method: 'password' | 'mfa' | 'oidc'; ok: boolean; ip: string; user_agent: string; created: number }
+export interface MfaSetup { secret: string; otpauth: string; qr: string }
 
 export interface Usage {
   plan: string; plan_label: string; limits: { projects: number; images: number; seats: number; credits: number; label: string }
   credits_used: number; credits_left: number; period: string; projects: number; images: number; seats: number; models: number
   daily?: Record<string, number | string>[]
 }
-export interface WorkspaceInfo { id: string; slug: string; name: string; role: Role; owner_id: string; usage: Usage }
+export interface WorkspaceInfo { id: string; slug: string; name: string; role: Role; owner_id: string; require_mfa: boolean; usage: Usage }
 
 export interface LabelClass { id: string; name: string; color: string; count: number }
 export interface Project {

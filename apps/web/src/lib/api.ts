@@ -13,8 +13,16 @@ export const fileUrl = (u?: string | null) => (u ? (u.startsWith('http') ? u : A
 const tokens = {
   get access() { return localStorage.getItem('ld_token') },
   get refresh() { return localStorage.getItem('ld_refresh') },
-  set(a: string, r?: string) { localStorage.setItem('ld_token', a); if (r) localStorage.setItem('ld_refresh', r) },
-  clear() { localStorage.removeItem('ld_token'); localStorage.removeItem('ld_refresh') },
+  /** sha256 of this browser's refresh token — matches an id from /api/me/sessions. */
+  get session() { return localStorage.getItem('ld_session') },
+  set(a: string, r?: string, session?: string) {
+    localStorage.setItem('ld_token', a)
+    if (r) localStorage.setItem('ld_refresh', r)
+    if (session) localStorage.setItem('ld_session', session)
+  },
+  clear() {
+    localStorage.removeItem('ld_token'); localStorage.removeItem('ld_refresh'); localStorage.removeItem('ld_session')
+  },
 }
 export { tokens }
 
@@ -33,7 +41,7 @@ async function tryRefresh(): Promise<boolean> {
       })
       if (!r.ok) return false
       const d = await r.json()
-      tokens.set(d.token, d.refresh_token)
+      tokens.set(d.token, d.refresh_token, d.session)
       return true
     } catch { return false }
   })().finally(() => { refreshing = null })

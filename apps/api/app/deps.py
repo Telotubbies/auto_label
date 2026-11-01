@@ -68,6 +68,8 @@ def _workspace_ctx(db: Session, u: User, ws_slug: str) -> Ctx:
     m = db.get(Member, (ws.id, u.id))
     if not m:
         raise HTTPException(403, "not a member of this workspace")
+    if ws.require_mfa and not u.mfa_enabled:
+        raise HTTPException(403, "this workspace requires two-factor authentication — set it up in your account settings")
     return Ctx(user=u, ws=ws, role=m.role, db=db)
 
 
@@ -94,6 +96,8 @@ def image_ctx(db: Session, u: User, image_id: str) -> tuple[Ctx, Image]:
     m = db.get(Member, (ws.id, u.id))
     if not m:
         raise HTTPException(403, "no access to this image")
+    if ws.require_mfa and not u.mfa_enabled:
+        raise HTTPException(403, "this workspace requires two-factor authentication — set it up in your account settings")
     return Ctx(user=u, ws=ws, role=m.role, db=db, project=p), img
 
 

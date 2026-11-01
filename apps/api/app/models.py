@@ -33,6 +33,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     pw_hash: Mapped[str] = mapped_column(String(255), default="")
+    email_verified: Mapped[float | None] = mapped_column(Float, nullable=True)   # timestamp of verification
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)   # set before mfa_enabled (pending)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    recovery_codes: Mapped[list] = mapped_column(JSON, default=list)             # sha256 of each one-time code
+    totp_last_step: Mapped[int] = mapped_column(Integer, default=0)              # replay guard for TOTP codes
     created: Mapped[float] = mapped_column(Float, default=now)
 
 
@@ -45,6 +50,7 @@ class Workspace(Base):
     plan: Mapped[str] = mapped_column(String(32), default="free")
     credits_used: Mapped[float] = mapped_column(Float, default=0.0)
     credits_period: Mapped[str] = mapped_column(String(7), default="")   # YYYY-MM the counter belongs to
+    require_mfa: Mapped[bool] = mapped_column(Boolean, default=False)    # members must enrol TOTP to enter
     created: Mapped[float] = mapped_column(Float, default=now)
 
 
@@ -69,10 +75,39 @@ class Invite(Base):
 
 
 class RefreshToken(Base):
+    """One row per signed-in device. The column is the sha256 of the token, never the token itself."""
     __tablename__ = "refresh_tokens"
     token: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     expires: Mapped[float] = mapped_column(Float)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    last_seen: Mapped[float] = mapped_column(Float, default=now)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(255), default="")
+
+
+class EmailToken(Base):
+    """Single-use tokens for password reset and email verification (only the hash is stored)."""
+    __tablename__ = "email_tokens"
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))                  # reset | verify
+    expires: Mapped[float] = mapped_column(Float)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class LoginEvent(Base):
+    """Login history shown on the account security page."""
+    __tablename__ = "login_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    email: Mapped[str] = mapped_column(String(255))
+    method: Mapped[str] = mapped_column(String(16), default="password")   # password | mfa | oidc
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(255), default="")
+    created: Mapped[float] = mapped_column(Float, default=now, index=True)
 
 
 class Folder(Base):

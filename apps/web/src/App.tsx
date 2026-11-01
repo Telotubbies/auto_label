@@ -8,7 +8,7 @@ import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
 import { AppLayout } from '@/components/shell'
 import { Spinner } from '@/components/ui'
-import { Login, Signup, AcceptInvite } from '@/features/auth/Auth'
+import { Login, Signup, AcceptInvite, Forgot, Reset, VerifyEmail, MfaGate } from '@/features/auth/Auth'
 const Landing = lazy(() => import('@/features/landing/Landing'))
 const LandingPreview = lazy(() => import('@/features/landing/Landing').then((m) => ({ default: m.LandingPreview })))
 import Home from '@/features/workspace/Home'
@@ -44,6 +44,7 @@ function LoginRedirect() {
 /** Loads /me, picks the workspace from the URL and publishes the caller's role in it. */
 function WorkspaceGate() {
   const { ws } = useParams()
+  const location = useLocation()
   const { setMe, setRole } = useApp()
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
   const current = me.data?.workspaces.find((w) => w.slug === ws)
@@ -52,6 +53,10 @@ function WorkspaceGate() {
   if (me.isLoading) return <Loading />
   if (!me.data) return <Navigate to="/login" replace />
   if (!current) return <Navigate to={me.data.workspaces[0] ? `/${me.data.workspaces[0].slug}` : '/'} replace />
+  if (current.mfa_required && !me.data.mfa_enabled) {
+    const next = `${location.pathname}${location.search}${location.hash}`
+    return <MfaGate ws={current.slug} workspaceName={current.name} next={next} />
+  }
   return <Outlet />
 }
 
@@ -78,6 +83,9 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot" element={<Forgot />} />
+          <Route path="/reset/:token" element={<Reset />} />
+          <Route path="/verify/:token" element={<VerifyEmail />} />
           <Route path="/invite/:token" element={<AcceptInvite />} />
           {import.meta.env.DEV && <Route path="/__preview/:section" element={<LandingPreview />} />}
           <Route path="*" element={<LoginRedirect />} />
@@ -92,6 +100,10 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/signup" element={<Navigate to="/" replace />} />
       <Route path="/invite/:token" element={<AcceptInvite />} />
+      {/* Account pages are reachable while signed in (email links, password changes) and sit outside the app layout. */}
+      <Route path="/forgot" element={<Forgot />} />
+      <Route path="/reset/:token" element={<Reset />} />
+      <Route path="/verify/:token" element={<VerifyEmail />} />
       <Route path="/:ws" element={<WorkspaceGate />}>
         <Route path=":project/images/:imageId" element={<Editor />} />
         <Route element={<AppLayout />}>

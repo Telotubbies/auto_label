@@ -12,6 +12,7 @@ from .config import SECRET
 ALG = "HS256"
 ACCESS_TTL = 15 * 60
 REFRESH_TTL = 30 * 24 * 3600
+MFA_TTL = 5 * 60                      # short-lived ticket between password and TOTP
 FILE_URL_TTL = 6 * 3600
 _PBKDF2_ROUNDS = 260_000
 
@@ -33,14 +34,30 @@ def verify_password(pw: str, stored: str) -> bool:
 
 def issue_access(user_id: str) -> str:
     t = int(time.time())
-    return jwt.encode({"sub": user_id, "iat": t, "exp": t + ACCESS_TTL}, SECRET, algorithm=ALG)
+    return jwt.encode({"sub": user_id, "iat": t, "exp": t + ACCESS_TTL, "scope": "access"}, SECRET, algorithm=ALG)
 
 
 def verify_access(token: str) -> dict | None:
     try:
-        return jwt.decode(token, SECRET, algorithms=[ALG])
+        claims = jwt.decode(token, SECRET, algorithms=[ALG])
     except jwt.PyJWTError:
         return None
+    # Tokens minted before the scope claim existed have none; an MFA ticket is never an access token.
+    return claims if claims.get("scope") in (None, "access") else None
+
+
+def issue_mfa_pending(user_id: str) -> str:
+    """Ticket proving the password step passed; only /auth/mfa/verify accepts it."""
+    t = int(time.time())
+    return jwt.encode({"sub": user_id, "iat": t, "exp": t + MFA_TTL, "scope": "mfa"}, SECRET, algorithm=ALG)
+
+
+def verify_mfa(token: str) -> dict | None:
+    try:
+        claims = jwt.decode(token, SECRET, algorithms=[ALG])
+    except jwt.PyJWTError:
+        return None
+    return claims if claims.get("scope") == "mfa" else None
 
 
 def token_hash(t: str) -> str:

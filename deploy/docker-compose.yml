@@ -35,6 +35,14 @@ services:
       LD_SEED_DEMO: ${LD_SEED_DEMO:-0}
       LD_SUPERADMINS: ${LD_SUPERADMINS:-}
       LD_SAM_ENABLED: "0"
+      # Production: closes the dev mail inbox even if SMTP is missing. Set LD_SMTP_* to deliver mail.
+      LD_ENV: production
+      LD_SMTP_HOST: ${LD_SMTP_HOST:-}
+      LD_SMTP_PORT: ${LD_SMTP_PORT:-587}
+      LD_SMTP_USER: ${LD_SMTP_USER:-}
+      LD_SMTP_PASSWORD: ${LD_SMTP_PASSWORD:-}
+      LD_SMTP_FROM: ${LD_SMTP_FROM:-}
+      LD_SMTP_TLS: ${LD_SMTP_TLS:-1}
     volumes: [labeldesk_data:/data]
     depends_on:
       db: { condition: service_healthy }

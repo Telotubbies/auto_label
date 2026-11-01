@@ -13,8 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
-from .routers import (auth, connectors, devapi, images, playground, projects, registry, remote, training, versions,
-                      webhooks, workspaces)
+from .routers import (auth, connectors, devapi, devmail, images, playground, projects, registry, remote, training,
+                      versions, webhooks, workspaces)
 from .security import check_signature
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -63,6 +63,7 @@ for r in (auth, workspaces, projects, images, versions, devapi, training, remote
           webhooks):
     app.include_router(r.router)
 app.include_router(registry.gpu_router)
+app.include_router(devmail.router)
 
 
 @app.get("/api/health")
