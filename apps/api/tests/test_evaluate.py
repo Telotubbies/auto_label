@@ -192,6 +192,7 @@ def test_no_eval_data_does_not_crash(tmp_path, monkeypatch):
     assert all(v == 0.0 for v in out["coco"].values())
     assert out["f1_best"] == {"conf": 0.4, "f1": 0.0}
     assert out["detections"] == []
+    assert out["tide"] == {k: 0.0 for k in ("cls", "loc", "both", "dupe", "bkg", "missed")}
 
 
 SEG_ITEMS = [
@@ -261,3 +262,112 @@ def test_pr_curve_sorted_by_recall(tmp_path, monkeypatch):
     assert recalls == sorted(recalls)
     assert all(0 <= p["precision"] <= 1 for p in out["pr_curve"])
     assert len(recalls) == 19
+
+
+TIDE_KEYS = ("cls", "loc", "both", "dupe", "bkg", "missed")
+
+# gt box (20,20,40,40) vs predicted box (30,30,40,40): IoU 900/2300 = 0.391, a pure loc error
+LOC_ITEMS = [
+    {"file": "test/loc1.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/loc2.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/loc3.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+]
+LOC_PREDS = {name: [_pred("helmet", 0.9, 50, 50, 40, 40)]
+             for name in ("loc1.jpg", "loc2.jpg", "loc3.jpg")}
+
+
+def test_tide_loc_dominates_when_all_errors_are_localisation(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", LOC_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, LOC_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert set(tide) == set(TIDE_KEYS)
+    assert tide["loc"] == pytest.approx(1.0)
+    assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "loc")
+    assert tide["loc"] == max(tide.values())
+
+
+def test_tide_is_zero_for_a_perfect_model(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", PERFECT_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, PERFECT_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    assert out["tide"] == {k: 0.0 for k in TIDE_KEYS}
+
+
+CLS_ITEMS = [
+    {"file": "test/cls.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+]
+# identical box (40,40,40,40 pixels), wrong class: a pure classification error
+CLS_PREDS = {"cls.jpg": [_pred("vest", 0.9, 40, 40, 40, 40)]}
+
+
+def test_tide_cls_error_is_recovered(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", CLS_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, CLS_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert tide["cls"] == pytest.approx(1.0)
+    assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "cls")
+
+
+MISSED_ITEMS = [
+    {"file": "test/missed.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+]
+MISSED_PREDS = {"missed.jpg": []}
+
+
+def test_tide_missed_error_is_recovered(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", MISSED_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, MISSED_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert tide["missed"] == pytest.approx(1.0)
+    assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "missed")
+
+
+BOTH_ITEMS = [
+    {"file": "test/both.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+]
+# wrong class (vest) and a shifted box: IoU 0.391, so the fix needs both corrections
+BOTH_PREDS = {"both.jpg": [_pred("vest", 0.9, 50, 50, 40, 40)]}
+
+
+def test_tide_both_error_is_recovered(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", BOTH_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, BOTH_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert tide["both"] == pytest.approx(1.0)
+    assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "both")
+
+
+def test_tide_classification_labels_each_error_type():
+    """One image with a TP, a duplicate, a background false positive and a second TP."""
+    rec = {
+        "file": "test/labels.jpg", "image_id": 1, "width": 200, "height": 200,
+        "gt": [{"cls": "helmet", "bbox": [20, 20, 40, 40], "segm": None},
+               {"cls": "vest", "bbox": [100, 100, 40, 40], "segm": None}],
+        "pred": [{"cls": "helmet", "conf": 0.90, "bbox": [20, 20, 40, 40], "points": None},
+                 {"cls": "helmet", "conf": 0.80, "bbox": [20, 20, 40, 40], "points": None},
+                 {"cls": "vest", "conf": 0.70, "bbox": [130, 130, 40, 40], "points": None},
+                 {"cls": "vest", "conf": 0.60, "bbox": [100, 100, 40, 40], "points": None}],
+    }
+    fixes, missed = evaluate_mod._tide_classify(rec, 0.5, "bbox")
+    assert fixes == [None, ("dupe", -1), ("bkg", -1), None]
+    assert missed == []
+
+
+def test_tide_segm_uses_mask_iou(tmp_path, monkeypatch):
+    """Boxes agree but masks do not: the mask-only error must reach a bucket, not read as zero."""
+    root = make_version(tmp_path / "v1", THIN_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, FULL_BOX_PRED))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n-seg", root, "segment")
+    assert out["iou"] == "segm" and out["coco"]["AP50"] == 0.0
+    assert out["tide"]["missed"] == pytest.approx(1.0)
+    assert all(out["tide"][k] == 0.0 for k in TIDE_KEYS if k != "missed")

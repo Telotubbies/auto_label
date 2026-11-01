@@ -71,6 +71,8 @@ export interface ModelEval {
   /** images[gtRow][predCol] = file names; the last label is "background". */
   confusion: { labels: string[]; matrix: number[][]; images: string[][][] }
   pr_curve: { recall: number; precision: number }[]
+  /** Delta-AP (0..1) recoverable per TIDE error type at the best-F1 confidence; absent on evals run before this was tracked. */
+  tide?: { cls: number; loc: number; both: number; dupe: number; bkg: number; missed: number }
   worst: string[]
   latency_ms: number
   /** Number of images in the evaluated split (detections may be capped below it). */
