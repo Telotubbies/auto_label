@@ -20,10 +20,12 @@ EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside t
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
 LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS",
-                                   "version,export,export_engine,train,autolabel,health,connector_sync,"
+                                   "version,export,export_engine,train,autolabel,health,connector_sync,retention,"
                                    "insights_images,insights_leakage,insights_embedding").split(",") if k]
 if "connector_sync" not in LOCAL_JOB_KINDS:
     LOCAL_JOB_KINDS.append("connector_sync")      # CPU/network job: never leave it unclaimed by every process
+if "retention" not in LOCAL_JOB_KINDS:
+    LOCAL_JOB_KINDS.append("retention")            # PDPA deletion never waits on a GPU host
 REMOTE_JOB_KINDS = ("train", "autolabel")
 WORKER_TOKEN = _env("LD_WORKER_TOKEN")                        # shared secret for `labeldesk-worker`
 
@@ -68,5 +70,8 @@ def _secret() -> str:
 SECRET = _secret()
 SECRET_OLD = _env("LD_SECRET_OLD")           # comma-separated previous secrets, for rotation of encrypted rows
 MAX_UPLOAD_MB = int(_env("LD_MAX_UPLOAD_MB", "1024"))        # per upload request
+RETENTION_CHECK_S = int(_env("LD_RETENTION_CHECK_S", "3600"))  # how often the worker looks for due cleanup
+RETENTION_PRESETS = (7, 30, 90, 180, 365)                    # choices offered by the privacy page
+WORKER_STALE_S = int(_env("LD_WORKER_STALE_S", "45"))        # a heartbeat older than this shows offline
 if WORKER_TOKEN and len(WORKER_TOKEN) < 24:
     raise RuntimeError("LD_WORKER_TOKEN must be at least 24 characters")

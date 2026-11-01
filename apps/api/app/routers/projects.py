@@ -64,7 +64,7 @@ def classes_out(db: Session, p: Project) -> list[dict]:
 
 
 # project slugs must not shadow workspace pages (mirrors apps/web/src/components/shell.tsx)
-RESERVED = {"models", "deployments", "activity", "settings"}
+RESERVED = {"models", "deployments", "activity", "settings", "audit", "admin", "legal"}
 
 
 def slugify(name: str) -> str:

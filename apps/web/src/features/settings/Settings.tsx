@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CheckCircle2, CircleAlert, Copy, KeyRound, ShieldCheck, ShieldOff, Trash2, XCircle } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -9,6 +9,13 @@ import type { LoginEvent, Me, MfaSetup, Role, SessionRow } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Spinner, Stat, Switch, fmtAgo, fmtDate, toast } from '@/components/ui'
 import { DEFAULT_SEED, setThemePrefs, useThemePrefs, type Contrast, type ModePref, type Scheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import PrivacyWorkspace from '@/features/governance/Privacy'
+import { WorkspaceRoles } from '@/features/governance/Roles'
+
+const ROLE_LABEL: Record<Role, string> = {
+  owner: 'Owner', admin: 'Admin', billing: 'Billing', member: 'Member', reviewer: 'Reviewer', annotator: 'Labeler',
+}
+const ASSIGNABLE_ROLES: Role[] = ['admin', 'billing', 'member', 'reviewer', 'annotator']
 
 const copy = (s: string, message = 'Copied') => {
   navigator.clipboard.writeText(s).then(() => toast.ok(message)).catch(() => toast.err('Could not copy — select the text and copy it by hand.'))
@@ -673,8 +680,10 @@ function Members() {
   const me = useApp((s) => s.me)
   const can = useApp((s) => s.can)
   const q = useQuery({ queryKey: ['members', ws], queryFn: () => api.members(ws) })
+  const custom = useQuery({ queryKey: ['custom-roles', ws], queryFn: () => api.customRoles(ws), enabled: can('admin') })
+  const wsRoles = (custom.data ?? []).filter((r) => r.level === 'workspace')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<Role>('annotator')
+  const [role, setRole] = useState<Role>('member')
   const refresh = () => qc.invalidateQueries({ queryKey: ['members', ws] })
   const invite = async () => {
     try {
@@ -687,33 +696,49 @@ function Members() {
       {can('admin') && (
         <Card className="p-5">
           <h2 className="mb-3 font-semibold">Invite teammates</h2>
-          <div className="flex gap-2">
-            <Input type="email" placeholder="teammate@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Select value={role} onChange={(e) => setRole(e.target.value as Role)}><option value="annotator">Labeler</option><option value="reviewer">Reviewer</option><option value="admin">Admin</option></Select>
+          <div className="flex flex-wrap gap-2">
+            <Input type="email" className="min-w-48 flex-1" placeholder="teammate@company.com" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email address to invite" />
+            <Select value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Workspace role">
+              <option value="owner" disabled>Owner (not assignable)</option>
+              {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </Select>
             <Button disabled={!email.includes('@')} onClick={invite}>Invite</Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Labelers annotate assigned images · Reviewers approve work, manage data and versions · Admins also train, deploy and manage billing.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Admins manage members, billing, keys and training · Billing manages the plan · Members label, review and view · Labeler and Reviewer are the legacy names for member-level access.</p>
         </Card>
       )}
-      <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/60 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2">Member</th><th>Role</th><th>Joined</th><th /></tr></thead>
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[34rem] text-sm">
+          <caption className="sr-only">Workspace members and pending invites</caption>
+          <thead className="bg-muted/60 text-left text-xs text-muted-foreground"><tr><th scope="col" className="px-4 py-2 font-medium">Member</th><th scope="col" className="px-4 py-2 font-medium">Role</th><th scope="col" className="px-4 py-2 font-medium">Joined</th><th scope="col" className="px-4 py-2 text-right font-medium"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {q.data?.members.map((m) => (
               <tr key={m.id} className="border-t">
                 <td className="px-4 py-2.5"><div className="font-medium">{m.name} {m.owner && <Badge>Owner</Badge>}</div><div className="text-xs text-muted-foreground">{m.email}</div></td>
-                <td>{can('admin') && !m.owner
-                  ? <Select className="h-8" value={m.role} onChange={(e) => patch(`/ws/${ws}/members/${m.id}`, { role: e.target.value }).then(refresh).catch(toast.err)}><option value="annotator">Labeler</option><option value="reviewer">Reviewer</option><option value="admin">Admin</option></Select>
-                  : <span className="capitalize">{m.role === 'annotator' ? 'labeler' : m.role}</span>}</td>
-                <td className="text-muted-foreground">{fmtDate(m.joined)}</td>
+                <td className="px-4 py-2.5">{can('admin') && !m.owner
+                  ? <div className="flex flex-col gap-1">
+                      <Select className="h-8" aria-label={`Role for ${m.name}`} value={m.role} onChange={(e) => patch(`/ws/${ws}/members/${m.id}`, { role: e.target.value }).then(refresh).catch(toast.err)}>
+                        {!ASSIGNABLE_ROLES.includes(m.role) && <option value={m.role}>{ROLE_LABEL[m.role] ?? m.role}</option>}
+                        {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                      </Select>
+                      {wsRoles.length > 0 && (
+                        <Select className="h-8" aria-label={`Custom role for ${m.name}`} value={m.custom_role_id ?? ''}
+                          onChange={(e) => api.setWorkspaceCustomRole(ws, m.id, e.target.value || null).then(refresh).catch(toast.err)}>
+                          <option value="">No custom role</option>
+                          {wsRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </Select>
+                      )}
+                    </div>
+                  : <span>{ROLE_LABEL[m.role] ?? m.role}</span>}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(m.joined)}</td>
                 <td className="pr-3 text-right">{!m.owner && (can('admin') || m.id === me?.id) && <Button variant="ghost" size="sm" onClick={() => confirm(m.id === me?.id ? 'Leave this workspace?' : `Remove ${m.name}?`) && del(`/ws/${ws}/members/${m.id}`).then(refresh).catch(toast.err)}>{m.id === me?.id ? 'Leave' : 'Remove'}</Button>}</td>
               </tr>
             ))}
             {q.data?.invites.map((i) => (
-              <tr key={i.token} className="border-t bg-amber-50/40">
+              <tr key={i.token} className="border-t bg-warning/10">
                 <td className="px-4 py-2.5"><div className="font-medium">{i.email}</div><div className="text-xs text-muted-foreground">Invite pending</div></td>
-                <td className="capitalize">{i.role === 'annotator' ? 'labeler' : i.role}</td>
-                <td><button className="inline-flex cursor-pointer items-center gap-1 text-xs text-primary" onClick={() => copy(i.link)}><Copy className="h-3 w-3" /> Copy link</button></td>
+                <td className="px-4 py-2.5">{ROLE_LABEL[i.role as Role] ?? i.role}</td>
+                <td className="px-4 py-2.5"><button type="button" className="inline-flex min-h-6 cursor-pointer items-center gap-1 text-xs text-primary" onClick={() => copy(i.link)}><Copy className="h-3 w-3" aria-hidden /> Copy link</button></td>
                 <td className="pr-3 text-right"><Button variant="ghost" size="sm" onClick={() => del(`/ws/${ws}/invites/${i.token}`).then(refresh).catch(toast.err)}>Revoke</Button></td>
               </tr>
             ))}
@@ -828,7 +853,7 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
   // workspace role arrives after /me loads (deep links would keep admin tabs hidden).
   const role = useApp((s) => s.role)
   const { ws = '' } = useParams()
-  const isAdmin = role === 'admin'
+  const isAdmin = role === 'owner' || role === 'admin'
   if (firstRun) return <FirstRun />
   const base = `/${ws}/settings`
   const tabs = [
@@ -837,6 +862,8 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
     { to: 'appearance', label: 'Appearance', show: true },
     { to: 'workspace', label: 'Workspace', show: isAdmin },
     { to: 'members', label: 'Members', show: true },
+    { to: 'roles', label: 'Roles', show: isAdmin },
+    { to: 'privacy', label: 'Privacy', show: isAdmin },
     { to: 'api', label: 'API Keys', show: isAdmin },
     { to: 'usage', label: 'Plan & Usage', show: true },
     { to: 'trash', label: 'Trash', show: isAdmin },
@@ -847,6 +874,7 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
       <div className="flex flex-col gap-4 px-8 pb-10 sm:flex-row sm:gap-6">
         <nav aria-label="Settings sections" className="-mx-1 grid grid-cols-2 gap-1 px-1 pb-1 sm:mx-0 sm:flex sm:w-44 sm:shrink-0 sm:flex-col sm:gap-0.5 sm:px-0 sm:pb-0">
           {tabs.map((t) => <NavLink key={t.to} to={`${base}/${t.to}`} className={({ isActive }) => cn('block shrink-0 truncate whitespace-nowrap rounded-md px-3 py-2 text-sm', isActive ? 'bg-accent font-medium text-accent-foreground' : 'hover:bg-muted')}>{t.label}</NavLink>)}
+          <Link to={`/${ws}/legal/dpa`} className="block shrink-0 truncate whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted">Data Processing Agreement</Link>
         </nav>
         <div className="min-w-0 flex-1">
           <Routes>
@@ -856,6 +884,8 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
             <Route path="appearance" element={<Appearance />} />
             <Route path="workspace" element={<Workspace />} />
             <Route path="members" element={<Members />} />
+            <Route path="roles" element={<WorkspaceRoles />} />
+            <Route path="privacy" element={<PrivacyWorkspace />} />
             <Route path="api" element={<ApiKeys />} />
             <Route path="usage" element={<Usage />} />
             <Route path="trash" element={<Trash />} />

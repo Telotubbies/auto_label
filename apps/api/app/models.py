@@ -18,13 +18,18 @@ def now() -> float:
     return time.time()
 
 
+# Legacy workspace roles stay valid on Member rows (mapped by app/rbac.py); new workspaces use the
+# four-role model. Project roles live on ProjectMember and never replace the workspace role.
 ROLES = ("admin", "reviewer", "annotator")
+WORKSPACE_ROLES = ("owner", "admin", "billing", "member")
+PROJECT_ROLES = ("manager", "reviewer", "labeler", "viewer")
 PROJECT_TYPES = ("object-detection", "instance-segmentation", "classification", "keypoint-detection")
 SPLITS = ("train", "valid", "test")
 STATUSES = ("unassigned", "annotating", "review", "done")
 API_SCOPES = ("read", "upload", "train", "infer")
 CONNECTOR_KINDS = ("s3", "gcs", "azure")
 WEBHOOK_EVENTS = ("job.done", "model.ready", "stream.event")
+DATA_REGIONS = ("th", "sg", "us")
 
 
 class User(Base):
@@ -52,6 +57,7 @@ class Workspace(Base):
     credits_used: Mapped[float] = mapped_column(Float, default=0.0)
     credits_period: Mapped[str] = mapped_column(String(7), default="")   # YYYY-MM the counter belongs to
     require_mfa: Mapped[bool] = mapped_column(Boolean, default=False)    # members must enrol TOTP to enter
+    data_region: Mapped[str] = mapped_column(String(16), default="th")   # PDPA residency declaration
     created: Mapped[float] = mapped_column(Float, default=now)
 
 
@@ -60,8 +66,32 @@ class Member(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str] = mapped_column(String(16), default="annotator")
+    custom_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # grant-only permission bundle
     created: Mapped[float] = mapped_column(Float, default=now)
     user: Mapped[User] = relationship(lazy="joined")
+
+
+class ProjectMember(Base):
+    """Two-level RBAC: a workspace member may hold a different project role per project."""
+    __tablename__ = "project_members"
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), default="labeler")
+    custom_role_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    user: Mapped[User] = relationship(lazy="joined")
+
+
+class CustomRole(Base):
+    """Named permission bundle (grant-only, unioned with the base role)."""
+    __tablename__ = "custom_roles"
+    __table_args__ = (UniqueConstraint("workspace_id", "name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    level: Mapped[str] = mapped_column(String(16), default="project")   # workspace | project
+    permissions: Mapped[list] = mapped_column(JSON, default=list)
+    created: Mapped[float] = mapped_column(Float, default=now)
 
 
 class Invite(Base):
@@ -133,6 +163,11 @@ class Project(Base):
     license: Mapped[str] = mapped_column(String(64), default="CC BY 4.0")
     annotation_group: Mapped[str] = mapped_column(String(120), default="objects")
     settings: Mapped[dict] = mapped_column(JSON, default=dict)   # active learning, review mode …
+    # PDPA: per-project retention in days (NULL/0 = keep) and face anonymisation before frames reach datasets.
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    face_blur: Mapped[bool] = mapped_column(Boolean, default=True)
+    biometrics: Mapped[bool] = mapped_column(Boolean, default=False)      # face recognition — opt-in only
+    legal_basis: Mapped[str] = mapped_column(Text, default="")            # documented PDPA s.26 basis
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)
     deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -342,3 +377,14 @@ class Audit(Base):
     target: Mapped[str] = mapped_column(String(255), default="")
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[float] = mapped_column(Float, default=now, index=True)
+
+
+class Worker(Base):
+    """Heartbeat row per worker process (embedded or standalone), for the admin console."""
+    __tablename__ = "workers"
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)       # host:pid
+    host: Mapped[str] = mapped_column(String(120), default="")
+    kinds: Mapped[list] = mapped_column(JSON, default=list)
+    current_job: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    started: Mapped[float] = mapped_column(Float, default=now)
+    last_seen: Mapped[float] = mapped_column(Float, default=now, index=True)

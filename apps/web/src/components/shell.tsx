@@ -2,8 +2,10 @@ import { useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database, FlaskConical, FolderGit2, Layers, LineChart, LogOut,
-  Monitor, Moon, Plus, Rocket, Settings, Sun, Tag, Tags, Upload, User, X, Zap, Wrench,
+  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database,
+  FlaskConical, FolderGit2, Layers, LineChart, LogOut, Monitor, Moon, Plus, Rocket, Settings,
+  Sun, Tag, Tags, Upload, User, X, Zap, Wrench, KeyRound, ScrollText,
+  ShieldCheck,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -42,6 +44,9 @@ function NewWorkspace({ open, onClose }: { open: boolean; onClose: () => void })
 
 export function AppSidebar() {
   const { collapsed, toggleSidebar, logout, me } = useApp()
+  const role = useApp((s) => s.role)
+  const superadmin = useApp((s) => s.superadmin)
+  const isAdmin = role === 'owner' || role === 'admin'
   const { ws = '' } = useParams()
   const nav = useNavigate()
   const [newWs, setNewWs] = useState(false)
@@ -50,7 +55,7 @@ export function AppSidebar() {
   const u = info.data?.usage
   const pct = u ? (u.credits_used / u.limits.credits) * 100 : 0
   return (
-    <Glass as="aside" className={cn('glass-sidebar relative m-2 mr-0 flex h-[calc(100vh-1rem)] shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width]', collapsed ? 'w-14' : 'w-56')}>
+    <Glass as="aside" className={cn('glass-sidebar relative m-2 mr-0 flex h-[calc(100vh-1rem)] shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width] print:hidden', collapsed ? 'w-14' : 'w-56')}>
       <div className="p-2">
         <Dropdown
           trigger={
@@ -91,6 +96,16 @@ export function AppSidebar() {
         <NavLink to={`/${ws}/activity`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
           <Bell className="h-4 w-4" />{!collapsed && 'Activity'}
         </NavLink>
+        {isAdmin && (
+          <NavLink to={`/${ws}/audit`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
+            <ScrollText className="h-4 w-4" />{!collapsed && 'Audit log'}
+          </NavLink>
+        )}
+        {superadmin && (
+          <NavLink to={`/${ws}/admin`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
+            <ShieldCheck className="h-4 w-4" />{!collapsed && 'Admin'}
+          </NavLink>
+        )}
         <NavLink to={`/${ws}/settings`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
           <Settings className="h-4 w-4" />{!collapsed && 'Settings'}
         </NavLink>
@@ -129,6 +144,7 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
   ]},
   { group: 'DEPLOY', items: [
     { to: 'deploy', label: 'Deploy & Test', icon: Rocket, min: 'reviewer' },
+    { to: 'access', label: 'Access', icon: KeyRound, min: 'admin' },
     { to: 'settings', label: 'Project Settings', icon: Wrench, min: 'admin' },
   ]},
 ]
@@ -139,6 +155,12 @@ export const typeLabel = (t: string) =>
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()
   const can = useApp((s) => s.can)
+  // Project managers may open Project Settings even when their workspace role is only member.
+  const perms = useQuery({
+    queryKey: ['permissions', ws, project.slug], queryFn: () => api.permissions(ws, project.slug),
+    enabled: !!ws && !!project.slug && !can('admin'), retry: false, staleTime: 60_000,
+  })
+  const isManager = perms.data?.project_role === 'manager'
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">
@@ -152,7 +174,7 @@ export function ProjectPanel({ project }: { project: Project }) {
       </div>
       <nav className="flex-1 px-2 pb-4">
         {projNav.map((g) => {
-          const items = g.items.filter((i) => can(i.min))
+          const items = g.items.filter((i) => (i.to === 'settings' || i.to === 'access' ? can('admin') || isManager : can(i.min)))
           return items.length ? (
             <div key={g.group} className="mb-3">
               <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
@@ -189,7 +211,10 @@ export function GpuBadge() {
   return <span className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title="GPU holder"><Cpu className="h-3.5 w-3.5" aria-hidden />{text}</span>
 }
 
-const pageLabels: Record<string, string> = { models: 'Models', deployments: 'Deployments', activity: 'Activity', settings: 'Settings' }
+const pageLabels: Record<string, string> = {
+  models: 'Models', deployments: 'Deployments', activity: 'Activity', audit: 'Audit log', admin: 'Admin console',
+  settings: 'Settings', legal: 'Legal',
+}
 
 export function TopBar() {
   const { ws = '' } = useParams()
@@ -199,7 +224,9 @@ export function TopBar() {
   const isProject = !!slug && !RESERVED.has(slug)
   const proj = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug), enabled: isProject })
   const rest = (m?.params['*'] ?? '').split('/')[0]
-  const page = isProject ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label : (slug ? pageLabels[slug] : 'Projects')
+  const page = isProject
+    ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label
+    : slug === 'legal' && rest === 'dpa' ? 'Data Processing Agreement' : (slug ? pageLabels[slug] : 'Projects')
   const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'
   const { mode } = useThemePrefs()
   const next = THEME_CYCLE[(THEME_CYCLE.findIndex((x) => x.id === mode) + 1) % THEME_CYCLE.length]
@@ -210,7 +237,7 @@ export function TopBar() {
     ? [{ label: wsName, to: `/${ws}` }, { label: proj.data?.name ?? slug, to: `/${ws}/${slug}` }, ...(page ? [{ label: page, to: '' }] : [])]
     : page ? [{ label: page, to: '' }] : []
   return (
-    <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4">
+    <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4 print:hidden">
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
         {crumbs.map((c, i) => (
           <span key={i} className="flex min-w-0 items-center gap-1.5">
@@ -233,7 +260,7 @@ export function TopBar() {
   )
 }
 
-const RESERVED = new Set(['models', 'deployments', 'activity', 'settings'])
+const RESERVED = new Set(['models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal'])
 const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
   train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
   insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',
@@ -256,7 +283,7 @@ export function JobTray() {
   const rows = enabled ? [...seen.current.values()].filter((j) => !dismissed.has(j.id) && (q.data ?? []).some((x) => x.id === j.id)) : []
   if (!rows.length) return null
   return (
-    <Glass as="section" aria-label="Background jobs" className="fixed bottom-4 right-4 z-[150] w-80 space-y-2.5 rounded-2xl p-3">
+    <Glass as="section" aria-label="Background jobs" className="fixed bottom-4 right-4 z-[150] w-80 space-y-2.5 rounded-2xl p-3 print:hidden">
       {rows.map((j) => {
         const live = ACTIVE.has(j.status)
         return (
@@ -278,12 +305,12 @@ export function AppLayout() {
   const m = useMatch('/:ws/:project/*')
   const isProject = !!m?.params.project && !RESERVED.has(m.params.project)
   return (
-    <div className="app-bg flex h-screen overflow-hidden">
+    <div className="app-bg flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
       <AppSidebar />
-      <div className="relative min-w-0 flex-1">
+      <div className="relative min-w-0 flex-1 print:min-w-full">
         <TopBar />
         {/* Content scrolls underneath the floating glass bar, so the blur has something to blur. Project pages scroll inside ProjectLayout. */}
-        <main data-scroll className={cn('h-full', isProject ? 'overflow-hidden' : 'overflow-y-auto pt-14')}><Outlet /></main>
+        <main data-scroll className={cn('h-full print:h-auto print:overflow-visible print:pt-0', isProject ? 'overflow-hidden' : 'overflow-y-auto pt-14')}><Outlet /></main>
       </div>
       <JobTray />
     </div>

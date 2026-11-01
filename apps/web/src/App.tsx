@@ -31,6 +31,9 @@ const Deploy = lazy(() => import('@/features/project/Deploy'))
 import ProjectSettings from '@/features/project/ProjectSettings'
 const Editor = lazy(() => import('@/features/editor/Editor'))
 const Playground = lazy(() => import('@/features/playground/Playground'))
+const AuditLog = lazy(() => import('@/features/governance/AuditLog'))
+const Dpa = lazy(() => import('@/features/governance/Dpa'))
+const AdminConsole = lazy(() => import('@/features/admin/AdminConsole'))
 
 function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
@@ -76,6 +79,15 @@ function Gate({ min, children }: { min: Role; children: React.ReactNode }) {
   return can(min) ? <>{children}</> : <Navigate to=".." replace />
 }
 
+/** Platform operators only; the API enforces the same flag on /api/admin. */
+function SuperAdminGate({ children }: { children: React.ReactNode }) {
+  // Read the cached /me result directly: the store's superadmin flag is published in an effect,
+  // so a hard refresh on /:ws/admin would otherwise redirect before the flag arrives.
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
+  if (me.isLoading) return <Loading />
+  return me.data?.superadmin ? <>{children}</> : <Navigate to=".." replace />
+}
+
 export default function App() {
   const authed = useApp((s) => s.authed)
   if (!authed) {
@@ -113,6 +125,10 @@ export default function App() {
           <Route path="models" element={<WorkspaceModels />} />
           <Route path="deployments" element={<Deployments />} />
           <Route path="activity" element={<Activity />} />
+          <Route path="audit" element={<Gate min="admin"><AuditLog /></Gate>} />
+          <Route path="admin" element={<SuperAdminGate><AdminConsole /></SuperAdminGate>} />
+          <Route path="legal" element={<Navigate to="dpa" replace />} />
+          <Route path="legal/dpa" element={<Dpa />} />
           <Route path="playground" element={<Playground />} />
           <Route path="settings/*" element={<Settings />} />
           <Route path=":project" element={<ProjectLayout />}>
@@ -128,7 +144,8 @@ export default function App() {
             <Route path="models" element={<Gate min="reviewer"><Models /></Gate>} />
             <Route path="insights" element={<Gate min="reviewer"><Insights /></Gate>} />
             <Route path="deploy" element={<Gate min="reviewer"><Deploy /></Gate>} />
-            <Route path="settings" element={<Gate min="admin"><ProjectSettings /></Gate>} />
+            <Route path="settings" element={<ProjectSettings />} />
+            <Route path="access" element={<ProjectSettings initialTab="access" />} />
           </Route>
         </Route>
       </Route>

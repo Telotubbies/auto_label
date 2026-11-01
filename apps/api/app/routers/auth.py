@@ -22,6 +22,7 @@ from ..security import (hash_password, issue_access, issue_mfa_pending, new_refr
 
 _DUMMY_HASH = hash_password('timing-equaliser')
 from ..services import secretbox, segment
+from ..superadmin import is_superadmin
 
 log = logging.getLogger("labeldesk")
 
@@ -388,6 +389,7 @@ def me(u: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.execute(select(Workspace, Member.role).join(Member, Member.workspace_id == Workspace.id)
                       .where(Member.user_id == u.id).order_by(Workspace.created)).all()
     return {**user_out(u), "email_verified": u.email_verified, "mfa_enabled": u.mfa_enabled,
+            "superadmin": is_superadmin(u),
             "workspaces": [{"id": w.id, "slug": w.slug, "name": w.name, "role": r, "plan": w.plan,
                             "plan_label": plan(w)["label"], "owner": w.owner_id == u.id,
                             "mfa_required": bool(w.require_mfa)} for w, r in rows]}
