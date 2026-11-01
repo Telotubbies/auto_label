@@ -544,3 +544,33 @@ def test_tide_missed_oracle_with_empty_ground_truth(tmp_path, monkeypatch):
     tide = out["tide"]
     assert tide["missed"] == 0.0
     assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "missed")
+
+
+LOC_REC = {
+    "file": "test/loc.jpg", "image_id": 1, "width": 200, "height": 200,
+    "gt": [{"id": 1, "cls": "helmet", "bbox": [20, 20, 40, 40], "segm": None}],
+    "pred": [{"cls": "helmet", "conf": 0.9, "bbox": [30, 30, 40, 40], "points": None}],
+}
+
+
+def test_tide_loc_error_covers_the_gt():
+    """A loc error targets the gt, so that gt is not also reported as missed."""
+    fixes, missed, tps = evaluate_mod._tide_classify(LOC_REC, "bbox")
+    assert fixes == [("loc", 0)]
+    assert missed == []
+    assert tps == set()
+
+
+def test_tide_fixed_segm_converts_uncompressed_rle_gt():
+    """An uncompressed RLE gt must become a compressed RLE before it is reused as a fix."""
+    rec = {"file": "test/rle_loc.jpg", "image_id": 1, "width": 4, "height": 4,
+           # 2x2 block at rows 0-1 / cols 0-1, column-major run lengths
+           "gt": [{"id": 1, "cls": "helmet", "bbox": [0, 0, 2, 2],
+                   "segm": {"size": [4, 4], "counts": [0, 2, 2, 2, 10]}}],
+           "pred": [{"cls": "helmet", "conf": 0.9, "bbox": [1, 0, 2, 2], "points": None}]}
+    classified = evaluate_mod._tide_classify(rec, "segm")
+    assert classified[0] == [("loc", 0)]
+    out = evaluate_mod._tide_corrected([rec], [classified], {"helmet": 1}, "segm", "loc")
+    seg = out[0]["segmentation"]
+    assert isinstance(seg, dict)
+    assert isinstance(seg["counts"], bytes)          # compressed, ready for COCO loadRes

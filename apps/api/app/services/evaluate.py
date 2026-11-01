@@ -341,7 +341,11 @@ def _pair_iou(rec: dict, iou_type: str):
 
 
 def _tide_match(gt: list[dict], pred: list[dict], pair_iou) -> dict[int, int]:
-    """COCO-style per-class greedy matching at IoU >= 0.5: prediction index -> gt index."""
+    """COCO-style per-class greedy matching at IoU >= 0.5: prediction index -> gt index.
+
+    TIDE ignores `iscrowd` annotations and COCO's small/medium/large area ranges; AP50 already
+    applies those ranges downstream, so the buckets stay comparable with the reported metric.
+    """
     used: set[int] = set()
     tps: dict[int, int] = {}
     for pi in sorted(range(len(pred)), key=lambda i: -pred[i]["conf"]):
@@ -407,7 +411,10 @@ def _tide_classify(rec: dict, iou_type: str) -> tuple[list, list[int], set[int]]
             fixes[pi] = ("both", gi)
             continue
         fixes[pi] = ("bkg", -1)
-    return fixes, [gi for gi in range(len(gt)) if gi not in tp_gt], tp_gt
+    # a gt targeted by a cls/loc/both fix is covered by that detection, so it is not also missed
+    covered = {fix[1] for fix in fixes if fix is not None and fix[0] in ("cls", "loc", "both")}
+    missed = [gi for gi in range(len(gt)) if gi not in tp_gt and gi not in covered]
+    return fixes, missed, tp_gt
 
 
 def _tide_corrected(records: list[dict], classified: list, cat_ids: dict,
@@ -432,7 +439,9 @@ def _tide_corrected(records: list[dict], classified: list, cat_ids: dict,
             if kind in ("loc", "both"):
                 det["bbox"] = list(g["bbox"])
                 if iou_type == "segm":              # the mask must follow the corrected box
-                    det["segmentation"] = g["segm"] or [_rect(g["bbox"])]
+                    # encompass the gt mask (multi-part polygons, compressed or uncompressed RLE)
+                    det["segmentation"] = (_poly_mask(g["segm"], r["height"], r["width"])
+                                           or [_rect(g["bbox"])])
             out.append(det)
     return out
 
