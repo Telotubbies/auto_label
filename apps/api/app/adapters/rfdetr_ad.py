@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ..config import DATA_DIR, TRAIN_DEVICE
 from ..services import exporters
-from .base import Availability, TrainResult, register
+from .base import Availability, Cancelled, TrainResult, register
 
 VARIANTS = {"nano": "RFDETRNano", "small": "RFDETRSmall", "medium": "RFDETRMedium", "large": "RFDETRLarge"}
 
@@ -120,6 +120,18 @@ def _coco_root(dataset_dir: Path, model_id: str) -> Path:
     return work
 
 
+def _progress_signature(paths) -> tuple:
+    """(name, mtime, size) of the files a training child writes: a change means real progress."""
+    sig = []
+    for path in paths:
+        try:
+            st = path.stat()
+        except OSError:                         # not written yet
+            continue
+        sig.append((path.name, st.st_mtime_ns, st.st_size))
+    return tuple(sig)
+
+
 def _device(value: str) -> str:
     """Ultralytics-style '0' -> 'cuda:0'; rfdetr (torch.device) rejects a bare index."""
     value = str(value).strip()
@@ -194,7 +206,8 @@ class RFDetrAdapter:
         """Fine-tune on a version's cached COCO export. opts: model_id, epochs, batch, lr, patience, device,
         resume_from, max_minutes, heartbeat, stalled.
 
-        The fit runs in a child process: cancel and max_minutes terminate it at the next poll."""
+        The fit runs in a child process: cancel and max_minutes terminate it at the next poll.
+        `stalled` and `heartbeat` are the worker's watchdog probes and are required by run_train."""
         _require()
         model_id = opts["model_id"]
         root = _coco_root(Path(dataset_dir), model_id)        # <dir>/{train,valid,test}/_annotations.coco.json
@@ -257,16 +270,24 @@ class RFDetrAdapter:
 
         max_minutes = opts.get("max_minutes")
         deadline = _now() + float(max_minutes) * 60 if max_minutes else None
-        stopped = False
+        watched = (csv_path, *(output_dir / name for name in _CKPT))
+        last_sig = _progress_signature(watched)
+        heartbeat = opts.get("heartbeat")
+        stopped_by = None
         proc = _spawn(variant, init, kw)
         try:
             while True:
                 _safe_pump()
-                heartbeat = opts.get("heartbeat")
-                if heartbeat:
-                    heartbeat()                      # a long epoch writes no CSV row: keep the watchdog fed
-                if should_stop() or (deadline is not None and _now() >= deadline):
-                    stopped = True
+                sig = _progress_signature(watched)
+                if sig != last_sig:                  # the child wrote metrics or a checkpoint
+                    last_sig = sig
+                    if heartbeat:
+                        heartbeat()                  # real progress only: a hung child must still stall
+                if should_stop():
+                    stopped_by = "cancelled"
+                elif deadline is not None and _now() >= deadline:
+                    stopped_by = "max_minutes"
+                if stopped_by:
                     _stop_child(proc)
                     break
                 if not proc.is_alive():
@@ -277,10 +298,14 @@ class RFDetrAdapter:
             if proc.is_alive():
                 _stop_child(proc)
 
-        if not stopped and proc.exitcode not in (0, None):
+        if stopped_by is None and proc.exitcode not in (0, None):
             raise RuntimeError(f"rfdetr training failed (exit code {proc.exitcode})")
-        if stopped and not any((output_dir / name).exists() for name in _CKPT):
-            raise RuntimeError("cancelled before the first checkpoint")
+        if stopped_by and not any((output_dir / name).exists() for name in _CKPT):
+            if opts.get("stalled") and opts["stalled"]():
+                raise RuntimeError("no training progress before the first checkpoint")
+            if stopped_by == "max_minutes":
+                raise RuntimeError("max_minutes reached before the first checkpoint")
+            raise Cancelled("cancelled before the first checkpoint")
 
         for name in _CKPT:
             src = output_dir / name

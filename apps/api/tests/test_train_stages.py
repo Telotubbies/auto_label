@@ -265,6 +265,57 @@ def test_watchdog_fires_mid_epoch_through_the_real_adapter(client, monkeypatch):
         _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
 
 
+def test_watchdog_beat_refreshes_only_liveness():
+    wd = worker._Watchdog(10)
+    wd.tick()
+    wd.tick()
+    samples, before = list(wd.epoch_secs), wd.last
+    time.sleep(0.02)                         # Windows monotonic resolution is ~15.6 ms
+    wd.beat()
+    assert wd.epoch_secs == samples          # a progress beat is not an epoch sample
+    assert wd.last > before
+
+
+def test_watchdog_epoch_samples_ignore_progress_beats(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(worker.time, "monotonic", lambda: clock[0])
+    wd = worker._Watchdog(10)
+    wd.tick()
+    clock[0] += 5
+    wd.beat()                                # liveness during the next epoch
+    clock[0] += 3
+    wd.tick()
+    assert wd.epoch_secs[-1] == 8.0          # tick-to-tick, not beat-to-tick
+
+
+def test_watchdog_epoch_samples_are_capped():
+    wd = worker._Watchdog(10)
+    for _ in range(worker.MAX_EPOCH_SAMPLES + 7):
+        wd.tick()
+    assert len(wd.epoch_secs) == worker.MAX_EPOCH_SAMPLES
+
+
+def test_cancelled_before_first_checkpoint_ends_cancelled(client, monkeypatch):
+    class CancelAdapter:
+        family = "ultralytics"
+
+        def train(self, *_a, **_kw):
+            raise worker.Cancelled("cancelled before the first checkpoint")
+
+    mid, vid, jid = _run_setup()
+    monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": CancelAdapter()})
+    monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
+    try:
+        worker.run_one(jid)                    # the real run_train cleanup + run_one mapping
+        with SessionLocal() as db:
+            job = db.get(Job, jid)
+            model = db.get(TrainedModel, mid)
+            assert job.status == "cancelled" and not job.error
+            assert model.status == "cancelled"
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
+
+
 def test_first_epoch_grace_follows_the_train_page_estimate():
     assert worker._first_limit(1, 1, 640) == worker.FIRST_EPOCH_MIN_S
     # 1000 images x 10 epochs / 600 = 16.7 min -> 1000 s estimate -> 2x = 2000 s

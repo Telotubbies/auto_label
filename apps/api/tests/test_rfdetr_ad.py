@@ -22,7 +22,7 @@ import pytest
 from PIL import Image as PImage
 
 from app.adapters import rfdetr_ad as rf
-from app.adapters.base import Availability, validate_prediction
+from app.adapters.base import Availability, Cancelled, validate_prediction
 from app.config import DATA_DIR
 
 VARIANTS = ("RFDETRNano", "RFDETRSmall", "RFDETRMedium", "RFDETRLarge")
@@ -373,13 +373,14 @@ def test_train_stops_at_the_max_minutes_deadline(installed, version_dir, tmp_pat
     assert proc.exitcode == -15
 
 
-def test_train_heartbeats_on_every_poll(installed, version_dir, tmp_path, spawned):
+def test_train_beats_only_when_the_child_writes_progress(installed, version_dir, tmp_path, spawned):
     beats = []
     spawned.opts["polls"] = 4
 
     _train(version_dir, tmp_path, heartbeat=lambda: beats.append(1))
 
-    assert len(beats) >= 4                            # one tick per poll, before the child exits
+    # header+row+checkpoint, then row 2: two signature changes, not one per poll
+    assert len(beats) == 2
 
 
 def test_train_raises_when_the_child_fails(installed, version_dir, tmp_path, spawned):
@@ -388,10 +389,62 @@ def test_train_raises_when_the_child_fails(installed, version_dir, tmp_path, spa
         _train(version_dir, tmp_path)
 
 
-def test_train_cancel_before_the_first_checkpoint_fails(installed, version_dir, tmp_path, spawned):
+def test_train_cancel_before_the_first_checkpoint_is_a_cancel(installed, version_dir, tmp_path, spawned):
     spawned.opts["polls"] = 50
-    with pytest.raises(RuntimeError, match="cancelled before the first checkpoint"):
+    with pytest.raises(Cancelled, match="cancelled before the first checkpoint"):
         _train(version_dir, tmp_path, stop=lambda: True)
+
+
+def _lazy_watchdog(limit: float):
+    """Build the watchdog at the first poll, after the dataset export (it must not age during setup)."""
+    from app import worker
+
+    holder = {}
+
+    def wd():
+        if "w" not in holder:
+            holder["w"] = worker._Watchdog(first_limit=limit).start()
+        return holder["w"]
+
+    return holder, (lambda: wd().stalled), (lambda: wd().beat()), (lambda: wd().stalled)
+
+
+def test_silent_live_child_still_stalls(installed, version_dir, tmp_path, spawned):
+    """A child that never writes metrics/checkpoints must not keep the watchdog alive."""
+    spawned.opts.update(polls=10_000, rows=[], checkpoint=None)
+    holder, stop, beat, stalled = _lazy_watchdog(0.08)
+    try:
+        with pytest.raises(RuntimeError, match="no training progress"):
+            _train(version_dir, tmp_path, stop=stop, heartbeat=beat, stalled=stalled)
+    finally:
+        if holder.get("w"):
+            holder["w"].stop()
+    assert spawned.calls[-1][3].seen > 1
+    assert spawned.calls[-1][3].terminated == 1
+    assert holder["w"].stalled is True
+
+
+def test_progressing_child_does_not_stall(installed, version_dir, tmp_path, spawned, monkeypatch):
+    """Each new metrics row is a real progress beat: a slow epoch never trips the watchdog."""
+    from app import worker
+
+    monkeypatch.setattr(worker, "_stall_limit", lambda _secs: 0.15)
+    monkeypatch.setattr(rf, "_POLL_S", 0.02)
+    rows = [f"{i},1.0,0.5,0.4,0.6,0.5\n" for i in range(20)]
+    spawned.opts.update(polls=20, rows=rows)
+    holder, stop, beat, _ = _lazy_watchdog(0.15)
+    try:
+        _, events, _ = _train(version_dir, tmp_path, stop=stop, heartbeat=beat)
+    finally:
+        holder["w"].stop()
+    assert holder["w"].stalled is False
+    assert len(events) == 20
+
+
+def test_max_minutes_before_the_first_checkpoint_fails(installed, version_dir, tmp_path, spawned):
+    spawned.opts.update(polls=10_000, rows=[], checkpoint=None)
+    with pytest.raises(RuntimeError, match="max_minutes reached before the first checkpoint"):
+        _train(version_dir, tmp_path, max_minutes=0.00001)
 
 
 # --- inference leases --------------------------------------------------------------

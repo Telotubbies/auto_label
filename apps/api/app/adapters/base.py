@@ -32,6 +32,10 @@ class Adapter(Protocol):
                 iou: float = 0.5) -> dict: ...
 
 
+class Cancelled(RuntimeError):
+    """A job stopped on purpose before it produced anything registrable (worker maps it to `cancelled`)."""
+
+
 ADAPTERS: dict[str, Adapter] = {}
 
 

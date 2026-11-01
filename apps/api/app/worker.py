@@ -13,7 +13,7 @@ import traceback
 
 from sqlalchemy import select, update
 
-from .adapters import ADAPTERS
+from .adapters import ADAPTERS, Cancelled
 from .adapters.refine import label_image, sam_available
 from .adapters.ultralytics_ad import _start_weights
 from .config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
@@ -29,6 +29,7 @@ POLL = 1.5
 WATCHDOG_MIN_S = 120.0                      # later epochs: never call a run stalled sooner than this
 FIRST_EPOCH_MIN_S = 600.0                   # the first epoch also pays for export + model load
 WATCHDOG_POLL_S = 0.01                      # floor for the adaptive poll (tests shrink the limit)
+MAX_EPOCH_SAMPLES = 50                      # median over the recent epochs only
 
 
 def _stall_limit(epoch_secs: list[float]) -> float:
@@ -53,7 +54,7 @@ class _Watchdog:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="labeldesk-train-watchdog")
         self.first_limit = float(first_limit)
-        self.last = time.monotonic()
+        self.last = self.last_epoch = time.monotonic()   # last = any progress; last_epoch = the last epoch
         self.epoch_secs: list[float] = []
         self._seen_epoch = False
         self.limit = self.first_limit
@@ -67,13 +68,19 @@ class _Watchdog:
         """Record an on_epoch callback; the gap since the previous one feeds the limit."""
         now = time.monotonic()
         with self._lock:
-            self.epoch_secs.append(now - self.last)      # the first gap includes load/export: a generous seed
+            self.epoch_secs.append(now - self.last_epoch)  # the first gap includes load/export: a generous seed
+            del self.epoch_secs[:-MAX_EPOCH_SAMPLES]       # old epochs must not pin the limit forever
             self._seen_epoch = True
-            self.last = now
+            self.last = self.last_epoch = now
+
+    def beat(self) -> None:
+        """Refresh liveness only (a polling adapter saw real progress); never an epoch sample."""
+        with self._lock:
+            self.last = time.monotonic()
 
     def reset(self) -> None:
         with self._lock:
-            self.last = time.monotonic()
+            self.last = self.last_epoch = time.monotonic()
             self.epoch_secs.clear()
             self._seen_epoch = False
             self.limit = self.first_limit
@@ -181,7 +188,7 @@ def run_train(job: Job):
         train_images = int((v.stats or {}).get("splits", {}).get("train") or 0)
         watchdog = _Watchdog(_first_limit(train_images, opts["epochs"], opts["imgsz"]))
         opts["stalled"] = lambda: watchdog.stalled     # read by the adapter's per-batch callbacks
-        opts["heartbeat"] = watchdog.tick
+        opts["heartbeat"] = watchdog.beat              # polling adapters call it only on real progress
         train_note = None
 
         def on_epoch(ep, total, metrics):
@@ -258,8 +265,9 @@ def run_train(job: Job):
                 db.commit()
                 mark("register")
             mark("release")
-        except Exception:
-            tm.status = "failed"; db.commit()
+        except Exception as e:
+            tm.status = "cancelled" if isinstance(e, Cancelled) else "failed"
+            db.commit()
             shutil.rmtree(DATA_DIR / "train_data" / tm.id, ignore_errors=True)   # adapter only cleans on success
             for name, entry in list(stages.items()):
                 if entry["status"] == "running":
@@ -323,6 +331,8 @@ def run_one(jid: str):
         result = HANDLERS[job.kind](job)
         final = "cancelled" if _cancelled(jid) else "done"
         _set(jid, status=final, progress=100.0 if final == "done" else job.progress, result=result, finished=now())
+    except Cancelled:
+        _set(jid, status="cancelled", finished=now())     # stopped on purpose before anything was produced
     except Exception as e:
         log.error("job %s (%s) failed\n%s", jid, job.kind, traceback.format_exc())
         _set(jid, status="failed", error=f"{type(e).__name__}: {e}", finished=now())
