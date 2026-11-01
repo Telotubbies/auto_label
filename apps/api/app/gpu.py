@@ -161,3 +161,8 @@ def budget_from_env() -> int:
 
 
 scheduler = GpuScheduler(budget_mb=budget_from_env(), vlm=ADAPTERS.get("vlm"))
+
+
+def wire_streams(mgr) -> None:
+    """Task 10b: GPU exclusivity pauses every running stream."""
+    scheduler.register_pause_hooks(mgr.pause_all, mgr.resume_all)

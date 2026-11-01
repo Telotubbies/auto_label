@@ -35,6 +35,8 @@ const Playground = lazy(() => import('@/features/playground/Playground'))
 const AuditLog = lazy(() => import('@/features/governance/AuditLog'))
 const Dpa = lazy(() => import('@/features/governance/Dpa'))
 const AdminConsole = lazy(() => import('@/features/admin/AdminConsole'))
+const Streams = lazy(() => import('@/features/streams/Streams'))
+const StreamDetail = lazy(() => import('@/features/streams/StreamDetail'))
 
 function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
@@ -156,6 +158,16 @@ export default function App() {
             <Route path="deploy" element={<PermGate perm="project.models"><Deploy /></PermGate>} />
             <Route path="settings" element={<ProjectSettings />} />
             <Route path="access" element={<ProjectSettings initialTab="access" />} />
+            <Route path="versions" element={<Gate min="reviewer"><Versions /></Gate>} />
+            <Route path="analytics" element={<Gate min="reviewer"><Analytics /></Gate>} />
+            <Route path="classes" element={<Gate min="reviewer"><Classes /></Gate>} />
+            <Route path="train" element={<Gate min="admin"><Train /></Gate>} />
+            <Route path="models" element={<Gate min="reviewer"><Models /></Gate>} />
+            <Route path="deploy" element={<Gate min="reviewer"><Deploy /></Gate>} />
+            {/* No Gate: every project member may watch streams; writes are gated inside the pages. */}
+            <Route path="streams" element={<Streams />} />
+            <Route path="streams/:sid" element={<StreamDetail />} />
+            <Route path="settings" element={<Gate min="admin"><ProjectSettings /></Gate>} />
           </Route>
         </Route>
       </Route>

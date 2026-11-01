@@ -2,10 +2,10 @@ import { useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database,
-  FlaskConical, FolderGit2, Layers, LineChart, LogOut, Monitor, Moon, Plus, Rocket, Settings,
-  Sun, Tag, Tags, Upload, User, X, Zap, Wrench, KeyRound, ScrollText,
-  ShieldCheck,
+  BarChart3, Bell, Boxes, BrainCircuit, Cctv, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu,
+  Database, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Monitor, Moon, Plus,
+  Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User, X,
+  Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -137,6 +137,9 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
     { to: 'analytics', label: 'Analytics', icon: BarChart3, perm: 'project.review' },
     { to: 'insights', label: 'Insights', icon: LineChart, perm: 'project.review' },
     { to: 'classes', label: 'Classes & Tags', icon: Tags, perm: 'project.classes' },
+  ]},
+  { group: 'LIVE', items: [
+    { to: 'streams', label: 'Streams', icon: Cctv, perm: 'project.read' },
   ]},
   { group: 'MODELS', items: [
     { to: 'train', label: 'Train', icon: BrainCircuit, perm: 'project.train' },

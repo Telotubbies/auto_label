@@ -368,6 +368,34 @@ class WebhookDelivery(Base):
     last_error: Mapped[str] = mapped_column(Text, default="")
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)
+class Stream(Base):
+    """A live camera / video feed processed by the StreamManager (one grabber + one processor thread)."""
+    __tablename__ = "streams"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(Text)                # rtsp://… or file:videos/<name>
+    model_ref: Mapped[str] = mapped_column(String(255))
+    sample_fps: Mapped[float] = mapped_column(Float, default=5.0)
+    zones: Mapped[list] = mapped_column(JSON, default=list)
+    rules: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="stopped")
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class StreamEvent(Base):
+    """One rule firing, with a JPEG snapshot and the predictions that triggered it."""
+    __tablename__ = "stream_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    stream_id: Mapped[str] = mapped_column(ForeignKey("streams.id", ondelete="CASCADE"), index=True)
+    ts: Mapped[float] = mapped_column(Float, default=now)
+    rule: Mapped[dict] = mapped_column(JSON, default=dict)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    snapshot_path: Mapped[str] = mapped_column(String(1024), default="")     # relative to DATA_DIR
+    predictions: Mapped[list] = mapped_column(JSON, default=list)
+    reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Audit(Base):
