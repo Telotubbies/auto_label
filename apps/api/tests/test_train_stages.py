@@ -1,4 +1,5 @@
 """Training pipeline: progress stages, watchdog, OOM retry, GPU-busy 503, leaderboard."""
+
 import io
 import json
 import os
@@ -25,8 +26,17 @@ from app.security import issue_access
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
-STAGE_ORDER = ["queue", "acquire_gpu", "materialise", "resolve_weights", "build_config",
-               "train", "evaluate", "register", "release"]
+STAGE_ORDER = [
+    "queue",
+    "acquire_gpu",
+    "materialise",
+    "resolve_weights",
+    "build_config",
+    "train",
+    "evaluate",
+    "register",
+    "release",
+]
 
 
 @pytest.fixture(scope="module")
@@ -48,43 +58,102 @@ def _jpeg(color=(200, 50, 50)) -> bytes:
 
 def _demo(db):
     ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
-    p = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == PR))
+    p = db.scalar(
+        select(Project).where(Project.workspace_id == ws.id, Project.slug == PR)
+    )
     return ws, p
 
 
 def _new_version(db, p, with_data: bool = False) -> Version:
-    n = (db.scalar(select(func.max(Version.number)).where(Version.project_id == p.id)) or 0) + 1
-    v = Version(project_id=p.id, number=n, name=f"test-{n}", status="ready",
-                stats={"class_names": ["person"]})
+    n = (
+        db.scalar(select(func.max(Version.number)).where(Version.project_id == p.id))
+        or 0
+    ) + 1
+    v = Version(
+        project_id=p.id,
+        number=n,
+        name=f"test-{n}",
+        status="ready",
+        stats={"class_names": ["person"]},
+    )
     db.add(v)
     db.flush()
     if with_data:
         d = DATA_DIR / "versions" / v.id
         (d / "train").mkdir(parents=True, exist_ok=True)
         PImage.new("RGB", (32, 32), (10, 20, 30)).save(d / "train" / "a.jpg", "JPEG")
-        (d / "manifest.json").write_text(json.dumps({
-            "classes": ["person"], "type": "object-detection", "version_hash": "test", "config": {}, "sources": [],
-            "items": [{"file": "train/a.jpg", "split": "train", "width": 32, "height": 32, "source": "src1",
-                       "anns": [{"cls": 0, "shape": {"kind": "bbox", "x": .1, "y": .1, "w": .2, "h": .2}}]}],
-        }))
+        (d / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "classes": ["person"],
+                    "type": "object-detection",
+                    "version_hash": "test",
+                    "config": {},
+                    "sources": [],
+                    "items": [
+                        {
+                            "file": "train/a.jpg",
+                            "split": "train",
+                            "width": 32,
+                            "height": 32,
+                            "source": "src1",
+                            "anns": [
+                                {
+                                    "cls": 0,
+                                    "shape": {
+                                        "kind": "bbox",
+                                        "x": 0.1,
+                                        "y": 0.1,
+                                        "w": 0.2,
+                                        "h": 0.2,
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
     return v
 
 
 def _new_model(db, ws, p, v, *, status="queued", metrics=None) -> TrainedModel:
-    m = TrainedModel(workspace_id=ws.id, project_id=p.id, version_id=v.id,
-                     name=f"test-{v.number}-yolo26n", arch="yolo26n", family="ultralytics",
-                     variant="yolo26n", task="detect", status=status, classes=["person"],
-                     metrics=metrics or {})
+    m = TrainedModel(
+        workspace_id=ws.id,
+        project_id=p.id,
+        version_id=v.id,
+        name=f"test-{v.number}-yolo26n",
+        arch="yolo26n",
+        family="ultralytics",
+        variant="yolo26n",
+        task="detect",
+        status=status,
+        classes=["person"],
+        metrics=metrics or {},
+    )
     db.add(m)
     db.flush()
     return m
 
 
 def _new_job(db, ws, p, m, v, batch: int = 8) -> Job:
-    j = Job(workspace_id=ws.id, project_id=p.id, kind="train", status="running",
-            params={"model_id": m.id, "version_id": v.id,
-                    "options": {"batch": batch, "epochs": 1, "imgsz": 32, "max_minutes": None,
-                                "resume_from": None}})
+    j = Job(
+        workspace_id=ws.id,
+        project_id=p.id,
+        kind="train",
+        status="running",
+        params={
+            "model_id": m.id,
+            "version_id": v.id,
+            "options": {
+                "batch": batch,
+                "epochs": 1,
+                "imgsz": 32,
+                "max_minutes": None,
+                "resume_from": None,
+            },
+        },
+    )
     db.add(j)
     db.flush()
     m.job_id = j.id
@@ -113,12 +182,29 @@ def _drop(model_ids=(), version_ids=(), job_ids=()):
 
 def _eval_stub(**over) -> dict:
     ev = {
-        "split": "valid", "note": "stub",
-        "coco": {"AP": 0.5, "AP50": 0.7, "AP75": 0.5, "APs": 0.0, "APm": 0.0, "APl": 0.0,
-                 "AR1": 0.1, "AR10": 0.2, "AR100": 0.2, "ARs": 0.0, "ARm": 0.0, "ARl": 0.0},
-        "per_class": {}, "f1_best": {"conf": 0.4, "f1": 0.6},
+        "split": "valid",
+        "note": "stub",
+        "coco": {
+            "AP": 0.5,
+            "AP50": 0.7,
+            "AP75": 0.5,
+            "APs": 0.0,
+            "APm": 0.0,
+            "APl": 0.0,
+            "AR1": 0.1,
+            "AR10": 0.2,
+            "AR100": 0.2,
+            "ARs": 0.0,
+            "ARm": 0.0,
+            "ARl": 0.0,
+        },
+        "per_class": {},
+        "f1_best": {"conf": 0.4, "f1": 0.6},
         "confusion": {"labels": [], "matrix": [], "images": []},
-        "pr_curve": [], "worst": [], "latency_ms": 3.2, "detections": [],
+        "pr_curve": [],
+        "worst": [],
+        "latency_ms": 3.2,
+        "detections": [],
     }
     ev.update(over)
     return ev
@@ -151,8 +237,11 @@ def test_oom_retries_with_half_batch(client, monkeypatch):
             return SimpleNamespace(weights="models/x/best.pt", run_dir="", history=[])
 
     import torch
+
     monkeypatch.setattr(worker.gc, "collect", lambda: cleaned.append("gc"))
-    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: cleaned.append("empty_cache"))
+    monkeypatch.setattr(
+        torch.cuda, "empty_cache", lambda: cleaned.append("empty_cache")
+    )
     mid, vid, jid = _run_setup(batch=8)
     monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": FakeAdapter()})
     monkeypatch.setattr(worker, "evaluate", lambda *a, **kw: _eval_stub())
@@ -163,7 +252,10 @@ def test_oom_retries_with_half_batch(client, monkeypatch):
         out = worker.run_train(job)
         assert batches == [8, 4]
         assert "retried with batch=4" in out["stages"]["train"].get("note", "")
-        assert cleaned == ["gc", "empty_cache"]          # free the failed attempt before retrying
+        assert cleaned == [
+            "gc",
+            "empty_cache",
+        ]  # free the failed attempt before retrying
         with SessionLocal() as db:
             assert db.get(TrainedModel, mid).status == "ready"
     finally:
@@ -238,7 +330,7 @@ def test_watchdog_fires_mid_epoch_through_the_real_adapter(client, monkeypatch):
 
         def train(self, **_kw):
             trainer = SimpleNamespace(epoch=0, metrics={}, tloss=None, stop=False)
-            for _ in range(2000):                    # a long epoch: no on_fit_epoch_end in sight
+            for _ in range(2000):  # a long epoch: no on_fit_epoch_end in sight
                 self.cbs["on_train_batch_end"](trainer)
                 time.sleep(0.005)
             raise AssertionError("the watchdog never aborted the epoch")
@@ -256,7 +348,7 @@ def test_watchdog_fires_mid_epoch_through_the_real_adapter(client, monkeypatch):
             job = db.get(Job, jid)
         with pytest.raises(RuntimeError, match="no training progress"):
             worker.run_train(job)
-        assert s.state()["holder"] is None                 # the lease was released
+        assert s.state()["holder"] is None  # the lease was released
         with SessionLocal() as db:
             assert db.get(TrainedModel, mid).status == "failed"
     finally:
@@ -268,9 +360,9 @@ def test_watchdog_beat_refreshes_only_liveness():
     wd.tick()
     wd.tick()
     samples, before = list(wd.epoch_secs), wd.last
-    time.sleep(0.02)                         # Windows monotonic resolution is ~15.6 ms
+    time.sleep(0.02)  # Windows monotonic resolution is ~15.6 ms
     wd.beat()
-    assert wd.epoch_secs == samples          # a progress beat is not an epoch sample
+    assert wd.epoch_secs == samples  # a progress beat is not an epoch sample
     assert wd.last > before
 
 
@@ -280,10 +372,10 @@ def test_watchdog_epoch_samples_ignore_progress_beats(monkeypatch):
     wd = worker._Watchdog(10)
     wd.tick()
     clock[0] += 5
-    wd.beat()                                # liveness during the next epoch
+    wd.beat()  # liveness during the next epoch
     clock[0] += 3
     wd.tick()
-    assert wd.epoch_secs[-1] == 8.0          # tick-to-tick, not beat-to-tick
+    assert wd.epoch_secs[-1] == 8.0  # tick-to-tick, not beat-to-tick
 
 
 def test_watchdog_epoch_samples_are_capped():
@@ -304,7 +396,7 @@ def test_cancelled_before_first_checkpoint_ends_cancelled(client, monkeypatch):
     monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": CancelAdapter()})
     monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
     try:
-        worker.run_one(jid)                    # the real run_train cleanup + run_one mapping
+        worker.run_one(jid)  # the real run_train cleanup + run_one mapping
         with SessionLocal() as db:
             job = db.get(Job, jid)
             model = db.get(TrainedModel, mid)
@@ -339,8 +431,14 @@ def test_resolved_predict_uses_the_evaluated_threshold(client, monkeypatch):
     with SessionLocal() as db:
         ws, p = _demo(db)
         v = _new_version(db, p)
-        tuned = _new_model(db, ws, p, v, status="ready",
-                           metrics={"eval": {"f1_best": {"conf": 0.62, "f1": 0.8}}})
+        tuned = _new_model(
+            db,
+            ws,
+            p,
+            v,
+            status="ready",
+            metrics={"eval": {"f1_best": {"conf": 0.62, "f1": 0.8}}},
+        )
         plain = _new_model(db, ws, p, v, status="ready", metrics={})
         db.commit()
         ids, vid = [tuned.id, plain.id], v.id
@@ -348,7 +446,9 @@ def test_resolved_predict_uses_the_evaluated_threshold(client, monkeypatch):
         with SessionLocal() as db:
             resolve(f"trained:{tuned.id}", db).predict(object())
             resolve(f"trained:{plain.id}", db).predict(object())
-            resolve(f"trained:{tuned.id}", db).predict(object(), conf=0.9)   # explicit always wins
+            resolve(f"trained:{tuned.id}", db).predict(
+                object(), conf=0.9
+            )  # explicit always wins
         assert seen == [0.62, 0.4, 0.9]
     finally:
         _drop(model_ids=ids, version_ids=[vid])
@@ -379,7 +479,7 @@ def test_eval_failure_keeps_the_model_ready(client, monkeypatch):
         assert out["stages"]["evaluate"]["status"] == "failed"
         with SessionLocal() as db:
             tm = db.get(TrainedModel, mid)
-            assert tm.status == "ready"                    # weights are still usable
+            assert tm.status == "ready"  # weights are still usable
             assert "bad export" in tm.metrics["eval_error"]
             assert "eval" not in tm.metrics
     finally:
@@ -403,7 +503,7 @@ def test_stages_recorded_in_order(client, monkeypatch):
             job = db.get(Job, jid)
         out = worker.run_train(job)
         stages = out["stages"]
-        assert list(stages) == STAGE_ORDER                  # dict order = first-mark order
+        assert list(stages) == STAGE_ORDER  # dict order = first-mark order
         assert all(s["status"] == "done" for s in stages.values())
         assert stages["evaluate"]["status"] == "done"
         assert "eval" in out and "map50" in out
@@ -429,7 +529,9 @@ def test_gpu_busy_maps_to_503(client, monkeypatch):
 
     monkeypatch.setattr(training_router, "resolve", boom)
     try:
-        r = client.post(f"{BASE}/models/{mid}/predict", files={"file": ("f.jpg", _jpeg())})
+        r = client.post(
+            f"{BASE}/models/{mid}/predict", files={"file": ("f.jpg", _jpeg())}
+        )
         assert r.status_code == 503, r.text
         assert r.json()["detail"] == "GPU busy: training yolo26n"
     finally:
@@ -443,8 +545,11 @@ def test_playground_maps_gpu_busy_to_503(client, monkeypatch):
         raise GpuBusy("GPU busy: training yolo26n")
 
     monkeypatch.setattr(playground, "resolve", boom)
-    r = client.post(f"/api/ws/{WS}/playground/predict", files={"file": ("f.jpg", _jpeg())},
-                    data={"model_refs": "ultralytics:yolo26n"})
+    r = client.post(
+        f"/api/ws/{WS}/playground/predict",
+        files={"file": ("f.jpg", _jpeg())},
+        data={"model_refs": "ultralytics:yolo26n"},
+    )
     assert r.status_code == 503, r.text
     assert r.json()["detail"] == "GPU busy: training yolo26n"
 
@@ -463,17 +568,23 @@ def test_training_scope_allows_the_holder_to_lease():
     with s.exclusive("training yolo26n"):
         with pytest.raises(GpuBusy):
             s.lease("blocked", 10, lambda: object(), lambda _o: None)
-        with s.training_scope():                     # evaluation runs inside the training lease
-            assert s.lease("trained:m", 100, lambda: "model", lambda _o: None) == "model"
-        with pytest.raises(GpuBusy):                 # the allowance ends with the scope
+        with s.training_scope():  # evaluation runs inside the training lease
+            assert (
+                s.lease("trained:m", 100, lambda: "model", lambda _o: None) == "model"
+            )
+        with pytest.raises(GpuBusy):  # the allowance ends with the scope
             s.lease("blocked-again", 10, lambda: object(), lambda _o: None)
 
 
 def test_get_model_signs_eval_image_urls(client):
-    metrics = {"eval": {"split": "valid",
-                        "worst": [{"file": "a.jpg"}],
-                        "confusion": {"images": [["b.jpg", "c.jpg"]]},
-                        "detections": [{"file": "d.jpg"}]}}
+    metrics = {
+        "eval": {
+            "split": "valid",
+            "worst": [{"file": "a.jpg"}],
+            "confusion": {"images": [["b.jpg", "c.jpg"]]},
+            "detections": [{"file": "d.jpg"}],
+        }
+    }
     with SessionLocal() as db:
         ws, p = _demo(db)
         v = _new_version(db, p)
@@ -497,10 +608,22 @@ def test_leaderboard_marks_other_versions_not_comparable(client):
         ws, p = _demo(db)
         va = _new_version(db, p)
         vb = _new_version(db, p)
-        best = _new_model(db, ws, p, vb, status="ready",
-                          metrics={"eval": {"coco": {"AP": 0.99}, "latency_ms": 9.5}})
-        mid = _new_model(db, ws, p, va, status="ready",
-                         metrics={"eval": {"coco": {"AP": 0.5}, "latency_ms": 12.5}})
+        best = _new_model(
+            db,
+            ws,
+            p,
+            vb,
+            status="ready",
+            metrics={"eval": {"coco": {"AP": 0.99}, "latency_ms": 9.5}},
+        )
+        mid = _new_model(
+            db,
+            ws,
+            p,
+            va,
+            status="ready",
+            metrics={"eval": {"coco": {"AP": 0.5}, "latency_ms": 12.5}},
+        )
         none = _new_model(db, ws, p, va, status="ready", metrics={})
         db.commit()
         ids = {best.id: "best", mid.id: "mid", none.id: "none"}
