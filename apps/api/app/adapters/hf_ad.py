@@ -1,7 +1,5 @@
 """HuggingFace detection family: D-FINE and RT-DETRv2 (Apache-2.0)."""
-import contextlib
 import importlib.util
-import io
 import json
 import logging
 import time
@@ -109,25 +107,24 @@ def _collate(processor):
     return collate
 
 
-def _validate(model, processor, root: Path, classes: list[str]) -> dict:
+def _validate(model, processor, root: Path) -> dict:
     """COCO AP/AP50 + greedy precision/recall at confidence 0.5 on a COCO split."""
     import torch
-    from ..services.evaluate import _coco_stats, _load_ground_truth, _match, _stat
+    from ..services.evaluate import coco_epoch_metrics
 
     path = Path(root) / "_annotations.coco.json"
     if not path.exists():
         return {}
-    coco, images = _load_ground_truth(path)
-    if not images:
+    data = json.loads(path.read_text())
+    if not data.get("images"):
         return {}
-    cat_ids = {c["name"]: c["id"] for c in coco.dataset["categories"]}
-    cat_names = {c["id"]: c["name"] for c in coco.dataset["categories"]}
+    cat_ids = {c["name"]: c["id"] for c in data.get("categories", [])}
     names, device = _names(model), _device(model)
-    detections, records = [], []
+    detections = []
     model.eval()
     try:
         with torch.no_grad():
-            for info in images:
+            for info in data["images"]:
                 im = PImage.open(Path(root) / info["file_name"]).convert("RGB")
                 inputs = processor(images=im, return_tensors="pt")
                 inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
@@ -135,31 +132,22 @@ def _validate(model, processor, root: Path, classes: list[str]) -> dict:
                 result = processor.post_process_object_detection(
                     outputs, threshold=CONF,
                     target_sizes=torch.tensor([(im.height, im.width)], device=device))[0]
-                preds = []
                 for score, label, box in zip(result["scores"].tolist(), result["labels"].tolist(),
                                              result["boxes"].tolist()):
                     name = names.get(int(label), str(label))
                     if name not in cat_ids:                 # a class the checkpoint no longer knows
                         continue
                     x1, y1, x2, y2 = box
-                    bbox = [x1, y1, x2 - x1, y2 - y1]
-                    preds.append({"cls": name, "conf": float(score), "bbox": bbox})
                     detections.append({"image_id": info["id"], "category_id": cat_ids[name],
-                                       "bbox": bbox, "score": float(score)})
-                records.append({"gt": [{"cls": cat_names[a["category_id"]], "bbox": list(a["bbox"])}
-                                       for a in coco.imgToAnns.get(info["id"], [])], "pred": preds})
+                                       "bbox": [x1, y1, x2 - x1, y2 - y1], "score": float(score)})
     finally:
         model.train()                            # the Trainer keeps training after this callback
 
-    with contextlib.redirect_stdout(io.StringIO()):        # loadRes prints progress
-        dt = coco.loadRes(detections) if detections else None
-    stats = _coco_stats(coco, dt)
-    tp = sum(len(_match(r["gt"], r["pred"], CONF)) for r in records)
-    above = sum(sum(1 for p in r["pred"] if p["conf"] >= CONF) for r in records)
-    gt_total = sum(len(r["gt"]) for r in records)
-    return {"val/map50": _stat(stats[1]), "val/map5095": _stat(stats[0]),
-            "val/precision": round(tp / above, 4) if above else 0.0,
-            "val/recall": round(tp / gt_total, 4) if gt_total else 0.0}
+    metrics = coco_epoch_metrics(path, detections, conf=CONF)
+    if not metrics:
+        return {}
+    return {"val/map50": metrics["map50"], "val/map5095": metrics["map5095"],
+            "val/precision": metrics["precision"], "val/recall": metrics["recall"]}
 
 
 class _EpochReport:
@@ -171,10 +159,9 @@ class _EpochReport:
     this with transformers.TrainerCallback."""
 
     def __init__(self, on_epoch, should_stop, history: list[dict], total: int,
-                 model, processor, valid_root: Path, classes: list[str],
-                 max_minutes: float | None = None):
+                 model, processor, valid_root: Path, max_minutes: float | None = None):
         self.on_epoch, self.should_stop, self.history, self.total = on_epoch, should_stop, history, total
-        self.model, self.processor, self.valid_root, self.classes = model, processor, valid_root, classes
+        self.model, self.processor, self.valid_root = model, processor, valid_root
         self.epoch = 0
         self.pending: dict = {}
         self.ready = False
@@ -185,7 +172,7 @@ class _EpochReport:
         metrics = {}
         try:
             metrics.update(_validate(model or self.model, processing_class or self.processor,
-                                     self.valid_root, self.classes))
+                                     self.valid_root))
         except Exception:                            # a broken validation must not kill training
             log.exception("HF validation failed at epoch %s; reporting available metrics", self.epoch)
         self.pending, self.ready = metrics, True
@@ -240,7 +227,7 @@ def _build(*, source: str, classes: list[str], train_ds, valid_ds, valid_root: P
     )
 
     report = _report_class()(on_epoch, should_stop, history, int(opts.get("epochs", 30)),
-                     model, processor, valid_root, classes, max_minutes=opts.get("max_minutes"))
+                             model, processor, valid_root, max_minutes=opts.get("max_minutes"))
     trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=valid_ds,
                       data_collator=_collate(processor), callbacks=[report])
     return processor, model, trainer

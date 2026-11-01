@@ -17,7 +17,10 @@ from PIL import Image as PImage
 from sqlalchemy import select
 
 from app.adapters import ADAPTERS, Availability
+from app.db import SessionLocal
 from app.main import app
+from app.models import User
+from app.security import issue_access
 
 WS = "labeldesk-demo"
 THAI = "หมวกนิรภัย"
@@ -25,9 +28,12 @@ THAI = "หมวกนิรภัย"
 
 @pytest.fixture(scope="module")
 def c():
+    # Mint the token directly instead of spending one of the shared login rate-limit slots
+    # the other test modules need (all of them log in as the same demo user).
     with TestClient(app) as client:
-        tok = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        client.headers["Authorization"] = f"Bearer {tok}"
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
         yield client
 
 

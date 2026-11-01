@@ -142,6 +142,28 @@ def test_train_rejects_mismatched_family(c, version_id, queued_only):
     assert r.status_code == 400 and r.json()["detail"] == "bad training options"
 
 
+def test_hf_models_hide_the_weights_download(c, version_id):
+    """HF models save a directory; the file route serves single files, so only file weights get a URL."""
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        p = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == PR))
+        common = dict(project_id=p.id, version_id=version_id, task="detect", status="ready", classes=["helmet"])
+        hf = TrainedModel(workspace_id=ws.id, name="hf-dir", arch="ustc-community/dfine-small-coco",
+                          family="hf", variant="ustc-community/dfine-small-coco", weights="models/x", **common)
+        rf = TrainedModel(workspace_id=ws.id, name="rf-file", arch="small", family="rfdetr", variant="small",
+                          weights="models/rfdetr/best.pth", **common)
+        db.add_all([hf, rf])
+        db.commit()
+        hf_id, rf_id = hf.id, rf.id
+    try:
+        hf_out = c.get(f"{BASE}/models/{hf_id}").json()
+        rf_out = c.get(f"{BASE}/models/{rf_id}").json()
+        assert hf_out["weightsUrl"] is None
+        assert rf_out["weightsUrl"] and rf_out["weightsUrl"].startswith("/api/files/")
+    finally:
+        _drop(model_ids=[hf_id, rf_id])
+
+
 def test_evaluate_scores_a_trained_apache_model(version_id, monkeypatch):
     """resolve(trained:<id>) binds the family adapter and evaluate() scores it on the test split."""
     import json

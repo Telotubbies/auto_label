@@ -85,10 +85,12 @@ def _lean_metrics(metrics: dict | None) -> dict:
 
 
 def model_out(m: TrainedModel) -> dict:
+    # HF models store a directory (models/<id>/), which the single-file route cannot serve — no download.
+    weights_url = sign_path(m.weights) if m.weights and m.family != "hf" else None
     return {"id": m.id, "name": m.name, "arch": m.arch, "task": m.task, "status": m.status, "metrics": m.metrics,
             "history": m.history, "classes": m.classes, "versionId": m.version_id, "jobId": m.job_id,
             "family": m.family, "variant": m.variant, "license": m.license,
-            "created": m.created, "weightsUrl": sign_path(m.weights) if m.weights else None}
+            "created": m.created, "weightsUrl": weights_url}
 
 
 def _files_in(obj) -> list[str]:

@@ -1,6 +1,6 @@
-"""RF-DETR adapter: probe, prediction mapping, epoch polling and checkpoint selection.
+"""RF-DETR adapter: probe, prediction mapping, child-process training, cancelling and class names.
 
-`rfdetr` is not installed here, so the package, the model and the Lightning CSV are faked.
+`rfdetr` is not installed here, so the package, the training child and the Lightning CSV are faked.
 """
 import os
 import tempfile
@@ -11,12 +11,12 @@ os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 
 import importlib.util
+import itertools
 import json
 import sys
-import time
 from importlib.machinery import ModuleSpec
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from PIL import Image as PImage
@@ -26,6 +26,8 @@ from app.adapters.base import Availability, validate_prediction
 from app.config import DATA_DIR
 
 VARIANTS = ("RFDETRNano", "RFDETRSmall", "RFDETRMedium", "RFDETRLarge")
+HEADER = "epoch,train/loss,val/mAP_50,val/mAP_50_95,val/precision,val/recall\n"
+ROWS = ["0,1.5,0.61,0.41,0.70,0.66\n", "1,0.90,0.72,0.52,0.75,nan\n"]
 
 
 # --- fakes ------------------------------------------------------------------------
@@ -38,35 +40,78 @@ class _Detections:
     data = {"class_name": ["helmet", "person"]}
 
 
+class _UnnamedDetections(_Detections):
+    """A trained RF-DETR checkpoint returns class ids only: no class_name in `data`."""
+    data = {}
+
+
 class _FakeModel:
-    def __init__(self):
+    def __init__(self, det=None):
+        self.det = det or _Detections()
         self.kw = None
 
     def predict(self, im, threshold=0.5, **kw):
         self.kw = {"threshold": threshold, **kw}
-        return _Detections()
+        return self.det
 
 
 class _FakeRFDetr:
-    """Stand-in for RFDETRNano/Small/Medium/Large: writes Lightning's CSV and a checkpoint."""
-    made: list = []
-
+    """Stand-in for RFDETRNano/Small/Medium/Large; the training child is faked below."""
     def __init__(self, **kw):
         self.init_kw = kw
         self.train_kw: dict = {}
-        _FakeRFDetr.made.append(self)
 
     def train(self, **kw):
         self.train_kw = kw
-        out = Path(kw["output_dir"])
-        out.mkdir(parents=True, exist_ok=True)
-        csv = out / "metrics.csv"
-        csv.write_text("epoch,train/loss,val/mAP_50,val/mAP_50_95,val/precision,val/recall\n"
-                       "0,1.5,0.61,0.41,0.70,0.66\n")
-        time.sleep(0.03)                        # the poller sees the first row mid-run
-        with open(csv, "a", encoding="utf-8") as f:
-            f.write("1,0.90,0.72,0.52,0.75,nan\n")
-        (out / "checkpoint_best_total.pth").write_bytes(b"rfdetr-weights")
+
+
+class FakeProc:
+    """A spawned training child: `is_alive()` advances the run, writing the CSV and a checkpoint.
+
+    Each poll appends one CSV row, so the parent pumps progress mid-run exactly as it would with
+    Lightning writing metrics.csv. `exitcode` is None while the run is alive."""
+
+    def __init__(self, output_dir, *, polls=3, exitcode=0, checkpoint="checkpoint_best_total.pth",
+                 rows=ROWS):
+        self.out = Path(output_dir)
+        self.out.mkdir(parents=True, exist_ok=True)
+        self.polls = polls
+        self.finish_code = exitcode
+        self.checkpoint = checkpoint
+        self.rows = list(rows)
+        self.seen = 0
+        self.exitcode = None
+        self.terminated = 0
+        self.killed = 0
+        self.joins: list = []
+
+    def is_alive(self):
+        if self.terminated or self.killed:
+            return False
+        self.seen += 1
+        if self.seen > self.polls:
+            self.exitcode = self.finish_code
+            return False
+        csv = self.out / "metrics.csv"
+        if not csv.exists():
+            csv.write_text(HEADER)
+        if self.seen <= len(self.rows):
+            with open(csv, "a", encoding="utf-8") as f:
+                f.write(self.rows[self.seen - 1])
+        if self.checkpoint and not (self.out / self.checkpoint).exists():
+            (self.out / self.checkpoint).write_bytes(b"rfdetr-weights")
+        return True
+
+    def terminate(self):
+        self.terminated += 1
+        self.exitcode = -15
+
+    def join(self, timeout=None):
+        self.joins.append(timeout)
+
+    def kill(self):
+        self.killed += 1
+        self.exitcode = -9
 
 
 def _install_fake(monkeypatch):
@@ -76,12 +121,30 @@ def _install_fake(monkeypatch):
     for name in VARIANTS:
         setattr(mod, name, _FakeRFDetr)
     monkeypatch.setitem(sys.modules, "rfdetr", mod)
-    _FakeRFDetr.made.clear()
 
 
 @pytest.fixture
 def installed(monkeypatch):
     _install_fake(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def fast_poll(monkeypatch):
+    monkeypatch.setattr(rf, "_POLL_S", 0.001)
+
+
+@pytest.fixture
+def spawned(monkeypatch):
+    """Monkeypatch the spawn seam; `opts` configures the fake child the next spawn returns."""
+    state = SimpleNamespace(calls=[], opts={})
+
+    def fake_spawn(variant, init, kw):
+        proc = FakeProc(kw["output_dir"], **state.opts)
+        state.calls.append((variant, init, kw, proc))
+        return proc
+
+    monkeypatch.setattr(rf, "_spawn", fake_spawn)
+    return state
 
 
 @pytest.fixture
@@ -112,13 +175,13 @@ def loaded(monkeypatch):
     return calls, model
 
 
-def _train(version_dir, tmp_path, **opts):
+def _train(version_dir, tmp_path, *, stop=None, **opts):
     model_id = f"rfdetr-{tmp_path.name}"
     events = []
     res = rf.RFDetrAdapter().train(
         "nano", version_dir, "detect",
         {"model_id": model_id, "epochs": 2, "batch": 4, **opts},
-        lambda ep, total, metrics: events.append((ep, total, metrics)), lambda: False)
+        lambda ep, total, metrics: events.append((ep, total, metrics)), stop or (lambda: False))
     return model_id, events, res
 
 
@@ -161,10 +224,37 @@ def test_predict_filters_to_classes_and_resolves_trained_weights(installed, load
     assert calls[-1] == ("nano", str(DATA_DIR / "models" / "m1" / "best.pth"))
 
 
+def test_predict_names_trained_detections_from_the_sibling_classes_json(installed, loaded, tmp_path):
+    _, model = loaded
+    model.det = _UnnamedDetections()
+    weights = DATA_DIR / "models" / f"named-{tmp_path.name}" / "best.pth"
+    weights.parent.mkdir(parents=True)
+    weights.write_bytes(b"w")
+    (weights.parent / "classes.json").write_text(json.dumps(["vest", "worker"]))
+
+    out = rf.RFDetrAdapter().predict("nano", PImage.new("RGB", (64, 48)),
+                                     weights=weights.relative_to(DATA_DIR).as_posix())
+
+    assert [p["class"] for p in out["predictions"]] == ["vest", "worker"]
+    validate_prediction(out)
+
+
+def test_predict_falls_back_to_ids_without_classes_json(installed, loaded, tmp_path):
+    _, model = loaded
+    model.det = _UnnamedDetections()
+    weights = DATA_DIR / "models" / f"naked-{tmp_path.name}" / "best.pth"
+    weights.parent.mkdir(parents=True)
+    weights.write_bytes(b"w")
+
+    out = rf.RFDetrAdapter().predict("nano", PImage.new("RGB", (64, 48)),
+                                     weights=weights.relative_to(DATA_DIR).as_posix())
+
+    assert [p["class"] for p in out["predictions"]] == ["0", "1"]
+
+
 # --- train ------------------------------------------------------------------------
 
-def test_train_reports_every_epoch_and_copies_the_checkpoint(installed, version_dir, tmp_path, monkeypatch):
-    monkeypatch.setattr(rf, "_POLL_S", 0.01)
+def test_train_reports_every_epoch_and_copies_the_checkpoint(installed, version_dir, tmp_path, spawned):
     model_id, events, res = _train(version_dir, tmp_path, lr=2e-4)
 
     # one callback per CSV row, epochs counted from 1 for the UI; NaN boxes are dropped
@@ -179,31 +269,49 @@ def test_train_reports_every_epoch_and_copies_the_checkpoint(installed, version_
     assert res.weights == f"models/{model_id}/best.pth"
     assert (DATA_DIR / res.weights).read_bytes() == b"rfdetr-weights"
 
-    kw = _FakeRFDetr.made[-1].train_kw
+    variant, init, kw, proc = spawned.calls[-1]
+    assert (variant, init) == ("nano", {})
+    assert proc.joins == [] and proc.terminated == 0
     assert kw["dataset_dir"] == str(version_dir / "exports" / "coco")
     assert (version_dir / "exports" / "coco" / "train" / "_annotations.coco.json").exists()
     assert (kw["epochs"], kw["batch_size"], kw["lr"]) == (2, 4, 2e-4)
     assert kw["output_dir"] == str(DATA_DIR / "runs" / model_id)
     assert kw["early_stopping"] is True and kw["early_stopping_patience"] == 50
     assert kw["tensorboard"] is False
+    assert kw["run_test"] is False                # a version without test/ cannot break the fit-end pass
     assert "device" not in kw                     # no device requested: let rfdetr pick
 
+    # the run writes the class names it trained on beside the checkpoint
+    classes = json.loads((DATA_DIR / "models" / model_id / "classes.json").read_text())
+    assert classes == ["helmet"]
 
-def test_train_resumes_and_passes_an_explicit_device(installed, version_dir, tmp_path, monkeypatch):
-    monkeypatch.setattr(rf, "_POLL_S", 0.01)
+
+def test_train_writes_classes_ordered_by_category_id(installed, version_dir, tmp_path, spawned):
+    _train(version_dir, tmp_path)
+    coco = version_dir / "exports" / "coco" / "train" / "_annotations.coco.json"
+    data = json.loads(coco.read_text())
+    data["categories"] = [{"id": 1, "name": "person"}, {"id": 0, "name": "helmet"}]
+    coco.write_text(json.dumps(data))
+
+    model_id, _, _ = _train(version_dir, tmp_path / "again")
+
+    classes = json.loads((DATA_DIR / "models" / model_id / "classes.json").read_text())
+    assert classes == ["helmet", "person"]
+
+
+def test_train_resumes_and_passes_an_explicit_device(installed, version_dir, tmp_path, spawned):
     prev = DATA_DIR / "models" / f"previous-{tmp_path.name}"
     prev.mkdir(parents=True)
     (prev / "checkpoint.pth").write_bytes(b"older")
 
     _train(version_dir, tmp_path, resume_from=prev.name, device="cuda:0")
 
-    model = _FakeRFDetr.made[-1]
-    assert model.init_kw == {"pretrain_weights": str(prev / "checkpoint.pth")}
-    assert model.train_kw["device"] == "cuda:0"
+    _, init, kw, _ = spawned.calls[-1]
+    assert init == {"pretrain_weights": str(prev / "checkpoint.pth")}
+    assert kw["device"] == "cuda:0"
 
 
-def test_train_mirrors_train_as_valid_when_the_version_has_none(installed, tmp_path, monkeypatch):
-    monkeypatch.setattr(rf, "_POLL_S", 0.01)
+def test_train_mirrors_train_as_valid_when_the_version_has_none(installed, tmp_path, spawned):
     version = tmp_path / "versions" / "v2"
     (version / "train").mkdir(parents=True)
     PImage.new("RGB", (40, 30)).save(version / "train" / "only.jpg")
@@ -214,24 +322,93 @@ def test_train_mirrors_train_as_valid_when_the_version_has_none(installed, tmp_p
 
     _train(version, tmp_path)
 
-    root = Path(_FakeRFDetr.made[-1].train_kw["dataset_dir"])
+    _, _, kw, _ = spawned.calls[-1]
+    root = Path(kw["dataset_dir"])
     assert root != version / "exports" / "coco"        # the cached export is left untouched
+    assert kw["run_test"] is False                     # the fit-end pass never needs test/
     valid = json.loads((root / "valid" / "_annotations.coco.json").read_text())
     assert (root / "valid" / valid["images"][0]["file_name"]).resolve().exists()
     assert not (version / "exports" / "coco" / "valid").exists()
 
 
-def test_train_normalizes_a_bare_device_index(installed, version_dir, tmp_path, monkeypatch):
-    monkeypatch.setattr(rf, "_POLL_S", 0.01)
+def test_train_normalizes_a_bare_device_index(installed, version_dir, tmp_path, spawned):
     _train(version_dir, tmp_path, device="0")
-    assert _FakeRFDetr.made[-1].train_kw["device"] == "cuda:0"
+    assert spawned.calls[-1][2]["device"] == "cuda:0"
 
 
-def test_train_without_a_checkpoint_fails(installed, version_dir, tmp_path, monkeypatch):
-    monkeypatch.setattr(rf, "_POLL_S", 0.01)
-    monkeypatch.setattr(_FakeRFDetr, "train", lambda self, **kw: Path(kw["output_dir"]).mkdir(parents=True, exist_ok=True))
+def test_train_without_a_checkpoint_fails(installed, version_dir, tmp_path, spawned):
+    spawned.opts.update(polls=2, checkpoint=None)
     with pytest.raises(RuntimeError, match="training produced no checkpoint"):
         _train(version_dir, tmp_path)
+
+
+def test_train_terminates_the_child_when_cancelled(installed, version_dir, tmp_path, spawned):
+    spawned.opts.update(polls=50, checkpoint="checkpoint.pth")
+    asked = []
+
+    def stop():
+        asked.append(1)
+        return len(asked) > 2
+
+    model_id, events, res = _train(version_dir, tmp_path, stop=stop)
+
+    proc = spawned.calls[-1][3]
+    assert proc.terminated == 1                       # the child is killed at the next poll
+    assert proc.joins == [10]
+    assert proc.exitcode == -15
+    assert [e[0] for e in events] == [1, 2]           # progress seen before the cancel
+    assert (DATA_DIR / res.weights).read_bytes() == b"rfdetr-weights"   # last checkpoint kept
+    assert res.weights == f"models/{model_id}/best.pth"
+
+
+def test_train_stops_at_the_max_minutes_deadline(installed, version_dir, tmp_path, spawned, monkeypatch):
+    spawned.opts["polls"] = 50
+    ticks = itertools.count(step=0.1)
+    monkeypatch.setattr(rf, "_now", lambda: round(next(ticks), 2))
+
+    _train(version_dir, tmp_path, max_minutes=0.01)   # 0.6 s on the synthetic clock
+
+    proc = spawned.calls[-1][3]
+    assert proc.terminated == 1
+    assert proc.exitcode == -15
+
+
+def test_train_heartbeats_on_every_poll(installed, version_dir, tmp_path, spawned):
+    beats = []
+    spawned.opts["polls"] = 4
+
+    _train(version_dir, tmp_path, heartbeat=lambda: beats.append(1))
+
+    assert len(beats) >= 4                            # one tick per poll, before the child exits
+
+
+def test_train_raises_when_the_child_fails(installed, version_dir, tmp_path, spawned):
+    spawned.opts.update(polls=2, exitcode=3)
+    with pytest.raises(RuntimeError, match="exit code 3"):
+        _train(version_dir, tmp_path)
+
+
+def test_train_cancel_before_the_first_checkpoint_fails(installed, version_dir, tmp_path, spawned):
+    spawned.opts["polls"] = 50
+    with pytest.raises(RuntimeError, match="cancelled before the first checkpoint"):
+        _train(version_dir, tmp_path, stop=lambda: True)
+
+
+# --- inference leases --------------------------------------------------------------
+
+def test_load_leases_per_variant_vram(monkeypatch):
+    from app.gpu import scheduler
+
+    calls = []
+
+    def fake_lease(key, vram_mb, loader, unloader):
+        calls.append((key, vram_mb))
+        return "model"
+
+    monkeypatch.setattr(scheduler, "lease", fake_lease)
+    assert rf._load("large", None) == "model"
+    assert rf._load("nano", None) == "model"
+    assert calls == [("rfdetr|large", 2600), ("rfdetr|nano", 1200)]
 
 
 # --- missing package --------------------------------------------------------------

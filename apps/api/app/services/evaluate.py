@@ -101,6 +101,37 @@ def evaluate(model_ref: str, version_dir: Path, task: str, db=None,
     }
 
 
+def coco_epoch_metrics(ann_path: Path, detections: list[dict], conf: float = 0.5,
+                       iou_type: str = "bbox") -> dict:
+    """COCO AP/AP50 plus greedy precision/recall at `conf` for one annotated split.
+
+    `detections` are raw COCO records ({image_id, category_id, bbox, score}); used by per-epoch
+    training validation so adapters never reach into this module's private helpers."""
+    if not Path(ann_path).exists():
+        return {}
+    coco, images = _load_ground_truth(Path(ann_path), iou_type)
+    if not images:
+        return {}
+    cat_names = {c["id"]: c["name"] for c in coco.dataset["categories"]}
+    by_image: dict[int, list[dict]] = {}
+    for det in detections:
+        by_image.setdefault(det["image_id"], []).append(
+            {"cls": cat_names[det["category_id"]], "conf": float(det["score"]), "bbox": list(det["bbox"])})
+    records = [{"gt": [{"cls": cat_names[a["category_id"]], "bbox": list(a["bbox"])}
+                       for a in coco.imgToAnns.get(img["id"], [])],
+                "pred": by_image.get(img["id"], [])} for img in images]
+
+    with contextlib.redirect_stdout(io.StringIO()):        # loadRes prints progress
+        dt = coco.loadRes(detections) if detections else None
+    stats = _coco_stats(coco, dt, iou_type)
+    tp = sum(len(_match(r["gt"], r["pred"], conf)) for r in records)
+    above = sum(sum(1 for p in r["pred"] if p["conf"] >= conf) for r in records)
+    gt_total = sum(len(r["gt"]) for r in records)
+    return {"map50": _stat(stats[1]), "map5095": _stat(stats[0]),
+            "precision": round(tp / above, 4) if above else 0.0,
+            "recall": round(tp / gt_total, 4) if gt_total else 0.0}
+
+
 def _empty(split: str, note: str) -> dict:
     return {"split": split, "note": note, "iou": "bbox",
             "coco": {k: 0.0 for k in COCO_KEYS},

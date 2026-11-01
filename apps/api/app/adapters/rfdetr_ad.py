@@ -1,20 +1,19 @@
 """RF-DETR (Apache-2.0) detection family: cached inference + fine-tuning.
 
-rfdetr exposes no per-epoch callback, so training progress is read from the PyTorch-Lightning
-CSV that it writes to <output_dir>/metrics.csv; a cancel or max_minutes cap therefore lands
-only at the end of a run (the worker's no-progress watchdog still covers a hung epoch).
+rfdetr 1.11 exposes no per-epoch callback, so training runs in a child process: the parent polls
+the PyTorch-Lightning CSV that rfdetr writes to <output_dir>/metrics.csv, gives the worker's
+watchdog a heartbeat, and terminates the child at the next poll when a cancel arrives or
+max_minutes runs out.
 """
 import csv
 import importlib.util
 import json
 import math
+import multiprocessing
 import os
 import shutil
-import threading
 import time
 from pathlib import Path
-
-from PIL import Image as PImage
 
 from ..config import DATA_DIR, TRAIN_DEVICE
 from ..services import exporters
@@ -22,13 +21,16 @@ from .base import Availability, TrainResult, register
 
 VARIANTS = {"nano": "RFDETRNano", "small": "RFDETRSmall", "medium": "RFDETRMedium", "large": "RFDETRLarge"}
 
-VRAM_MB = 2600                  # medium/large at 640 px, upper end; inference leases only
-_POLL_S = 1.0                   # metrics.csv poll interval while train() runs
+# Inference lease per variant at 640 px; the 4.5 GB budget must fit a detector beside SAM 3.1.
+VRAM_MB = {"nano": 1200, "small": 1500, "medium": 2000, "large": 2600}
+VRAM_MB_DEFAULT = 2600
+_POLL_S = 1.0                   # parent poll interval while the training child runs
 _CKPT = ("checkpoint_best_total.pth", "checkpoint_best_ema.pth",
          "checkpoint_best_regular.pth", "checkpoint.pth")
 # Lightning CSV column -> common metric key (spec P4)
 _METRICS = {"train/loss": "train/loss", "val/mAP_50": "val/map50", "val/mAP_50_95": "val/map5095",
             "val/precision": "val/precision", "val/recall": "val/recall"}
+_now = time.monotonic          # test seam for the max_minutes deadline
 
 
 def _require() -> None:
@@ -46,6 +48,27 @@ def _model_class(variant: str):
     return getattr(rfdetr, name)
 
 
+def _run_child(variant: str, init: dict, kw: dict) -> None:
+    """Child-process entry point: the fit itself, picklable for the spawn start method."""
+    _model_class(variant)(**init).train(**kw)
+
+
+def _spawn(variant: str, init: dict, kw: dict):
+    """Start the training child. rfdetr has no in-process cancel hook, so it must be killable."""
+    ctx = multiprocessing.get_context("spawn")
+    proc = ctx.Process(target=_run_child, args=(variant, init, kw))   # non-daemon: rfdetr spawns its DataLoader workers
+    proc.start()
+    return proc
+
+
+def _stop_child(proc) -> None:
+    proc.terminate()
+    proc.join(timeout=10)
+    if proc.is_alive():
+        proc.kill()
+        proc.join(timeout=5)
+
+
 def _load(variant: str, weights: str | None):
     """Cached model for (variant, weights); weights is an absolute checkpoint or None for the default."""
     from ..gpu import scheduler                  # lazy: keeps app.gpu importable before the adapters package
@@ -61,7 +84,7 @@ def _load(variant: str, weights: str | None):
         except Exception:                        # CPU-only installs have nothing to free
             pass
 
-    return scheduler.lease(f"rfdetr|{weights or variant}", VRAM_MB, _make, _drop)
+    return scheduler.lease(f"rfdetr|{weights or variant}", VRAM_MB.get(variant, VRAM_MB_DEFAULT), _make, _drop)
 
 
 def _num(value) -> float | None:
@@ -103,14 +126,38 @@ def _device(value: str) -> str:
     return f"cuda:{value}" if value.isdigit() else value
 
 
-def _preds(det) -> list[dict]:
-    """supervision.Detections -> shared prediction schema (centre boxes in pixels)."""
-    names = list(getattr(det, "data", {}).get("class_name") or [])
+def _class_names(coco: Path) -> list[str]:
+    """Category names ordered by category id, read from the COCO export the run trained on."""
+    data = json.loads(coco.read_text())
+    cats = sorted(data.get("categories") or [], key=lambda c: int(c["id"]))
+    return [str(c.get("name", c["id"])) for c in cats]
+
+
+def _sibling_classes(weights: Path) -> list[str] | None:
+    """The class names written beside a trained checkpoint; None when the file is missing or malformed."""
+    try:
+        names = json.loads((weights.parent / "classes.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return [str(n) for n in names] if isinstance(names, list) else None
+
+
+def _preds(det, names: list[str] | None = None) -> list[dict]:
+    """supervision.Detections -> shared prediction schema (centre boxes in pixels).
+
+    Trained checkpoints carry ids only, so `names` (classes.json beside the weights) names them."""
+    data_names = list(getattr(det, "data", {}).get("class_name") or [])
     out = []
     for i in range(len(det.xyxy)):
         x1, y1, x2, y2 = (float(v) for v in det.xyxy[i])
         ci = int(det.class_id[i])
-        out.append({"class": str(names[i]) if i < len(names) else str(ci), "class_id": ci,
+        if i < len(data_names):
+            name = str(data_names[i])
+        elif names and 0 <= ci < len(names):
+            name = names[ci]
+        else:
+            name = str(ci)
+        out.append({"class": name, "class_id": ci,
                     "confidence": round(float(det.confidence[i]), 4),
                     "x": round((x1 + x2) / 2, 1), "y": round((y1 + y2) / 2, 1),
                     "width": round(x2 - x1, 1), "height": round(y2 - y1, 1)})
@@ -134,16 +181,20 @@ class RFDetrAdapter:
         RF-DETR's predict() exposes only the score threshold, so iou stays unused here."""
         _require()
         path = str(DATA_DIR / weights) if weights else None
+        names = _sibling_classes(Path(path)) if path else None
         m = _load(variant, path)
         t0 = time.time()
-        preds = _preds(m.predict(im, threshold=conf))
+        preds = _preds(m.predict(im, threshold=conf), names)
         if classes:
             preds = [p for p in preds if p["class"] in classes]
         return {"model": f"{self.family}:{variant}", "image": {"width": im.width, "height": im.height},
                 "time": round(time.time() - t0, 4), "predictions": preds}
 
     def train(self, variant, dataset_dir, task, opts, on_epoch, should_stop) -> TrainResult:
-        """Fine-tune on a version's cached COCO export. opts: model_id, epochs, batch, lr, patience, device, resume_from."""
+        """Fine-tune on a version's cached COCO export. opts: model_id, epochs, batch, lr, patience, device,
+        resume_from, max_minutes, heartbeat, stalled.
+
+        The fit runs in a child process: cancel and max_minutes terminate it at the next poll."""
         _require()
         model_id = opts["model_id"]
         root = _coco_root(Path(dataset_dir), model_id)        # <dir>/{train,valid,test}/_annotations.coco.json
@@ -157,12 +208,11 @@ class RFDetrAdapter:
                 if (prev / name).exists():
                     init["pretrain_weights"] = str(prev / name)
                     break
-        model = _model_class(variant)(**init)
 
         kw = dict(dataset_dir=str(root), epochs=epochs, batch_size=int(opts["batch"]),
                   lr=float(opts.get("lr", 1e-4)), output_dir=str(output_dir),
                   early_stopping=True, early_stopping_patience=int(opts.get("patience", 50)),
-                  tensorboard=False)
+                  tensorboard=False, run_test=False)     # the fit-end test pass must not need test/
         device = opts.get("device") or TRAIN_DEVICE
         if device:
             kw["device"] = _device(device)
@@ -170,58 +220,67 @@ class RFDetrAdapter:
         history: list[dict] = []
         seen = [0]                                   # CSV rows already reported
         by_epoch: dict[int, dict] = {}               # Lightning may split one epoch over several rows
-        stop = threading.Event()
-        failures: list[BaseException] = []
-        lock = threading.Lock()
         csv_path = output_dir / "metrics.csv"
 
         def _pump():
-            with lock:
-                if not csv_path.exists():
-                    return
-                with open(csv_path, newline="", encoding="utf-8") as f:
-                    rows = list(csv.DictReader(f))
-                for row in rows[seen[0]:]:           # Lightning logs 0-based epochs; the UI counts from 1
-                    try:
-                        ep = int(float(row.get("epoch") or "")) + 1
-                    except (TypeError, ValueError):
-                        seen[0] += 1
-                        continue                     # a step row (no epoch); a partial line is retried
-                    seen[0] += 1
-                    metrics = by_epoch.setdefault(ep, {})
-                    found = False
-                    for col, key in _METRICS.items():
-                        value = _num(row.get(col))
-                        if value is not None:        # only the keys the CSV actually carries
-                            metrics[key] = value; found = True
-                    if not found:
-                        continue
-                    if history and history[-1]["epoch"] == ep:
-                        history[-1] = {"epoch": ep, **metrics}
-                    else:
-                        history.append({"epoch": ep, **metrics})
-                    on_epoch(ep, epochs, dict(metrics))
-
-        def _poll():
-            while not stop.wait(_POLL_S):
+            if not csv_path.exists():
+                return
+            with open(csv_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            for row in rows[seen[0]:]:               # Lightning logs 0-based epochs; the UI counts from 1
                 try:
-                    _pump()
-                except OSError:                      # the trainer may rotate the file mid-read
-                    pass
-                except Exception as e:               # a failed on_epoch must fail the run, not just the thread
-                    failures.append(e)
-                    stop.set()
+                    ep = int(float(row.get("epoch") or "")) + 1
+                except (TypeError, ValueError):
+                    seen[0] += 1
+                    continue                         # a step row (no epoch); a partial line is retried
+                seen[0] += 1
+                metrics = by_epoch.setdefault(ep, {})
+                found = False
+                for col, key in _METRICS.items():
+                    value = _num(row.get(col))
+                    if value is not None:            # only the keys the CSV actually carries
+                        metrics[key] = value
+                        found = True
+                if not found:
+                    continue
+                if history and history[-1]["epoch"] == ep:
+                    history[-1] = {"epoch": ep, **metrics}
+                else:
+                    history.append({"epoch": ep, **metrics})
+                on_epoch(ep, epochs, dict(metrics))
 
-        thread = threading.Thread(target=_poll, daemon=True)
-        thread.start()
+        def _safe_pump():
+            try:
+                _pump()
+            except OSError:                          # the trainer may rotate the file mid-read
+                pass
+
+        max_minutes = opts.get("max_minutes")
+        deadline = _now() + float(max_minutes) * 60 if max_minutes else None
+        stopped = False
+        proc = _spawn(variant, init, kw)
         try:
-            model.train(**kw)
-            _pump()                                  # rows written since the last poll
+            while True:
+                _safe_pump()
+                heartbeat = opts.get("heartbeat")
+                if heartbeat:
+                    heartbeat()                      # a long epoch writes no CSV row: keep the watchdog fed
+                if should_stop() or (deadline is not None and _now() >= deadline):
+                    stopped = True
+                    _stop_child(proc)
+                    break
+                if not proc.is_alive():
+                    break
+                time.sleep(_POLL_S)
+            _safe_pump()                             # rows written since the last poll
         finally:
-            stop.set()
-            thread.join(timeout=5)
-        if failures:
-            raise failures[0]
+            if proc.is_alive():
+                _stop_child(proc)
+
+        if not stopped and proc.exitcode not in (0, None):
+            raise RuntimeError(f"rfdetr training failed (exit code {proc.exitcode})")
+        if stopped and not any((output_dir / name).exists() for name in _CKPT):
+            raise RuntimeError("cancelled before the first checkpoint")
 
         for name in _CKPT:
             src = output_dir / name
@@ -232,6 +291,7 @@ class RFDetrAdapter:
         dst = DATA_DIR / "models" / model_id / "best.pth"
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
+        (dst.parent / "classes.json").write_text(json.dumps(_class_names(root / "train" / "_annotations.coco.json")))
         return TrainResult(weights=dst.relative_to(DATA_DIR).as_posix(), run_dir=str(output_dir), history=history)
 
 

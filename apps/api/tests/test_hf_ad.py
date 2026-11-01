@@ -149,7 +149,7 @@ def _report(monkeypatch, stop=False):
     monkeypatch.setattr(hf_ad, "_validate", lambda *a: {"val/map50": 0.4, "val/map5095": 0.3,
                                                         "val/precision": 0.6, "val/recall": 0.5})
     cb = hf_ad._EpochReport(lambda ep, total, m: seen.append((ep, total, m)), lambda: stop,
-                            history, 5, "model", "processor", Path("valid"), ["helmet"])
+                            history, 5, "model", "processor", Path("valid"))
     return cb, seen, history
 
 
@@ -206,7 +206,7 @@ def test_report_class_is_a_trainer_callback(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", mod)
     cls = hf_ad._report_class()
     assert issubclass(cls, _Base) and issubclass(cls, hf_ad._EpochReport)
-    assert hasattr(cls(None, lambda: False, [], 1, None, None, Path("v"), []), "on_init_end")
+    assert hasattr(cls(None, lambda: False, [], 1, None, None, Path("v")), "on_init_end")
 
 
 # --- validation scoring -------------------------------------------------------------
@@ -240,9 +240,29 @@ def test_validate_scores_a_perfect_prediction(tmp_path):
         "annotations": [{"id": 0, "image_id": 0, "category_id": 0, "bbox": [10, 10, 20, 10],
                          "area": 200, "iscrowd": 0}],
         "categories": [{"id": 0, "name": "helmet"}]}))
-    assert hf_ad._validate(_ValModel(), _ValProcessor(), root, ["helmet"]) == {
+    assert hf_ad._validate(_ValModel(), _ValProcessor(), root) == {
         "val/map50": 1.0, "val/map5095": 1.0, "val/precision": 1.0, "val/recall": 1.0}
-    assert hf_ad._validate(_ValModel(), _ValProcessor(), tmp_path / "missing", ["helmet"]) == {}
+    assert hf_ad._validate(_ValModel(), _ValProcessor(), tmp_path / "missing") == {}
+
+
+def test_public_coco_epoch_metrics_contract(tmp_path):
+    """The HF adapter scores epochs through this public entry point, never private helpers."""
+    from app.services.evaluate import coco_epoch_metrics
+
+    root = tmp_path / "split"
+    root.mkdir()
+    PImage.new("RGB", (100, 50)).save(root / "a.jpg")
+    (root / "_annotations.coco.json").write_text(json.dumps({
+        "images": [{"id": 0, "file_name": "a.jpg", "width": 100, "height": 50}],
+        "annotations": [{"id": 0, "image_id": 0, "category_id": 0, "bbox": [10, 10, 20, 10],
+                         "area": 200, "iscrowd": 0}],
+        "categories": [{"id": 0, "name": "helmet"}]}))
+    detections = [{"image_id": 0, "category_id": 0, "bbox": [10, 10, 20, 10], "score": 0.9}]
+
+    metrics = coco_epoch_metrics(root / "_annotations.coco.json", detections, conf=0.5)
+    assert set(metrics) == {"map50", "map5095", "precision", "recall"}
+    assert metrics == {"map50": 1.0, "map5095": 1.0, "precision": 1.0, "recall": 1.0}
+    assert coco_epoch_metrics(tmp_path / "missing" / "_annotations.coco.json", detections) == {}
 
 
 # --- train wiring -------------------------------------------------------------------
@@ -291,7 +311,7 @@ def test_train_wires_build_and_saves_model(tmp_path, monkeypatch):
         seen.update(kw)
         seen["callbacks"] = [hf_ad._EpochReport(kw["on_epoch"], kw["should_stop"], kw["history"],
                                                 int(kw["opts"]["epochs"]), model, processor,
-                                                kw["valid_root"], kw["classes"])]
+                                                kw["valid_root"])]
         return processor, model, _FakeTrainer()
 
     monkeypatch.setattr(hf_ad, "_build", fake_build)

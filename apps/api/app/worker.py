@@ -181,6 +181,7 @@ def run_train(job: Job):
         train_images = int((v.stats or {}).get("splits", {}).get("train") or 0)
         watchdog = _Watchdog(_first_limit(train_images, opts["epochs"], opts["imgsz"]))
         opts["stalled"] = lambda: watchdog.stalled     # read by the adapter's per-batch callbacks
+        opts["heartbeat"] = watchdog.tick
         train_note = None
 
         def on_epoch(ep, total, metrics):
