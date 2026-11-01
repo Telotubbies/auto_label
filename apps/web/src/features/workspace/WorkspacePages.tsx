@@ -55,6 +55,15 @@ export function Deployments() {
 
 type AuditRow = { id: string; action: string; target: string; meta: Record<string, unknown>; created: number; user: string }
 
+const KIND: Record<Job['kind'], { label: string; page: string }> = {
+  train: { label: 'Training', page: 'models' },
+  autolabel: { label: 'Auto-label', page: 'annotate' },
+  version: { label: 'Version', page: 'versions' },
+  export: { label: 'Export', page: 'versions' },
+  export_engine: { label: 'TensorRT export', page: 'models' },
+  health: { label: 'Health check', page: 'analytics' },
+}
+
 export function Activity() {
   const { ws = '' } = useParams()
   const jobs = useQuery({ queryKey: ['ws-jobs', ws], queryFn: () => get<Job[]>(`/ws/${ws}/jobs`), refetchInterval: 4000 })
@@ -71,8 +80,8 @@ export function Activity() {
             {[...active, ...(jobs.data ?? []).filter((j) => !active.includes(j)).slice(0, 15)].map((j) => (
               <div key={j.id} className="flex items-center gap-3 text-sm">
                 <StatusPill status={j.status} />
-                <span className="w-24 capitalize">{j.kind}</span>
-                <Link to={`/${ws}/${j.project}/${j.kind === 'train' ? 'models' : j.kind === 'autolabel' ? 'annotate' : j.kind === 'health' ? 'analytics' : 'versions'}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
+                <span className="w-24 capitalize">{KIND[j.kind].label}</span>
+                <Link to={`/${ws}/${j.project}/${KIND[j.kind].page}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
                 {['running', 'queued'].includes(j.status) ? <Progress className="flex-1" value={j.progress} /> : <span className="flex-1 truncate text-xs text-muted-foreground">{j.error || (j.result?.format ? `format ${j.result.format}` : '')}</span>}
                 <span className="w-24 text-right text-xs text-muted-foreground">{fmtAgo(j.created)}</span>
               </div>

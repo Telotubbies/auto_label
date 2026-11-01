@@ -43,7 +43,7 @@ export interface Board { columns: Record<Status, BoardCard[]>; members: { id: st
 
 export interface JobStage { status: 'done' | 'running' | 'failed'; t: number; note?: string }
 export interface Job {
-  id: string; kind: 'version' | 'export' | 'train' | 'autolabel' | 'health'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
+  id: string; kind: 'version' | 'export' | 'export_engine' | 'train' | 'autolabel' | 'health'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
@@ -90,6 +90,8 @@ export interface ModelItem {
   history: Record<string, number>[]; classes: string[]; versionId: string; version?: number; jobId: string | null
   created: number; weightsUrl: string | null; job?: Job | null; project?: string; project_name?: string
   family?: string; variant?: string; license?: string
+  /** Exported runtime artifacts: the .pt checkpoint and, once built, the TensorRT engine. */
+  runtimeRefs?: { pt?: string; engine?: string }
   /** Detail endpoint only: eval file name -> signed "/api/files/…" path. */
   evalImages?: Record<string, string>
 }

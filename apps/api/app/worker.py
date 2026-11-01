@@ -149,6 +149,30 @@ def run_export(job: Job):
         return {"version_id": v.id, "format": fmt, "file": z.relative_to(DATA_DIR).as_posix(), "bytes": z.stat().st_size}
 
 
+def run_export_engine(job: Job):
+    """Build a TensorRT engine for a ready model, cache it under engines/, and register the runtime."""
+    with SessionLocal() as db:
+        tm = db.get(TrainedModel, job.params["model_id"])
+        if tm is None or tm.status != "ready" or not tm.weights:
+            raise RuntimeError("model is not ready")
+        mid, family, variant, weights = tm.id, tm.family or "ultralytics", tm.variant or tm.arch, tm.weights
+    src = DATA_DIR / weights
+    if not src.exists():
+        raise RuntimeError("model weights are missing")
+    dest = DATA_DIR / "engines" / f"{mid}.engine"
+    _set(job.id, progress=10.0)
+    with scheduler.exclusive(f"engine export {variant}"):         # the build owns the whole card
+        out = ADAPTERS[family].export(str(src), "engine", half=True, dest=dest)
+    rel = out.relative_to(DATA_DIR).as_posix()
+    with SessionLocal() as db:                                    # fresh row: the build ran for minutes
+        tm = db.get(TrainedModel, mid)
+        if tm is None:
+            raise RuntimeError("model was deleted during the export")
+        tm.runtime_refs = {**(tm.runtime_refs or {}), "pt": weights, "engine": rel}
+        db.commit()
+    return {"model_id": mid, "format": "engine", "engine": rel, "bytes": out.stat().st_size}
+
+
 def _is_oom(exc: BaseException) -> bool:
     """torch.cuda.OutOfMemoryError, matched by name so tests need no torch import."""
     if type(exc).__name__ == "OutOfMemoryError":
@@ -322,8 +346,9 @@ def run_health(job: Job):
         return health.scan_health(db, p)
 
 
-HANDLERS = {"version": run_version, "export": run_export, "train": run_train, "autolabel": run_autolabel,
-            "health": run_health, "connector_sync": connectors.sync_job}
+HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
+            "train": run_train, "autolabel": run_autolabel, "health": run_health,
+            "connector_sync": connectors.sync_job}
 
 
 def _notify(job: Job, status: str, error: str = ""):

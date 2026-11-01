@@ -18,9 +18,9 @@ CORS_ORIGINS = [o for o in _env("LD_CORS_ORIGINS", "*").split(",") if o]
 SIGNUP_ENABLED = _env("LD_SIGNUP_ENABLED", "1") == "1"
 EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside the api process
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
-# job kinds the in-process worker runs; set "version,export" when GPU jobs go to remote workers
+# job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
 LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS",
-                                    "version,export,train,autolabel,health,connector_sync").split(",") if k]
+                                   "version,export,export_engine,train,autolabel,health,connector_sync").split(",") if k]
 if "connector_sync" not in LOCAL_JOB_KINDS:
     LOCAL_JOB_KINDS.append("connector_sync")      # CPU/network job: never leave it unclaimed by every process
 REMOTE_JOB_KINDS = ("train", "autolabel")

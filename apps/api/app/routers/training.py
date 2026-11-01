@@ -8,10 +8,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters import ADAPTERS, resolve
+from ..adapters import ADAPTERS, engine_ref, resolve
 from ..adapters.refine import label_image, sam_available
 from ..apikeys import resolve_key
-from ..config import CREDIT_COST, LOCAL_JOB_KINDS
+from ..config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
 from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
@@ -87,9 +87,11 @@ def _lean_metrics(metrics: dict | None) -> dict:
 def model_out(m: TrainedModel) -> dict:
     # HF models store a directory (models/<id>/), which the single-file route cannot serve — no download.
     weights_url = sign_path(m.weights) if m.weights and m.family != "hf" else None
+    engine = engine_ref(m)
     return {"id": m.id, "name": m.name, "arch": m.arch, "task": m.task, "status": m.status, "metrics": m.metrics,
             "history": m.history, "classes": m.classes, "versionId": m.version_id, "jobId": m.job_id,
             "family": m.family, "variant": m.variant, "license": m.license,
+            "runtimeRefs": {"engine": engine} if engine else {},
             "created": m.created, "weightsUrl": weights_url}
 
 
@@ -269,7 +271,11 @@ def delete_model(mid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     m = _model(c, mid)
     audit(c.db, c.ws.id, c.user.id, "model.delete", m.name)
+    engine = engine_ref(m)
     c.db.delete(m); c.db.commit()
+    for rel in {engine, f"engines/{mid}.engine"}:          # the engine cache outlives the row otherwise
+        if rel:
+            (DATA_DIR / rel).unlink(missing_ok=True)
     return {"ok": True}
 
 
@@ -285,6 +291,38 @@ async def test_predict(mid: str, file: UploadFile = File(...), confidence: float
     if confidence is not None:                     # no slider value: Resolved uses the model's best-F1 threshold
         kw["conf"] = confidence
     return resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id).predict(im, **kw)
+
+
+class ExportModelIn(BaseModel):
+    format: str = "engine"
+
+
+@router.post(P + "/models/{mid}/export")
+def export_model(mid: str, body: ExportModelIn, c: Ctx = Depends(project_ctx)):
+    """Queue a TensorRT engine build; the worker caches it and registers runtime_refs.engine."""
+    c.need("admin")
+    m = _model(c, mid)
+    if body.format != "engine":
+        raise HTTPException(400, "only format=engine is supported")
+    if m.status != "ready" or not m.weights:
+        raise HTTPException(409, "model is not ready")
+    if (m.family or "ultralytics") != "ultralytics":
+        raise HTTPException(400, "TensorRT export is available for ultralytics models only")
+    if "world" in (m.variant or ""):
+        raise HTTPException(400, "TensorRT export is not available for open-vocabulary models")
+    if "export_engine" not in LOCAL_JOB_KINDS:
+        raise HTTPException(503, "no local GPU worker builds TensorRT engines")
+    active = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "export_engine",
+                                          Job.status.in_(("queued", "running")))).all()
+    existing = next((j for j in active if j.params.get("model_id") == m.id), None)
+    if existing is not None:                       # a double click must not queue a second multi-minute build
+        return job_out(existing)
+    j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="export_engine", created_by=c.user.id,
+            params={"model_id": m.id, "format": "engine"})
+    c.db.add(j)
+    audit(c.db, c.ws.id, c.user.id, "model.export", m.name, format="engine")
+    c.db.commit()
+    return job_out(j)
 
 
 class AutoLabelIn(BaseModel):

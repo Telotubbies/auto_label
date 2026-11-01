@@ -5,6 +5,7 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import DATA_DIR
 from ..models import TrainedModel
 from .base import ADAPTERS, Availability, Resolved, parse_ref
 
@@ -88,11 +89,24 @@ def model_conf(m: TrainedModel) -> float | None:
     return float(conf) if isinstance(conf, (int, float)) and 0 < conf < 1 else None
 
 
+def engine_ref(m: TrainedModel) -> str | None:
+    """The cached TensorRT engine for a model, or None when it was never built / the file is gone."""
+    rel = (m.runtime_refs or {}).get("engine")
+    return rel if isinstance(rel, str) and (DATA_DIR / rel).is_file() else None
+
+
+def _engine_usable() -> bool:
+    """Only prefer an engine where the TensorRT runtime can actually load it."""
+    ad = ADAPTERS.get("tensorrt")
+    return ad is not None and ad.probe().ok
+
+
 def resolve(model_ref: str, db: Session, *, workspace_id: str | None = None) -> Resolved:
     """Bind a model_ref to its adapter; trained:<id> also carries the model's variant and weights.
 
     With workspace_id the ref is scoped: a trained model of another workspace, or one that is not
-    ready, is reported as unknown — same message as a missing id, so ids don't leak across tenants."""
+    ready, is reported as unknown — same message as a missing id, so ids don't leak across tenants.
+    An exported TensorRT engine wins over the .pt checkpoint; a missing engine falls back to .pt."""
     fam, rest = parse_ref(model_ref)
     weights = conf = None
     if fam == "trained":
@@ -100,6 +114,9 @@ def resolve(model_ref: str, db: Session, *, workspace_id: str | None = None) -> 
         if m is None or (workspace_id is not None and (m.workspace_id != workspace_id or m.status != "ready")):
             raise ValueError(f"unknown trained model {rest!r}")
         fam, rest, weights = m.family or "ultralytics", m.variant or _TASK_VARIANT[m.task], m.weights
+        engine = engine_ref(m)
+        if engine is not None and "world" not in rest and _engine_usable():
+            fam, weights = "tensorrt", engine
         conf = model_conf(m)
     if fam not in ADAPTERS:
         raise ValueError(f"no adapter for family {fam!r}")

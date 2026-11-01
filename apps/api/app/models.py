@@ -205,7 +205,7 @@ class Job(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
-    kind: Mapped[str] = mapped_column(String(32))     # version | export | train | autolabel
+    kind: Mapped[str] = mapped_column(String(32))     # version | export | export_engine | train | autolabel
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     progress: Mapped[float] = mapped_column(Float, default=0.0)
     params: Mapped[dict] = mapped_column(JSON, default=dict)

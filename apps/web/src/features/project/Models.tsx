@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AlertTriangle, Boxes, Check, Download, ImageOff, Info, Rocket, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Boxes, Check, Download, ImageOff, Info, Rocket, Trash2, X, Zap } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import type { JobStage, LeaderboardRow, ModelEval, ModelEvalDetection, ModelItem } from '@/lib/types'
@@ -665,6 +665,11 @@ export default function Models() {
     queryFn: () => api.leaderboard(ws, project.slug),
     enabled: tab === 'leaderboard',
   })
+  const engineJobs = useQuery({
+    queryKey: ['engine-jobs', ws, project.slug],
+    queryFn: () => api.jobs(ws, project.slug, 'export_engine'),
+    refetchInterval: (q) => (q.state.data?.some((j) => ['queued', 'running'].includes(j.status)) ? 2500 : false),
+  })
 
   // The list poll stops the moment the model flips to ready — pull the fresh eval in at that point.
   const prevStatus = useRef(sel?.status)
@@ -676,6 +681,25 @@ export default function Models() {
 
   const m = detail.data ?? sel
   const ev = m?.metrics.eval
+  const engineJob = engineJobs.data?.find((j) => j.params.model_id === m?.id)
+  const engine = m?.runtimeRefs?.engine
+  const buildingEngine = !!engineJob && ['queued', 'running'].includes(engineJob.status)
+
+  // The engine build does not change the model status, so refresh the model once its job finishes.
+  const engineStatus = engineJob?.status
+  useEffect(() => {
+    if (engineStatus === 'done') {
+      qc.invalidateQueries({ queryKey: ['model', ws, project.slug, m?.id] })
+      qc.invalidateQueries({ queryKey: ['models', ws, project.slug] })
+    }
+  }, [engineStatus, qc, ws, project.slug, m?.id])
+
+  const exportEngine = () => post(`${api.P(ws, project.slug)}/models/${m!.id}/export`, { format: 'engine' })
+    .then(() => {
+      toast.ok('TensorRT export queued — the engine appears here when it is built')
+      qc.invalidateQueries({ queryKey: ['engine-jobs', ws, project.slug] })
+    })
+    .catch(toast.err)
 
   const pick = (id: string) => { setSp({ model: id }); setTab('evaluation') }
 
@@ -704,6 +728,12 @@ export default function Models() {
                 <div className="flex flex-wrap gap-2">
                   {m.status === 'ready' && <Button onClick={() => nav(`../deploy?model=${m.id}`)}><Rocket className="h-4 w-4" /> Deploy & Test</Button>}
                   {m.weightsUrl && <a href={fileUrl(m.weightsUrl)}><Button variant="outline"><Download className="h-4 w-4" /> Weights (.pt)</Button></a>}
+                  {engine && <Badge className="gap-1 border border-primary/30 bg-primary/10 text-primary"><Zap className="h-3 w-3" /> TensorRT engine</Badge>}
+                  {can('admin') && m.status === 'ready' && (
+                    <Button variant="outline" disabled={buildingEngine} onClick={exportEngine}>
+                      <Zap className="h-4 w-4" /> {buildingEngine ? `Building engine… ${Math.round(engineJob?.progress ?? 0)}%` : engine ? 'Rebuild engine' : 'Export TensorRT'}
+                    </Button>
+                  )}
                   {['queued', 'training'].includes(m.status) && m.jobId && can('reviewer') && <Button variant="outline" onClick={() => post(`${api.P(ws, project.slug)}/jobs/${m.jobId}/cancel`).then(() => toast.ok('Stopping after this epoch')).catch(toast.err)}><X className="h-4 w-4" /> Stop</Button>}
                   {can('admin') && <Button variant="ghost" size="icon" aria-label="Delete model" onClick={() => confirm('Delete this model?') && del(`${api.P(ws, project.slug)}/models/${m.id}`).then(() => qc.invalidateQueries({ queryKey: ['models', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
                 </div>
@@ -724,6 +754,7 @@ export default function Models() {
                     </Card>
                   )}
                   {m.status === 'failed' && <Card className="border-destructive/40 bg-destructive/10 p-4 text-sm">Training failed: {m.job?.error || 'see worker logs'}</Card>}
+                  {engineJob?.status === 'failed' && <Card role="alert" className="border-destructive/40 bg-destructive/10 p-4 text-sm">TensorRT export failed: {engineJob.error || 'see worker logs'}</Card>}
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {m.task === 'classify' ? <>

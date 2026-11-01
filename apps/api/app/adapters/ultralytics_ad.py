@@ -1,5 +1,6 @@
 """Ultralytics family: YOLO, RT-DETR, YOLO-World. Training + cached inference."""
 import importlib.util
+import os
 import shutil
 import threading
 import time
@@ -82,6 +83,14 @@ def _cls_name(variant: str) -> str:
     return "YOLO"
 
 
+def caps_for(variant: str) -> set[str]:
+    """Capabilities shared by the .pt and TensorRT runtimes of the same variant."""
+    caps = {"segment"} if variant.endswith("-seg") else {"detect"}
+    if "world" in variant:
+        caps.add("open-vocab")
+    return caps
+
+
 def _load(weights: str, cls_name: str = "YOLO"):
     """Load through the GPU scheduler so its VRAM ledger can evict the LRU model."""
     from ..gpu import scheduler                  # lazy: keeps app.gpu importable before the adapters package
@@ -143,10 +152,7 @@ class UltralyticsAdapter:
         return Availability(True)      # zoo weights download on first use
 
     def capabilities(self, variant: str) -> set[str]:
-        caps = {"segment"} if variant.endswith("-seg") else {"detect"}
-        if "world" in variant:
-            caps.add("open-vocab")
-        return caps
+        return caps_for(variant)
 
     def train(self, variant, dataset_dir, task, opts, on_epoch, should_stop) -> TrainResult:
         """Train on a generated version dir. opts: model_id, epochs, imgsz, batch, patience, max_minutes, resume_from."""
@@ -211,6 +217,27 @@ class UltralyticsAdapter:
         shutil.copyfile(best, dst)
         shutil.rmtree(ds, ignore_errors=True)
         return TrainResult(weights=dst.relative_to(DATA_DIR).as_posix(), run_dir=str(run_dir), history=history)
+
+    def export(self, weights: str, fmt: str = "engine", *, half: bool = True, dest: Path | None = None) -> Path:
+        """Build a runtime artifact from a checkpoint. TensorRT needs a CUDA GPU and the tensorrt package."""
+        if fmt != "engine":
+            raise ValueError(f"unsupported export format {fmt!r}")
+        import ultralytics
+
+        out = Path(ultralytics.YOLO(str(weights)).export(format=fmt, half=half))
+        if dest is None:
+            return out
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if out.resolve() == dest.resolve():
+            return dest
+        tmp = dest.with_name(dest.name + ".tmp")          # atomic swap: a failed rebuild keeps the old engine
+        shutil.move(str(out), str(tmp))
+        try:
+            os.replace(tmp, dest)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            raise
+        return dest
 
     def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
         cls = _cls_name(variant)
