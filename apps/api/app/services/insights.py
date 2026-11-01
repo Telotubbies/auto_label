@@ -11,12 +11,16 @@ import threading
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Audit, Image, Job, LabelClass, Member, Project, User, Version, now
+from ..models import Audit, Image, Job, LabelClass, Member, Project, TrainedModel, User, Version, now
 from ..security import sign_path
-from . import insights_dataset, versioning
+from . import insights_dataset, insights_eval as agg, versioning
+from .insights_common import cached, clear_cache, data_stamp, model_in_project
+from .insights_common import signature as model_signature
 from .insights_selection import resolve_selection, save_selection, selection_info  # noqa: F401 re-exported
 
 IMGSZ = 640
+
+# ---------- model / evaluation views (20b) ----------
 CACHE_MAX = 256
 MANIFEST_CACHE_MAX = 32
 JOB_KINDS = ("insights_images", "insights_leakage", "insights_embedding")
@@ -433,3 +437,357 @@ def version_diff(db: Session, project: Project, base: Version, target: Version) 
         "split_moves": moved,
         "summary": {"added": len(added), "removed": len(removed), "moved": len(moved)},
     }
+
+
+MAX_COMPARE_RUNS = 4
+MAX_TRAINING_RUNS = (
+    50  # catalogue: every run is selectable; the UI overlays at most six
+)
+MAX_SELECTED_RUNS = 8
+MAX_DISAGREEMENT = 12
+MAX_CONFUSION_URLS = 400  # a 20k-image split must not serialise 20k signed URLs
+
+__all__ = [
+    "clear_cache",
+    "compare",
+    "model_detections",
+    "model_insights",
+    "training_insights",
+]
+
+
+# ---------- one model --------------------------------------------------------
+def model_insights(db: Session, project_id: str, mid: str) -> dict:
+    m = model_in_project(db, project_id, mid)
+    sig = f"{model_signature(m)}:{data_stamp(db, project_id)}"
+    payload, hit = cached(f"eval:{project_id}:{mid}", sig, lambda: _build_model(db, m))
+    split = payload.get("split") or "test"
+    out = {k: v for k, v in payload.items() if k != "_files"}
+    out["images"] = {
+        f: sign_path(f"versions/{m.version_id}/{split}/{f}")
+        for f in payload.get("_files") or []
+    }
+    out["cache"] = {"signature": sig, "hit": hit}
+    return out
+
+
+def _build_model(db: Session, m: TrainedModel) -> dict:
+    head = _model_head(m, db)
+    ev = (m.metrics or {}).get("eval")
+    if not isinstance(ev, dict) or not ev.get("detections") and not ev.get("coco"):
+        return {
+            "model": head,
+            "eval": None,
+            "_files": [],
+            "split": "test",
+            "reason": "this model has no stored evaluation yet — it runs after training finishes",
+        }
+    detections = [
+        d for d in ev.get("detections") or [] if isinstance(d, dict) and d.get("file")
+    ]
+    classes = agg.classes_for(ev, detections, m.classes)
+    split = str(ev.get("split") or "test")
+    files = _eval_files(ev, detections)
+    out = {
+        "split": split,
+        "eval": {
+            "split": split,
+            "note": ev.get("note") or "",
+            "iou": ev.get("iou") or "bbox",
+            "coco": {k: float(v or 0.0) for k, v in (ev.get("coco") or {}).items()},
+            "per_class": ev.get("per_class") or [],
+            "pr_curve": ev.get("pr_curve") or [],
+            "f1_best": ev.get("f1_best") or {"conf": 0.4, "f1": 0.0},
+            "confusion": ev.get("confusion")
+            or {"labels": [], "matrix": [], "images": []},
+            "tide": ev.get("tide"),
+            "latency_ms": float(ev.get("latency_ms") or 0.0),
+            "split_images": int(ev.get("split_images") or len(detections)),
+            "sample_images": len(detections),
+            "worst": ev.get("worst") or [],
+            "detections": detections,
+            "f1_curve": agg.f1_curve(detections),
+            "per_class_pr": agg.per_class_pr(detections, classes),
+            "calibration": agg.calibration(detections),
+            "slices": agg.slices(db, m, detections, split, classes),
+        },
+        "model": head,
+        "reason": None,
+        "_files": files,
+    }
+    return out
+
+
+def _model_head(m: TrainedModel, db: Session) -> dict:
+    v = db.get(Version, m.version_id)
+    return {
+        "id": m.id,
+        "name": m.name,
+        "arch": m.arch,
+        "task": m.task,
+        "status": m.status,
+        "version": v.number if v else None,
+        "classes": list(m.classes or []),
+        "created": m.created,
+    }
+
+
+def _eval_files(ev: dict, detections: list[dict]) -> list[str]:
+    """Worst images + stored detections + a capped slice of the confusion-matrix galleries."""
+    files: list[str] = []
+    for row in ev.get("worst") or []:
+        files += _files_in(row)
+    files += [d["file"] for d in detections]
+    count = 0
+    for row in (ev.get("confusion") or {}).get("images") or []:
+        for cell in row or []:
+            for f in (cell or [])[:20]:
+                if count >= MAX_CONFUSION_URLS:
+                    break
+                if isinstance(f, str):
+                    files.append(f)
+                    count += 1
+    return list(dict.fromkeys(files))[: len(detections) + MAX_CONFUSION_URLS + 12]
+
+
+def _files_in(obj) -> list[str]:
+    if isinstance(obj, str):
+        return [obj]
+    if isinstance(obj, dict):
+        if isinstance(obj.get("file"), str):
+            return [obj["file"]]
+        return [f for value in obj.values() for f in _files_in(value)]
+    if isinstance(obj, (list, tuple)):
+        return [f for value in obj for f in _files_in(value)]
+    return []
+
+
+def model_detections(db: Session, project_id: str, mid: str, files: list[str]) -> dict:
+    """Detections for a handful of images (the compare modal) without building the whole eval payload."""
+    m = model_in_project(db, project_id, mid)
+    ev = (m.metrics or {}).get("eval") or {}
+    wanted = set(files)
+    split = str(ev.get("split") or "test")
+    dets = [
+        d
+        for d in ev.get("detections") or []
+        if isinstance(d, dict) and d.get("file") in wanted
+    ]
+    return {
+        "detections": dets,
+        "images": {
+            d["file"]: sign_path(f"versions/{m.version_id}/{split}/{d['file']}")
+            for d in dets
+        },
+    }
+
+
+# ---------- training curves --------------------------------------------------
+def training_insights(
+    db: Session, project_id: str, ids: list[str] | None = None
+) -> dict:
+    rows = db.execute(
+        select(
+            TrainedModel.id,
+            TrainedModel.name,
+            TrainedModel.arch,
+            TrainedModel.task,
+            TrainedModel.status,
+            TrainedModel.version_id,
+            TrainedModel.created,
+            TrainedModel.history,
+        )
+        .where(TrainedModel.project_id == project_id)
+        .order_by(TrainedModel.created.desc())
+    ).all()
+    if ids:
+        found = {row.id: row for row in rows}
+        missing = [i for i in ids if i not in found]
+        if missing:
+            raise LookupError("model not found")
+        rows = [found[i] for i in dict.fromkeys(ids)][:MAX_SELECTED_RUNS]
+    rows = [row for row in rows if row.history][:MAX_TRAINING_RUNS]
+    versions = (
+        {
+            v.id: v.number
+            for v in db.scalars(
+                select(Version).where(Version.id.in_({row.version_id for row in rows}))
+            ).all()
+        }
+        if rows
+        else {}
+    )
+    runs = [
+        {
+            "id": row.id,
+            "name": row.name,
+            "arch": row.arch,
+            "task": row.task,
+            "status": row.status,
+            "version": versions.get(row.version_id),
+            "created": row.created,
+            "epochs": len(row.history or []),
+            "history": row.history or [],
+        }
+        for row in rows
+    ]
+    return {"runs": runs, "keys": _metric_keys([row.history or [] for row in rows])}
+
+
+def _metric_keys(histories: list[list[dict]]) -> list[dict]:
+    keys = {k for history in histories for row in history for k in row if k != "epoch"}
+    quality = sorted(
+        k
+        for k in keys
+        if any(t in k.lower() for t in ("map", "accuracy", "precision", "recall", "f1"))
+    )
+    loss = sorted(k for k in keys if "loss" in k.lower())
+    other = sorted(keys - set(quality) - set(loss))
+    out = []
+    for group, names in (("quality", quality), ("loss", loss), ("other", other)):
+        for key in names:
+            out.append({"key": key, "label": _label(key), "group": group})
+    return out
+
+
+def _label(key: str) -> str:
+    tail = key.split("/")[-1]
+    return tail.replace("(B)", "").replace("(M)", "").strip() or key
+
+
+# ---------- model compare ----------------------------------------------------
+def compare(db: Session, project_id: str, ids: list[str]) -> dict:
+    unique = list(dict.fromkeys(i for i in ids if i))
+    if len(unique) < 2:
+        raise ValueError("select at least two models to compare")
+    if len(unique) > MAX_COMPARE_RUNS:
+        raise ValueError(f"compare at most {MAX_COMPARE_RUNS} models at a time")
+    models = [model_in_project(db, project_id, i) for i in unique]
+    evals = [(m.metrics or {}).get("eval") for m in models]
+    if any(not isinstance(ev, dict) or not ev.get("coco") for ev in evals):
+        raise ValueError("every compared model needs a finished evaluation")
+    if any(
+        "not evaluated" in str((ev or {}).get("note") or "").lower()
+        or "skipped" in str((ev or {}).get("note") or "").lower()
+        for ev in evals
+    ):
+        raise ValueError("every compared model needs a finished evaluation")
+    if any(m.task == "classify" for m in models):
+        raise ValueError("classification models have no COCO curves to compare")
+    if len({m.task for m in models}) > 1:
+        raise ValueError("compared models must use the same task")
+    if len({m.version_id for m in models}) > 1:
+        raise ValueError("compared models must be trained on the same dataset version")
+    splits = {str(ev.get("split")) for ev in evals}
+    if len(splits) > 1:
+        raise ValueError("compared models must be evaluated on the same split")
+
+    sig = f"{'|'.join(model_signature(m) for m in models)}:{data_stamp(db, project_id)}"
+    payload, hit = cached(
+        f"compare:{project_id}:{','.join(unique)}",
+        sig,
+        lambda: _build_compare(db, models, evals),
+    )
+    split = payload["split"]
+    out = dict(payload)
+    out["disagreement"] = [
+        {
+            **{k: v for k, v in row.items() if k != "file"},
+            "file": row["file"],
+            "url": sign_path(f"versions/{models[0].version_id}/{split}/{row['file']}"),
+        }
+        for row in payload["disagreement"]
+    ]
+    out["cache"] = {"signature": sig, "hit": hit}
+    return out
+
+
+def _build_compare(db: Session, models: list[TrainedModel], evals: list[dict]) -> dict:
+    v = db.get(Version, models[0].version_id)
+    out_models = []
+    for m, ev in zip(models, evals):
+        out_models.append(
+            {
+                "id": m.id,
+                "name": m.name,
+                "arch": m.arch,
+                "task": m.task,
+                "coco": {
+                    k: float(val or 0.0) for k, val in (ev.get("coco") or {}).items()
+                },
+                "per_class": ev.get("per_class") or [],
+                "pr_curve": ev.get("pr_curve") or [],
+                "latency_ms": float(ev.get("latency_ms") or 0.0),
+                "tide": ev.get("tide"),
+                "f1_best": ev.get("f1_best") or {"conf": 0.4, "f1": 0.0},
+            }
+        )
+    threshold = round(
+        max(float((ev.get("f1_best") or {}).get("conf") or 0.4) for ev in evals), 2
+    )
+    return {
+        "version_id": models[0].version_id,
+        "version": v.number if v else None,
+        "split": str(evals[0].get("split") or "test"),
+        "models": out_models,
+        "pareto": _pareto(out_models),
+        "threshold": threshold,
+        "has_detections": all(bool(ev.get("detections")) for ev in evals),
+        "disagreement": _disagreement(models, evals, threshold),
+    }
+
+
+def _pareto(models: list[dict]) -> list[str]:
+    """Non-dominated models on (lower latency, higher AP50); zero latency is not a real win."""
+    out = []
+    for a in models:
+        ap_a, lat_a = a["coco"].get("AP50", 0.0), a["latency_ms"]
+        dominated = any(
+            b["id"] != a["id"]
+            and b["coco"].get("AP50", 0.0) >= ap_a
+            and 0 < b["latency_ms"] <= lat_a
+            and (b["coco"].get("AP50", 0.0) > ap_a or b["latency_ms"] < lat_a)
+            for b in models
+        )
+        if not dominated:
+            out.append(a["id"])
+    return out
+
+
+def _disagreement(
+    models: list[TrainedModel], evals: list[dict], threshold: float
+) -> list[dict]:
+    """Images where the models' TP/FP/FN counts differ most, all scored at one shared threshold."""
+    dets = [
+        {(d.get("file")): d for d in (ev.get("detections") or []) if d.get("file")}
+        for ev in evals
+    ]
+    if any(not d for d in dets):
+        return []
+    common = set(dets[0])
+    for d in dets[1:]:
+        common &= set(d)
+    rows = []
+    for file in common:
+        counts = []
+        for m, by_file in zip(models, dets):
+            d = by_file[file]
+            gt, pred = d.get("gt") or [], d.get("pred") or []
+            pairs = agg.match(gt, pred, threshold)
+            above = sum(1 for p in pred if p.get("conf", 0) >= threshold)
+            counts.append(
+                {
+                    "id": m.id,
+                    "tp": len(pairs),
+                    "fp": above - len(pairs),
+                    "fn": len(gt) - len(pairs),
+                }
+            )
+        score = sum(
+            max(c[field] for c in counts) - min(c[field] for c in counts)
+            for field in ("tp", "fp", "fn")
+        )
+        if score:
+            rows.append({"file": file, "score": score, "models": counts})
+    rows.sort(key=lambda r: (-r["score"], r["file"]))
+    return rows[:MAX_DISAGREEMENT]

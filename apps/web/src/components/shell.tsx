@@ -125,6 +125,7 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
   { group: 'MODELS', items: [
     { to: 'train', label: 'Train', icon: BrainCircuit, min: 'admin' },
     { to: 'models', label: 'Models', icon: Boxes, min: 'reviewer' },
+    { to: 'insights', label: 'Insights', icon: LineChart, min: 'reviewer' },
   ]},
   { group: 'DEPLOY', items: [
     { to: 'deploy', label: 'Deploy & Test', icon: Rocket, min: 'reviewer' },

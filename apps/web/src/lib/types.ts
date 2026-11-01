@@ -280,3 +280,81 @@ export interface InsightLabeling {
     by_source: { source: string; count: number; accepted: number }[]
   }
 }
+
+// ---------- model insights (Task 20b) ----------------------------------------
+export interface InsightsCache { signature: string; hit: boolean }
+
+export interface TrainingRun {
+  id: string; name: string; task: ModelItem['task']; version: number | null; epochs: number
+  history: Record<string, number>[]
+}
+export interface TrainingMetricKey { key: string; label: string; group: 'quality' | 'loss' | 'other' }
+export interface TrainingInsights { runs: TrainingRun[]; keys: TrainingMetricKey[] }
+
+export interface EvalCalibrationBin { bin: string; conf: number; accuracy: number; count: number }
+export interface EvalCalibration { bins: EvalCalibrationBin[]; ece: number; brier: number }
+export type EvalSliceDimension = 'size' | 'tag' | 'batch' | 'split' | 'brightness' | 'source'
+export interface EvalSlice {
+  dimension: EvalSliceDimension; value: string; images: number; instances: number
+  AP: number | null; AP50: number | null
+}
+export interface PerClassPR { class: string; points: { recall: number; precision: number }[] }
+export interface F1Point { conf: number; precision: number; recall: number; f1: number }
+
+/** Insights evaluation payload: a superset of the model page's ModelEval. */
+export interface EvalInsights extends ModelEval {
+  per_class_pr: PerClassPR[]
+  f1_curve: F1Point[]
+  calibration: EvalCalibration
+  slices: EvalSlice[]
+  split_images: number
+  /** Images actually scored for the slice/calibration breakdowns. */
+  sample_images: number
+  detections: ModelEvalDetection[]
+}
+
+export interface InsightModelSummary {
+  id: string; name: string; arch: string; task: ModelItem['task']; status: ModelItem['status']
+  version: number | null; classes: string[]; created: number
+}
+export interface ModelInsights {
+  model: InsightModelSummary
+  eval: EvalInsights | null
+  /** Eval file name -> signed "/api/files/…" path. */
+  images: Record<string, string>
+  /** Why eval is null. */
+  reason: string | null
+  cache: InsightsCache
+}
+
+export interface CompareModel {
+  id: string; name: string; arch: string; task: ModelItem['task']
+  coco: Record<string, number>
+  per_class: { class: string; AP: number; AP50: number }[]
+  pr_curve: { recall: number; precision: number }[]
+  latency_ms: number
+  tide?: ModelEval['tide']
+  f1_best: { conf: number; f1: number }
+}
+export interface CompareDisagreement {
+  file: string; url: string; score: number
+  models: { id: string; tp: number; fp: number; fn: number }[]
+}
+export interface ModelDetections {
+  detections: ModelEvalDetection[]
+  /** Eval file name -> signed "/api/files/…" path. */
+  images: Record<string, string>
+}
+
+export interface CompareInsights {
+  version_id: string; version: number | null; split: 'test' | 'valid'
+  models: CompareModel[]
+  /** Model ids on the latency-vs-AP Pareto front. */
+  pareto: string[]
+  /** One shared confidence threshold for the disagreement counts. */
+  threshold: number
+  /** False when the eval rows predate per-image detections. */
+  has_detections: boolean
+  disagreement: CompareDisagreement[]
+  cache: InsightsCache
+}
