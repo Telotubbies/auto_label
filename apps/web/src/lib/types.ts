@@ -602,3 +602,59 @@ export interface HoneypotItem {
 export interface HoneypotLabeler { user_id: string; name: string; attempts: number; accuracy: number | null }
 
 export interface HoneypotList { items: HoneypotItem[]; labelers: HoneypotLabeler[] }
+// ---------- streams (CCTV) ---------------------------------------------------
+/** Worker lifecycle. `connecting` is the first state, before the first frame arrives. */
+export type StreamStatus = 'stopped' | 'connecting' | 'live' | 'reconnecting' | 'error' | 'paused (GPU busy)'
+export type StreamRuleKind = 'count' | 'zone' | 'line' | 'dwell' | 'vlm'
+export type StreamCountOp = '>=' | '>' | '<=' | '<' | '=='
+
+/** Polygon in the captured frame, normalized 0..1 and flattened as x1,y1,x2,y2,… */
+export interface StreamZone { id: string; points: number[] }
+
+export interface StreamCountRule { kind: 'count'; class: string; op: StreamCountOp; k: number; for_s?: number }
+export interface StreamZoneRule { kind: 'zone'; class: string; zone_id: string }
+export interface StreamLineRule { kind: 'line'; class: string; line: number[]; direction: 'in' | 'out' | 'both' }
+export interface StreamDwellRule { kind: 'dwell'; class: string; zone_id: string; seconds: number }
+export interface StreamVlmRule { kind: 'vlm'; question: string; every_s: number }
+export type StreamRule = StreamCountRule | StreamZoneRule | StreamLineRule | StreamDwellRule | StreamVlmRule
+
+export interface StreamItem {
+  id: string; name: string; source: string; modelRef: string; sampleFps: number
+  zones: StreamZone[]; rules: StreamRule[]
+  status: StreamStatus; lastError: string
+  created: number; mjpeg: string
+  /** One JPEG of the newest frame; 503 until the source has produced one. */
+  frame: string
+  events: number; fps: number; frames: number; detections: number
+}
+
+export interface StreamPrediction {
+  class: string; class_id?: number; confidence: number
+  /** Normalized 0..1; (x, y) is the box centre and the anchor is bottom-centre. */
+  x: number; y: number; width: number; height: number; track_id?: number | null
+}
+
+/** The rule that fired, copied onto the event so history survives later rule edits. */
+export interface StreamEventRule {
+  index: number; kind: StreamRuleKind; class?: string; label: string
+  op?: StreamCountOp; k?: number; for_s?: number; zone_id?: string
+  line?: number[]; direction?: 'in' | 'out' | 'both'; seconds?: number
+  question?: string; every_s?: number
+}
+
+export interface StreamEventItem {
+  id: string; ts: number; rule: StreamEventRule; summary: string
+  /** Signed "/api/files/…" path, or null when no frame was captured. */
+  snapshot: string | null; predictions: StreamPrediction[]; reviewed: boolean
+}
+/** Alias kept for the API client and pages; the server calls these stream events. */
+export type StreamEvent = StreamEventItem
+/** `GET …/events` page; `total` counts every event matching the filters, `items` is newest first. */
+export interface StreamEventPage { total: number; items: StreamEventItem[] }
+
+export interface StreamCreateBody {
+  name: string; source: string; model_ref: string; sample_fps?: number
+  zones?: StreamZone[]; rules?: StreamRule[]
+}
+export type StreamPatchBody = Partial<StreamCreateBody>
+export interface StreamVideoUpload { source: string }

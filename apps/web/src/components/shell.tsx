@@ -5,8 +5,7 @@ import {
   BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, ClipboardCheck, Cpu,
   Database, Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor,
   Moon, Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload,
-  User, X, Zap, Wrench,
-} from 'lucide-react'
+  User, X, Zap, Wrench, Cctv,} from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
@@ -155,6 +154,9 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
   ]},
   { group: 'QUALITY', items: [
     { to: 'qa', label: 'QA & Workforce', icon: ClipboardCheck, perm: 'project.annotate' },
+  ]},
+  { group: 'LIVE', items: [
+    { to: 'streams', label: 'Streams', icon: Cctv, perm: 'project.read' },
   ]},
   { group: 'MODELS', items: [
     { to: 'train', label: 'Train', icon: BrainCircuit, perm: 'project.train' },
