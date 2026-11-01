@@ -10,12 +10,12 @@ from sqlalchemy.orm import Session
 
 from ..adapters import ADAPTERS, resolve
 from ..adapters.refine import label_image, sam_available
+from ..apikeys import resolve_key
 from ..config import CREDIT_COST, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
-from ..ratelimit import client_ip, limit
-from ..models import ApiKey, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
-from ..security import api_key_hash, sign_path
+from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
+from ..security import sign_path
 from ..services import imaging, ml, safefetch
 from .projects import job_out
 
@@ -242,11 +242,11 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
                "batch": body.batch, "max_minutes": body.max_minutes, "resume_from": body.resume_from}
     if base in _YOLO26:
         options["size"] = base[len("yolo26"):]      # v1 remote worker still reads size
-    j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="train", created_by=c.user.id,
+    j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="train", created_by=c.uid,
             params={"model_id": m.id, "version_id": v.id, "options": options})
     c.db.add(j); c.db.flush()
     m.job_id = j.id
-    audit(c.db, c.ws.id, c.user.id, "train.start", m.name, epochs=body.epochs, variant=variant)
+    audit(c.db, c.ws.id, c.uid, "train.start", m.name, epochs=body.epochs, variant=variant)
     c.db.commit()
     return model_out(m)
 
@@ -284,7 +284,7 @@ async def test_predict(mid: str, file: UploadFile = File(...), confidence: float
     kw = {"iou": overlap, "classes": m.classes}
     if confidence is not None:                     # no slider value: Resolved uses the model's best-F1 threshold
         kw["conf"] = confidence
-    return resolve(f"trained:{m.id}", c.db).predict(im, **kw)
+    return resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id).predict(im, **kw)
 
 
 class AutoLabelIn(BaseModel):
@@ -386,16 +386,9 @@ def autolabel_preview(body: AutoLabelPreviewIn, c: Ctx = Depends(project_ctx)):
 
 # --- hosted API (api_key auth, Roboflow-style) ------------------------------------------------
 
-def key_ws(db: Session, api_key: str | None, request: Request | None = None) -> Workspace:
-    if request is not None:
-        limit(f"apikey:{client_ip(request)}", 600, 60)      # caps key guessing and abusive clients
-    if not api_key:
-        raise HTTPException(401, "api_key required")
-    k = db.scalar(select(ApiKey).where(ApiKey.hash == api_key_hash(api_key)))
-    if not k:
-        raise HTTPException(401, "invalid api_key")
-    k.last_used = time.time()
-    return db.get(Workspace, k.workspace_id)
+def key_ws(db: Session, api_key: str | None, request: Request, scope: str) -> Workspace:
+    """Resolve the key and enforce its scope before anything else runs."""
+    return resolve_key(request, api_key, db).need(scope).ws
 
 
 async def _image_from_request(request: Request, file: UploadFile | None, image: str | None):
@@ -424,12 +417,13 @@ async def _image_from_request(request: Request, file: UploadFile | None, image: 
     raise HTTPException(400, "send an image as multipart `file`, `image` (url/base64) or a base64 body")
 
 
-@router.post("/api/v1/models/{mid}/predict")
-async def hosted_predict(mid: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
+@router.post("/api/v1/models/{model_id}/predict", operation_id="predict",
+             openapi_extra={"x-scopes": ["infer"]})
+async def hosted_predict(model_id: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
                          overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
                          db: Session = Depends(get_db)):
-    ws = key_ws(db, api_key or request.headers.get("x-api-key"), request)
-    m = db.get(TrainedModel, mid)
+    ws = key_ws(db, api_key or request.headers.get("x-api-key"), request, "infer")
+    m = db.get(TrainedModel, model_id)
     if not m or m.workspace_id != ws.id or m.status != "ready":
         raise HTTPException(404, "model not found")
     charge(db, ws, CREDIT_COST["infer"])
@@ -438,7 +432,7 @@ async def hosted_predict(mid: str, request: Request, api_key: str | None = Query
     kw = {"iou": overlap, "classes": m.classes}
     if confidence is not None:                     # omitted: the model's evaluated best-F1 threshold
         kw["conf"] = confidence
-    out = resolve(f"trained:{m.id}", db).predict(im, **kw)
+    out = resolve(f"trained:{m.id}", db, workspace_id=ws.id).predict(im, **kw)
     audit(db, ws.id, None, "infer.hosted", m.name, n=len(out["predictions"]))
     _active_learning(db, ws, db.get(Project, m.project_id), data, out)
     db.commit()
@@ -462,11 +456,12 @@ def _active_learning(db: Session, ws: Workspace, p: Project, data: bytes, pred: 
             pass   # plan limit / duplicate: inference result still returned
 
 
-@router.post("/api/v1/{ws_slug}/{project}/upload")
+@router.post("/api/v1/{ws_slug}/{project}/upload", operation_id="upload_images_v1",
+             openapi_extra={"x-scopes": ["upload"]})
 async def hosted_upload(ws_slug: str, project: str, request: Request, api_key: str | None = Query(None),
                         split: str = "auto", batch: str = "API Upload", tag: str = "", name: str = "upload.jpg",
                         image: str | None = None, file: UploadFile | None = File(None), db: Session = Depends(get_db)):
-    ws = key_ws(db, api_key or request.headers.get("x-api-key"), request)
+    ws = key_ws(db, api_key or request.headers.get("x-api-key"), request, "upload")
     if ws.slug != ws_slug:
         raise HTTPException(403, "api_key belongs to another workspace")
     p = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == project, Project.deleted_at.is_(None)))

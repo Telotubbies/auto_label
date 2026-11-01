@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..apikeys import scopes_of
 from ..config import DATA_DIR, PLANS, PUBLIC_URL
 from ..deps import Ctx, audit, credits_left, plan, ws_ctx
-from ..models import (ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project, TrainedModel, User,
-                      Workspace)
+from ..models import (API_SCOPES, ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project, TrainedModel,
+                      User, Workspace)
 from ..security import new_api_key
 
 router = APIRouter(prefix="/api/ws/{ws}", tags=["workspace"])
@@ -167,22 +168,35 @@ def remove_member(uid: str, c: Ctx = Depends(ws_ctx)):
 def keys(c: Ctx = Depends(ws_ctx)):
     c.need("admin")
     rows = c.db.scalars(select(ApiKey).where(ApiKey.workspace_id == c.ws.id).order_by(ApiKey.created.desc())).all()
-    return [{"id": k.id, "name": k.name, "prefix": k.prefix, "created": k.created, "last_used": k.last_used} for k in rows]
+    return [{"id": k.id, "name": k.name, "prefix": k.prefix, "scopes": list(scopes_of(k)),
+             "publishable": bool(k.publishable), "created": k.created, "last_used": k.last_used} for k in rows]
 
 
 class KeyIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    scopes: list[str] | None = None            # omitted = all scopes (legacy behaviour)
+    publishable: bool = False                   # browser-safe: forces ["infer"]
 
 
 @router.post("/keys")
 def new_key(body: KeyIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
-    key, prefix, h = new_api_key()
-    k = ApiKey(workspace_id=c.ws.id, name=body.name, prefix=prefix, hash=h, created_by=c.user.id)
+    if body.publishable:
+        scopes = ["infer"]
+    elif body.scopes is None:
+        scopes = list(API_SCOPES)
+    else:
+        scopes = list(dict.fromkeys(body.scopes))
+        if not scopes or any(s not in API_SCOPES for s in scopes):
+            raise HTTPException(400, f"scopes must be a non-empty subset of {list(API_SCOPES)}")
+    key, prefix, h = new_api_key(publishable=body.publishable)
+    k = ApiKey(workspace_id=c.ws.id, name=body.name, prefix=prefix, hash=h, scopes=scopes,
+               publishable=body.publishable, created_by=c.user.id)
     c.db.add(k)
-    audit(c.db, c.ws.id, c.user.id, "apikey.create", body.name)
+    audit(c.db, c.ws.id, c.user.id, "apikey.create", body.name, scopes=scopes)
     c.db.commit()
-    return {"id": k.id, "name": k.name, "prefix": prefix, "key": key}
+    return {"id": k.id, "name": k.name, "prefix": prefix, "scopes": scopes,
+            "publishable": body.publishable, "key": key}
 
 
 @router.delete("/keys/{kid}")

@@ -108,8 +108,8 @@ def export(vid: str, body: ExportIn, c: Ctx = Depends(project_ctx)):
     if existing and (existing.status != "done" or (DATA_DIR / existing.result.get("file", "-")).exists()):
         return {**job_out(existing), "url": sign_path(existing.result["file"]) if existing.status == "done" else None}
     j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="export", params={"version_id": vid, "format": body.format},
-            created_by=c.user.id)
+            created_by=c.uid)
     c.db.add(j)
-    audit(c.db, c.ws.id, c.user.id, "version.export", f"{c.project.name} v{v.number}", format=body.format)
+    audit(c.db, c.ws.id, c.uid, "version.export", f"{c.project.name} v{v.number}", format=body.format)
     c.db.commit()
     return {**job_out(j), "url": None}

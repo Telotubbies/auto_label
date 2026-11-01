@@ -50,6 +50,11 @@ class Ctx:
     db: Session
     project: Optional[Project] = None
 
+    @property
+    def uid(self) -> Optional[str]:
+        """None for API-key calls (no user session)."""
+        return self.user.id if self.user else None
+
     def need(self, role: str):
         if RANK[self.role] < RANK[role]:
             raise HTTPException(403, f"requires {role} role")

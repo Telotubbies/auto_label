@@ -18,6 +18,8 @@ def init_db():
     ensure_columns(engine, "trained_models", {
         "family": "VARCHAR(32) DEFAULT 'ultralytics'", "variant": "VARCHAR(64) DEFAULT ''",
         "license": "VARCHAR(64) DEFAULT 'AGPL-3.0'", "runtime_refs": "JSON"})
+    ensure_columns(engine, "api_keys", {"scopes": "JSON", "publishable": "BOOLEAN DEFAULT FALSE"})
+    ensure_columns(engine, "connectors", {"last_sync": "FLOAT", "last_status": "VARCHAR(16) DEFAULT ''"})
     _backfill_image_classes()
     if SEED_DEMO:
         seed()

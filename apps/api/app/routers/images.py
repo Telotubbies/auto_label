@@ -490,5 +490,6 @@ def label_assist(image_id: str, body: AssistIn, u: User = Depends(current_user),
         if name not in by_name:
             by_name[name] = ensure_class(db, c.project, name).id
     db.commit()
-    pred = resolve(f"trained:{m.id}", db).predict(imaging.load(img.path), conf=body.confidence, classes=m.classes)
+    pred = resolve(f"trained:{m.id}", db, workspace_id=c.ws.id).predict(
+        imaging.load(img.path), conf=body.confidence, classes=m.classes)
     return {"annotations": ml.to_annotations(pred, by_name)}

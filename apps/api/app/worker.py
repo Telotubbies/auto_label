@@ -21,7 +21,7 @@ from .db import SessionLocal
 from .deps import charge
 from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
-from .services import exporters, health, imaging, ml, versioning
+from .services import connectors, exporters, health, imaging, ml, segment, versioning, webhooks
 from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
@@ -262,6 +262,9 @@ def run_train(job: Job):
                     mark("evaluate", "failed", note="model kept ready without evaluation")
                 tm.history = history
                 mark("register", "running")
+                webhooks.emit(db, tm.workspace_id, "model.ready", {
+                    "model_id": tm.id, "project_id": tm.project_id, "name": tm.name,
+                    "variant": tm.variant, "task": tm.task})
                 db.commit()
                 mark("register")
             mark("release")
@@ -320,7 +323,19 @@ def run_health(job: Job):
 
 
 HANDLERS = {"version": run_version, "export": run_export, "train": run_train, "autolabel": run_autolabel,
-            "health": run_health}
+            "health": run_health, "connector_sync": connectors.sync_job}
+
+
+def _notify(job: Job, status: str, error: str = ""):
+    """Fan the terminal job status out to webhooks; failures to notify never fail the job."""
+    try:
+        with SessionLocal() as db:
+            webhooks.emit(db, job.workspace_id, "job.done", {
+                "job_id": job.id, "kind": job.kind, "status": status, "project_id": job.project_id,
+                "error": error})
+            db.commit()
+    except Exception:
+        log.exception("could not enqueue job.done webhook for %s", job.id)
 
 
 def run_one(jid: str):
@@ -331,11 +346,13 @@ def run_one(jid: str):
         result = HANDLERS[job.kind](job)
         final = "cancelled" if _cancelled(jid) else "done"
         _set(jid, status=final, progress=100.0 if final == "done" else job.progress, result=result, finished=now())
+        _notify(job, final)
     except Cancelled:
         _set(jid, status="cancelled", finished=now())     # stopped on purpose before anything was produced
     except Exception as e:
         log.error("job %s (%s) failed\n%s", jid, job.kind, traceback.format_exc())
         _set(jid, status="failed", error=f"{type(e).__name__}: {e}", finished=now())
+        _notify(job, "failed", f"{type(e).__name__}: {e}")
 
 
 def recover():
@@ -359,6 +376,7 @@ def loop(stop: threading.Event | None = None):
 def start_background() -> threading.Event:
     stop = threading.Event()
     threading.Thread(target=loop, args=(stop,), daemon=True, name="labeldesk-worker").start()
+    threading.Thread(target=webhooks.flush_loop, args=(stop,), daemon=True, name="labeldesk-webhooks").start()
     return stop
 
 
@@ -366,5 +384,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from .bootstrap import init_db
     init_db()
+    # Production runs the worker as its own process (LD_EMBEDDED_WORKER=0), so retries need a flusher here too.
+    threading.Thread(target=webhooks.flush_loop, args=(threading.Event(),), daemon=True,
+                     name="labeldesk-webhooks").start()
     log.info("worker started")
     loop()

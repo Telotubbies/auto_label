@@ -13,7 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
-from .routers import auth, images, playground, projects, registry, remote, training, versions, workspaces
+from .routers import (auth, connectors, devapi, images, playground, projects, registry, remote, training, versions,
+                      webhooks, workspaces)
 from .security import check_signature
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -58,7 +59,8 @@ async def security_headers(request, call_next):
     return resp
 
 
-for r in (auth, workspaces, projects, images, versions, training, remote, registry, playground):
+for r in (auth, workspaces, projects, images, versions, devapi, training, remote, registry, playground, connectors,
+          webhooks):
     app.include_router(r.router)
 app.include_router(registry.gpu_router)
 

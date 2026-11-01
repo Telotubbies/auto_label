@@ -22,6 +22,9 @@ ROLES = ("admin", "reviewer", "annotator")
 PROJECT_TYPES = ("object-detection", "instance-segmentation", "classification", "keypoint-detection")
 SPLITS = ("train", "valid", "test")
 STATUSES = ("unassigned", "annotating", "review", "done")
+API_SCOPES = ("read", "upload", "train", "infer")
+CONNECTOR_KINDS = ("s3", "gcs", "azure")
+WEBHOOK_EVENTS = ("job.done", "model.ready", "stream.event")
 
 
 class User(Base):
@@ -243,9 +246,55 @@ class ApiKey(Base):
     name: Mapped[str] = mapped_column(String(120))
     prefix: Mapped[str] = mapped_column(String(16))
     hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # empty/NULL = all scopes: keys issued before scopes existed keep full access
+    scopes: Mapped[list] = mapped_column(JSON, nullable=True)
+    publishable: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
     last_used: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class Connector(Base):
+    """Read-only object-storage link. Credentials stay in `config` and never leave the API."""
+    __tablename__ = "connectors"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))                     # s3 | gcs | azure
+    name: Mapped[str] = mapped_column(String(120))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)          # bucket/container + credentials
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    last_sync: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_status: Mapped[str] = mapped_column(String(16), default="")
+
+
+class Webhook(Base):
+    __tablename__ = "webhooks"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(1024))
+    secret: Mapped[str] = mapped_column(String(64))
+    events: Mapped[list] = mapped_column(JSON, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class WebhookDelivery(Base):
+    """One webhook call, retried with backoff until MAX_ATTEMPTS."""
+    __tablename__ = "webhook_deliveries"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    webhook_id: Mapped[str] = mapped_column(ForeignKey("webhooks.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    event: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)   # pending | ok | failed
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt: Mapped[float] = mapped_column(Float, default=now)
+    last_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
 
 
 class Audit(Base):

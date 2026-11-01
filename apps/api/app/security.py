@@ -70,9 +70,9 @@ def check_signature(rel: str, exp: int, sig: str) -> bool:
 
 # --- api keys ----------------------------------------------------------------
 
-def new_api_key() -> tuple[str, str, str]:
-    """-> (plaintext shown once, display prefix, sha256 stored)."""
-    key = "ld_" + secrets.token_urlsafe(30)
+def new_api_key(publishable: bool = False) -> tuple[str, str, str]:
+    """-> (plaintext shown once, display prefix, sha256 stored). Publishable keys are browser-safe."""
+    key = ("ld_pub_" if publishable else "ld_") + secrets.token_urlsafe(30)
     return key, key[:10], hashlib.sha256(key.encode()).hexdigest()
 
 
