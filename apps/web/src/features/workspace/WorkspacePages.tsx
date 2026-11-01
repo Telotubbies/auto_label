@@ -62,6 +62,9 @@ const KIND: Record<Job['kind'], { label: string; page: string }> = {
   export: { label: 'Export', page: 'versions' },
   export_engine: { label: 'TensorRT export', page: 'models' },
   health: { label: 'Health check', page: 'analytics' },
+  insights_images: { label: 'Image stats', page: 'insights' },
+  insights_leakage: { label: 'Leakage scan', page: 'insights' },
+  insights_embedding: { label: 'Embedding map', page: 'insights' },
 }
 const kindOf = (kind: Job['kind']) => KIND[kind] ?? { label: kind, page: 'versions' }
 

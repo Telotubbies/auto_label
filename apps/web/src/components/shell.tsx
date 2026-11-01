@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database, FlaskConical, FolderGit2, Layers, LogOut,
+  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database, FlaskConical, FolderGit2, Layers, LineChart, LogOut,
   Monitor, Moon, Plus, Rocket, Settings, Sun, Tag, Tags, Upload, User, X, Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
@@ -112,13 +112,14 @@ export function AppSidebar() {
   )
 }
 
-const projNav: { group: string; items: { to: string; label: string; icon: typeof Upload; min: Role; count?: boolean }[] }[] = [
+export const projNav: { group: string; items: { to: string; label: string; icon: typeof Upload; min: Role; count?: boolean }[] }[] = [
   { group: 'DATA', items: [
     { to: 'upload', label: 'Upload Data', icon: Upload, min: 'reviewer' },
     { to: 'annotate', label: 'Annotate', icon: Tag, min: 'annotator' },
     { to: 'browse', label: 'Dataset', icon: Database, min: 'annotator', count: true },
     { to: 'versions', label: 'Versions', icon: FolderGit2, min: 'reviewer' },
     { to: 'analytics', label: 'Analytics', icon: BarChart3, min: 'reviewer' },
+    { to: 'insights', label: 'Insights', icon: LineChart, min: 'reviewer' },
     { to: 'classes', label: 'Classes & Tags', icon: Tags, min: 'reviewer' },
   ]},
   { group: 'MODELS', items: [
@@ -138,7 +139,7 @@ export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()
   const can = useApp((s) => s.can)
   return (
-    <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 flex h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl">
+    <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">
         <div className="overflow-hidden rounded-lg border">
           <div className="relative h-20 bg-muted">
@@ -232,7 +233,10 @@ export function TopBar() {
 }
 
 const RESERVED = new Set(['models', 'deployments', 'activity', 'settings'])
-const JOB_LABEL: Record<Job['kind'], string> = { train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check' }
+const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
+  train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
+  insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',
+}
 const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])
 
 /** Bottom-right glass tray with determinate progress for long jobs, so users can leave the page. Reads the current project's jobs. */

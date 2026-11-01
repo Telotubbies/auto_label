@@ -1,0 +1,554 @@
+"""Insights Studio 20a: dataset analytics, scan jobs, version diff, labeling ops, isolation."""
+
+import hashlib
+import json
+import os
+import random
+import tempfile
+import time
+import uuid
+from collections import Counter
+from datetime import datetime, timezone
+
+os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
+os.environ["LD_EMBEDDED_WORKER"] = "1"
+os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
+os.environ["LD_SAM_ENABLED"] = "0"
+
+import pytest
+from fastapi.testclient import TestClient
+from PIL import Image as PImage
+from sqlalchemy import select
+
+from app.config import DATA_DIR
+from app.db import SessionLocal
+from app.main import app
+from app.models import Audit, Image, LabelClass, Project, User, Version, Workspace
+from app.security import issue_access
+from app.services import insights
+
+WS = "labeldesk-demo"
+SLUG = "insights-qa"
+BASE = f"/api/ws/{WS}/projects/{SLUG}"
+INS = f"{BASE}/insights"
+JOBS = f"{BASE}/jobs"
+
+
+@pytest.fixture(scope="module")
+def c():
+    with TestClient(app) as client:
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        yield client
+
+
+def noise(w: int, h: int, seed: str) -> PImage.Image:
+    """Distinct pixels per seed so pHash only groups the copy we make on purpose."""
+    rng = random.Random(seed)
+    return PImage.frombytes("RGB", (w, h), bytes(rng.getrandbits(8) for _ in range(w * h * 3)))
+
+
+def seed_image(
+    pid: str,
+    name: str,
+    w: int,
+    h: int,
+    anns: list[dict],
+    split: str = "train",
+    assignee: str | None = None,
+    status: str = "done",
+    review: str | None = None,
+    updated: float | None = None,
+    im: PImage.Image | None = None,
+) -> str:
+    im = im or noise(w, h, name)
+    rel = f"insights/{name}.jpg"
+    (DATA_DIR / rel).parent.mkdir(parents=True, exist_ok=True)
+    im.save(DATA_DIR / rel, "JPEG", quality=90)
+    with SessionLocal() as db:
+        row = Image(
+            project_id=pid,
+            name=name,
+            sha256=hashlib.sha256(name.encode()).hexdigest(),
+            width=w,
+            height=h,
+            path=rel,
+            thumb=rel,
+            split=split,
+            status=status,
+            review=review,
+            assignee_id=assignee,
+            annotations=anns,
+            n_annotations=len(anns),
+            updated=updated if updated is not None else time.time(),
+        )
+        db.add(row)
+        db.commit()
+        return row.id
+
+
+def box(
+    aid: str,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    cid: str,
+    source: str | None = None,
+) -> dict:
+    out = {
+        "id": aid,
+        "classId": cid,
+        "shape": {"kind": "bbox", "x": x, "y": y, "w": w, "h": h},
+    }
+    if source:
+        out["source"] = source
+    return out
+
+
+@pytest.fixture(scope="module")
+def data(c):
+    # Seed directly: the demo workspace's project quota is shared with other modules.
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        project = Project(workspace_id=ws.id, slug=SLUG, name=SLUG, type="object-detection", settings={})
+        db.add(project)
+        db.flush()
+        for name, color in (("person", "#8b5cf6"), ("car", "#22c55e"), ("dog", "#3b82f6")):
+            db.add(LabelClass(project_id=project.id, name=name, color=color))
+        db.commit()
+        pid = project.id
+    cls = {x["name"]: x["id"] for x in c.get(f"{BASE}/classes").json()}
+    with SessionLocal() as db:
+        labeler = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+    t0 = time.time() - 3600
+    ids = {}
+    ids["both"] = seed_image(
+        pid,
+        "both-train",
+        640,
+        480,
+        [
+            box("a1", 0.1, 0.1, 0.1, 0.1, cls["person"]),
+            box("a2", 0.5, 0.5, 0.2, 0.1, cls["car"]),
+        ],
+        split="train",
+        assignee=labeler.id,
+        updated=t0,
+    )
+    ids["person"] = seed_image(
+        pid,
+        "person-valid",
+        320,
+        320,
+        [box("b1", 0.5, 0.5, 0.01, 0.01, cls["person"])],
+        split="valid",
+        assignee=labeler.id,
+        updated=t0,
+    )
+    ids["null"] = seed_image(pid, "null-test", 200, 100, [], split="test", status="unassigned")
+    ids["car_ai"] = seed_image(
+        pid,
+        "car-ai-train",
+        640,
+        640,
+        [box("c1", 0.2, 0.2, 0.5, 0.5, cls["car"], source="sam3")],
+        split="train",
+    )
+    shared = noise(64, 64, "duplicate-pixels")
+    ids["dup_train"] = seed_image(
+        pid,
+        "dup-train",
+        64,
+        64,
+        [box("d1", 0.2, 0.2, 0.2, 0.2, cls["person"])],
+        split="train",
+        assignee=labeler.id,
+        updated=t0,
+        im=shared,
+    )
+    ids["dup_valid"] = seed_image(
+        pid,
+        "dup-valid",
+        64,
+        64,
+        [box("d2", 0.2, 0.2, 0.2, 0.2, cls["person"])],
+        split="valid",
+        im=shared,
+    )
+    ids["rejected"] = seed_image(
+        pid,
+        "rejected-valid",
+        128,
+        128,
+        [box("e1", 0.1, 0.1, 0.2, 0.2, cls["car"], source="vlm+sam3")],
+        split="valid",
+        status="review",
+        review="rejected",
+    )
+    return {"project": {"id": pid, "slug": SLUG, "name": SLUG}, "classes": cls, "ids": ids, "labeler": labeler.id}
+
+
+def wait_job(c, jid: str, timeout: float = 40) -> dict:
+    deadline = time.time() + timeout
+    j = {}
+    while time.time() < deadline:
+        j = c.get(f"{JOBS}/{jid}").json()
+        if j["status"] in ("done", "failed", "cancelled"):
+            assert j["status"] == "done", j
+            return j
+        time.sleep(0.05)
+    raise TimeoutError(jid)
+
+
+def test_summary_counts_splits_sources_and_annotator_read(c, data):
+    r = c.get(f"{INS}/summary")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["project"] == {
+        "id": data["project"]["id"],
+        "name": SLUG,
+        "type": "object-detection",
+    }
+    assert body["version"] is None
+    assert body["images"] == 7
+    assert body["annotations"] == 7
+    assert body["null_images"] == 1
+    assert body["splits"] == {"train": 3, "valid": 3, "test": 1}
+    classes = {x["name"]: x for x in body["classes"]}
+    assert classes["person"]["count"] == 4 and classes["person"]["images"] == 4
+    assert classes["car"]["count"] == 3 and classes["car"]["images"] == 3
+    assert classes["dog"]["count"] == 0 and classes["dog"]["images"] == 0
+    assert classes["person"]["color"]
+    sources = {x["source"]: x for x in body["sources"]}
+    assert sources["human"]["annotations"] == 5
+    assert sources["sam3"]["annotations"] == 1
+    assert sources["vlm+sam3"]["annotations"] == 1
+    assert sources["human"]["share"] == pytest.approx(5 / 7, abs=1e-4)
+
+    with SessionLocal() as db:
+        lab = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+    r = c.get(f"{INS}/summary", headers={"Authorization": f"Bearer {issue_access(lab.id)}"})
+    assert r.status_code == 200, r.text
+
+
+def test_distribution_split_classes_instances_cooccurrence_and_buckets(c, data):
+    body = c.get(f"{INS}/distribution").json()
+    split = {x["class"]: x for x in body["split_classes"]}
+    assert split["person"] == {"class": "person", "train": 2, "valid": 2, "test": 0}
+    assert split["car"] == {"class": "car", "train": 2, "valid": 1, "test": 0}
+    inst = {x["class"]: x for x in body["instances_vs_images"]}
+    assert inst["person"]["instances"] == 4 and inst["person"]["images"] == 4
+    assert inst["car"]["instances"] == 3 and inst["car"]["images"] == 3
+
+    co = body["cooccurrence"]
+    i, j = co["classes"].index("person"), co["classes"].index("car")
+    assert co["matrix"][i][j] == 1 and co["matrix"][j][i] == 1
+    assert co["matrix"][i][i] == 4 and co["matrix"][j][j] == 3
+
+    buckets = {x["bucket"]: x["images"] for x in body["annotations_per_image"]}
+    assert buckets["0"] == 1 and buckets["1"] == 5 and buckets["2"] == 1
+    assert sum(buckets.values()) == 7 and "20+" in buckets
+
+
+def test_geometry_area_aspect_centres(c, data):
+    body = c.get(f"{INS}/geometry").json()
+    assert body["imgsz"] == 640
+    assert body["area_buckets"] == {"small": 1, "medium": 2, "large": 4}
+    aspect = {x["bucket"]: x["count"] for x in body["aspect"]}
+    assert aspect == {"<0.5": 0, "0.5–1": 0, "1–2": 6, "2–4": 1, "≥4": 0}
+    assert len(body["box_scatter"]) == 7
+    assert body["sampled"] is False
+    assert all(0 <= p["w"] <= 1.5 and 0 <= p["h"] <= 1.5 and p["class"] and p["split"] for p in body["box_scatter"])
+    centres = {x["class"]: x["cells"] for x in body["centres"]}
+    assert len(centres["person"]) == 100 and sum(centres["person"]) == 4
+    assert len(centres["car"]) == 100 and sum(centres["car"]) == 3
+
+
+def test_image_stats_scan_job_results_and_role_gate(c, data):
+    r = c.post(f"{INS}/image-stats/scan")
+    assert r.status_code == 200, r.text
+    job = r.json()
+    assert job["kind"] == "insights_images" and job["status"] in ("queued", "running")
+    done = wait_job(c, job["id"])
+    assert done["result"]["scanned"] == 7
+
+    body = c.get(f"{INS}/image-stats").json()
+    assert body["imgsz"] == 640
+    assert body["scanned"] == 7
+    assert len(body["resolution"]) == 7
+    assert sum(x["count"] for x in body["brightness"]) == 7
+    assert sum(x["count"] for x in body["blur"]) == 7
+    assert [x["bin"] for x in body["brightness"]] == list(range(16))
+    assert [x["bin"] for x in body["blur"]] == [
+        "0–10",
+        "10–30",
+        "30–100",
+        "100–300",
+        "300–1000",
+        "≥1000",
+    ]
+    assert body["stale"] is False
+    assert body["job"]["id"] == job["id"]
+
+    with SessionLocal() as db:
+        lab = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+    r = c.post(
+        f"{INS}/image-stats/scan",
+        headers={"Authorization": f"Bearer {issue_access(lab.id)}"},
+    )
+    assert r.status_code == 403
+
+
+def test_leakage_scan_finds_cross_split_duplicate_and_signs_gallery(c, data):
+    r = c.post(f"{INS}/leakage/scan")
+    assert r.status_code == 200, r.text
+    wait_job(c, r.json()["id"])
+
+    body = c.get(f"{INS}/leakage").json()
+    pair = next(
+        p
+        for p in body["pairs"]
+        if {p["a"]["image_id"], p["b"]["image_id"]} == {data["ids"]["dup_train"], data["ids"]["dup_valid"]}
+    )
+    assert pair["distance"] == 0
+    assert {pair["a"]["split"], pair["b"]["split"]} == {"train", "valid"}
+    assert body["total_pairs"] >= 1
+    assert any({x["a"], x["b"]} == {"train", "valid"} and x["count"] >= 1 for x in body["split_pairs"])
+    assert pair["a"]["thumb"].startswith("/api/files/") and pair["b"]["thumb"].startswith("/api/files/")
+    assert body["stale"] is False
+    assert body["leakage_moved"] is None
+
+
+def test_embedding_scan_returns_finite_projection(c, data):
+    r = c.post(f"{INS}/embedding/scan")
+    assert r.status_code == 200, r.text
+    wait_job(c, r.json()["id"])
+
+    body = c.get(f"{INS}/embedding").json()
+    assert body["projection"] in ("umap", "pca")
+    points = {p["image_id"]: p for p in body["points"]}
+    assert set(points) == set(data["ids"].values())
+    for p in points.values():
+        assert isinstance(p["x"], float) and isinstance(p["y"], float)
+        assert p["x"] == p["x"] and p["y"] == p["y"]  # finite
+        assert p["split"] in ("train", "valid", "test")
+        assert p["source"] in ("human", "ai")
+        assert p["thumb"].startswith("/api/files/")
+    assert points[data["ids"]["car_ai"]]["source"] == "ai"
+    assert points[data["ids"]["both"]]["source"] == "human"
+    assert points[data["ids"]["rejected"]]["error"] is True
+    assert points[data["ids"]["both"]]["error"] is False
+    assert body["stale"] is False
+
+
+def _make_version(
+    pid: str,
+    number: int,
+    name: str,
+    splits: dict,
+    class_stats: dict,
+    sources: list[str],
+) -> str:
+    with SessionLocal() as db:
+        v = Version(
+            project_id=pid,
+            number=number,
+            name=name,
+            status="ready",
+            stats={
+                "splits": dict(Counter(splits.values())),
+                "classes": class_stats,
+                "leakage_moved": 0,
+                "version_hash": f"hash-{number}",
+            },
+        )
+        db.add(v)
+        db.commit()
+        vid = v.id
+    d = DATA_DIR / "versions" / vid
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "classes": list(class_stats),
+        "type": "object-detection",
+        "version_hash": f"hash-{number}",
+        "config": {},
+        "items": [
+            {
+                "file": f"{split}/{sid}.jpg",
+                "split": split,
+                "source": sid,
+                "width": 100,
+                "height": 100,
+            }
+            for sid, split in splits.items()
+        ],
+        "sources": [{"id": i, "sha256": i} for i in sources],
+    }
+    (d / "manifest.json").write_text(json.dumps(manifest))
+    return vid
+
+
+def test_version_diff_added_removed_moves_and_class_delta(c, data):
+    pid = data["project"]["id"]
+    ids = data["ids"]
+    base = _make_version(
+        pid,
+        1,
+        "base",
+        {ids["both"]: "train", ids["person"]: "valid", ids["car_ai"]: "train"},
+        {"person": 3, "car": 1},
+        [ids["both"], ids["person"], ids["car_ai"]],
+    )
+    target = _make_version(
+        pid,
+        2,
+        "target",
+        {ids["both"]: "valid", ids["dup_train"]: "train", ids["rejected"]: "valid"},
+        {"person": 4, "car": 2},
+        [ids["both"], ids["dup_train"], ids["rejected"]],
+    )
+    body = c.get(f"{INS}/version-diff", params={"base": base, "target": target}).json()
+    assert body["base"]["version_hash"] == "hash-1" and body["target"]["version_hash"] == "hash-2"
+    assert {x["image_id"] for x in body["added"]} == {ids["dup_train"], ids["rejected"]}
+    assert {x["image_id"] for x in body["removed"]} == {ids["person"], ids["car_ai"]}
+    assert body["added"][0]["thumb"].startswith("/api/files/")
+    assert body["split_moves"] == [{"image_id": ids["both"], "name": "both-train", "from": "train", "to": "valid"}]
+    delta = {x["class"]: x for x in body["class_delta"]}
+    assert delta["person"] == {"class": "person", "base": 3, "target": 4, "delta": 1}
+    assert delta["car"] == {"class": "car", "base": 1, "target": 2, "delta": 1}
+    assert body["summary"] == {"added": 2, "removed": 2, "moved": 1}
+
+    scoped = c.get(f"{INS}/summary", params={"version": target}).json()
+    assert scoped["version"]["id"] == target and scoped["version"]["version_hash"] == "hash-2"
+    assert scoped["images"] == 3 and scoped["annotations"] == 4
+    assert scoped["splits"] == {"train": 1, "valid": 2, "test": 0}
+
+    # version scope must use the manifest's splits, not the images' current split column
+    scoped_dist = c.get(f"{INS}/distribution", params={"version": target}).json()
+    split = {x["class"]: x for x in scoped_dist["split_classes"]}
+    assert split["person"] == {"class": "person", "train": 1, "valid": 1, "test": 0}
+    assert split["car"] == {"class": "car", "train": 0, "valid": 2, "test": 0}
+    scoped_geo = c.get(f"{INS}/geometry", params={"version": target}).json()
+    assert {p["split"] for p in scoped_geo["box_scatter"]} == {"train", "valid"}
+
+    with SessionLocal() as db:
+        empty = Version(project_id=pid, number=3, name="empty", status="ready", stats={})
+        db.add(empty)
+        db.commit()
+        empty_id = empty.id
+    r = c.get(f"{INS}/version-diff", params={"base": base, "target": empty_id})
+    assert r.status_code == 400 and "manifest" in r.json()["detail"]
+
+
+def test_labeling_throughput_review_and_ai_acceptance(c, data):
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        now = time.time()
+        db.add_all(
+            [
+                Audit(
+                    workspace_id=ws.id,
+                    action="image.review",
+                    target="both-train",
+                    meta={"approved": True},
+                    created=now,
+                ),
+                Audit(
+                    workspace_id=ws.id,
+                    action="image.review",
+                    target="person-valid",
+                    meta={"approved": True},
+                    created=now,
+                ),
+                Audit(
+                    workspace_id=ws.id,
+                    action="image.review",
+                    target="dup-train",
+                    meta={"approved": False},
+                    created=now,
+                ),
+                Audit(
+                    workspace_id=ws.id,
+                    action="project.update",
+                    target="both-train",
+                    meta={},
+                    created=now,
+                ),
+            ]
+        )
+        db.commit()
+
+    body = c.get(f"{INS}/labeling").json()
+    today = datetime.fromtimestamp(time.time(), tz=timezone.utc).strftime("%Y-%m-%d")
+    rows = [x for x in body["throughput"] if x["labeler_id"] == data["labeler"] and x["date"] == today]
+    assert len(rows) == 1
+    assert rows[0]["labeler"] == "Lee Labeler"
+    assert rows[0]["images"] == 3 and rows[0]["annotations"] == 4
+
+    review = next(x for x in body["review"] if x["date"] == today)
+    assert review["approved"] >= 2 and review["rejected"] >= 1
+    assert review["rate"] == pytest.approx(review["rejected"] / (review["approved"] + review["rejected"]), abs=1e-3)
+    assert body["ai"] == {
+        "human": 5,
+        "ai": 2,
+        "accepted_ai": 1,
+        "acceptance_rate": 0.5,
+        "by_source": [
+            {"source": "sam3", "count": 1},
+            {"source": "vlm+sam3", "count": 1},
+        ],
+    }
+
+
+def test_workspace_isolation_401_403_404(c, data):
+    anon = TestClient(app)
+    assert anon.get(f"{INS}/summary").status_code == 401
+
+    tag = uuid.uuid4().hex[:8]
+    email = f"insights-{tag}@example.com"
+    r = anon.post(
+        "/api/auth/signup",
+        json={
+            "name": "Other Tenant",
+            "email": email,
+            "password": "longenough1",
+            "workspace": f"Insights WS {tag}",
+        },
+    )
+    assert r.status_code == 200, r.text
+    tok = r.json()["token"]
+    h = {"Authorization": f"Bearer {tok}"}
+    me = anon.get("/api/me", headers=h).json()
+    ws2 = me["workspaces"][0]["slug"]
+    p2 = anon.post(f"/api/ws/{ws2}/projects", json={"name": f"Other {tag}"}, headers=h)
+    assert p2.status_code == 200, p2.text
+    p2 = p2.json()
+
+    # the slug exists only in the other workspace: the demo workspace reports 404, never leaks it
+    assert c.get(f"/api/ws/{WS}/projects/{p2['slug']}/insights/summary").status_code == 404
+    # a real project of another tenant is forbidden to a non-member
+    assert c.get(f"/api/ws/{ws2}/projects/{p2['slug']}/insights/summary").status_code == 403
+
+
+def test_summary_cache_reuses_payload_and_invalidates_on_new_image(c, data):
+    pid = data["project"]["id"]
+    first = c.get(f"{INS}/summary").json()
+    second = c.get(f"{INS}/summary").json()
+    assert first == second
+    key = (pid, "", "summary")
+    sig = insights._CACHE[key][0]
+    assert insights._CACHE[key][1] == {k: v for k, v in first.items() if k not in ("project", "version")}
+
+    seed_image(pid, "cache-new", 96, 96, [], split="test")
+    third = c.get(f"{INS}/summary").json()
+    assert third["images"] == first["images"] + 1
+    assert insights._CACHE[key][0] != sig
+
+
+def test_image_list_ids_filter(c, data):
+    ids = [data["ids"]["both"], data["ids"]["null"]]
+    body = c.get(f"{BASE}/images", params={"ids": ",".join(ids)}).json()
+    assert body["total"] == 2
+    assert {x["id"] for x in body["items"]} == set(ids)

@@ -33,6 +33,8 @@ export default function Dataset() {
     // analytics chart links filter by image size (megapixels), aspect ratio and annotation count
     min_mp: sp.get('min_mp') ?? '', max_mp: sp.get('max_mp') ?? '', min_ar: sp.get('min_ar') ?? '', max_ar: sp.get('max_ar') ?? '',
     min_ann: sp.get('min_ann') ?? '', max_ann: sp.get('max_ann') ?? '',
+    // the embedding lasso opens exactly the images it selected
+    ids: sp.get('ids') ?? '',
   }
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n, { replace: true }) }
   const clearF = (...keys: string[]) => { const n = new URLSearchParams(sp); keys.forEach((k) => n.delete(k)); setSp(n, { replace: true }) }
@@ -71,12 +73,14 @@ export default function Dataset() {
       .catch(toast.err)
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const openEditor = (im: ImageItem) => {
-    const q = new URLSearchParams(Object.entries(f).filter(([, v]) => v).map(([k, v]) => [k === 'batch_id' ? 'batch' : k, v]) as [string, string][])
+    const q = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== 'ids').map(([k, v]) => [k === 'batch_id' ? 'batch' : k, v]) as [string, string][])
     nav(`/${ws}/${project.slug}/images/${im.id}?${q}`)
   }
 
   // Filters that analytics links can set but the toolbar has no select for: show them so the grid is explainable.
+  const lassoIds = f.ids ? f.ids.split(',').filter(Boolean) : []
   const rangeFilters = [
+    ...(lassoIds.length ? [{ keys: ['ids'], label: `Lasso selection (${lassoIds.length})` }] : []),
     { keys: ['min_mp', 'max_mp'], label: rangeText(f.min_mp, f.max_mp, 'MP') },
     { keys: ['min_ar', 'max_ar'], label: `Aspect ${rangeText(f.min_ar, f.max_ar)}` },
     { keys: ['min_ann', 'max_ann'], label: rangeText(f.min_ann, f.max_ann, 'annotations') },
@@ -107,7 +111,7 @@ export default function Dataset() {
               {c.label}<X className="h-3 w-3" aria-hidden="true" />
             </button>
           ))}
-          <button type="button" onClick={() => clearF('min_mp', 'max_mp', 'min_ar', 'max_ar', 'min_ann', 'max_ann')}
+          <button type="button" onClick={() => clearF('ids', 'min_mp', 'max_mp', 'min_ar', 'max_ar', 'min_ann', 'max_ann')}
             className="cursor-pointer text-xs text-muted-foreground underline hover:text-foreground">Clear all</button>
         </div>
       )}

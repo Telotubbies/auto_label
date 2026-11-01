@@ -21,7 +21,7 @@ from .db import SessionLocal
 from .deps import charge
 from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
-from .services import connectors, exporters, health, imaging, ml, segment, versioning, webhooks
+from .services import connectors, exporters, health, imaging, insights_jobs, ml, segment, versioning, webhooks
 from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
@@ -275,7 +275,9 @@ def run_train(job: Job):
                             watchdog.reset()
                 finally:
                     watchdog.stop()
-                if watchdog.stalled:
+                # A normal return after at least one epoch is progress, even if the watchdog tripped
+                # between the last epoch callback and the adapter returning.
+                if watchdog.stalled and not history:
                     raise RuntimeError(f"no training progress for {watchdog.limit:g} s")
                 mark("train", note=train_note)
                 mark("evaluate", "running")
@@ -354,9 +356,25 @@ def run_health(job: Job):
         return health.scan_health(db, p)
 
 
+def run_insights_images(job: Job):
+    with SessionLocal() as db:
+        return insights_jobs.scan_images(db, db.get(Project, job.project_id))
+
+
+def run_insights_leakage(job: Job):
+    with SessionLocal() as db:
+        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id))
+
+
+def run_insights_embedding(job: Job):
+    with SessionLocal() as db:
+        return insights_jobs.scan_embedding(db, db.get(Project, job.project_id))
+
+
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
             "train": run_train, "autolabel": run_autolabel, "health": run_health,
-            "connector_sync": connectors.sync_job}
+            "connector_sync": connectors.sync_job, "insights_images": run_insights_images,
+            "insights_leakage": run_insights_leakage, "insights_embedding": run_insights_embedding}
 
 
 def _notify(job: Job, status: str, error: str = ""):
