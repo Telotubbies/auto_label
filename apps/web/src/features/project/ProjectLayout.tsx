@@ -1,13 +1,14 @@
 import { useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BrainCircuit, Eye } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Project } from '@/lib/types'
 import { ProjectPanel, projNav } from '@/components/shell'
-import { Button, EmptyState, Select, Spinner } from '@/components/ui'
+import { cn } from '@/lib/utils'
+import { Button, EmptyState, Spinner } from '@/components/ui'
 
 export function useProject() {
   return useOutletContext<{ project: Project; ws: string }>()
@@ -30,7 +31,7 @@ export default function ProjectLayout() {
   const section = location.pathname.split('/').pop() ?? 'browse'
   return (
     <div className="flex h-full">
-      <ProjectPanel project={project} />
+      <div className="hidden shrink-0 lg:flex"><ProjectPanel project={project} /></div>
       <div className="flex min-w-0 flex-1 flex-col">
         {slot && createPortal(
           <>
@@ -44,12 +45,16 @@ export default function ProjectLayout() {
             )}
           </>, slot)}
         <div data-scroll className="min-h-0 flex-1 overflow-y-auto pt-14">
-          <div className="px-4 pb-1 md:hidden">
-            <Select aria-label="Project section" value={items.some((i) => i.to === section) ? section : 'browse'}
-              onChange={(e) => nav(`/${ws}/${slug}/${e.target.value}`)}>
-              {items.map((i) => <option key={i.to} value={i.to}>{i.label}</option>)}
-            </Select>
-          </div>
+          {/* Below lg the project panel is hidden, so navigation lives in a scrollable strip. */}
+          <nav aria-label="Project sections" className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-card/95 px-2 py-1.5 backdrop-blur lg:hidden">
+            {projNav.flatMap((g) => g.items).filter((i) => canProject(i.perm)).map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={`/${ws}/${slug}/${to}`}
+                className={({ isActive }) => cn('flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs',
+                  isActive ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                <Icon className="h-3.5 w-3.5" aria-hidden />{label}
+              </NavLink>
+            ))}
+          </nav>
           <Outlet context={{ project, ws }} />
         </div>
       </div>

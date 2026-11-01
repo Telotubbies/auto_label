@@ -7,7 +7,8 @@ import type {
   InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass,
   LeaderboardRow, Me, Member, ModelDetections, ModelInsights, ModelItem, Permissions,
   PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput, ProjectRole, RegistryItem,
-  RoleLevel, TrainingInsights, Version, WorkerRow, WorkspaceInfo, WorkspacePrivacy,
+  RoleLevel, TrainingInsights, Version, VideoFrame, VideoItem, WorkerRow, WorkspaceInfo,
+  WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -163,6 +164,15 @@ export const api = {
     get<ModelDetections>(`${P(ws, p)}/insights/models/${id}/detections?files=${encodeURIComponent(files.join(','))}`),
   insightsCompare: (ws: string, p: string, models: string[]) =>
     get<CompareInsights>(`${P(ws, p)}/insights/compare?models=${encodeURIComponent(models.join(','))}`),
+  videos: (ws: string, p: string) => get<VideoItem[]>(`${P(ws, p)}/videos`),
+  video: (ws: string, p: string, id: string) => get<VideoItem>(`${P(ws, p)}/videos/${id}`),
+  videoTimeline: (ws: string, p: string, id: string, from = 0, limit = 120) =>
+    get<{ video: VideoItem; total: number; frames: VideoFrame[] }>(`${P(ws, p)}/videos/${id}/timeline?from=${from}&limit=${limit}`),
+  interpolate: (ws: string, p: string, id: string, fromImageId: string, toImageId: string) =>
+    post<{ frames: number; annotations: number }>(`${P(ws, p)}/videos/${id}/interpolate`,
+      { from_image_id: fromImageId, to_image_id: toImageId }),
+  trackForward: (imageId: string, body: { annotation_id: string; frames: number }) =>
+    post<Job>(`/images/${imageId}/track-forward`, body),
   healthCheck: (ws: string, p: string, imgsz?: number) => post<Job>(`${P(ws, p)}/health`, imgsz ? { imgsz } : {}),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),
   registry: (ws: string) => get<RegistryItem[]>(`/ws/${ws}/registry`),

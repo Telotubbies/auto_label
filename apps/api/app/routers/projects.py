@@ -60,7 +60,8 @@ def classes_out(db: Session, p: Project) -> list[dict]:
     # image_classes rows are removed when an image is soft-deleted, so no join is needed
     counts = dict(db.execute(select(ImageClass.class_id, func.sum(ImageClass.n))
                              .where(ImageClass.project_id == p.id).group_by(ImageClass.class_id)).all())
-    return [{"id": c.id, "name": c.name, "color": c.color, "count": int(counts.get(c.id) or 0)} for c in rows]
+    return [{"id": c.id, "name": c.name, "color": c.color, "count": int(counts.get(c.id) or 0),
+             "skeleton": c.skeleton} for c in rows]
 
 
 # project slugs must not shadow workspace pages (mirrors apps/web/src/components/shell.tsx)
@@ -166,6 +167,54 @@ def get_classes(c: Ctx = Depends(project_ctx)):
 class ClassIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     color: str | None = None
+    skeleton: dict | None = None
+
+
+def _clean_skeleton(raw: dict | None) -> dict | None:
+    """Validate a class keypoint schema; unknown keys are dropped. Raises ValueError for bad input."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("skeleton must be an object")
+    names = raw.get("names")
+    if not isinstance(names, list) or not 1 <= len(names) <= 100:
+        raise ValueError("skeleton names must be a list of 1–100 names")
+    clean_names, seen = [], set()
+    for name in names:
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 60:
+            raise ValueError("skeleton names must be non-empty strings of at most 60 characters")
+        name = name.strip()
+        if name in seen:
+            raise ValueError("skeleton names must be unique")
+        seen.add(name)
+        clean_names.append(name)
+    edges = raw.get("edges", [])
+    if not isinstance(edges, list) or len(edges) > 200:
+        raise ValueError("skeleton edges must be a list of at most 200 pairs")
+    clean_edges = []
+    for pair in edges:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise ValueError("skeleton edges must be index pairs")
+        a, b = pair
+        if (not isinstance(a, int) or isinstance(a, bool) or not isinstance(b, int) or isinstance(b, bool)
+                or not 0 <= a < len(clean_names) or not 0 <= b < len(clean_names) or a == b):
+            raise ValueError("skeleton edges must reference two distinct valid indices")
+        clean_edges.append([a, b])
+    out = {"names": clean_names, "edges": clean_edges}
+    if "flip_idx" in raw:
+        flip = raw["flip_idx"]
+        if (not isinstance(flip, list) or len(flip) != len(clean_names)
+                or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(clean_names) for i in flip)):
+            raise ValueError("skeleton flip_idx must list one valid index per name")
+        out["flip_idx"] = flip
+    return out
+
+
+def _skeleton_or_400(raw: dict | None) -> dict | None:
+    try:
+        return _clean_skeleton(raw)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 def ensure_class(db: Session, p: Project, name: str) -> LabelClass:
@@ -184,10 +233,11 @@ def add_class(body: ClassIn, c: Ctx = Depends(project_ctx)):
     if c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id, LabelClass.name == name)):
         raise HTTPException(409, "class already exists")
     lc = ensure_class(c.db, c.project, name)
+    lc.skeleton = _skeleton_or_400(body.skeleton)
     if body.color:
         lc.color = body.color
     c.db.commit()
-    return {"id": lc.id, "name": lc.name, "color": lc.color, "count": 0}
+    return {"id": lc.id, "name": lc.name, "color": lc.color, "count": 0, "skeleton": lc.skeleton}
 
 
 @router.patch("/{project}/classes/{cid}")
@@ -205,8 +255,10 @@ def edit_class(cid: str, body: ClassIn, c: Ctx = Depends(project_ctx)):
     lc.name = name
     if body.color:
         lc.color = body.color
+    if "skeleton" in body.model_fields_set:
+        lc.skeleton = _skeleton_or_400(body.skeleton)
     c.db.commit()
-    return {"id": lc.id, "name": lc.name, "color": lc.color}
+    return {"id": lc.id, "name": lc.name, "color": lc.color, "skeleton": lc.skeleton}
 
 
 class MergeIn(BaseModel):

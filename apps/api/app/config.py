@@ -21,11 +21,11 @@ SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
 LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS",
                                    "version,export,export_engine,train,autolabel,health,connector_sync,retention,"
+                                   "extract_frames,track_forward,"
                                    "insights_images,insights_leakage,insights_embedding").split(",") if k]
-if "connector_sync" not in LOCAL_JOB_KINDS:
-    LOCAL_JOB_KINDS.append("connector_sync")      # CPU/network job: never leave it unclaimed by every process
-if "retention" not in LOCAL_JOB_KINDS:
-    LOCAL_JOB_KINDS.append("retention")            # PDPA deletion never waits on a GPU host
+for _kind in ("connector_sync", "retention", "extract_frames", "track_forward"):
+    if _kind not in LOCAL_JOB_KINDS:
+        LOCAL_JOB_KINDS.append(_kind)     # CPU/network/SAM work: never leave it unclaimed by every process
 REMOTE_JOB_KINDS = ("train", "autolabel")
 WORKER_TOKEN = _env("LD_WORKER_TOKEN")                        # shared secret for `labeldesk-worker`
 

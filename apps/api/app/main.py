@@ -14,8 +14,7 @@ from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
 from .routers import (admin, audit, auth, connectors, devapi, devmail, images, insights, insights_models, playground,
-                      privacy, projects, rbac,
-                      registry, remote, training, versions, webhooks, workspaces)
+                      privacy, projects, rbac, registry, remote, training, versions, videos, webhooks, workspaces)
 from .security import check_signature
 from .services.streamaudit import StreamViewAuditMiddleware
 
@@ -61,8 +60,8 @@ async def security_headers(request, call_next):
     return resp
 
 
-for r in (auth, workspaces, projects, images, versions, devapi, training, remote, registry, playground, connectors,
-          webhooks, insights, insights_models, rbac, privacy, admin, audit):
+for r in (auth, workspaces, projects, images, videos, versions, devapi, training, remote, registry, playground,
+          connectors, webhooks, insights, insights_models, rbac, privacy, admin, audit):
     app.include_router(r.router)
 app.include_router(registry.gpu_router)
 app.include_router(devmail.router)

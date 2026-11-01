@@ -1,12 +1,15 @@
 """Image ingest + the preprocessing/augmentation ops used when generating versions.
 
 Annotations are normalized (0..1) so geometric ops only remap coordinates:
-  bbox    {"kind":"bbox","x","y","w","h"}   (top-left + size)
-  polygon {"kind":"polygon","points":[x,y,...]}
-  class   {"kind":"class"}                   (classification label, no geometry)
+  bbox      {"kind":"bbox","x","y","w","h"}   (top-left + size)
+  polygon   {"kind":"polygon","points":[x,y,...]}
+  class     {"kind":"class"}                   (classification label, no geometry)
+  obb       {"kind":"obb","cx","cy","w","h","angle"}  (angle in radians, clockwise in pixel space)
+  keypoints {"kind":"keypoints","points":[x,y,v,...]}  (v: 0 absent, 1 occluded, 2 visible)
 """
 import copy
 import io
+import math
 import random
 from pathlib import Path
 
@@ -43,6 +46,15 @@ def load(rel: str) -> PImage.Image:
 
 # --- annotation geometry ---------------------------------------------------
 
+def obb_corners(s: dict, W: float = 1.0, H: float = 1.0) -> list[tuple[float, float]]:
+    """Pixel-space corners of an obb, clockwise from top-left at angle 0."""
+    cx, cy = s["cx"] * W, s["cy"] * H
+    hw, hh = s["w"] * W / 2, s["h"] * H / 2
+    c, sn = math.cos(s["angle"]), math.sin(s["angle"])
+    return [(cx + dx * c - dy * sn, cy + dx * sn + dy * c)
+            for dx, dy in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))]
+
+
 def _map_points(ann: dict, fn) -> dict:
     """Apply fn(x, y) -> (x, y) to an annotation's geometry; bbox re-fit from corners."""
     a = copy.deepcopy(ann)
@@ -57,6 +69,15 @@ def _map_points(ann: dict, fn) -> dict:
         for i in range(0, len(pts) - 1, 2):
             out.extend(fn(pts[i], pts[i + 1]))
         s["points"] = out
+    elif s["kind"] == "obb":                       # centre follows the transform; shape and angle stay
+        s["cx"], s["cy"] = fn(s["cx"], s["cy"])
+    elif s["kind"] == "keypoints":
+        pts = s["points"]
+        out = []
+        for i in range(0, len(pts) - 2, 3):
+            x, y = fn(pts[i], pts[i + 1])
+            out.extend((x, y, pts[i + 2]))
+        s["points"] = out
     return a
 
 
@@ -70,17 +91,38 @@ def _clip(ann: dict) -> dict | None:
         s.update(x=x1, y=y1, w=x2 - x1, h=y2 - y1)
     elif s["kind"] == "polygon":
         s["points"] = [min(1.0, max(0.0, v)) for v in s["points"]]
+    elif s["kind"] == "obb":
+        if s["w"] <= 0 or s["h"] <= 0:
+            return None
+        s["cx"], s["cy"] = min(1.0, max(0.0, s["cx"])), min(1.0, max(0.0, s["cy"]))
+    elif s["kind"] == "keypoints":
+        pts = s["points"]
+        for i in range(0, len(pts) - 2, 3):
+            if int(pts[i + 2]) != 0:               # absent points keep their placeholder coordinates
+                pts[i], pts[i + 1] = min(1.0, max(0.0, pts[i])), min(1.0, max(0.0, pts[i + 1]))
     return ann
 
 
-def bbox_of(ann: dict) -> tuple[float, float, float, float] | None:
-    """Normalized (x, y, w, h) for bbox or polygon annotations."""
+def bbox_of(ann: dict, W: float | None = None, H: float | None = None) -> tuple[float, float, float, float] | None:
+    """Normalized (x, y, w, h) for bbox, polygon, obb or keypoint annotations."""
     s = ann["shape"]
     if s["kind"] == "bbox":
         return s["x"], s["y"], s["w"], s["h"]
     if s["kind"] == "polygon" and len(s["points"]) >= 6:
         xs, ys = s["points"][0::2], s["points"][1::2]
         return min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+    if s["kind"] == "obb":
+        # With image size the pixel-space corners are exact; otherwise the normalized shape is used as-is.
+        pts = obb_corners(s, W or 1.0, H or 1.0)
+        xs = [p[0] / (W or 1.0) for p in pts]
+        ys = [p[1] / (H or 1.0) for p in pts]
+        return min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+    if s["kind"] == "keypoints":
+        pts = s["points"]
+        xs = [pts[i] for i in range(0, len(pts) - 2, 3) if int(pts[i + 2]) != 0]
+        ys = [pts[i + 1] for i in range(0, len(pts) - 2, 3) if int(pts[i + 2]) != 0]
+        if xs and ys:
+            return min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
     return None
 
 
@@ -127,7 +169,6 @@ def augment(im: PImage.Image, anns: list[dict], cfg: dict, rng: random.Random) -
             anns = [_map_points(a, lambda x, y: (y, 1 - x)) for a in anns]
     deg = float(cfg.get("rotation") or 0)
     if deg:
-        import math
         d = rng.uniform(-deg, deg)
         W, H = im.size
         im = im.rotate(d, resample=PImage.Resampling.BILINEAR)   # PIL rotates counter-clockwise about centre

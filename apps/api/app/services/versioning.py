@@ -161,7 +161,8 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
     for row in canon["images"]:
         row[2] = [{**a, "classId": cls_idx[a["classId"]]} for a in row[2]]
     version_hash = hashlib.sha256(json.dumps(canon, sort_keys=True, default=str).encode()).hexdigest()
-    manifest = {"classes": [c.name for c in classes], "type": p.type, "items": items, "version_hash": version_hash,
+    manifest = {"classes": [c.name for c in classes], "skeletons": [c.skeleton for c in classes],
+                "type": p.type, "items": items, "version_hash": version_hash,
                 "config": cfg, "sources": sources}
     (out / "manifest.json").write_text(json.dumps(manifest))
     return {"images": len(items), "source_images": len(rows), "splits": dict(per_split),

@@ -3,9 +3,9 @@ import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-r
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database,
-  FlaskConical, FolderGit2, Layers, LineChart, LogOut, Monitor, Moon, Plus, Rocket, Settings,
-  Sun, Tag, Tags, Upload, User, X, Zap, Wrench, KeyRound, ScrollText,
-  ShieldCheck,
+  Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Monitor, Moon, Plus,
+  Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User, X,
+  Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -56,7 +56,7 @@ export function AppSidebar() {
   const u = info.data?.usage
   const pct = u ? (u.credits_used / u.limits.credits) * 100 : 0
   return (
-    <Glass as="aside" className={cn('glass-sidebar relative m-2 mr-0 flex h-[calc(100vh-1rem)] shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width] print:hidden', collapsed ? 'w-14' : 'w-56')}>
+    <Glass as="aside" className={cn('glass-sidebar relative m-2 mr-0 hidden h-[calc(100vh-1rem)] shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width] md:flex', collapsed ? 'w-14' : 'w-56')}>
       <div className="p-2">
         <Dropdown
           trigger={
@@ -133,6 +133,7 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
     { to: 'upload', label: 'Upload Data', icon: Upload, perm: 'project.upload' },
     { to: 'annotate', label: 'Annotate', icon: Tag, perm: 'project.annotate' },
     { to: 'browse', label: 'Dataset', icon: Database, perm: 'project.read', count: true },
+    { to: 'videos', label: 'Video', icon: Film, perm: 'project.annotate' },
     { to: 'versions', label: 'Versions', icon: FolderGit2, perm: 'project.export' },
     { to: 'analytics', label: 'Analytics', icon: BarChart3, perm: 'project.review' },
     { to: 'insights', label: 'Insights', icon: LineChart, perm: 'project.review' },
@@ -151,7 +152,7 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
 ]
 
 export const typeLabel = (t: string) =>
-  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification' } as Record<string, string>)[t] ?? t
+  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection' } as Record<string, string>)[t] ?? t
 
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()

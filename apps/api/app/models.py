@@ -182,7 +182,30 @@ class LabelClass(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     color: Mapped[str] = mapped_column(String(16), default="#8b5cf6")
+    # keypoint schema for this class: {"names": [...], "edges": [[i, j], ...], "flip_idx": [...]}
+    skeleton: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class Video(Base):
+    """An uploaded video whose sampled frames become images of one batch."""
+    __tablename__ = "videos"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    batch_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    name: Mapped[str] = mapped_column(String(512))
+    path: Mapped[str] = mapped_column(String(1024))              # relative to DATA_DIR
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    fps: Mapped[float] = mapped_column(Float, default=0.0)
+    duration: Mapped[float] = mapped_column(Float, default=0.0)
+    frame_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="queued")   # queued | extracting | ready | failed
+    error: Mapped[str] = mapped_column(Text, default="")
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class Batch(Base):
@@ -203,6 +226,8 @@ class Image(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     batch_id: Mapped[str | None] = mapped_column(ForeignKey("batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    video_id: Mapped[str | None] = mapped_column(ForeignKey("videos.id", ondelete="SET NULL"), nullable=True, index=True)
+    frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 0-based frame in the source video
     name: Mapped[str] = mapped_column(String(512))
     sha256: Mapped[str] = mapped_column(String(64))
     width: Mapped[int] = mapped_column(Integer)
