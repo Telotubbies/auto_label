@@ -8,9 +8,10 @@ Recognised annotation sources, matched to images by file name / stem:
 import io
 import json
 import re
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import PurePosixPath
+
+from defusedxml import ElementTree as ET      # no entity expansion / billion-laughs on uploaded XML
 
 from .imaging import ext_ok
 
@@ -34,6 +35,7 @@ class Bundle:
 MAX_ZIP_TOTAL = 4 * 1024**3       # uncompressed bytes per upload
 MAX_ZIP_FILES = 50_000
 MAX_RATIO = 200                    # compression ratio above this is treated as a zip bomb
+MAX_XML_BYTES = 8 * 1024 * 1024    # annotation XML larger than this is skipped, not parsed
 
 
 class ImportError_(ValueError):
@@ -89,6 +91,8 @@ def collect(files: list[tuple[str, bytes]]) -> Bundle:
                     b.names = [re.sub(r"^\s*(?:-|\d+:)\s*", "", l).strip().strip("'\"")
                                for l in block.group(1).splitlines() if l.strip()]
         elif low.endswith(".xml"):
+            if len(data) > MAX_XML_BYTES:
+                continue
             if not _cvat(b, data):
                 b.voc[PurePosixPath(name).stem] = data.decode(errors="ignore")
     return b
@@ -127,7 +131,7 @@ def _cvat(b: Bundle, data: bytes) -> bool:
     """Parse CVAT for Images XML. False when the file is not CVAT (VOC or unparseable)."""
     try:
         root = ET.fromstring(data)
-    except ET.ParseError:
+    except Exception:                    # parse error, forbidden entity/DTD, or encoding garbage
         return False
     if root.tag != "annotation" or root.find("image") is None:
         return False
@@ -226,7 +230,7 @@ def _ls_result(r) -> list[tuple[str, dict]]:
     if not isinstance(value, dict):
         return []
     raw_labels = value.get("labels")
-    labels = [l for l in raw_labels if isinstance(l, str) and l] if isinstance(raw_labels, list) else []
+    labels = [label for label in raw_labels if isinstance(label, str) and label] if isinstance(raw_labels, list) else []
     if not labels:
         return []
     if r.get("type") == "rectanglelabels":

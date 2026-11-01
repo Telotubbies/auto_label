@@ -121,10 +121,17 @@ def test_legacy_key_without_scopes_keeps_full_access(admin):
                        files={"files": ("legacy.jpg", jpeg())}).status_code == 200
 
 
-def test_key_via_x_api_key_header_and_query(admin):
+def test_key_via_x_api_key_header_and_publishable_query(admin):
     k = make_key(admin, "header", scopes=["read"])
     assert anon().get("/api/v1/projects", headers={"x-api-key": k["key"]}).status_code == 200
-    assert anon().get("/api/v1/projects", params={"api_key": k["key"]}).status_code == 200
+    # a workspace key in the query string leaks through logs/referrers: header only
+    denied = anon().get("/api/v1/projects", params={"api_key": k["key"]})
+    assert denied.status_code == 403 and "publishable" in denied.text
+    # publishable keys are designed for browser use, so the query string is allowed for them
+    pub = make_key(admin, "pub-query", publishable=True)
+    r = anon().post("/api/v1/models/nope/predict", params={"api_key": pub["key"]},
+                    files={"file": ("q.jpg", jpeg())})
+    assert r.status_code == 404                    # authenticated, then the model is missing
 
 
 def test_revoked_key_is_rejected(admin):

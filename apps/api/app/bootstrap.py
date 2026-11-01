@@ -20,6 +20,8 @@ def init_db():
         "license": "VARCHAR(64) DEFAULT 'AGPL-3.0'", "runtime_refs": "JSON"})
     ensure_columns(engine, "api_keys", {"scopes": "JSON", "publishable": "BOOLEAN DEFAULT FALSE"})
     ensure_columns(engine, "connectors", {"last_sync": "FLOAT", "last_status": "VARCHAR(16) DEFAULT ''"})
+    from .services.secretbox import migrate as _encrypt_secrets
+    _encrypt_secrets()                      # one-time upgrade of pre-encryption connector/webhook secrets
     _backfill_image_classes()
     if SEED_DEMO:
         seed()

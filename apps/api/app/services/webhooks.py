@@ -14,11 +14,11 @@ import logging
 import os
 import time
 
-import httpx
 from sqlalchemy import select
 
 from .. import models
 from ..db import SessionLocal
+from . import safefetch, secretbox
 
 log = logging.getLogger("labeldesk.webhooks")
 
@@ -38,8 +38,17 @@ def sign(secret: str, body: bytes, ts: int) -> str:
     return "sha256=" + mac
 
 
-def verify(secret: str, body: bytes, ts: int, signature: str) -> bool:
-    """Constant-time check; the `sha256=` prefix is optional on the header."""
+def verify(secret: str, body: bytes, ts: int, signature: str, max_age: int = 300) -> bool:
+    """Constant-time check of a timestamp-bound signature; stale/future timestamps are rejected.
+
+    Receivers should also dedupe on `X-LabelDesk-Delivery` (retries reuse the same id).
+    """
+    try:
+        ts = int(ts)
+    except (TypeError, ValueError):
+        return False
+    if ts - int(time.time()) > 60 or int(time.time()) - ts > max_age:
+        return False
     given = (signature or "").removeprefix("sha256=")
     try:
         return hmac.compare_digest(sign(secret, body, ts), "sha256=" + given)
@@ -47,9 +56,14 @@ def verify(secret: str, body: bytes, ts: int, signature: str) -> bool:
         return False
 
 
-def _post(url: str, content: bytes, headers: dict, timeout: float):
-    """The only network call; tests replace this module attribute."""
-    return httpx.post(url, content=content, headers=headers, timeout=timeout)
+def check_url(url: str) -> str:
+    """Public-http(s) validation at delivery time; tests replace this module attribute."""
+    return safefetch.check_url(url)
+
+
+def _post(url: str, content: bytes, headers: dict, timeout: float) -> int:
+    """The only network call; returns the status code (the body is never read or stored)."""
+    return safefetch.post(url, content, headers, timeout)
 
 
 def delivery_for(wh: models.Webhook, event: str, data: dict) -> models.WebhookDelivery:
@@ -81,30 +95,37 @@ def emit(db, workspace_id: str, event: str, data: dict) -> int:
 
 
 def deliver(db, d: models.WebhookDelivery) -> bool:
-    """POST one delivery. Updates `d` in place and never raises."""
+    """POST one delivery. Updates `d` in place and never raises.
+
+    Only the status code and a generic error are stored: the receiver's response body (which may
+    echo request data or contain internal details) never enters our DB or API responses.
+    """
     wh = db.get(models.Webhook, d.webhook_id)
     if not wh or not wh.active:
         d.status, d.last_error, d.updated = "failed", "webhook disabled", models.now()
         return False
 
-    ts = int(models.now())
     status: int | None = None
     error = ""
     try:
+        check_url(wh.url)                       # DNS may have changed since creation: re-vet every attempt
+        ts = int(models.now())
         body = canonical(d.payload or {})
         headers = {
             "Content-Type": "application/json",
             "X-LabelDesk-Event": d.event,
             "X-LabelDesk-Delivery": d.id,
             "X-LabelDesk-Timestamp": str(ts),
-            "X-LabelDesk-Signature": sign(wh.secret, body, ts),
+            "X-LabelDesk-Signature": sign(secretbox.decrypt(wh.secret), body, ts),
         }
-        resp = _post(wh.url, body, headers, TIMEOUT_S)
-        status = int(resp.status_code)
+        status = int(_post(wh.url, body, headers, TIMEOUT_S))
         if not 200 <= status < 300:
-            error = f"HTTP {status}: {(resp.text or '')[:200]}"
-    except Exception as e:                       # transport error: retry, do not fail the worker
-        error = f"{type(e).__name__}: {e}"
+            error = f"HTTP {status}"
+    except safefetch.BlockedURL:
+        d.status, d.last_error, d.updated = "failed", "webhook URL is not allowed", models.now()
+        return False
+    except Exception:                        # transport error: retry, do not fail the worker
+        error = "delivery failed"
 
     d.attempts += 1
     d.last_status = status

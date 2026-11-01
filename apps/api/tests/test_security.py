@@ -47,7 +47,7 @@ def test_ssrf_blocked():
 
 def test_hosted_api_rejects_internal_url(admin):
     key = admin.post(f"/api/ws/{WS}/keys", json={"name": "sec"}).json()["key"]
-    r = TestClient(app).post(f"/api/v1/{WS}/{PR}/upload", params={"api_key": key, "image": "http://127.0.0.1:22/"})
+    r = TestClient(app).post(f"/api/v1/{WS}/{PR}/upload", headers={"x-api-key": key}, params={"image": "http://127.0.0.1:22/"})
     assert r.status_code == 400 and "private" in r.text
 
 

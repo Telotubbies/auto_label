@@ -118,10 +118,10 @@ def test_version_export_train_predict(c):
 
     key = c.post(f"/api/ws/{WS}/keys", json={"name": "ci"}).json()["key"]
     anon = TestClient(app)
-    hp = anon.post(f"/api/v1/models/{m['id']}/predict", params={"api_key": key}, files={"file": ("t.jpg", img)})
+    hp = anon.post(f"/api/v1/models/{m['id']}/predict", headers={"x-api-key": key}, files={"file": ("t.jpg", img)})
     assert hp.status_code == 200, hp.text
-    assert anon.post(f"/api/v1/models/{m['id']}/predict", params={"api_key": "bad"}, files={"file": ("t.jpg", img)}).status_code == 401
-    up = anon.post(f"/api/v1/{WS}/{PR}/upload", params={"api_key": key}, files={"file": ("new.jpg", jpeg((1, 2, 3)))})
+    assert anon.post(f"/api/v1/models/{m['id']}/predict", headers={"x-api-key": "bad"}, files={"file": ("t.jpg", img)}).status_code == 401
+    up = anon.post(f"/api/v1/{WS}/{PR}/upload", headers={"x-api-key": key}, files={"file": ("new.jpg", jpeg((1, 2, 3)))})
     assert up.json()["success"]
 
 

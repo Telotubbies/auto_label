@@ -388,7 +388,8 @@ def autolabel_preview(body: AutoLabelPreviewIn, c: Ctx = Depends(project_ctx)):
 
 def key_ws(db: Session, api_key: str | None, request: Request, scope: str) -> Workspace:
     """Resolve the key and enforce its scope before anything else runs."""
-    return resolve_key(request, api_key, db).need(scope).ws
+    token = api_key or request.headers.get("x-api-key")
+    return resolve_key(request, token, db, from_query=api_key is not None).need(scope).ws
 
 
 async def _image_from_request(request: Request, file: UploadFile | None, image: str | None):
@@ -422,7 +423,7 @@ async def _image_from_request(request: Request, file: UploadFile | None, image: 
 async def hosted_predict(model_id: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
                          overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
                          db: Session = Depends(get_db)):
-    ws = key_ws(db, api_key or request.headers.get("x-api-key"), request, "infer")
+    ws = key_ws(db, api_key, request, "infer")
     m = db.get(TrainedModel, model_id)
     if not m or m.workspace_id != ws.id or m.status != "ready":
         raise HTTPException(404, "model not found")
@@ -461,7 +462,7 @@ def _active_learning(db: Session, ws: Workspace, p: Project, data: bytes, pred: 
 async def hosted_upload(ws_slug: str, project: str, request: Request, api_key: str | None = Query(None),
                         split: str = "auto", batch: str = "API Upload", tag: str = "", name: str = "upload.jpg",
                         image: str | None = None, file: UploadFile | None = File(None), db: Session = Depends(get_db)):
-    ws = key_ws(db, api_key or request.headers.get("x-api-key"), request, "upload")
+    ws = key_ws(db, api_key, request, "upload")
     if ws.slug != ws_slug:
         raise HTTPException(403, "api_key belongs to another workspace")
     p = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == project, Project.deleted_at.is_(None)))

@@ -13,9 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_db
+from .deps import audit
 from .models import API_SCOPES, ApiKey, Workspace
 from .ratelimit import client_ip, limit
 from .security import api_key_hash
+
+QUERY_KEY_HINT = ("api_key in the query string is only allowed for publishable keys (ld_pub_*); "
+                  "send workspace keys in the Authorization or x-api-key header")
 
 
 def scopes_of(key: ApiKey) -> tuple[str, ...]:
@@ -58,17 +62,20 @@ def _token(request: Request, api_key: Optional[str]) -> str:
     raise HTTPException(401, "api_key required")
 
 
-def resolve_key(request: Request, token: str | None, db: Session) -> KeyCtx:
+def resolve_key(request: Request, token: str | None, db: Session, *, from_query: bool = False) -> KeyCtx:
     """Shared lookup for routes that accept `?api_key` or `x-api-key` outside the dependency graph."""
     limit(f"apikey:{client_ip(request)}", 600, 60)          # caps key guessing and abusive clients
     token = _token(request, token)
+    if from_query and not token.startswith("ld_pub_"):
+        raise HTTPException(403, QUERY_KEY_HINT)
     k = db.scalar(select(ApiKey).where(ApiKey.hash == api_key_hash(token)))
     if not k:
         raise HTTPException(401, "invalid api_key")
     k.last_used = time.time()
+    audit(db, k.workspace_id, None, "apikey.use", request.url.path, prefix=k.prefix, method=request.method)
     db.commit()                       # read-only routes never commit later; the key list must show use
     return KeyCtx(key=k, ws=db.get(Workspace, k.workspace_id), db=db)
 
 
 def key_ctx(request: Request, api_key: str | None = Query(None), db: Session = Depends(get_db)) -> KeyCtx:
-    return resolve_key(request, api_key, db)
+    return resolve_key(request, api_key, db, from_query=api_key is not None)

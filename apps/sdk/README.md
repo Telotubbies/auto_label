@@ -56,6 +56,15 @@ print(ld.predict(model["id"], "site.jpg"))
 
 Errors raise `LabelDeskError` with `.status` and `.detail`.
 
+## Verifying webhooks
+
+Every delivery carries `X-LabelDesk-Signature: sha256=<hex>`, `X-LabelDesk-Timestamp` (unix seconds)
+and `X-LabelDesk-Delivery` (stable across retries). The signature is
+`HMAC-SHA256(secret, "<timestamp>." + raw_body)`; compute it over the raw request bytes, not a
+re-serialised object. Reject timestamps older than 300 s (the SDK's `verify(..., max_age=300)`
+default) to bound replay, and dedupe on `X-LabelDesk-Delivery` so a retried delivery is processed
+once. The signing secret is returned only when the webhook is created.
+
 ## Regenerating
 
 After any `/api/v1` change, regenerate from the repo root and commit the result:

@@ -49,7 +49,7 @@ def ws_id(admin):
 
 def _webhook(ws_id, events=("job.done",), active=True, url=None) -> str:
     with SessionLocal() as db:
-        w = Webhook(workspace_id=ws_id, url=url or f"https://example.test/hook/{secrets.token_hex(4)}",
+        w = Webhook(workspace_id=ws_id, url=url or f"https://93.184.216.34/hook/{secrets.token_hex(4)}",
                     secret="whsec_" + secrets.token_urlsafe(24), events=list(events), active=active)
         db.add(w)
         db.commit()
@@ -70,17 +70,11 @@ def _deliveries(wh_id):
         return db.scalars(select(WebhookDelivery).where(WebhookDelivery.webhook_id == wh_id)).all()
 
 
-class Resp:
-    def __init__(self, status_code: int, text: str = ""):
-        self.status_code = status_code
-        self.text = text
-
-
 # --- signing -------------------------------------------------------------------------
 
 def test_sign_and_verify_roundtrip():
     body = b'{"hello":"world"}'
-    ts = 1_700_000_000
+    ts = int(now())
     sig = webhooks.sign("whsec_secret", body, ts)
     assert sig.startswith("sha256=")
     assert webhooks.verify("whsec_secret", body, ts, sig)
@@ -98,6 +92,9 @@ def test_canonical_is_sorted_and_compact():
 # --- emit ----------------------------------------------------------------------------
 
 def test_emit_creates_pending_delivery_per_active_subscriber(ws_id):
+    with SessionLocal() as db:                       # subscriptions left by other modules would widen the fan-out
+        db.execute(Webhook.__table__.update().where(Webhook.workspace_id == ws_id).values(active=False))
+        db.commit()
     sub_a = _webhook(ws_id, ["job.done"])
     sub_b = _webhook(ws_id, ["job.done", "model.ready"])
     inactive = _webhook(ws_id, ["job.done"], active=False)
@@ -152,7 +149,7 @@ def test_deliver_success_signs_request(ws_id, monkeypatch):
 
     def fake_post(url, content, headers, timeout):
         seen.update(url=url, content=content, headers=headers, timeout=timeout)
-        return Resp(200)
+        return 200
 
     monkeypatch.setattr(webhooks, "_post", fake_post)
     with SessionLocal() as db:
@@ -175,7 +172,7 @@ def test_deliver_success_signs_request(ws_id, monkeypatch):
 def test_deliver_500_backs_off_then_marks_failed(ws_id, monkeypatch):
     wh_id = _webhook(ws_id, ["job.done"])
     d_id = _delivery(wh_id)
-    monkeypatch.setattr(webhooks, "_post", lambda *a, **k: Resp(500, "boom"))
+    monkeypatch.setattr(webhooks, "_post", lambda *a, **k: 500)
 
     with SessionLocal() as db:
         d = db.get(WebhookDelivery, d_id)
@@ -207,7 +204,7 @@ def test_deliver_transport_error_keeps_pending(ws_id, monkeypatch):
         assert webhooks.deliver(db, d) is False
         assert d.status == "pending" and d.attempts == 1
         assert d.last_status is None
-        assert "timed out" in d.last_error
+        assert d.last_error == "delivery failed"          # generic: never the receiver body or internals
         assert len(d.last_error) <= 500
         db.commit()
 
@@ -227,7 +224,7 @@ def test_flush_due_only_takes_due_pending_rows(ws_id, monkeypatch):
             status="ok", next_attempt=now() + 3600))
         db.commit()
 
-    monkeypatch.setattr(webhooks, "_post", lambda *a, **k: Resp(200))
+    monkeypatch.setattr(webhooks, "_post", lambda *a, **k: 200)
     assert webhooks.flush_due() == 1
 
     with SessionLocal() as db:
@@ -254,7 +251,7 @@ def test_flush_due_survives_transport_errors(ws_id, monkeypatch):
     assert webhooks.flush_due() == 1
     with SessionLocal() as db:
         d = db.get(WebhookDelivery, d_id)
-        assert d.status == "pending" and d.attempts == 1 and "network down" in d.last_error
+        assert d.status == "pending" and d.attempts == 1 and d.last_error == "delivery failed"
 
 
 def test_flush_due_fails_deliveries_of_a_disabled_webhook(ws_id):
@@ -277,22 +274,22 @@ def test_flush_due_fails_deliveries_of_a_disabled_webhook(ws_id):
 def test_webhook_api_requires_admin():
     annotator = login("labeler@labeldesk.dev")
     assert annotator.get(BASE).status_code == 403
-    assert annotator.post(BASE, json={"url": "https://example.test/x", "events": ["job.done"]}).status_code == 403
+    assert annotator.post(BASE, json={"url": "https://93.184.216.34/x", "events": ["job.done"]}).status_code == 403
 
 
 def test_create_validates_url_and_events(admin):
     assert admin.post(BASE, json={"url": "ftp://example.test/x", "events": ["job.done"]}).status_code == 400
-    assert admin.post(BASE, json={"url": "https://example.test/x", "events": []}).status_code == 400
-    assert admin.post(BASE, json={"url": "https://example.test/x", "events": ["nope"]}).status_code == 400
+    assert admin.post(BASE, json={"url": "https://93.184.216.34/x", "events": []}).status_code == 400
+    assert admin.post(BASE, json={"url": "https://93.184.216.34/x", "events": ["nope"]}).status_code == 400
     assert admin.post(BASE, json={"url": "https://" + "a" * 1100, "events": ["job.done"]}).status_code == 400
 
 
 def test_secret_only_returned_on_create(admin):
-    r = admin.post(BASE, json={"url": "https://example.test/secret-once", "events": ["job.done", "model.ready"]})
+    r = admin.post(BASE, json={"url": "https://93.184.216.34/secret-once", "events": ["job.done", "model.ready"]})
     assert r.status_code == 200, r.text
     created = r.json()
     assert created["secret"].startswith("whsec_")
-    assert created["url"] == "https://example.test/secret-once"
+    assert created["url"] == "https://93.184.216.34/secret-once"
     assert created["events"] == ["job.done", "model.ready"] and created["active"] is True
 
     listing = admin.get(BASE).json()
@@ -303,14 +300,14 @@ def test_secret_only_returned_on_create(admin):
 
 
 def test_patch_and_delete(admin):
-    created = admin.post(BASE, json={"url": "https://example.test/patch", "events": ["job.done"]}).json()
+    created = admin.post(BASE, json={"url": "https://93.184.216.34/patch", "events": ["job.done"]}).json()
     wid = created["id"]
 
-    r = admin.patch(f"{BASE}/{wid}", json={"url": "https://example.test/patched", "events": ["model.ready"],
+    r = admin.patch(f"{BASE}/{wid}", json={"url": "https://93.184.216.34/patched", "events": ["model.ready"],
                                            "active": False})
     assert r.status_code == 200, r.text
     row = next(w for w in admin.get(BASE).json() if w["id"] == wid)
-    assert row["url"] == "https://example.test/patched"
+    assert row["url"] == "https://93.184.216.34/patched"
     assert row["events"] == ["model.ready"] and row["active"] is False
 
     assert admin.patch(f"{BASE}/{wid}", json={"url": "ftp://nope"}).status_code == 400
@@ -320,7 +317,7 @@ def test_patch_and_delete(admin):
 
 
 def test_cross_workspace_webhook_is_invisible(admin):
-    own = admin.post(BASE, json={"url": "https://example.test/own", "events": ["job.done"]})
+    own = admin.post(BASE, json={"url": "https://93.184.216.34/own", "events": ["job.done"]})
     assert own.status_code == 200, own.text
     assert admin.patch(f"{BASE}/{own.json()['id']}", json={"active": False}).status_code == 200
 
@@ -329,7 +326,7 @@ def test_cross_workspace_webhook_is_invisible(admin):
         other = Workspace(slug=f"other-{secrets.token_hex(3)}", name="Other", owner_id=owner)
         db.add(other)
         db.flush()
-        w = Webhook(workspace_id=other.id, url="https://example.test/other", secret="whsec_other",
+        w = Webhook(workspace_id=other.id, url="https://93.184.216.34/other", secret="whsec_other",
                     events=["job.done"])
         db.add(w)
         db.commit()
@@ -340,12 +337,12 @@ def test_cross_workspace_webhook_is_invisible(admin):
 
 
 def test_test_endpoint_records_delivery(admin, monkeypatch):
-    created = admin.post(BASE, json={"url": "https://example.test/test-endpoint", "events": ["job.done"]}).json()
+    created = admin.post(BASE, json={"url": "https://93.184.216.34/test-endpoint", "events": ["job.done"]}).json()
     seen = {}
 
     def fake_post(url, content, headers, timeout):
         seen.update(url=url, content=content)
-        return Resp(200)
+        return 200
 
     monkeypatch.setattr(webhooks, "_post", fake_post)
     r = admin.post(f"{BASE}/{created['id']}/test")
@@ -358,11 +355,11 @@ def test_test_endpoint_records_delivery(admin, monkeypatch):
     rows = admin.get(f"{BASE}/{created['id']}/deliveries").json()
     assert [d["id"] for d in rows] == [body["id"]]
     assert rows[0]["status"] == "ok" and rows[0]["last_status"] == 200
-    assert seen["url"] == "https://example.test/test-endpoint"
+    assert seen["url"] == "https://93.184.216.34/test-endpoint"
 
 
 def test_test_endpoint_is_offline_safe(admin, monkeypatch):
-    created = admin.post(BASE, json={"url": "https://example.test/down", "events": ["job.done"]}).json()
+    created = admin.post(BASE, json={"url": "https://93.184.216.34/down", "events": ["job.done"]}).json()
 
     def boom(*a, **k):
         raise OSError("host unreachable")

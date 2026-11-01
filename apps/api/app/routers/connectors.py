@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from ..deps import Ctx, audit, project_ctx, ws_ctx
 from ..models import SPLITS, Connector, Job
-from ..services import connectors
+from ..services import connectors, secretbox
 from .projects import job_out
 
 router = APIRouter(prefix="/api/ws/{ws}", tags=["connectors"])
@@ -31,7 +31,7 @@ def _connector(db, ws_id: str, cid: str) -> Connector:
 
 @router.get("/connectors")
 def list_connectors(c: Ctx = Depends(ws_ctx)):
-    c.need("reviewer")
+    c.need("admin")
     rows = c.db.scalars(select(Connector).where(Connector.workspace_id == c.ws.id)
                         .order_by(Connector.created.desc())).all()
     return [connector_out(r) for r in rows]
@@ -51,7 +51,7 @@ def create_connector(body: ConnectorIn, c: Ctx = Depends(ws_ctx)):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     conn = Connector(workspace_id=c.ws.id, name=body.name.strip(), kind=body.kind,
-                     config=dict(body.config), created_by=c.uid)
+                     config=secretbox.encrypt_config(body.config, connectors.SECRET_FIELDS), created_by=c.uid)
     c.db.add(conn)
     audit(c.db, c.ws.id, c.uid, "connector.create", conn.name, kind=conn.kind)
     c.db.commit()
@@ -70,7 +70,7 @@ def delete_connector(cid: str, c: Ctx = Depends(ws_ctx)):
 
 @router.get("/connectors/{cid}/objects")
 def list_objects(cid: str, prefix: str = "", limit: int = 100, c: Ctx = Depends(ws_ctx)):
-    c.need("reviewer")
+    c.need("admin")
     conn = _connector(c.db, c.ws.id, cid)
     return {"objects": connectors.list_objects(conn, prefix=prefix, limit=limit)}
 
@@ -86,14 +86,14 @@ class SyncIn(BaseModel):
 
 @router.post("/projects/{project}/connectors/{cid}/sync")
 def sync_connector(cid: str, body: SyncIn, c: Ctx = Depends(project_ctx)):
-    c.need("reviewer")
+    c.need("admin")
     conn = _connector(c.db, c.ws.id, cid)
     if body.split not in (*SPLITS, "auto"):
         raise HTTPException(400, f"split must be one of {(*SPLITS, 'auto')}")
     job = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="connector_sync", created_by=c.uid,
               params={"connector_id": conn.id, "project_id": c.project.id, "prefix": body.prefix,
                       "split": body.split, "batch_name": body.batch_name,
-                      "limit": max(1, min(body.limit, 500))})
+                      "limit": max(1, min(body.limit, connectors.MAX_SYNC_LIMIT))})
     c.db.add(job)
     audit(c.db, c.ws.id, c.uid, "connector.sync", conn.name, project=c.project.slug, prefix=body.prefix)
     c.db.commit()

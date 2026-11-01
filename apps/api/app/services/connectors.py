@@ -16,7 +16,7 @@ from sqlalchemy import func, select, update
 from ..db import SessionLocal
 from ..deps import Ctx, plan
 from ..models import CONNECTOR_KINDS, Connector, Image, Project, Workspace, now
-from . import imaging
+from . import imaging, safefetch, secretbox
 
 log = logging.getLogger("labeldesk.connectors")
 
@@ -33,6 +33,24 @@ SYNC_CHUNK = 25                        # download + ingest in small batches so m
 
 # --- validation / presentation -------------------------------------------------------
 
+def _ensure_public(url: str, field: str) -> None:
+    """Reject connector URLs that point at the internal network (SSRF guard)."""
+    try:
+        safefetch.check_url(url)
+    except safefetch.BlockedURL as e:
+        raise ValueError(f"{field} must be a public http(s) URL: {e}")
+
+
+def _config(conn) -> dict:
+    """Config with secrets decrypted — only for outbound calls, never for API responses."""
+    cfg = dict(conn.config or {})
+    for field in SECRET_FIELDS:
+        value = cfg.get(field)
+        if value:
+            cfg[field] = secretbox.decrypt(str(value))
+    return cfg
+
+
 def validate(kind: str, config: dict) -> None:
     """Raise ValueError with a readable message when the connector config is unusable."""
     cfg = config if isinstance(config, dict) else {}
@@ -41,11 +59,15 @@ def validate(kind: str, config: dict) -> None:
     if kind in ("s3", "gcs"):
         if not str(cfg.get("bucket") or "").strip():
             raise ValueError(f"{kind} connector requires a bucket")
+        if kind == "s3" and str(cfg.get("endpoint_url") or "").strip():
+            _ensure_public(str(cfg["endpoint_url"]).strip(), "endpoint_url")
     elif kind == "azure":
         if not str(cfg.get("container") or "").strip():
             raise ValueError("azure connector requires a container")
         if not (str(cfg.get("account_url") or "").strip() or str(cfg.get("account_name") or "").strip()):
             raise ValueError("azure connector requires account_url or account_name")
+        if str(cfg.get("account_url") or "").strip():
+            _ensure_public(str(cfg["account_url"]).strip(), "account_url")
         sas = str(cfg.get("sas_token") or "").lstrip("?")
         if sas:
             from urllib.parse import parse_qs
@@ -174,7 +196,11 @@ def _with_date(obj: dict, value) -> dict:
 def list_objects(conn, prefix: str = "", limit: int = 100) -> list[dict]:
     """List up to `limit` objects with a read-only presigned GET URL for each."""
     limit = max(1, min(int(limit or 100), MAX_LIST_LIMIT))
-    cfg = conn.config or {}
+    cfg = _config(conn)
+    try:                                   # re-check at use: rows may predate the guard or be edited
+        validate(conn.kind, cfg)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     prefix = prefix or ""
 
     if conn.kind == "s3":
@@ -231,7 +257,11 @@ def list_objects(conn, prefix: str = "", limit: int = 100) -> list[dict]:
 
 def _signed_url(conn, key: str) -> str:
     """Presign one GET; used by fetch_bytes so downloads never re-list the bucket."""
-    cfg = conn.config or {}
+    cfg = _config(conn)
+    try:
+        validate(conn.kind, cfg)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     if conn.kind == "s3":
         boto3 = _import_boto3()
@@ -271,7 +301,9 @@ def fetch_bytes(conn, key: str) -> bytes:
         raise RuntimeError("refusing to download from a non-http(s) object URL")
     chunks: list[bytes] = []
     total = 0
-    with httpx.stream("GET", url, timeout=FETCH_TIMEOUT, follow_redirects=True) as resp:
+    with httpx.stream("GET", url, timeout=FETCH_TIMEOUT, follow_redirects=False) as resp:
+        if 300 <= resp.status_code < 400:
+            raise RuntimeError("object download redirected; redirects are not followed")
         if not 200 <= resp.status_code < 300:
             raise RuntimeError(f"download failed (HTTP {resp.status_code})")
         for chunk in resp.iter_bytes():

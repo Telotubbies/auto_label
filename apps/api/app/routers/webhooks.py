@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from ..deps import Ctx, audit, ws_ctx
 from ..models import WEBHOOK_EVENTS, Webhook, WebhookDelivery
+from ..services import safefetch, secretbox
 from ..services import webhooks as svc
 
 router = APIRouter(prefix="/api/ws/{ws}/webhooks", tags=["webhooks"])
@@ -15,15 +16,19 @@ TEST_DATA = {"source": "test", "message": "LabelDesk webhook test"}
 
 
 def _validate(url: str | None, events: list[str] | None):
-    """Shared create/update rules: http(s) URL of sane length, known non-empty events."""
-    if url is not None:
-        url = url.strip()
-        if len(url) > 1024 or not (url.startswith("http://") or url.startswith("https://")):
-            raise HTTPException(400, "url must be an http:// or https:// URL of at most 1024 characters")
+    """Shared create/update rules: public http(s) URL, known non-empty events."""
     if events is not None:
         events = list(dict.fromkeys(events))
         if not events or any(e not in WEBHOOK_EVENTS for e in events):
             raise HTTPException(400, f"events must be a non-empty subset of {list(WEBHOOK_EVENTS)}")
+    if url is not None:
+        url = url.strip()
+        if len(url) > 1024 or not (url.startswith("http://") or url.startswith("https://")):
+            raise HTTPException(400, "url must be an http:// or https:// URL of at most 1024 characters")
+        try:
+            safefetch.check_url(url)                 # public IPs only; blocks metadata/loopback/RFC1918
+        except safefetch.BlockedURL as e:
+            raise HTTPException(400, f"url is not allowed: {e}")
     return url, events
 
 
@@ -68,7 +73,7 @@ def create_webhook(body: WebhookIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
     url, events = _validate(body.url, body.events)
     secret = "whsec_" + secrets.token_urlsafe(24)
-    w = Webhook(workspace_id=c.ws.id, url=url, secret=secret, events=events, active=True,
+    w = Webhook(workspace_id=c.ws.id, url=url, secret=secretbox.encrypt(secret), events=events, active=True,
                 created_by=c.uid)
     c.db.add(w)
     audit(c.db, c.ws.id, c.uid, "webhook.create", url, events=events)

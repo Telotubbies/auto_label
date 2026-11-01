@@ -68,7 +68,8 @@ def test_validate_rejects_unknown_kind():
         connectors.validate("dropbox", {})
 
 
-def test_validate_accepts_supported_configs():
+def test_validate_accepts_supported_configs(monkeypatch):
+    monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)   # no DNS in tests
     connectors.validate("s3", {"bucket": "b"})
     connectors.validate("gcs", {"bucket": "b"})
     connectors.validate("azure", {"container": "c", "account_name": "acct"})
@@ -116,11 +117,18 @@ def test_secrets_masked_in_post_and_list(admin, payload, field, secret):
     assert admin.delete(f"{API}/connectors/{created['id']}").status_code == 200
 
 
-def test_reviewer_can_list_but_not_create(admin):
+def test_connectors_are_admin_only(admin):
     rev = login("reviewer@labeldesk.dev")
-    assert rev.get(f"{API}/connectors").status_code == 200
-    r = rev.post(f"{API}/connectors", json={"name": "nope", "kind": "s3", "config": {"bucket": "b"}})
-    assert r.status_code == 403
+    ann = login("labeler@labeldesk.dev")
+    for client in (rev, ann):
+        assert client.get(f"{API}/connectors").status_code == 403
+        assert client.post(f"{API}/connectors", json={"name": "nope", "kind": "s3",
+                                                      "config": {"bucket": "b"}}).status_code == 403
+    created = admin.post(f"{API}/connectors", json={"name": "admin conn", "kind": "s3",
+                                                   "config": {"bucket": "b"}}).json()
+    assert rev.get(f"{API}/connectors/{created['id']}/objects").status_code == 403
+    assert rev.post(f"{API}/projects/{PR}/connectors/{created['id']}/sync", json={}).status_code == 403
+    admin.delete(f"{API}/connectors/{created['id']}")
 
 
 # --- listing ------------------------------------------------------------------------
@@ -197,8 +205,9 @@ def seed_sync_connector(name="bucket sync"):
 class FakeStream:
     """Context-manager stand-in for `httpx.stream("GET", ...)`."""
 
-    def __init__(self, data):
-        self.status_code, self._data = 200, data
+    def __init__(self, data, status_code=200, location=""):
+        self.status_code, self._data = status_code, data
+        self._location = location
 
     def __enter__(self):
         return self
@@ -282,3 +291,15 @@ def test_public_config_masks_credentials_in_urls():
     assert out["access_key"] == "***" and out["secret_key"] == "***"
     assert out["endpoint_url"] == "https://minio.internal:9000"
     assert out["account_url"] == "https://acct.blob.core.windows.net"
+
+
+def test_fetch_bytes_does_not_follow_redirects(monkeypatch):
+    install_fake_boto3(monkeypatch, FakeS3([]))
+
+    def fake_stream(method, url, **kwargs):
+        assert kwargs["follow_redirects"] is False
+        return FakeStream(b"", status_code=302, location="http://10.0.0.5/internal")
+
+    monkeypatch.setattr(connectors.httpx, "stream", fake_stream)
+    with pytest.raises(RuntimeError, match="redirect"):
+        connectors.fetch_bytes(s3_conn(), "photos/a.jpg")
