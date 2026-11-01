@@ -317,16 +317,19 @@ def test_tide_cls_error_is_recovered(tmp_path, monkeypatch):
 MISSED_ITEMS = [
     {"file": "test/missed.jpg", "split": "test", "width": 200, "height": 200,
      "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/found.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(1, 0.50, 0.50, 0.20, 0.20)]},
 ]
-MISSED_PREDS = {"missed.jpg": []}
+MISSED_PREDS = {"missed.jpg": [], "found.jpg": [_pred("vest", 0.9, 120, 120, 40, 40)]}
 
 
 def test_tide_missed_error_is_recovered(tmp_path, monkeypatch):
+    """Oracle missed fix removes the gt; one found class keeps AP50 measurable (0.5 -> 1.0)."""
     root = make_version(tmp_path / "v1", MISSED_ITEMS)
     _use_model(monkeypatch, FakeModel(root, MISSED_PREDS))
     out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
     tide = out["tide"]
-    assert tide["missed"] == pytest.approx(1.0)
+    assert tide["missed"] == pytest.approx(0.5)
     assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "missed")
 
 
@@ -358,16 +361,186 @@ def test_tide_classification_labels_each_error_type():
                  {"cls": "vest", "conf": 0.70, "bbox": [130, 130, 40, 40], "points": None},
                  {"cls": "vest", "conf": 0.60, "bbox": [100, 100, 40, 40], "points": None}],
     }
-    fixes, missed = evaluate_mod._tide_classify(rec, 0.5, "bbox")
-    assert fixes == [None, ("dupe", -1), ("bkg", -1), None]
+    fixes, missed, _ = evaluate_mod._tide_classify(rec, "bbox")
+    assert fixes == [None, ("dupe", 0), ("bkg", -1), None]
     assert missed == []
+
+
+CROWDED_REC = {
+    "file": "test/crowded.jpg", "image_id": 1, "width": 200, "height": 200,
+    # two overlapping same-class gts, both matched by higher-scored predictions
+    "gt": [{"cls": "helmet", "bbox": [20, 20, 40, 40], "segm": None},
+           {"cls": "helmet", "bbox": [35, 20, 40, 40], "segm": None}],
+    # the last box overlaps both gts (IoU 0.70 / 0.67): a duplicate of the first TP, not a loc
+    "pred": [{"cls": "helmet", "conf": 0.90, "bbox": [20, 20, 40, 40], "points": None},
+             {"cls": "helmet", "conf": 0.85, "bbox": [35, 20, 40, 40], "points": None},
+             {"cls": "helmet", "conf": 0.80, "bbox": [27, 20, 40, 40], "points": None}],
+}
+
+
+def test_tide_crowded_duplicate_stays_dupe():
+    fixes, missed, tps = evaluate_mod._tide_classify(CROWDED_REC, "bbox")
+    assert fixes == [None, None, ("dupe", 0)]
+    assert missed == []
+    assert set(tps) == {0, 1}
+
+
+STEAL_ITEMS = [
+    {"file": "test/steal.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    # a second helmet gt found late, so a duplicate inserted at 0.95 would lower AP50
+    {"file": "test/steal_other.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.50, 0.50, 0.20, 0.20)]},
+]
+# a higher-scored wrong-class box on the same gt: the helmet box must still win the TP
+STEAL_PREDS = {"steal.jpg": [_pred("vest", 0.95, 40, 40, 40, 40),
+                             _pred("helmet", 0.90, 40, 40, 40, 40)],
+               "steal_other.jpg": [_pred("helmet", 0.40, 120, 120, 40, 40)]}
+
+
+def test_tide_wrong_class_box_does_not_steal_the_tp(tmp_path, monkeypatch):
+    fixes, missed, _ = evaluate_mod._tide_classify(
+        {"file": "steal.jpg", "image_id": 1, "width": 200, "height": 200,
+         "gt": [{"cls": "helmet", "bbox": [20, 20, 40, 40], "segm": None}],
+         "pred": [{"cls": "vest", "conf": 0.95, "bbox": [20, 20, 40, 40], "points": None},
+                  {"cls": "helmet", "conf": 0.90, "bbox": [20, 20, 40, 40], "points": None}]},
+        "bbox")
+    assert fixes == [("cls", 0), None]
+    assert missed == []
+    root = make_version(tmp_path / "v1", STEAL_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, STEAL_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    assert out["coco"]["AP50"] == pytest.approx(1.0)
+    # the cls oracle fix would duplicate the TP that already owns the gt, so nothing is recoverable
+    assert out["tide"] == {k: 0.0 for k in TIDE_KEYS}
+
+
+DUPE_ITEMS = [
+    {"file": "test/dupe1.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/dupe2.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/dupe3.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+]
+# one image fires the same box twice (TP 0.90 + duplicate 0.80), the other two find their gt
+# later and lower: base AP50 ~0.834, dropping the duplicate -> 1.0.
+DUPE_PREDS = {
+    "dupe1.jpg": [_pred("helmet", 0.90, 40, 40, 40, 40),
+                  _pred("helmet", 0.80, 40, 40, 40, 40)],
+    "dupe2.jpg": [_pred("helmet", 0.50, 40, 40, 40, 40)],
+    "dupe3.jpg": [_pred("helmet", 0.40, 40, 40, 40, 40)],
+}
+
+
+def test_tide_dupe_dap_end_to_end(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", DUPE_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, DUPE_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert out["coco"]["AP50"] == pytest.approx(0.8342, abs=1e-3)
+    assert tide["dupe"] == pytest.approx(0.1658, abs=1e-3)
+    assert tide["dupe"] == max(tide.values())
+    assert tide["bkg"] == 0.0
+
+
+BKG_ITEMS = [
+    {"file": "test/bkg_tp.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.10, 0.10, 0.20, 0.20)]},
+    {"file": "test/bkg_fp.jpg", "split": "test", "width": 200, "height": 200, "anns": []},
+]
+# a confident background box on an empty image outranks the only TP: base AP50 0.5 -> 1.0
+BKG_PREDS = {
+    "bkg_tp.jpg": [_pred("helmet", 0.50, 40, 40, 40, 40)],
+    "bkg_fp.jpg": [_pred("helmet", 0.90, 150, 150, 30, 30)],
+}
+
+
+def test_tide_bkg_dap_end_to_end(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", BKG_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, BKG_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert out["coco"]["AP50"] == pytest.approx(0.5)
+    assert tide["bkg"] == pytest.approx(0.5)
+    assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "bkg")
+
+
+SEG2_ITEMS = [
+    {"file": "test/seg_thin.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [{"cls": 0, "shape": {"kind": "polygon",
+                                   "points": [0.2, 0.2, 0.22, 0.2, 0.6, 0.58, 0.58, 0.6]}}]},
+    {"file": "test/seg_box.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [{"cls": 1, "shape": {"kind": "polygon",
+                                   "points": [0.2, 0.2, 0.6, 0.2, 0.6, 0.6, 0.2, 0.6]}}]},
+]
+SEG2_PREDS = {
+    # boxes agree, masks do not: mask IoU ~0.07, so the helmet gt is missed and the box is bkg
+    "seg_thin.jpg": [{"class": "helmet", "class_id": 0, "confidence": 0.9,
+                      "x": 80, "y": 80, "width": 80, "height": 80,
+                      "points": [{"x": 40, "y": 40}, {"x": 120, "y": 40},
+                                 {"x": 120, "y": 120}, {"x": 40, "y": 120}]}],
+    "seg_box.jpg": [{"class": "vest", "class_id": 1, "confidence": 0.9,
+                     "x": 80, "y": 80, "width": 80, "height": 80,
+                     "points": [{"x": 40, "y": 40}, {"x": 120, "y": 40},
+                                {"x": 120, "y": 120}, {"x": 40, "y": 120}]}],
+}
 
 
 def test_tide_segm_uses_mask_iou(tmp_path, monkeypatch):
     """Boxes agree but masks do not: the mask-only error must reach a bucket, not read as zero."""
-    root = make_version(tmp_path / "v1", THIN_ITEMS)
-    _use_model(monkeypatch, FakeModel(root, FULL_BOX_PRED))
+    root = make_version(tmp_path / "v1", SEG2_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, SEG2_PREDS))
     out = evaluate_mod.evaluate("ultralytics:yolo26n-seg", root, "segment")
-    assert out["iou"] == "segm" and out["coco"]["AP50"] == 0.0
-    assert out["tide"]["missed"] == pytest.approx(1.0)
+    assert out["iou"] == "segm" and out["coco"]["AP50"] == pytest.approx(0.5)
+    assert out["tide"]["missed"] == pytest.approx(0.5)
     assert all(out["tide"][k] == 0.0 for k in TIDE_KEYS if k != "missed")
+
+
+MULTI_PART_REC = {
+    "file": "test/multipart.jpg", "image_id": 1, "width": 200, "height": 200,
+    # one gt mask in three vertical thirds: no single part reaches IoU 0.5, the union is exact
+    "gt": [{"cls": "helmet", "bbox": [40, 40, 120, 120],
+            "segm": [[40, 40, 80, 40, 80, 160, 40, 160],
+                     [80, 40, 120, 40, 120, 160, 80, 160],
+                     [120, 40, 160, 40, 160, 160, 120, 160]]}],
+    "pred": [{"cls": "helmet", "conf": 0.9, "bbox": [40, 40, 120, 120],
+              "points": [{"x": 40, "y": 40}, {"x": 160, "y": 40},
+                         {"x": 160, "y": 160}, {"x": 40, "y": 160}]}],
+}
+
+
+def test_tide_mask_iou_merges_multi_part_gt():
+    fixes, missed, _ = evaluate_mod._tide_classify(MULTI_PART_REC, "segm")
+    assert fixes == [None]
+    assert missed == []
+
+
+def test_tide_mask_iou_accepts_rle_gt():
+    from pycocotools import mask as mask_utils
+
+    poly = [40, 40, 160, 40, 160, 160, 40, 160]
+    rle = mask_utils.frPyObjects([poly], 200, 200)[0]
+    rec = dict(MULTI_PART_REC)
+    rec["gt"] = [{**MULTI_PART_REC["gt"][0], "segm": rle}]
+    assert evaluate_mod._mask_iou(rle, poly, 200, 200) == pytest.approx(1.0)
+    fixes, missed, _ = evaluate_mod._tide_classify(rec, "segm")
+    assert fixes == [None]
+    assert missed == []
+
+
+EMPTY_GT_ITEMS = [
+    {"file": "test/only_missed.jpg", "split": "test", "width": 200, "height": 200,
+     "anns": [_ann(0, 0.20, 0.20, 0.20, 0.20)]},
+]
+# removing the only missed gt leaves an empty ground truth with a scored detection still present
+EMPTY_GT_PREDS = {"only_missed.jpg": [_pred("helmet", 0.90, 150, 150, 30, 30)]}
+
+
+def test_tide_missed_oracle_with_empty_ground_truth(tmp_path, monkeypatch):
+    root = make_version(tmp_path / "v1", EMPTY_GT_ITEMS)
+    _use_model(monkeypatch, FakeModel(root, EMPTY_GT_PREDS))
+    out = evaluate_mod.evaluate("ultralytics:yolo26n", root, "object-detection")
+    tide = out["tide"]
+    assert tide["missed"] == 0.0
+    assert all(tide[k] == 0.0 for k in TIDE_KEYS if k != "missed")

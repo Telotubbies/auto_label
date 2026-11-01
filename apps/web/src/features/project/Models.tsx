@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { AlertTriangle, Boxes, Check, Download, ImageOff, Info, Rocket, Trash2, X } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -75,12 +75,12 @@ const COCO_METRICS: [keyof ModelEval['coco'], string][] = [
 ]
 
 const TIDE_ERRORS = [
-  ['cls', 'Cls'],
-  ['loc', 'Loc'],
-  ['both', 'Both'],
-  ['dupe', 'Dupe'],
-  ['bkg', 'Bkg'],
-  ['missed', 'Missed'],
+  ['cls', 'Cls', 'Classification'],
+  ['loc', 'Loc', 'Localisation'],
+  ['both', 'Both', 'Class and box'],
+  ['dupe', 'Dupe', 'Duplicate'],
+  ['bkg', 'Bkg', 'Background'],
+  ['missed', 'Missed', 'Missed GT'],
 ] as const
 
 type Box = { cls: string; bbox: number[]; conf?: number }
@@ -315,16 +315,19 @@ type TideLabelProps = {
 
 const TIDE_LABEL_OFFSET = 6
 
-/** Bar-end label: 3-decimal ΔAP, plus a "largest" hint when one bucket alone leads. */
+/** Bar-end label: 3-decimal ΔAP50, plus a "largest" hint when one bucket alone leads. */
 function TideValueLabel({ viewBox, value, peak, uniquePeak }: TideLabelProps) {
-  const x = (viewBox?.x ?? 0) + (viewBox?.width ?? 0) + TIDE_LABEL_OFFSET
+  const end = (viewBox?.x ?? 0) + (viewBox?.width ?? 0)
   const y = (viewBox?.y ?? 0) + (viewBox?.height ?? 0) / 2
+  const negative = typeof value === 'number' && value < 0
   const largest = !!uniquePeak && typeof value === 'number' && value === peak
   const text = typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : '0.000'
   // The halo keeps the number legible where it crosses a gridline.
   return (
-    <text x={x} y={y} dominantBaseline="middle" fontSize={11} stroke="var(--card)" strokeWidth={3} strokeLinejoin="round"
-      paintOrder="stroke" fill={largest ? 'var(--foreground)' : 'var(--muted-foreground)'}>
+    <text x={negative ? end - TIDE_LABEL_OFFSET : end + TIDE_LABEL_OFFSET} y={y}
+      textAnchor={negative ? 'end' : 'start'} dominantBaseline="middle" fontSize={11}
+      stroke="var(--card)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+      fill={largest ? 'var(--foreground)' : 'var(--muted-foreground)'}>
       {text}
       {largest ? <tspan dx={4} fontSize={9} fill="var(--muted-foreground)">largest</tspan> : null}
     </text>
@@ -334,32 +337,73 @@ function TideValueLabel({ viewBox, value, peak, uniquePeak }: TideLabelProps) {
 // Plain toFixed(2) would print a 0.035 gridline as "0.04"; explicit two-decimal steps avoid that.
 const TIDE_TICK_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1]
 
-function TideCard({ tide, conf }: { tide: NonNullable<ModelEval['tide']>; conf: number }) {
-  const { rows, peak, uniquePeak } = useMemo(() => {
-    const next = TIDE_ERRORS.map(([key, label]) => {
+function TideCard({ tide }: { tide: NonNullable<ModelEval['tide']> }) {
+  const [view, setView] = useState<'chart' | 'table'>('chart')
+  const { rows, peak, uniquePeak, floor } = useMemo(() => {
+    const next = TIDE_ERRORS.map(([key, label, long]) => {
       const raw = tide[key]
-      return { key, label, value: Number.isFinite(raw) ? Math.max(0, raw) : 0 }
+      return { key, label, long, value: Number.isFinite(raw) ? raw : 0 }
     })
     const top = Math.max(...next.map((r) => r.value))
     // Ties must not crown one arbitrary bucket: every maximum is emphasised, only a lone one is labelled.
     const atPeak = top > 0 ? next.filter((r) => r.value === top).length : 0
-    return { rows: next, peak: top, uniquePeak: atPeak === 1 }
+    return { rows: next, peak: top, uniquePeak: atPeak === 1, floor: Math.min(0, ...next.map((r) => r.value)) }
   }, [tide])
-  // A fixed 0..1 axis would flatten typical 0.0x values into invisible slivers.
+  // A fixed 0..1 axis would flatten typical 0.0x values into invisible slivers; a fix that hurts
+  // is reported as a negative delta, so the domain keeps a floor below zero.
+  const domainMin = floor < 0 ? floor * 1.15 : 0
   const domainMax = Math.max(0.05, peak * 1.1)
   const ticks = useMemo(() => {
-    const step = TIDE_TICK_STEPS.find((s) => domainMax / s <= 5) ?? 1
+    const step = TIDE_TICK_STEPS.find((s) => (domainMax - domainMin) / s <= 5) ?? 1
     const out: number[] = []
-    for (let i = 0; i * step <= domainMax + 1e-9; i++) out.push(Number((i * step).toFixed(2)))
+    for (let v = Math.ceil(domainMin / step - 1e-9) * step; v <= domainMax + 1e-9; v += step)
+      out.push(Number(v.toFixed(2)))
     return out
-  }, [domainMax])
+  }, [domainMin, domainMax])
+  const empty = rows.every((r) => r.value === 0)
 
   return (
     <Card className="min-w-0 p-4">
-      <h3 className="text-sm font-semibold">TIDE error breakdown</h3>
-      <p className="mt-0.5 text-xs text-muted-foreground">AP recoverable by fixing each error type at the best-F1 confidence.</p>
-      {peak === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">No AP recoverable at this threshold.</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">TIDE error breakdown</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">AP50 recoverable by fixing each error type (oracle).</p>
+        </div>
+        <div role="group" aria-label="TIDE view" className="flex shrink-0 rounded-md border p-0.5">
+          {(['chart', 'table'] as const).map((v) => (
+            <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}
+              className={cn('cursor-pointer rounded px-2 py-1 text-xs transition-colors',
+                view === v ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:text-foreground')}>
+              {v === 'chart' ? 'Chart' : 'Table'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'table' ? (
+        <figure className="mt-3 min-w-0">
+          <table className="w-full text-sm">
+            <caption className="sr-only">TIDE delta AP50 by error type</caption>
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th scope="col" className="py-1.5 font-medium">Error type</th>
+                <th scope="col" className="py-1.5 text-right font-medium">ΔAP50</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-b last:border-0">
+                  <th scope="row" className="py-1.5 text-left font-normal">{r.long}</th>
+                  <td className={cn('py-1.5 text-right tabular-nums', peak > 0 && r.value === peak && 'font-semibold')}>
+                    {r.value.toFixed(3)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </figure>
+      ) : empty ? (
+        <p className="mt-3 text-sm text-muted-foreground">No AP50 recoverable at this threshold.</p>
       ) : (
         <figure className="mt-3 min-w-0">
           <div className="relative h-56">
@@ -367,10 +411,13 @@ function TideCard({ tide, conf }: { tide: NonNullable<ModelEval['tide']>; conf: 
               <ResponsiveContainer>
                 <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 78, bottom: 0, left: 0 }}>
                   <CartesianGrid horizontal={false} stroke="var(--border)" strokeDasharray="3 3" />
-                  <XAxis type="number" domain={[0, domainMax]} ticks={ticks} height={18} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                  <XAxis type="number" domain={[domainMin, domainMax]} ticks={ticks} height={18}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                     tickLine={false} axisLine={false} tickFormatter={(v: number) => v.toFixed(2)} />
-                  <YAxis type="category" dataKey="label" width={52} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: 'var(--muted)' }} formatter={(v: number) => [v.toFixed(3), 'ΔAP recoverable']} />
+                  <YAxis type="category" dataKey="label" width={52}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+                  {domainMin < 0 ? <ReferenceLine x={0} stroke="var(--border)" /> : null}
+                  <Tooltip cursor={{ fill: 'var(--muted)' }} formatter={(v: number) => [v.toFixed(3), 'ΔAP50']} />
                   <Bar dataKey="value" barSize={14} radius={[0, 3, 3, 0]} isAnimationActive={false}>
                     {rows.map((r) => (
                       <Cell key={r.key} fill="var(--primary)" fillOpacity={r.value === peak ? 1 : 0.32} />
@@ -380,14 +427,14 @@ function TideCard({ tide, conf }: { tide: NonNullable<ModelEval['tide']>; conf: 
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <span aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 text-[10px] text-muted-foreground">ΔAP</span>
+            <span aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 text-[10px] text-muted-foreground">ΔAP50</span>
           </div>
           <figcaption className="mt-2">
             <ul className="sr-only">
-              {rows.map((r) => <li key={r.key}>{r.label}: {r.value.toFixed(3)} AP recoverable</li>)}
+              {rows.map((r) => <li key={r.key}>{r.long}: {r.value.toFixed(3)} AP50 recoverable</li>)}
             </ul>
             <p className="text-[11px] text-muted-foreground">
-              Larger bars are the errors worth fixing first. Measured <span className="whitespace-nowrap">at conf <span className="tabular-nums">{conf.toFixed(2)}</span></span>.
+              Every scored detection is classified. Larger deltas are the errors worth fixing first.
             </p>
           </figcaption>
         </figure>
@@ -491,7 +538,7 @@ function EvalPanel({ ev, images, task }: { ev: ModelEval; images?: Record<string
         </Card>
       </div>
 
-      {ev.tide ? <TideCard tide={ev.tide} conf={ev.f1_best.conf} /> : null}
+      {ev.tide ? <TideCard tide={ev.tide} /> : null}
 
       {ev.confusion.labels.length > 0 && (
         <ConfusionCard ev={ev} matrix={matrix} cellFiles={cellFiles}

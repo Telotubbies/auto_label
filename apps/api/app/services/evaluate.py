@@ -69,8 +69,8 @@ def evaluate(model_ref: str, version_dir: Path, task: str, db=None,
             detections.append(_detection(img["id"], preds[-1], cat_ids, iou_type))
         records.append({"file": img["file_name"], "image_id": img["id"],
                         "width": img["width"], "height": img["height"],
-                        "gt": [{"cls": cat_names[a["category_id"]], "bbox": list(a["bbox"]),
-                                "segm": a.get("segmentation")}
+                        "gt": [{"id": a["id"], "cls": cat_names[a["category_id"]],
+                                "bbox": list(a["bbox"]), "segm": a.get("segmentation")}
                                for a in coco.imgToAnns.get(img["id"], [])],
                         "pred": preds})
 
@@ -83,7 +83,7 @@ def evaluate(model_ref: str, version_dir: Path, task: str, db=None,
         per_class.append({"class": cat["name"], "AP": _stat(s[0]), "AP50": _stat(s[1])})
 
     curve, f1_best = _sweep(records)        # F1/confusion stay box-based: the UI shows boxes
-    tide = _tide(coco, records, iou_type, cat_ids, _stat(stats[0]), f1_best["conf"])
+    tide = _tide(coco, records, iou_type, cat_ids, _stat(stats[1]))
     return {
         "split": split,
         "note": note,
@@ -165,17 +165,27 @@ def _polygon(p: dict, box: list[float]) -> list[float]:
     return _rect(box)
 
 
-def _gt_polygon(g: dict, box: list[float]) -> list[float]:
-    """Ground-truth mask polygon in pixels; a box rectangle when the gt has no mask."""
-    segm = g.get("segm")
-    return list(segm[0]) if segm else _rect(box)
+def _poly_mask(segm, h: int, w: int):
+    """Compressed RLE for a COCO segmentation: polygon list (all parts), RLE, or None."""
+    if isinstance(segm, dict):
+        counts = segm.get("counts")
+        if isinstance(counts, (bytes, str)):
+            return segm                        # already compressed
+        return mask_utils.frPyObjects(segm, h, w) if counts is not None else None
+    if isinstance(segm, list) and segm and isinstance(segm[0], (list, tuple)):
+        rles = mask_utils.frPyObjects([list(p) for p in segm], h, w)
+        return mask_utils.merge(rles) if len(rles) > 1 else rles[0]
+    return None
 
 
-def _mask_iou(a: list[float], b: list[float], h: int, w: int) -> float:
-    """Mask IoU between two flat pixel polygons (pycocotools rasterisation)."""
+def _mask_iou(gt_segm, pred_poly: list[float], h: int, w: int) -> float:
+    """Mask IoU between a gt segmentation (multi-polygon parts or RLE) and a prediction polygon."""
     try:
-        ra, rb = mask_utils.frPyObjects([a, b], h, w)
-        return float(mask_utils.iou([ra], [rb], [0])[0][0])
+        gt = _poly_mask(gt_segm, h, w)
+        pred = _poly_mask([pred_poly], h, w)
+        if gt is None or pred is None:
+            return 0.0
+        return float(mask_utils.iou([gt], [pred], [0])[0][0])
     except Exception:                      # a degenerate polygon has no area to match
         return 0.0
 
@@ -313,85 +323,133 @@ def _detections(records: list[dict]) -> list[dict]:
 
 
 # --- TIDE error buckets -------------------------------------------------------------------
-# `tidecv` is not a dependency, so the six buckets are classified here and each one is scored by
-# re-running COCOeval on a corrected detection list. Six extra evaluations per model is fine:
-# this runs in the training worker, not on the request path.
+# Bolya et al. 2020: true positives are matched per class with COCO matching at IoU 0.5, then
+# every remaining detection is labelled in the paper's order (cls -> dupe -> loc -> both -> bkg)
+# and each oracle fix is scored as a delta in AP50. `tidecv` is not a dependency; six extra AP50
+# runs per model are fine because this runs in the training worker, not on the request path.
 
-def _tide_classify(rec: dict, conf: float, iou_type: str) -> tuple[list, list[int]]:
-    """Per-prediction TIDE label plus the gt indices left uncovered.
-
-    Greedy on descending score against the highest-IoU unused gt at IoU >= TIDE_FOREGROUND,
-    ignoring class: a confident box that lands on the wrong class still explains that gt.
-    Segmentation projects match on mask IoU, because a mask-only error is invisible to the boxes.
-    Predictions below `conf` (the operating threshold) are never corrected.
-    """
-    gt, pred = rec["gt"], rec["pred"]
+def _pair_iou(rec: dict, iou_type: str):
+    """IoU function for one image: mask IoU for segmentation, box IoU otherwise."""
     size = (rec["height"], rec["width"])
 
-    def pair_iou(g: dict, p: dict) -> float:
+    def iou(g: dict, p: dict) -> float:
         if iou_type == "segm":
-            return _mask_iou(_gt_polygon(g, g["bbox"]), _polygon(p, p["bbox"]), *size)
+            return _mask_iou(g.get("segm"), _polygon(p, p["bbox"]), *size)
         return _iou(g["bbox"], p["bbox"])
 
+    return iou
+
+
+def _tide_match(gt: list[dict], pred: list[dict], pair_iou) -> dict[int, int]:
+    """COCO-style per-class greedy matching at IoU >= 0.5: prediction index -> gt index."""
     used: set[int] = set()
-    matched_cls: dict[int, str] = {}
-    fixes: list[tuple[str, int] | None] = [None] * len(pred)
+    tps: dict[int, int] = {}
     for pi in sorted(range(len(pred)), key=lambda i: -pred[i]["conf"]):
-        p = pred[pi]
-        if p["conf"] < conf:
-            continue
-        best_iou, best_gi = TIDE_FOREGROUND, -1
+        best_iou, best_gi = IOU, -1
         for gi, g in enumerate(gt):
-            if gi in used:
+            if gi in used or g["cls"] != pred[pi]["cls"]:
                 continue
-            iou = pair_iou(g, p)
+            iou = pair_iou(g, pred[pi])
             if iou >= best_iou:
                 best_iou, best_gi = iou, gi
-        if best_gi < 0:
-            # nothing near this box: a duplicate when it repeats an already-matched same-class gt
-            dupe = any(cls == p["cls"] and pair_iou(gt[gi], p) >= TIDE_FOREGROUND
-                       for gi, cls in matched_cls.items())
-            fixes[pi] = ("dupe" if dupe else "bkg", -1)
+        if best_gi >= 0:
+            used.add(best_gi)
+            tps[pi] = best_gi
+    return tps
+
+
+def _best_gt(gt: list[dict], p: dict, pair_iou, same: bool, lo: float,
+             hi: float = math.inf) -> int:
+    """Highest-IoU gt in the given class relation and IoU band, or -1."""
+    found, best_iou = -1, -1.0
+    for gi, g in enumerate(gt):
+        if (g["cls"] == p["cls"]) != same:
             continue
-        used.add(best_gi)
-        matched_cls[best_gi] = gt[best_gi]["cls"]
-        same = gt[best_gi]["cls"] == p["cls"]
-        if same:
-            fixes[pi] = None if best_iou >= IOU else ("loc", best_gi)
-        else:
-            fixes[pi] = ("cls", best_gi) if best_iou >= IOU else ("both", best_gi)
-    return fixes, [gi for gi in range(len(gt)) if gi not in used]
+        iou = pair_iou(g, p)
+        if lo <= iou < hi and iou > best_iou:
+            best_iou, found = iou, gi
+    return found
+
+
+def _tide_classify(rec: dict, iou_type: str) -> tuple[list, list[int], set[int]]:
+    """TIDE labels for every scored detection, the uncovered gt indices and the TP gt set.
+
+    TPs are matched first (per class at IoU 0.5); each remaining detection is then labelled in
+    Bolya et al.'s order: cls -> dupe -> loc -> both -> bkg.
+    """
+    gt, pred = rec["gt"], rec["pred"]
+    pair_iou = _pair_iou(rec, iou_type)
+    tps = _tide_match(gt, pred, pair_iou)
+    tp_gt = set(tps.values())
+    tp_score = {gi: pred[pi]["conf"] for pi, gi in tps.items()}
+
+    fixes: list[tuple[str, int] | None] = [None] * len(pred)
+    for pi, p in enumerate(pred):
+        if pi in tps:
+            continue
+        gi = _best_gt(gt, p, pair_iou, False, IOU)              # wrong class, IoU >= 0.5
+        if gi >= 0:
+            fixes[pi] = ("cls", gi)
+            continue
+        gi = max((i for i, g in enumerate(gt)
+                  if g["cls"] == p["cls"] and tp_score.get(i, 0.0) > p["conf"]
+                  and pair_iou(g, p) >= IOU),                   # repeats a higher-scored TP
+                 key=lambda i: pair_iou(gt[i], p), default=-1)
+        if gi >= 0:
+            fixes[pi] = ("dupe", gi)
+            continue
+        gi = _best_gt(gt, p, pair_iou, True, TIDE_FOREGROUND, IOU)
+        if gi >= 0:
+            fixes[pi] = ("loc", gi)
+            continue
+        gi = _best_gt(gt, p, pair_iou, False, TIDE_FOREGROUND, IOU)
+        if gi >= 0:
+            fixes[pi] = ("both", gi)
+            continue
+        fixes[pi] = ("bkg", -1)
+    return fixes, [gi for gi in range(len(gt)) if gi not in tp_gt], tp_gt
 
 
 def _tide_corrected(records: list[dict], classified: list, cat_ids: dict,
                     iou_type: str, kind: str) -> list[dict]:
-    """The detection list with every error of one TIDE type repaired, everything else untouched."""
+    """Detection list with one TIDE error type repaired by its oracle fix."""
     out = []
-    for r, (fixes, missed) in zip(records, classified):
+    for r, (fixes, _, tp_gt) in zip(records, classified):
         for p, fix in zip(r["pred"], fixes):
+            det = _detection(r["image_id"], p, cat_ids, iou_type)
             if fix is None or fix[0] != kind:       # untouched detection goes through as-is
-                out.append(_detection(r["image_id"], p, cat_ids, iou_type))
+                out.append(det)
                 continue
             if kind in ("dupe", "bkg"):             # dropping the false positive is the fix
                 continue
-            g = r["gt"][fix[1]]
-            det = _detection(r["image_id"], p, cat_ids, iou_type)
+            gi = fix[1]
+            if gi in tp_gt:                         # the fix would duplicate an existing TP
+                out.append(det)
+                continue
+            g = r["gt"][gi]
             if kind in ("cls", "both"):
                 det["category_id"] = cat_ids[g["cls"]]
             if kind in ("loc", "both"):
                 det["bbox"] = list(g["bbox"])
                 if iou_type == "segm":              # the mask must follow the corrected box
-                    det["segmentation"] = [_gt_polygon(g, det["bbox"])]
+                    det["segmentation"] = g["segm"] or [_rect(g["bbox"])]
             out.append(det)
-        if kind == "missed":
-            for gi in missed:                       # a perfect detection on every missed gt
-                g = r["gt"][gi]
-                det = {"image_id": r["image_id"], "category_id": cat_ids[g["cls"]],
-                       "bbox": list(g["bbox"]), "score": 1.0}
-                if iou_type == "segm":
-                    det["segmentation"] = [_gt_polygon(g, det["bbox"])]
-                out.append(det)
     return out
+
+
+def _gt_without_missed(coco: COCO, records: list[dict], classified: list) -> COCO:
+    """The ground truth with every missed annotation removed (the missed oracle fix)."""
+    drop = {r["gt"][gi]["id"]
+            for r, (_, missed, _) in zip(records, classified) for gi in missed}
+    if not drop:
+        return coco
+    data = {**coco.dataset,
+            "annotations": [a for a in coco.dataset["annotations"] if a["id"] not in drop]}
+    gt = COCO()
+    gt.dataset = data
+    with contextlib.redirect_stdout(io.StringIO()):
+        gt.createIndex()
+    return gt
 
 
 def _load_res(coco: COCO, detections: list[dict]):
@@ -402,12 +460,13 @@ def _load_res(coco: COCO, detections: list[dict]):
 
 
 def _tide(coco: COCO, records: list[dict], iou_type: str, cat_ids: dict,
-          ap_base: float, conf: float) -> dict:
-    """dAP recovered per TIDE error type: max(0, AP_fixed - AP_base), 4 decimals."""
-    classified = [_tide_classify(r, conf, iou_type) for r in records]
+          ap_base: float) -> dict:
+    """ΔAP50 per TIDE error type; a fix that hurts is reported negative (no clamping)."""
+    classified = [_tide_classify(r, iou_type) for r in records]
     out = {}
     for kind in TIDE_TYPES:
+        gt = _gt_without_missed(coco, records, classified) if kind == "missed" else coco
         detections = _tide_corrected(records, classified, cat_ids, iou_type, kind)
-        ap_fixed = _stat(_coco_stats(coco, _load_res(coco, detections), iou_type)[0])
-        out[kind] = max(0.0, round(ap_fixed - ap_base, 4))
+        ap_fixed = _stat(_coco_stats(gt, _load_res(gt, detections), iou_type)[1])
+        out[kind] = round(ap_fixed - ap_base, 4)
     return out
