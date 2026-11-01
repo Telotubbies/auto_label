@@ -4,19 +4,26 @@ from ..adapters.ultralytics_ad import TASK, base_weights, predict, train  # noqa
 SIZES = ("n", "s", "m", "l", "x")
 
 
+def _first(entry: dict, *keys):
+    for key in keys:
+        if entry.get(key) is not None:
+            return entry[key]
+    return None
+
+
 def final_metrics(history: list[dict], task: str) -> dict:
-    """Pick headline metrics from the best epoch."""
+    """Pick headline metrics from the best epoch (Ultralytics keys or the spec-P4 common keys)."""
     if not history:
         return {}
     if task == "classify":
         best = max(history, key=lambda h: h.get("metrics/accuracy_top1", 0))
         return {"accuracy_top1": best.get("metrics/accuracy_top1"), "accuracy_top5": best.get("metrics/accuracy_top5")}
     k = "(M)" if task == "segment" else "(B)"
-    best = max(history, key=lambda h: h.get(f"metrics/mAP50-95{k}", h.get("metrics/mAP50-95(B)", 0)))
-    return {"map50": best.get(f"metrics/mAP50{k}", best.get("metrics/mAP50(B)")),
-            "map5095": best.get(f"metrics/mAP50-95{k}", best.get("metrics/mAP50-95(B)")),
-            "precision": best.get(f"metrics/precision{k}", best.get("metrics/precision(B)")),
-            "recall": best.get(f"metrics/recall{k}", best.get("metrics/recall(B)"))}
+    best = max(history, key=lambda h: _first(h, f"metrics/mAP50-95{k}", "metrics/mAP50-95(B)", "val/map5095") or 0)
+    return {"map50": _first(best, f"metrics/mAP50{k}", "metrics/mAP50(B)", "val/map50"),
+            "map5095": _first(best, f"metrics/mAP50-95{k}", "metrics/mAP50-95(B)", "val/map5095"),
+            "precision": _first(best, f"metrics/precision{k}", "metrics/precision(B)", "val/precision"),
+            "recall": _first(best, f"metrics/recall{k}", "metrics/recall(B)", "val/recall")}
 
 
 def to_annotations(pred: dict, class_ids: dict[str, str]) -> list[dict]:

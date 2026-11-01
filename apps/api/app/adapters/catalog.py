@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from ..models import TrainedModel
 from .base import ADAPTERS, Availability, Resolved, parse_ref
 
-_LICENSE = {"ultralytics": "AGPL-3.0", "sam3": "SAM License", "vlm": "Apache-2.0"}
+_LICENSE = {"ultralytics": "AGPL-3.0", "sam3": "SAM License", "vlm": "Apache-2.0",
+            "rfdetr": "Apache-2.0", "hf": "Apache-2.0"}
 _VLM_CAPS = {"vlm", "detect", "caption"}       # until the vlm adapter registers and reports its own
 
 _PROBE_TTL = 15.0                               # a black-holed vLLM probe takes 3 s; don't pay it every request
@@ -36,6 +37,18 @@ def _zoo() -> list[tuple[str, str, str]]:
     out += [("ultralytics", "rtdetr-l", "RT-DETR L"), ("ultralytics", "rtdetr-x", "RT-DETR X"),
             ("ultralytics", "yolov8s-worldv2", "YOLO-World v8 S"), ("ultralytics", "yolov8m-worldv2", "YOLO-World v8 M"),
             ("sam3", "sam3.1", "SAM 3.1"), ("vlm", "qwen2.5-vl-7b", "Qwen2.5-VL 7B")]
+    for variant, name in (("nano", "RF-DETR Nano"), ("small", "RF-DETR Small"),
+                          ("medium", "RF-DETR Medium"), ("large", "RF-DETR Large")):
+        out.append(("rfdetr", variant, name))
+    for variant, name in (("ustc-community/dfine-nano-coco", "D-FINE Nano"),
+                          ("ustc-community/dfine-small-coco", "D-FINE Small"),
+                          ("ustc-community/dfine-medium-coco", "D-FINE Medium"),
+                          ("ustc-community/dfine-large-coco", "D-FINE Large"),
+                          ("PekingU/rtdetr_v2_r18vd", "RT-DETRv2 R18"),
+                          ("PekingU/rtdetr_v2_r34vd", "RT-DETRv2 R34"),
+                          ("PekingU/rtdetr_v2_r50vd", "RT-DETRv2 R50"),
+                          ("PekingU/rtdetr_v2_r101vd", "RT-DETRv2 R101")):
+        out.append(("hf", variant, name))
     return out
 
 

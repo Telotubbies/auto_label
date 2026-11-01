@@ -12,3 +12,6 @@ ultralytics>=8.3
 httpx>=0.27
 imagehash>=4.3
 pycocotools>=2.0.7
+# Optional Apache-2.0 families (Task 15) — install on the GPU host only; adapters degrade with a clear reason
+# rfdetr[train,loggers]>=1.11
+# transformers>=4.52   (D-FINE and RT-DETRv2 mappings in AutoModelForObjectDetection)

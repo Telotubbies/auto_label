@@ -46,7 +46,7 @@ export default function Train() {
   const start = async () => {
     try {
       const { family: _ui, max_minutes, resume_from, ...rest } = f
-      const body = { ...rest, family: 'ultralytics', max_minutes: max_minutes ? +max_minutes : null, resume_from: resume_from || null }
+      const body = { ...rest, family: fam?.adapter ?? 'ultralytics', max_minutes: max_minutes ? +max_minutes : null, resume_from: resume_from || null }
       const m = await post<ModelItem>(`${api.P(ws, project.slug)}/train`, body)
       qc.invalidateQueries({ queryKey: ['models', ws, project.slug] }); toast.ok('Training queued'); nav(`../models?model=${m.id}`)
     } catch (e) { toast.err(e as Error) }
@@ -54,7 +54,7 @@ export default function Train() {
   if (opts.data && !opts.data.supported) return <EmptyState title="Training isn't available" hint={opts.data.reason} />
   return (
     <div className="anim-page max-w-4xl">
-      <PageHeader title="Train a Model" desc="Fine-tune a YOLO, RT-DETR or YOLO-World model on a dataset version. Training runs on the worker — your GPU box, Kaggle or Colab." />
+      <PageHeader title="Train a Model" desc="Fine-tune a YOLO, RT-DETR, YOLO-World, RF-DETR, D-FINE or RT-DETRv2 model on a dataset version. Training runs on the worker — your GPU box, Kaggle or Colab." />
       <div className="space-y-4 px-8 pb-10">
         {versions.isSuccess && !ready.length ? (
           <EmptyState title="Generate a version first" hint="Models train on a frozen dataset version." action={<Button size="sm" onClick={() => nav('../versions')}>Go to Versions</Button>} />

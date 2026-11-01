@@ -99,7 +99,7 @@ export interface LeaderboardRow {
   comparable: boolean; created: number
 }
 export interface TrainVariant { id: string; label: string; weights: string }
-export interface TrainFamily { family: string; label: string; license: string; available: boolean; reason: string; variants: TrainVariant[] }
+export interface TrainFamily { family: string; label: string; adapter?: string; license: string; available: boolean; reason: string; variants: TrainVariant[] }
 export interface TrainOptions { supported: boolean; reason?: string; task?: string; families?: TrainFamily[] }
 export interface Member { id: string; name: string; email: string; role: Role; owner: boolean; joined: number }
 

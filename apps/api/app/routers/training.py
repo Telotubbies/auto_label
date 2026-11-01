@@ -21,7 +21,7 @@ from .projects import job_out
 
 router = APIRouter(tags=["training"])
 P = "/api/ws/{ws}/projects/{project}"
-LICENSE = "AGPL-3.0"       # every trainable family runs on the ultralytics adapter
+LICENSE = "AGPL-3.0"       # the ultralytics families
 _SIZES = {"n": "Nano — fastest", "s": "Small", "m": "Medium — balanced", "l": "Large", "x": "X-Large — most accurate"}
 
 
@@ -29,14 +29,34 @@ def _yolo(prefix: str, label: str, sizes: str) -> list[dict]:
     return [{"id": f"{prefix}{s}", "label": f"{label} {_SIZES[s]}"} for s in sizes]
 
 
-# UI display groups over the single `ultralytics` adapter. detect_only families can't train seg/cls projects.
+def _hf(variants: list[tuple[str, str]]) -> list[dict]:
+    """D-FINE / RT-DETRv2 weights are the HuggingFace repo id itself."""
+    return [{"id": v, "label": label, "weights": v} for v, label in variants]
+
+
+# UI display groups over the registered adapters. detect_only families can't train seg/cls projects.
 FAMILIES = [
-    {"family": "yolo", "label": "YOLO", "detect_only": False,
+    {"family": "yolo", "label": "YOLO", "adapter": "ultralytics", "license": LICENSE, "detect_only": False,
      "variants": _yolo("yolo26", "YOLO26", "nsmlx") + _yolo("yolo11", "YOLO11", "nsmlx") + _yolo("yolov8", "YOLOv8", "nsmlx")},
-    {"family": "rtdetr", "label": "RT-DETR", "detect_only": True,
+    {"family": "rtdetr", "label": "RT-DETR", "adapter": "ultralytics", "license": LICENSE, "detect_only": True,
      "variants": [{"id": "rtdetr-l", "label": "RT-DETR Large"}, {"id": "rtdetr-x", "label": "RT-DETR X-Large"}]},
-    {"family": "yolo-world", "label": "YOLO-World", "detect_only": True,
+    {"family": "yolo-world", "label": "YOLO-World", "adapter": "ultralytics", "license": LICENSE, "detect_only": True,
      "variants": [{"id": "yolov8s-worldv2", "label": "YOLO-World v2 Small"}, {"id": "yolov8m-worldv2", "label": "YOLO-World v2 Medium"}]},
+    {"family": "rf-detr", "label": "RF-DETR", "adapter": "rfdetr", "license": "Apache-2.0", "detect_only": True,
+     "variants": [{"id": "nano", "label": "RF-DETR Nano", "weights": "rf-detr-nano.pth"},
+                  {"id": "small", "label": "RF-DETR Small", "weights": "rf-detr-small.pth"},
+                  {"id": "medium", "label": "RF-DETR Medium", "weights": "rf-detr-medium.pth"},
+                  {"id": "large", "label": "RF-DETR Large", "weights": "rf-detr-large.pth"}]},
+    {"family": "d-fine", "label": "D-FINE", "adapter": "hf", "license": "Apache-2.0", "detect_only": True,
+     "variants": _hf([("ustc-community/dfine-nano-coco", "D-FINE Nano"),
+                      ("ustc-community/dfine-small-coco", "D-FINE Small"),
+                      ("ustc-community/dfine-medium-coco", "D-FINE Medium"),
+                      ("ustc-community/dfine-large-coco", "D-FINE Large")])},
+    {"family": "rt-detr-v2", "label": "RT-DETRv2", "adapter": "hf", "license": "Apache-2.0", "detect_only": True,
+     "variants": _hf([("PekingU/rtdetr_v2_r18vd", "RT-DETRv2 R18"),
+                      ("PekingU/rtdetr_v2_r34vd", "RT-DETRv2 R34"),
+                      ("PekingU/rtdetr_v2_r50vd", "RT-DETRv2 R50"),
+                      ("PekingU/rtdetr_v2_r101vd", "RT-DETRv2 R101")])},
 ]
 _BASE_VARIANTS = {v["id"] for f in FAMILIES for v in f["variants"]}
 _YOLO26 = {f"yolo26{s}" for s in "nsmlx"}
@@ -145,16 +165,22 @@ def train_options(c: Ctx = Depends(project_ctx)):
     if c.project.type not in ml.TASK:
         return {"supported": False, "reason": "training is available for detection, segmentation and classification projects"}
     task = ml.TASK[c.project.type]
-    av = ADAPTERS["ultralytics"].probe() if "ultralytics" in ADAPTERS else None
     suffix = {"detect": "", "segment": "-seg", "classify": "-cls"}[task]
+    probes = {}
+    for adapter in {f["adapter"] for f in FAMILIES}:
+        ad = ADAPTERS.get(adapter)
+        probes[adapter] = ad.probe() if ad else None
     fams = []
     for f in FAMILIES:
-        ok, reason = (av.ok, av.reason) if av else (False, "ultralytics adapter not installed")
+        av = probes.get(f["adapter"])
+        ok, reason = (av.ok, av.reason) if av else (False, f"{f['adapter']} adapter not installed")
         if ok and f["detect_only"] and task != "detect":
             ok, reason = False, "detection projects only"
         sfx = "" if f["detect_only"] else suffix
-        fams.append({"family": f["family"], "label": f["label"], "license": LICENSE, "available": ok, "reason": reason,
-                     "variants": [{"id": v["id"], "label": v["label"], "weights": v["id"] + sfx + ".pt"} for v in f["variants"]]})
+        fams.append({"family": f["family"], "label": f["label"], "adapter": f["adapter"], "license": f["license"],
+                     "available": ok, "reason": reason,
+                     "variants": [{"id": v["id"], "label": v["label"], "weights": v.get("weights", v["id"] + sfx + ".pt")}
+                                  for v in f["variants"]]})
     return {"supported": True, "task": task, "families": fams}
 
 
@@ -181,11 +207,13 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, "pick a generated version to train on")
     variant = f"yolo26{body.size}" if body.size else body.variant
     base = _base_variant(variant)
-    if body.family != "ultralytics" or base not in _BASE_VARIANTS or not (1 <= body.epochs <= 500) \
+    if base not in _BASE_VARIANTS or not (1 <= body.epochs <= 500) \
             or (body.max_minutes is not None and body.max_minutes < 1):
         raise HTTPException(400, "bad training options")
     task = ml.TASK[c.project.type]
     fam = next(f for f in FAMILIES if f["family"] == _family_of(base))
+    if body.family not in (fam["adapter"], fam["family"]):
+        raise HTTPException(400, "bad training options")
     if fam["detect_only"] and task != "detect":
         raise HTTPException(400, f"{fam['label']} trains detection projects only")
     if not fam["detect_only"]:
@@ -205,10 +233,10 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
     charge(c.db, c.ws, CREDIT_COST["train"])
     m = TrainedModel(workspace_id=c.ws.id, project_id=c.project.id, version_id=v.id, task=task,
                      name=body.name.strip() or f"{c.project.slug}/{v.number}-{variant}",
-                     arch=variant, family="ultralytics", variant=variant, license=LICENSE,
+                     arch=variant, family=fam["adapter"], variant=variant, license=fam["license"],
                      status="queued", classes=v.stats.get("class_names", []))
     c.db.add(m); c.db.flush()
-    options = {"family": "ultralytics", "variant": variant, "epochs": body.epochs, "imgsz": body.imgsz,
+    options = {"family": fam["adapter"], "variant": variant, "epochs": body.epochs, "imgsz": body.imgsz,
                "batch": body.batch, "max_minutes": body.max_minutes, "resume_from": body.resume_from}
     if base in _YOLO26:
         options["size"] = base[len("yolo26"):]      # v1 remote worker still reads size
