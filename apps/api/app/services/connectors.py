@@ -6,6 +6,7 @@ short-lived presigned GET URLs; nothing here writes or deletes remote objects.
 """
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
 
@@ -64,10 +65,14 @@ def validate(kind: str, config: dict) -> None:
     elif kind == "azure":
         if not str(cfg.get("container") or "").strip():
             raise ValueError("azure connector requires a container")
-        if not (str(cfg.get("account_url") or "").strip() or str(cfg.get("account_name") or "").strip()):
+        account_name = str(cfg.get("account_name") or "").strip()
+        if not (str(cfg.get("account_url") or "").strip() or account_name):
             raise ValueError("azure connector requires account_url or account_name")
-        if str(cfg.get("account_url") or "").strip():
-            _ensure_public(str(cfg["account_url"]).strip(), "account_url")
+        if account_name and not re.fullmatch(r"[a-z0-9]{3,24}", account_name):
+            raise ValueError("account_name must be 3-24 lowercase letters or digits")
+        # check the URL we will actually call, whichever form the config used: a crafted
+        # account_name (e.g. "169.254.169.254#") must not slip past the SSRF guard
+        _ensure_public(_azure_account_url(cfg), "account_url")
         sas = str(cfg.get("sas_token") or "").lstrip("?")
         if sas:
             from urllib.parse import parse_qs

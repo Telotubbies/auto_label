@@ -101,7 +101,8 @@ def test_api_rejects_invalid_config(admin, payload):
     ({"name": "azure", "kind": "azure",
       "config": {"container": "c", "account_name": "acct", "sas_token": "azure-secret"}}, "sas_token", "azure-secret"),
 ])
-def test_secrets_masked_in_post_and_list(admin, payload, field, secret):
+def test_secrets_masked_in_post_and_list(admin, monkeypatch, payload, field, secret):
+    monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)   # no DNS in tests
     r = admin.post(f"{API}/connectors", json=payload)
     assert r.status_code == 200, r.text
     created = r.json()

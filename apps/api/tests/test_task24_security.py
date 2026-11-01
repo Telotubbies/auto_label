@@ -198,3 +198,50 @@ def test_verify_rejects_stale_timestamps():
     assert webhooks.verify("whsec_s", body, now, sig) is True
     assert webhooks.verify("whsec_s", body, now - 301, webhooks.sign("whsec_s", body, now - 301)) is False
     assert webhooks.verify("whsec_s", body, now - 10, sig) is False       # body/signature mismatch
+
+
+def test_azure_account_name_ssrf_bypass_is_rejected(admin):
+    payload = {"name": "azure bypass", "kind": "azure",
+               "config": {"container": "x", "account_name": "169.254.169.254#"}}
+    with pytest.raises(ValueError, match="account_name"):
+        connectors.validate("azure", payload["config"])
+    assert admin.post(f"/api/ws/{WS}/connectors", json=payload).status_code == 400
+    with pytest.raises(ValueError, match="account_name"):
+        connectors.validate("azure", {"container": "x", "account_name": "Evil_Name"})
+
+
+def test_check_url_blocks_nat64_embedded_ipv4():
+    with pytest.raises(safefetch.BlockedURL):
+        safefetch.check_url("http://[64:ff9b::a00:1]/hook")
+
+
+def test_safefetch_post_host_header_strips_userinfo(monkeypatch):
+    seen = {}
+
+    class FakeConn:
+        def request(self, method, path, body=None, headers=None):
+            seen.update(method=method, path=path, headers=headers or {})
+
+        def getresponse(self):
+            return type("R", (), {"status": 204})()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(safefetch, "_public_ip", lambda host, port: "93.184.216.34")
+    monkeypatch.setattr(safefetch.http.client, "HTTPConnection", lambda *a, **k: FakeConn())
+
+    assert safefetch.post("http://user:pass@93.184.216.34:8080/hook", b"{}", {"X-Test": "1"}, 5) == 204
+    assert seen["headers"]["Host"] == "93.184.216.34:8080"
+    assert "user" not in seen["headers"]["Host"]
+
+
+def test_apikey_use_audit_is_sampled_per_minute(admin):
+    key = admin.post(f"/api/ws/{WS}/keys", json={"name": "sampled", "scopes": ["read"]}).json()
+    c = TestClient(app)
+    for _ in range(3):
+        assert c.get("/api/v1/projects", headers={"x-api-key": key["key"]}).status_code == 200
+    with SessionLocal() as db:
+        rows = db.scalars(select(Audit).where(Audit.action == "apikey.use")
+                          .order_by(Audit.created.desc()).limit(50)).all()
+        assert sum(1 for r in rows if (r.meta or {}).get("prefix") == key["prefix"]) == 1

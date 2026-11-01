@@ -20,6 +20,20 @@ from .security import api_key_hash
 
 QUERY_KEY_HINT = ("api_key in the query string is only allowed for publishable keys (ld_pub_*); "
                   "send workspace keys in the Authorization or x-api-key header")
+AUDIT_INTERVAL_S = 60.0                       # one apikey.use row per key per minute: read polling must not flood audit
+_audited_at: dict[str, float] = {}
+
+
+def _audit_use(db: Session, key: ApiKey, request: Request) -> None:
+    now = time.monotonic()
+    if now - _audited_at.get(key.id, 0.0) < AUDIT_INTERVAL_S:
+        return
+    if len(_audited_at) > 50_000:             # bound memory under key spraying
+        for k in list(_audited_at)[:10_000]:
+            if now - _audited_at[k] > 3600:
+                _audited_at.pop(k, None)
+    _audited_at[key.id] = now
+    audit(db, key.workspace_id, None, "apikey.use", request.url.path, prefix=key.prefix, method=request.method)
 
 
 def scopes_of(key: ApiKey) -> tuple[str, ...]:
@@ -72,7 +86,7 @@ def resolve_key(request: Request, token: str | None, db: Session, *, from_query:
     if not k:
         raise HTTPException(401, "invalid api_key")
     k.last_used = time.time()
-    audit(db, k.workspace_id, None, "apikey.use", request.url.path, prefix=k.prefix, method=request.method)
+    _audit_use(db, k, request)
     db.commit()                       # read-only routes never commit later; the key list must show use
     return KeyCtx(key=k, ws=db.get(Workspace, k.workspace_id), db=db)
 

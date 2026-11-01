@@ -65,6 +65,7 @@ def _secret() -> str:
 
 
 SECRET = _secret()
+SECRET_OLD = _env("LD_SECRET_OLD")           # comma-separated previous secrets, for rotation of encrypted rows
 MAX_UPLOAD_MB = int(_env("LD_MAX_UPLOAD_MB", "1024"))        # per upload request
 if WORKER_TOKEN and len(WORKER_TOKEN) < 24:
     raise RuntimeError("LD_WORKER_TOKEN must be at least 24 characters")

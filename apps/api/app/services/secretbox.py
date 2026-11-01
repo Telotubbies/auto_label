@@ -1,24 +1,32 @@
 """Symmetric encryption for secrets stored in the DB (connector credentials, webhook signing keys).
 
-The Fernet key is derived from `config.SECRET` with SHA-256, so rotating LD_SECRET makes old
-ciphertexts undecryptable by design. Ciphertext carries the `enc:v1:` prefix; values without it are
-legacy plaintext and are encrypted once by `migrate()` at startup.
+The Fernet key is derived from `config.SECRET` with SHA-256. Ciphertext carries the `enc:v1:`
+prefix; values without it are legacy plaintext and are encrypted once by `migrate()` at startup.
+
+Rotating LD_SECRET: set LD_SECRET to the new value and LD_SECRET_OLD to the previous one(s)
+(comma-separated), then restart. MultiFernet still decrypts rows written with the old key, and the
+startup migration re-encrypts them under the new key. Remove LD_SECRET_OLD once the logs show a
+clean startup. Dropping an old secret before its rows are re-encrypted makes those rows unreadable.
 """
 import base64
 import hashlib
 from functools import lru_cache
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
-from ..config import SECRET
+from ..config import SECRET, SECRET_OLD
 
 PREFIX = "enc:v1:"
 
 
+def _key(secret: str) -> bytes:
+    return base64.urlsafe_b64encode(hashlib.sha256(f"labeldesk-secretbox:{secret}".encode()).digest())
+
+
 @lru_cache(maxsize=1)
-def _fernet() -> Fernet:
-    key = hashlib.sha256(f"labeldesk-secretbox:{SECRET}".encode()).digest()
-    return Fernet(base64.urlsafe_b64encode(key))
+def _fernet() -> MultiFernet:
+    secrets = [SECRET] + [s.strip() for s in (SECRET_OLD or "").split(",") if s.strip()]
+    return MultiFernet([Fernet(_key(s)) for s in secrets])
 
 
 def is_encrypted(value) -> bool:
@@ -41,6 +49,11 @@ def decrypt(value: str) -> str:
         raise ValueError("stored secret cannot be decrypted (LD_SECRET changed?)") from e
 
 
+def _reencrypt(value: str) -> str:
+    """Move a ciphertext to the current key (used while LD_SECRET_OLD is set)."""
+    return PREFIX + _fernet().rotate(value[len(PREFIX):].encode()).decode()
+
+
 def encrypt_config(config: dict, fields: tuple[str, ...]) -> dict:
     """Copy `config` with every present secret field encrypted (empty values stay empty)."""
     out = dict(config or {})
@@ -54,6 +67,7 @@ def migrate() -> None:
     """Encrypt existing plaintext connector/webhook secrets exactly once. Idempotent."""
     from sqlalchemy import select
 
+    from ..config import SECRET_OLD
     from ..db import SessionLocal
     from ..models import Connector, Webhook
     from .connectors import SECRET_FIELDS
@@ -64,12 +78,21 @@ def migrate() -> None:
             changed = False
             for field in SECRET_FIELDS:
                 value = config.get(field)
-                if value and not is_encrypted(value):
+                if not value:
+                    continue
+                if not is_encrypted(value):
                     config[field] = encrypt(str(value))
+                    changed = True
+                elif SECRET_OLD:
+                    config[field] = _reencrypt(str(value))      # finish a key rotation
                     changed = True
             if changed:
                 conn.config = config
         for hook in db.scalars(select(Webhook)):
-            if hook.secret and not is_encrypted(hook.secret):
+            if not hook.secret:
+                continue
+            if not is_encrypted(hook.secret):
                 hook.secret = encrypt(hook.secret)
+            elif SECRET_OLD:
+                hook.secret = _reencrypt(hook.secret)
         db.commit()

@@ -17,6 +17,9 @@ class BlockedURL(ValueError):
     pass
 
 
+NAT64 = ipaddress.ip_network("64:ff9b::/96")       # IPv4-embedded IPv6: resolves to private v4 just as easily
+
+
 def _public_ip(host: str, port: int) -> str:
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
@@ -24,7 +27,7 @@ def _public_ip(host: str, port: int) -> str:
         raise BlockedURL(f"cannot resolve {host}") from e
     for *_, addr in infos:
         ip = ipaddress.ip_address(addr[0])
-        if not ip.is_global or ip.is_multicast:
+        if not ip.is_global or ip.is_multicast or (ip.version == 6 and ip in NAT64):
             raise BlockedURL("URL points to a private or reserved address")
     return infos[0][4][0]
 
@@ -36,6 +39,16 @@ def check_url(url: str) -> str:
         raise BlockedURL("only http(s) URLs are allowed")
     _public_ip(u.hostname, u.port or (443 if u.scheme == "https" else 80))
     return url
+
+
+def _host_header(u, port: int) -> str:
+    """Host header without userinfo; IPv6 literals keep their brackets, non-default ports are kept."""
+    host = u.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    if port != (443 if u.scheme == "https" else 80):
+        host = f"{host}:{port}"
+    return host
 
 
 def _pinned_connection(u, ip: str, port: int):
@@ -61,7 +74,7 @@ def post(url: str, body: bytes, headers: dict, timeout: float = TIMEOUT) -> int:
     conn = _pinned_connection(u, ip, port)
     try:
         path = (u.path or "/") + (f"?{u.query}" if u.query else "")
-        conn.request("POST", path, body=body, headers={"Host": u.netloc, **headers})
+        conn.request("POST", path, body=body, headers={"Host": _host_header(u, port), **headers})
         r = conn.getresponse()
         if r.status in (301, 302, 303, 307, 308):
             raise BlockedURL("webhook redirects are not followed")
@@ -86,10 +99,12 @@ def fetch(url: str, max_redirects: int = 3) -> bytes:
         else:
             conn = http.client.HTTPConnection(ip, port, timeout=TIMEOUT)
         path = (u.path or "/") + (f"?{u.query}" if u.query else "")
-        conn.request("GET", path, headers={"Host": u.netloc, "User-Agent": "LabelDesk/1.0"})
+        conn.request("GET", path, headers={"Host": _host_header(u, port), "User-Agent": "LabelDesk/1.0"})
         r = conn.getresponse()
         if r.status in (301, 302, 303, 307, 308) and r.getheader("Location"):
-            url = urljoin(url, r.getheader("Location")); conn.close(); continue
+            url = urljoin(url, r.getheader("Location"))
+            conn.close()
+            continue
         if r.status != 200:
             raise BlockedURL(f"image URL returned HTTP {r.status}")
         data = r.read(MAX_BYTES + 1)
