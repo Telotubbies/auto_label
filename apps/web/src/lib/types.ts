@@ -43,7 +43,7 @@ export interface Board { columns: Record<Status, BoardCard[]>; members: { id: st
 
 export interface JobStage { status: 'done' | 'running' | 'failed'; t: number; note?: string }
 export interface Job {
-  id: string; kind: 'version' | 'export' | 'train' | 'autolabel'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
+  id: string; kind: 'version' | 'export' | 'train' | 'autolabel' | 'health'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
@@ -103,11 +103,32 @@ export interface TrainFamily { family: string; label: string; license: string; a
 export interface TrainOptions { supported: boolean; reason?: string; task?: string; families?: TrainFamily[] }
 export interface Member { id: string; name: string; email: string; role: Role; owner: boolean; joined: number }
 
+export type LabelIssueKind = 'tiny' | 'out_of_bounds' | 'zero_area' | 'duplicate'
+
+/** Row data for the Health check cards. Pixel thresholds are COCO at `imgsz`. */
+export interface HealthChecks {
+  imgsz: number
+  size_buckets: { small: number; medium: number; large: number }
+  label_quality: { kind: LabelIssueKind; image_id: string; annotation_id: string }[]
+  /** `box` is normalized [x, y, w, h]. */
+  missing_boxes: { image_id: string; box: [number, number, number, number]; class: string }[]
+  leakage_pairs: number
+}
+
+export interface HealthRecommendation { key: string; message: string; suggest: Record<string, unknown> }
+
 export interface Analytics {
   images: number; annotations: number; null_images: number; avg_annotations: number; avg_width: number; avg_height: number
   median_size: string; classes: LabelClass[]; imbalance_ratio: number
   annotations_per_image: { n: number | string; images: number }[]; sizes: { bucket: string; images: number }[]
   aspect: { bucket: string; images: number }[]; splits: Record<string, number>; statuses: Record<string, number>; heatmap: number[][]
+  /** Always present: size/label/leakage are computed with the analytics scan; missing boxes arrive via the job. */
+  checks: HealthChecks
+  recommendations: HealthRecommendation[]
+  /** Latest kind="health" job, so the page can show progress and failures. */
+  health_job: Job | null
+  /** The dataset changed after `health_job` ran; results are out of date. */
+  health_stale: boolean
 }
 
 export interface Prediction { x: number; y: number; width: number; height: number; confidence: number; class: string; class_id: number; points?: { x: number; y: number }[] }

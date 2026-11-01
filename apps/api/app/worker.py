@@ -21,7 +21,7 @@ from .db import SessionLocal
 from .deps import charge
 from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
-from .services import exporters, ml, versioning, imaging
+from .services import exporters, health, imaging, ml, versioning
 from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
@@ -303,7 +303,15 @@ def run_autolabel(job: Job):
         return {"images": len(rows), "labeled": labeled, "annotations": total}
 
 
-HANDLERS = {"version": run_version, "export": run_export, "train": run_train, "autolabel": run_autolabel}
+def run_health(job: Job):
+    """Missing-box scan (needs the model): the result is cached on the job row for the analytics page."""
+    with SessionLocal() as db:
+        p = db.get(Project, job.project_id)
+        return health.scan_missing_boxes(db, p)
+
+
+HANDLERS = {"version": run_version, "export": run_export, "train": run_train, "autolabel": run_autolabel,
+            "health": run_health}
 
 
 def run_one(jid: str):

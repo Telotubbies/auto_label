@@ -8,6 +8,8 @@ import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Select, toas
 import { cn } from '@/lib/utils'
 import { useProject } from './ProjectLayout'
 
+const IMG_SIZES = [320, 416, 512, 640, 800, 1024]
+
 export default function Train() {
   const { project, ws } = useProject()
   const [sp] = useSearchParams()
@@ -18,7 +20,7 @@ export default function Train() {
   const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug) })
   const ready = (versions.data ?? []).filter((v) => v.status === 'ready')
   const [preset, setPreset] = useState<'fast' | 'advanced'>('fast')
-  const [f, setF] = useState({ version_id: sp.get('version') ?? '', family: 'yolo', variant: 'yolo26n', epochs: 10, imgsz: 640, batch: 16, name: '', max_minutes: '', resume_from: '' })
+  const [f, setF] = useState({ version_id: sp.get('version') ?? '', family: 'yolo', variant: 'yolo26n', epochs: 10, imgsz: IMG_SIZES.includes(Number(sp.get('imgsz'))) ? Number(sp.get('imgsz')) : 640, batch: 16, name: '', max_minutes: '', resume_from: '' })
   const fams = opts.data?.families ?? []
   const fam = fams.find((x) => x.family === f.family)
   const resumable = (models.data ?? []).filter((m) => m.status === 'ready' && m.task === opts.data?.task && !!m.variant)
@@ -103,7 +105,7 @@ export default function Train() {
               ) : (
                 <div className="grid gap-4 md:grid-cols-3">
                   <Field label="Epochs"><Input type="number" min={1} max={500} value={f.epochs} onChange={(e) => setF({ ...f, epochs: +e.target.value })} /></Field>
-                  <Field label="Image size"><Select className="w-full" value={f.imgsz} onChange={(e) => setF({ ...f, imgsz: +e.target.value })}>{[320, 416, 512, 640, 800, 1024].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+                  <Field label="Image size"><Select className="w-full" value={f.imgsz} onChange={(e) => setF({ ...f, imgsz: +e.target.value })}>{[...IMG_SIZES].map((n) => <option key={n}>{n}</option>)}</Select></Field>
                   <Field label="Batch"><Select className="w-full" value={f.batch} onChange={(e) => setF({ ...f, batch: +e.target.value })}>{[2, 4, 8, 16, 32, 64].map((n) => <option key={n}>{n}</option>)}</Select></Field>
                 </div>
               )}

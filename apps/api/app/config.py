@@ -19,7 +19,7 @@ SIGNUP_ENABLED = _env("LD_SIGNUP_ENABLED", "1") == "1"
 EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside the api process
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; set "version,export" when GPU jobs go to remote workers
-LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS", "version,export,train,autolabel").split(",") if k]
+LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS", "version,export,train,autolabel,health").split(",") if k]
 REMOTE_JOB_KINDS = ("train", "autolabel")
 WORKER_TOKEN = _env("LD_WORKER_TOKEN")                        # shared secret for `labeldesk-worker`
 

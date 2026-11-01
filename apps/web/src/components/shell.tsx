@@ -232,7 +232,7 @@ export function TopBar() {
 }
 
 const RESERVED = new Set(['models', 'deployments', 'activity', 'settings'])
-const JOB_LABEL: Record<Job['kind'], string> = { train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export' }
+const JOB_LABEL: Record<Job['kind'], string> = { train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', health: 'Health check' }
 const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])
 
 /** Bottom-right glass tray with determinate progress for long jobs, so users can leave the page. Reads the current project's jobs. */

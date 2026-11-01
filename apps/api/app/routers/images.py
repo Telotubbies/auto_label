@@ -7,7 +7,7 @@ import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import String, case, cast, exists, func, select
+from sqlalchemy import Float, String, case, cast, exists, func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
@@ -148,14 +148,16 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
 
 @router.get(P + "/images")
 def list_images(q: str = "", split: str = "", status: str = "", class_id: str = "", tag: str = "", batch_id: str = "",
-                annotated: str = "", assignee: str = "", sort: str = "newest", offset: int = 0, limit: int = 100,
+                annotated: str = "", assignee: str = "", min_mp: float | None = None, max_mp: float | None = None,
+                min_ar: float | None = None, max_ar: float | None = None, min_ann: int | None = None,
+                max_ann: int | None = None, sort: str = "newest", offset: int = 0, limit: int = 100,
                 c: Ctx = Depends(project_ctx)):
     s = _visible(select(Image).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
     if q:
         s = s.where(Image.name.ilike(f"%{q.replace('%', '').replace('_', '')}%"))
     if split:
         s = s.where(Image.split == split)
-    if status:
+    if status and status != "all":          # "all" keeps analytics click-throughs identical to its totals
         s = s.where(Image.status.in_(status.split(",")))
     if batch_id:
         s = s.where(Image.batch_id == batch_id)
@@ -171,6 +173,19 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         # tags is a JSON list; match the quoted element in its text form (portable sqlite/postgres)
         pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
         s = s.where(cast(Image.tags, String).like(f"%{pat}%", escape="\\"))
+    # chart click-throughs: the same bucket boundaries as analytics (megapixels, aspect ratio, count)
+    if min_mp is not None:
+        s = s.where(Image.width * Image.height >= min_mp * 1e6)
+    if max_mp is not None:
+        s = s.where(Image.width * Image.height < max_mp * 1e6)
+    if min_ar is not None:
+        s = s.where(cast(Image.width, Float) / func.nullif(Image.height, 0) >= min_ar)
+    if max_ar is not None:
+        s = s.where(cast(Image.width, Float) / func.nullif(Image.height, 0) < max_ar)
+    if min_ann is not None:
+        s = s.where(Image.n_annotations >= min_ann)
+    if max_ann is not None:
+        s = s.where(Image.n_annotations <= max_ann)
     total = c.db.scalar(select(func.count()).select_from(s.subquery()))
     start, size = max(0, offset), max(1, min(limit, 1000))
     if sort == "review":

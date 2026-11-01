@@ -12,10 +12,13 @@ from ..deps import Ctx, audit, plan, project_ctx, ws_ctx
 from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, TrainedModel, Version, now,
                       set_annotations)
 from ..security import sign_path
+from ..services import health
 
 router = APIRouter(prefix="/api/ws/{ws}/projects", tags=["projects"])
 PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#14b8a6", "#ef4444",
            "#6366f1", "#84cc16", "#06b6d4", "#a855f7", "#f43f5e", "#10b981", "#0ea5e9", "#d946ef"]
+# project slugs share the /:ws/<name> namespace with these workspace pages
+RESERVED = {"models", "deployments", "activity", "settings"}
 
 
 def job_out(j: Job) -> dict:
@@ -285,9 +288,8 @@ def batches(c: Ctx = Depends(project_ctx)):
 
 @router.get("/{project}/analytics")
 def analytics(c: Ctx = Depends(project_ctx)):
-    # the full scan is cached until any image in the project changes
-    sig = tuple(c.db.execute(select(func.count(Image.id), func.max(Image.updated), func.count(Image.deleted_at))
-                             .where(Image.project_id == c.project.id)).one())
+    # the full scan is cached until any image (or the latest health job) changes
+    sig = (*health.signature(c.db, c.project), health.job_state(c.db, c.project))
     hit = _analytics_cache.get(c.project.id)
     out = hit[1] if hit and hit[0] == sig else None
     if out is None:
@@ -298,8 +300,30 @@ def analytics(c: Ctx = Depends(project_ctx)):
     # class names/colors/counts are cheap and may change without touching images (rename, recolor)
     classes = classes_out(c.db, c.project)
     counts = [x["count"] for x in classes if x["count"]]
+    jobs = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "health")
+                        .order_by(Job.created.desc()).limit(5)).all()
+    done = next((j for j in jobs if j.status == "done"), None)
+    stale = bool(done and (done.result or {}).get("signature") != health.signature(c.db, c.project))
+    job = job_out(jobs[0]) if jobs else None
+    if job:                                   # the findings are already in checks.missing_boxes
+        job.pop("result", None)
     return {**out, "classes": sorted(classes, key=lambda x: -x["count"]),
-            "imbalance_ratio": round(max(counts) / min(counts), 1) if len(counts) > 1 else 1}
+            "imbalance_ratio": round(max(counts) / min(counts), 1) if len(counts) > 1 else 1,
+            "health_job": job, "health_stale": stale}
+
+
+class HealthIn(BaseModel):
+    imgsz: int = Field(640, ge=64, le=2048)
+
+
+@router.post("/{project}/health")
+def queue_health(body: HealthIn | None = None, c: Ctx = Depends(project_ctx)):
+    """Queue the missing-box scan; inference never runs inside the analytics request."""
+    c.need("reviewer")
+    j = health.enqueue(c.db, c.project, (body or HealthIn()).imgsz)
+    audit(c.db, c.ws.id, c.user.id, "health.scan", c.project.name)
+    c.db.commit()
+    return job_out(j)
 
 
 _analytics_cache: dict[str, tuple] = {}
@@ -323,7 +347,9 @@ def _analytics(c: Ctx) -> dict:
         r = w / h if h else 1
         ratios["tall" if r < 0.8 else "square" if r < 1.25 else "wide" if r < 2 else "very wide"] += 1
         for a in anns:
-            s = a.get("shape", {})
+            s = a.get("shape") if isinstance(a, dict) else None
+            if not isinstance(s, dict):
+                continue
             if s.get("kind") == "bbox":
                 cx, cy = s["x"] + s["w"] / 2, s["y"] + s["h"] / 2
             elif s.get("kind") == "polygon" and s.get("points"):
@@ -332,6 +358,8 @@ def _analytics(c: Ctx) -> dict:
                 continue
             heat[min(9, max(0, int(cy * 10)))][min(9, max(0, int(cx * 10)))] += 1
     n = len(rows)
+    # annotators can read analytics but must not queue GPU work just by opening the page
+    checks = health.checks(c.db, c.project, auto_scan=c.role != "annotator")
     return {
         "images": n, "annotations": n_ann, "null_images": null,
         "avg_annotations": round(n_ann / n, 2) if n else 0,
@@ -341,6 +369,7 @@ def _analytics(c: Ctx) -> dict:
         "sizes": [{"bucket": k, "images": v} for k, v in sizes.items()],
         "aspect": [{"bucket": k, "images": v} for k, v in ratios.items()],
         "splits": dict(splits), "statuses": dict(statuses), "heatmap": heat,
+        "checks": checks, "recommendations": health.recommendations(checks),
     }
 
 

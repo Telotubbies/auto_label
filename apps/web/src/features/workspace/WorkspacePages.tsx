@@ -72,7 +72,7 @@ export function Activity() {
               <div key={j.id} className="flex items-center gap-3 text-sm">
                 <StatusPill status={j.status} />
                 <span className="w-24 capitalize">{j.kind}</span>
-                <Link to={`/${ws}/${j.project}/${j.kind === 'train' ? 'models' : j.kind === 'autolabel' ? 'annotate' : 'versions'}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
+                <Link to={`/${ws}/${j.project}/${j.kind === 'train' ? 'models' : j.kind === 'autolabel' ? 'annotate' : j.kind === 'health' ? 'analytics' : 'versions'}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
                 {['running', 'queued'].includes(j.status) ? <Progress className="flex-1" value={j.progress} /> : <span className="flex-1 truncate text-xs text-muted-foreground">{j.error || (j.result?.format ? `format ${j.result.format}` : '')}</span>}
                 <span className="w-24 text-right text-xs text-muted-foreground">{fmtAgo(j.created)}</span>
               </div>

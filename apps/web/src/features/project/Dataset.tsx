@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Check, Search, Sparkles, Tag, Trash2 } from 'lucide-react'
+import { Check, Search, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import { api, fileUrl, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import type { ImageItem } from '@/lib/types'
@@ -13,6 +13,14 @@ import { AutoLabelDialog } from './AutoLabelDialog'
 
 const SPLIT_TONE: Record<string, string> = { train: 'bg-violet-600', valid: 'bg-blue-600', test: 'bg-orange-500' }
 
+const rangeText = (min: string, max: string, unit = '') => {
+  const suffix = unit ? ` ${unit}` : ''
+  if (min && max) return `${min}${min === max ? '' : `–${max}`}${suffix}`
+  if (min) return `≥ ${min}${suffix}`
+  if (max) return `< ${max}${suffix}`
+  return ''
+}
+
 export default function Dataset() {
   const { project, ws } = useProject()
   const nav = useNavigate()
@@ -20,14 +28,21 @@ export default function Dataset() {
   const can = useApp((s) => s.can)
   const [sp, setSp] = useSearchParams()
   const f = {
-    q: sp.get('q') ?? '', split: sp.get('split') ?? '', status: sp.get('status') ?? (can('reviewer') ? 'done' : ''),
+    q: sp.get('q') ?? '', split: sp.get('split') ?? '', status: sp.get('status') ?? (can('reviewer') ? 'done' : 'all'),
     class_id: sp.get('class') ?? '', tag: sp.get('tag') ?? '', batch_id: sp.get('batch') ?? '', annotated: sp.get('annotated') ?? '', sort: sp.get('sort') ?? 'newest',
+    // analytics chart links filter by image size (megapixels), aspect ratio and annotation count
+    min_mp: sp.get('min_mp') ?? '', max_mp: sp.get('max_mp') ?? '', min_ar: sp.get('min_ar') ?? '', max_ar: sp.get('max_ar') ?? '',
+    min_ann: sp.get('min_ann') ?? '', max_ann: sp.get('max_ann') ?? '',
   }
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n, { replace: true }) }
+  const clearF = (...keys: string[]) => { const n = new URLSearchParams(sp); keys.forEach((k) => n.delete(k)); setSp(n, { replace: true }) }
   const PAGE = 200
   const imgs = useInfiniteQuery({
     queryKey: ['images', ws, project.slug, f, 'pages'],
-    queryFn: ({ pageParam }) => api.images(ws, project.slug, { ...f, limit: PAGE, offset: pageParam }),
+    // empty numeric params would be rejected by the API, so send only the filters that are set
+    queryFn: ({ pageParam }) => api.images(ws, project.slug, {
+      ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== '')), limit: PAGE, offset: pageParam,
+    }),
     initialPageParam: 0,
     getNextPageParam: (last, all) => { const n = all.reduce((s, p) => s + p.items.length, 0); return n < last.total ? n : undefined },
   })
@@ -60,6 +75,13 @@ export default function Dataset() {
     nav(`/${ws}/${project.slug}/images/${im.id}?${q}`)
   }
 
+  // Filters that analytics links can set but the toolbar has no select for: show them so the grid is explainable.
+  const rangeFilters = [
+    { keys: ['min_mp', 'max_mp'], label: rangeText(f.min_mp, f.max_mp, 'MP') },
+    { keys: ['min_ar', 'max_ar'], label: `Aspect ${rangeText(f.min_ar, f.max_ar)}` },
+    { keys: ['min_ann', 'max_ann'], label: rangeText(f.min_ann, f.max_ann, 'annotations') },
+  ].filter((c) => c.keys.some((k) => f[k as keyof typeof f]))
+
   return (
     <div className="anim-page flex h-full flex-col">
       <PageHeader title="Dataset" desc={`${total ?? '…'} images${f.status === 'done' ? ' in the dataset' : ''}`}
@@ -67,7 +89,7 @@ export default function Dataset() {
       <div className="flex flex-wrap items-center gap-2 px-8 pb-3">
         <div className="relative w-56"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8" placeholder="Search filename" value={f.q} onChange={(e) => setF('q', e.target.value)} /></div>
         <Select value={f.status} onChange={(e) => setF('status', e.target.value)}>
-          <option value="">All statuses</option><option value="done">Dataset (approved)</option><option value="review">In review</option><option value="annotating">Annotating</option><option value="unassigned">Unassigned</option>
+          <option value="all">All statuses</option><option value="done">Dataset (approved)</option><option value="review">In review</option><option value="annotating">Annotating</option><option value="unassigned">Unassigned</option>
         </Select>
         <Select value={f.split} onChange={(e) => setF('split', e.target.value)}><option value="">All splits</option><option value="train">Train</option><option value="valid">Valid</option><option value="test">Test</option></Select>
         <Select value={f.class_id} onChange={(e) => setF('class', e.target.value)}><option value="">All classes</option>{classes.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.count})</option>)}</Select>
@@ -76,6 +98,19 @@ export default function Dataset() {
         <Select value={f.annotated} onChange={(e) => setF('annotated', e.target.value)}><option value="">Any annotations</option><option value="yes">Annotated</option><option value="no">Null (no annotations)</option></Select>
         <Select value={f.sort} onChange={(e) => setF('sort', e.target.value)}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="name">Filename</option><option value="most">Most annotations</option><option value="least">Fewest annotations</option></Select>
       </div>
+      {rangeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-8 pb-2">
+          <span className="text-xs text-muted-foreground">Analytics filter:</span>
+          {rangeFilters.map((c) => (
+            <button key={c.keys.join()} type="button" onClick={() => clearF(...c.keys)} aria-label={`Remove filter ${c.label}`}
+              className="flex cursor-pointer items-center gap-1 rounded-full border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+              {c.label}<X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          ))}
+          <button type="button" onClick={() => clearF('min_mp', 'max_mp', 'min_ar', 'max_ar', 'min_ann', 'max_ann')}
+            className="cursor-pointer text-xs text-muted-foreground underline hover:text-foreground">Clear all</button>
+        </div>
+      )}
       {sel.size > 0 && can('reviewer') && (
         <div className="mx-8 mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-accent/40 px-3 py-2 text-sm">
           <b>{sel.size} selected</b>
@@ -98,7 +133,10 @@ export default function Dataset() {
           {v.getVirtualItems().map((row) => (
             <div key={row.key} className="absolute left-0 grid w-full grid-cols-5 gap-3" style={{ top: row.start, height: 180 }}>
               {items.slice(row.index * cols, row.index * cols + cols).map((im) => (
-                <div key={im.id} className={cn('group relative cursor-pointer overflow-hidden rounded-lg border-2 bg-muted', sel.has(im.id) ? 'border-primary' : 'border-transparent hover:border-border')} onClick={() => openEditor(im)}>
+                <div key={im.id} role="button" tabIndex={0} aria-label={`Open ${im.name} in the editor`}
+                  className={cn('group relative cursor-pointer overflow-hidden rounded-lg border-2 bg-muted', sel.has(im.id) ? 'border-primary' : 'border-transparent hover:border-border')}
+                  onClick={() => openEditor(im)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(im) } }}>
                   <img src={fileUrl(im.thumbnail)} alt={im.name} loading="lazy" className="h-36 w-full object-cover" />
                   <div className="absolute left-1.5 top-1.5 flex gap-1">
                     <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white', SPLIT_TONE[im.split])}>{im.split}</span>
