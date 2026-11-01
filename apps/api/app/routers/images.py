@@ -1,6 +1,7 @@
 """Upload, dataset browse/filter/bulk, annotation save, review, comments, kanban board, AI assists."""
 import hashlib
 import json
+import logging
 import random
 import re
 import time
@@ -16,13 +17,15 @@ from ..adapters import resolve
 from ..config import MAX_UPLOAD_MB
 from ..db import get_db
 from ..deps import Ctx, audit, current_user, image_ctx, plan, project_ctx
+from ..gpu import GpuBusy
 from ..models import SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Member, Project, TrainedModel, User, new_id, now, set_annotations
 from ..ratelimit import limit
 from ..security import sign_path
 from ..services import imaging, importers, ml, segment
-from .projects import ensure_class
+from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
+log = logging.getLogger(__name__)
 P = "/api/ws/{ws}/projects/{project}"
 
 
@@ -86,7 +89,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     db.add(batch); db.flush()
     known = set(db.scalars(select(Image.sha256).where(Image.project_id == p.id, Image.deleted_at.is_(None))))
     rng = random.Random()
-    out, dups, annotated = [], 0, 0
+    out, dups, annotated, failed = [], 0, 0, []
     for path, data in sorted(bundle.images.items()):
         h = hashlib.sha256(data).hexdigest()
         if h in known:
@@ -95,6 +98,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
         try:
             im = imaging.open_image(data)
         except Exception:
+            failed.append({"name": safe_name(path), "reason": "unreadable image"})
             continue
         img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, name=safe_name(path), sha256=h, width=im.width,
                     height=im.height, size=len(data), path="", thumb="", tags=list(tags))
@@ -123,7 +127,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     audit(db, c.ws.id, user_id, "image.upload", p.name, images=len(out), duplicates=dups, source=source)
     db.commit()
     return {"batch": {"id": batch.id, "name": batch.name}, "uploaded": len(out), "duplicates": dups,
-            "annotated": annotated, "images": [image_out(i) for i in out[:200]]}
+            "annotated": annotated, "failed": failed, "images": [image_out(i) for i in out[:200]]}
 
 
 @router.post(P + "/upload")
@@ -456,6 +460,68 @@ def add_comment(image_id: str, body: CommentIn, u: User = Depends(current_user),
 
 
 # --- AI assists --------------------------------------------------------------------------------
+
+class SuggestIn(BaseModel):
+    annotation_id: str
+
+
+def _ann_box(shape: dict, w: int, h: int) -> tuple[float, float, float, float]:
+    """Annotation shape -> pixel box (x1, y1, x2, y2)."""
+    kind = shape.get("kind")
+    if kind == "bbox":
+        x, y, bw, bh = (float(shape.get(k, 0) or 0) for k in "xywh")
+        return x * w, y * h, (x + bw) * w, (y + bh) * h
+    if kind == "polygon":
+        pts = shape.get("points") or []
+        xs, ys = pts[0::2], pts[1::2]
+        if not xs or not ys:
+            raise ValueError("annotation has no points")
+        return min(xs) * w, min(ys) * h, max(xs) * w, max(ys) * h
+    return 0.0, 0.0, float(w), float(h)
+
+
+MAX_SUGGEST_CLASSES = 24       # one VLM round-trip per class; keep a single click bounded
+
+
+@router.post("/api/images/{image_id}/suggest-class")
+def suggest_class(image_id: str, body: SuggestIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    c, img = _assigned(*image_ctx(db, u, image_id))
+    ann = next((a for a in img.annotations or [] if a.get("id") == body.annotation_id), None)
+    if ann is None:
+        raise HTTPException(404, "annotation not found")
+    limit(f"vlm-suggest:{u.id}", 30, 60)      # one call asks the VLM once per class
+    classes = classes_out(db, c.project)
+    if not classes:
+        raise HTTPException(400, "create a class first")
+    # Most-used classes first, so the first match is the most likely answer and the call count stays bounded.
+    classes = sorted(classes, key=lambda x: -int(x.get("count") or 0))[:MAX_SUGGEST_CLASSES]
+    try:
+        im = imaging.load(img.path)
+        box = _ann_box(ann.get("shape") or {}, im.width, im.height)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        log.exception("class suggestion could not read the image")
+        raise HTTPException(503, "inference failed")
+    try:
+        r = resolve("vlm:qwen2.5-vl-7b", db, workspace_id=c.ws.id)
+    except GpuBusy:
+        raise HTTPException(503, "GPU busy")
+    except Exception:                        # adapter missing, vLLM asleep/unreachable
+        raise HTTPException(503, "model unavailable")
+    try:
+        matches = [cl for cl in classes if r.adapter.verify(im, box, cl["name"])]
+    except GpuBusy:
+        raise HTTPException(503, "GPU busy")
+    except RuntimeError:                      # vLLM asleep or unreachable
+        raise HTTPException(503, "model unavailable")
+    except Exception:
+        log.exception("class suggestion failed")
+        raise HTTPException(503, "inference failed")
+    best = matches[0] if matches else None
+    return {"classId": best["id"] if best else None, "name": best["name"] if best else None,
+            "candidates": [{"classId": m["id"], "name": m["name"]} for m in matches], "checked": len(classes)}
+
 
 class SmartIn(BaseModel):
     points: list[list[float]]

@@ -164,7 +164,12 @@ def smart_polygon(im: PImage.Image, points: list[list[float]], negatives=None) -
             hit = [c for c in cands if c[0].shape == (im.height, im.width) and c[0][sy, sx]]
             best = max(hit or cands, key=lambda c: c[1], default=None)
             if best is not None:
-                poly = mask_to_polygon(best[0].astype("uint8"), seed=(sx, sy))
+                mask = best[0].astype("uint8").copy()
+                if negatives:               # negative clicks carve the same way GrabCut's background seeds do
+                    r = max(3, int(min(im.height, im.width) * 0.012))
+                    for x, y in negatives:
+                        cv2.circle(mask, (int(x * im.width), int(y * im.height)), r, 0, -1)
+                poly = mask_to_polygon(mask, seed=(sx, sy))
                 if poly:
                     return poly, "sam3.1"
         except Exception as e:

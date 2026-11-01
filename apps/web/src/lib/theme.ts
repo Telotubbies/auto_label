@@ -1,5 +1,5 @@
 // Material dynamic colour (HCT) -> OKLCH CSS variables, plus the class/heatmap palettes and theme preferences.
-import { useLayoutEffect, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 import {
   Hct, MaterialDynamicColors as M, SchemeExpressive, SchemeTonalSpot, SchemeVibrant, TonalPalette, argbFromHex,
   type DynamicScheme,
@@ -100,13 +100,11 @@ export function resolveMode(p: ThemePrefs = prefs): Mode {
   return p.mode === 'system' ? (mq('(prefers-color-scheme: dark)') ? 'dark' : 'light') : p.mode
 }
 
-let forceLight = false
-
 function paint() {
   const root = document.documentElement
   // OS "increase contrast" lifts the scheme to the high-contrast level unless the user already chose one.
   const contrast: Contrast = prefs.contrast || (mq('(prefers-contrast: more)') ? 1 : 0)
-  applyTheme(prefs.seed, forceLight ? 'light' : resolveMode(), contrast, prefs.scheme)
+  applyTheme(prefs.seed, resolveMode(), contrast, prefs.scheme)
   // Safari ignores prefers-reduced-transparency, so the Settings toggle sets this attribute.
   if (prefs.reduceTransparency) root.setAttribute('data-reduce-transparency', '')
   else root.removeAttribute('data-reduce-transparency')
@@ -124,14 +122,6 @@ export function initTheme(): void {
     for (const q of ['(prefers-color-scheme: dark)', '(prefers-contrast: more)'])
       matchMedia(q).addEventListener('change', paint)
   }
-}
-
-/** Screens not yet reskinned for dark (the annotation editor, until Task 17) render light regardless of the preference. */
-export function useLightOnly(): void {
-  useLayoutEffect(() => {
-    forceLight = true; paint()
-    return () => { forceLight = false; paint() }
-  }, [])
 }
 
 export function useThemePrefs(): ThemePrefs {

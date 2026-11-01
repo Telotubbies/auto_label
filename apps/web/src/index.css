@@ -95,6 +95,11 @@
 /* Thai is never cut with slice(): clip with CSS instead */
 .truncate-th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Annotation canvas well: a neutral surface in both themes so class colours and the image stay true. */
+@layer base {
+  .canvas-well { background: color-mix(in oklab, var(--background) 74%, var(--foreground) 26%); }
+}
+
 @layer components {
   /* 3:1 focus ring; scroll-padding keeps focused items clear of the floating top bar and the job tray */
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

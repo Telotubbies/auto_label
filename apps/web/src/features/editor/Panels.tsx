@@ -25,7 +25,7 @@ export function SourceChip({ source, confidence, kind }: { source?: string; conf
   if (!source || source === 'human') return <span className="shrink-0 text-[10px] text-muted-foreground">{kind}</span>
   return (
     <span className="flex shrink-0 items-center gap-1">
-      <span title={source} className="max-w-24 truncate rounded border border-violet-500/40 bg-violet-500/10 px-1 py-px font-mono text-[10px] leading-4 text-foreground">
+      <span title={source} className="max-w-24 truncate rounded border border-tertiary/40 bg-tertiary/10 px-1 py-px font-mono text-[10px] leading-4 text-foreground">
         {source}
       </span>
       {source === 'vlm+sam3'
@@ -41,9 +41,9 @@ const fmtTime = (t: number) =>
 function PanelHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between px-4 pt-4">
-      <h3 className="text-sm font-semibold">
+      <h2 className="text-sm font-semibold">
         {title} {typeof count === 'number' && <Badge>{count}</Badge>}
-      </h3>
+      </h2>
       {children}
     </div>
   )
@@ -102,7 +102,7 @@ export function AttributesPanel({
               <label key={k} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted">
                 <input
                   type="checkbox"
-                  className="h-3.5 w-3.5 accent-violet-600"
+                  className="h-3.5 w-3.5 accent-primary"
                   checked={!!values[k]}
                   onChange={() => onToggle(k)}
                 />
@@ -143,7 +143,7 @@ export function CommentsPanel({ comments, onAdd }: { comments: EditorComment[]; 
         {comments.map((c) => (
           <div key={c.id} className="rounded-lg border bg-card p-2.5">
             <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-[10px] font-semibold text-violet-700">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-accent-foreground">
                 {c.author.slice(0, 2).toUpperCase()}
               </span>
               <span className="text-xs font-medium">{c.author}</span>
@@ -186,7 +186,7 @@ export function HistoryPanel({ log }: { log: LogEntry[] }) {
         )}
         {[...log].reverse().map((e) => (
           <div key={e.id} className="flex items-center gap-2 border-b border-muted py-2 text-sm">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-tertiary" />
             <span className="whitespace-nowrap">{e.action}</span>
             {e.detail && <span className="truncate text-xs text-muted-foreground">{e.detail}</span>}
             <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground">{fmtTime(e.at)}</span>

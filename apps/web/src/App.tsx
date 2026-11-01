@@ -4,7 +4,6 @@ import { Suspense, lazy, useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { useLightOnly } from '@/lib/theme'
 import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
 import { AppLayout } from '@/components/shell'
@@ -30,11 +29,6 @@ const Deploy = lazy(() => import('@/features/project/Deploy'))
 import ProjectSettings from '@/features/project/ProjectSettings'
 const Editor = lazy(() => import('@/features/editor/Editor'))
 const Playground = lazy(() => import('@/features/playground/Playground'))
-
-function LightOnly({ children }: { children: React.ReactNode }) {
-  useLightOnly()
-  return <>{children}</>
-}
 
 function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
@@ -99,7 +93,7 @@ export default function App() {
       <Route path="/signup" element={<Navigate to="/" replace />} />
       <Route path="/invite/:token" element={<AcceptInvite />} />
       <Route path="/:ws" element={<WorkspaceGate />}>
-        <Route path=":project/images/:imageId" element={<LightOnly><Editor /></LightOnly>} />
+        <Route path=":project/images/:imageId" element={<Editor />} />
         <Route element={<AppLayout />}>
           <Route index element={<Home />} />
           <Route path="models" element={<WorkspaceModels />} />

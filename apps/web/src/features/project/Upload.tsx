@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, FileArchive, FolderUp, ImagePlus, UploadCloud, X } from 'lucide-react'
+import { CheckCircle2, FileArchive, FolderUp, ImagePlus, TriangleAlert, UploadCloud, X } from 'lucide-react'
 import { api, post, upload } from '@/lib/api'
 import { Badge, Button, Card, Field, Input, PageHeader, Progress, Select, Switch, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,19 @@ async function sha256(f: File) {
 }
 
 type Picked = { file: File; path: string; dup?: boolean }
+type FailedFile = { name: string; reason: string }
+type IngestResult = { uploaded: number; duplicates: number; annotated: number; failed?: FailedFile[] }
+type UploadSummary = { uploaded: number; duplicates: number; annotated: number; failed: FailedFile[] }
+
+/** Collapse per-file failures into reason rows, biggest group first. */
+function groupReasons(failed: FailedFile[]): [string, number][] {
+  const counts = new Map<string, number>()
+  for (const f of failed) {
+    const reason = f.reason?.trim() || 'Unknown error'
+    counts.set(reason, (counts.get(reason) ?? 0) + 1)
+  }
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
 
 /** Group images with their same-stem label files; shared files (data.yaml, COCO json, classes.txt) ride along in every chunk. */
 function chunks(files: Picked[], size = 25): Picked[][] {
@@ -45,7 +58,7 @@ export default function Upload() {
   const [toDataset, setToDataset] = useState(true)
   const [busy, setBusy] = useState(false)
   const [prog, setProg] = useState(0)
-  const [done, setDone] = useState<{ uploaded: number; duplicates: number; annotated: number } | null>(null)
+  const [done, setDone] = useState<UploadSummary | null>(null)
   const [drag, setDrag] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const dirRef = useRef<HTMLInputElement>(null)
@@ -85,27 +98,44 @@ export default function Upload() {
   const start = async () => {
     setBusy(true); setProg(0)
     const parts = chunks(files)
-    const total = { uploaded: 0, duplicates: files.filter((f) => f.dup).length, annotated: 0 }
+    const total: UploadSummary = { uploaded: 0, duplicates: 0, annotated: 0, failed: [] }
+    // Images the client pre-check already knows are duplicates never reach the server, so count them here.
+    total.duplicates = files.filter((f) => f.dup && IMG.test(f.path)).length
     const name = batch || `Uploaded on ${new Date().toLocaleString()}`
     try {
       for (let i = 0; i < parts.length; i++) {
-        const fd = new FormData()
-        parts[i].forEach((p) => fd.append('files', p.file, p.path))
-        fd.append('batch_name', name); fd.append('split', split); fd.append('tags', tags); fd.append('to_dataset', String(toDataset))
-        const r = await upload<{ uploaded: number; duplicates: number; annotated: number }>(`${api.P(ws, project.slug)}/upload`, fd,
-          (f) => setProg(((i + f) / parts.length) * 100))
-        total.uploaded += r.uploaded; total.duplicates += r.duplicates; total.annotated += r.annotated
+        try {
+          const fd = new FormData()
+          parts[i].forEach((p) => fd.append('files', p.file, p.path))
+          fd.append('batch_name', name); fd.append('split', split); fd.append('tags', tags); fd.append('to_dataset', String(toDataset))
+          const r = await upload<IngestResult>(`${api.P(ws, project.slug)}/upload`, fd,
+            (f) => setProg(((i + f) / parts.length) * 100))
+          total.uploaded += r.uploaded ?? 0
+          total.duplicates += r.duplicates ?? 0
+          total.annotated += r.annotated ?? 0
+          if (r.failed?.length) total.failed.push(...r.failed)
+        } catch (e) {
+          // One bad chunk must not abort the rest: record it and keep going.
+          const n = parts[i].length
+          total.failed.push({ name: `${n} ${n === 1 ? 'file' : 'files'}`, reason: e instanceof Error && e.message ? e.message : 'Upload failed' })
+        }
+        setProg(((i + 1) / parts.length) * 100)
       }
       setDone(total); setFiles([])
       qc.invalidateQueries({ queryKey: ['project', ws, project.slug] })
-      toast.ok(`Uploaded ${total.uploaded} images`)
-    } catch (e) { toast.err(e as Error) } finally { setBusy(false); setProg(100) }
+      const skipped = total.duplicates > 0 ? ` · ${total.duplicates} skipped` : ''
+      if (total.failed.length > 0) toast.err(`Uploaded ${total.uploaded} images${skipped} · ${total.failed.length} failed — see the summary`)
+      else toast.ok(`Uploaded ${total.uploaded} images${skipped}`)
+    } finally { setBusy(false); setProg(100) }
   }
 
   const imgs = files.filter((f) => IMG.test(f.path))
   const dups = imgs.filter((f) => f.dup).length
   const annFiles = files.filter((f) => ANN.test(f.path)).length
   const zips = files.filter((f) => /\.zip$/i.test(f.path)).length
+  const reasonRows = done ? groupReasons(done.failed) : []
+  const shownReasons = reasonRows.slice(0, 3)
+  const moreReasons = reasonRows.length - shownReasons.length
 
   return (
     <div className="anim-page max-w-5xl">
@@ -128,8 +158,8 @@ export default function Upload() {
           <Card className="p-5">
             <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
               <Badge>{imgs.length - dups} new images</Badge>
-              {dups > 0 && <Badge className="bg-amber-100 text-amber-800">{dups} duplicates skipped</Badge>}
-              {annFiles > 0 && <Badge className="bg-green-100 text-green-800">{annFiles} annotation files</Badge>}
+              {dups > 0 && <Badge className="bg-warning/15 text-warning">{dups} duplicates skipped</Badge>}
+              {annFiles > 0 && <Badge className="bg-success/15 text-success">{annFiles} annotation files</Badge>}
               {zips > 0 && <Badge><FileArchive className="h-3 w-3" /> {zips} zip</Badge>}
               <button className="ml-auto cursor-pointer text-xs text-muted-foreground hover:text-foreground" onClick={() => setFiles([])}><X className="inline h-3 w-3" /> Clear</button>
             </div>
@@ -158,14 +188,27 @@ export default function Upload() {
         )}
 
         {done && (
-          <Card className="flex items-center gap-4 p-5">
-            <CheckCircle2 className="h-8 w-8 text-green-600" />
-            <div className="flex-1 text-sm">
-              <div className="font-semibold">{done.uploaded} images uploaded</div>
-              <div className="text-muted-foreground">{done.annotated} with imported annotations · {done.duplicates} duplicates skipped</div>
+          <Card data-testid="upload-summary" className="flex flex-wrap items-start gap-4 p-5">
+            {done.failed.length > 0
+              ? <TriangleAlert className="mt-0.5 h-8 w-8 shrink-0 text-warning" aria-hidden="true" />
+              : <CheckCircle2 className="mt-0.5 h-8 w-8 shrink-0 text-success" aria-hidden="true" />}
+            <div className="min-w-[12rem] flex-1 text-sm" aria-live="polite">
+              <div className="font-semibold">Uploaded {done.uploaded} · duplicates skipped {done.duplicates} · failed {done.failed.length}</div>
+              <div className="text-muted-foreground">{done.annotated} with imported annotations</div>
+              {shownReasons.length > 0 && (
+                <div className="mt-2">
+                  <div className="font-medium text-warning">Failed uploads</div>
+                  <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                    {shownReasons.map(([reason, n]) => (
+                      <li key={reason}>{reason} ({n} {n === 1 ? 'file' : 'files'})</li>
+                    ))}
+                    {moreReasons > 0 && <li>+{moreReasons} more</li>}
+                  </ul>
+                </div>
+              )}
             </div>
-            <Button variant="outline" onClick={() => nav('../annotate')}>Annotate</Button>
-            <Button onClick={() => nav('../browse')}>View Dataset</Button>
+            <Button variant="outline" className="shrink-0" onClick={() => nav('../annotate')}>Annotate</Button>
+            <Button className="shrink-0" onClick={() => nav('../browse')}>View Dataset</Button>
           </Card>
         )}
       </div>
