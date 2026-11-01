@@ -300,13 +300,7 @@ def analytics(c: Ctx = Depends(project_ctx)):
     # class names/colors/counts are cheap and may change without touching images (rename, recolor)
     classes = classes_out(c.db, c.project)
     counts = [x["count"] for x in classes if x["count"]]
-    jobs = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "health")
-                        .order_by(Job.created.desc()).limit(5)).all()
-    done = next((j for j in jobs if j.status == "done"), None)
-    stale = bool(done and (done.result or {}).get("signature") != health.signature(c.db, c.project))
-    job = job_out(jobs[0]) if jobs else None
-    if job:                                   # the findings are already in checks.missing_boxes
-        job.pop("result", None)
+    job, stale = health.job_summary(c.db, c.project)
     return {**out, "classes": sorted(classes, key=lambda x: -x["count"]),
             "imbalance_ratio": round(max(counts) / min(counts), 1) if len(counts) > 1 else 1,
             "health_job": job, "health_stale": stale}

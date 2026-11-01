@@ -1,4 +1,5 @@
 """Health check v2: object-size buckets, label quality, missing boxes (cached job), leakage, recommendations."""
+
 import os
 import random
 import tempfile
@@ -46,30 +47,60 @@ def project(c):
 def noise(w: int, h: int, seed: str) -> PImage.Image:
     """Distinct pixels per seed so pHash groups only the images we duplicate on purpose."""
     rng = random.Random(seed)
-    return PImage.frombytes("RGB", (w, h), bytes(rng.getrandbits(8) for _ in range(w * h * 3)))
+    return PImage.frombytes(
+        "RGB", (w, h), bytes(rng.getrandbits(8) for _ in range(w * h * 3))
+    )
 
 
-def add_image(pid: str, name: str, w: int, h: int, anns: list[dict], split: str = "train",
-              im: PImage.Image | None = None) -> str:
+def add_image(
+    pid: str,
+    name: str,
+    w: int,
+    h: int,
+    anns: list[dict],
+    split: str = "train",
+    im: PImage.Image | None = None,
+) -> str:
     im = im or noise(w, h, name)
     rel = f"health/{name}.jpg"
     (DATA_DIR / rel).parent.mkdir(parents=True, exist_ok=True)
     im.save(DATA_DIR / rel, "JPEG", quality=90)
     with SessionLocal() as db:
-        row = Image(project_id=pid, name=name, sha256=name, width=w, height=h, path=rel, thumb=rel,
-                    split=split, status="done", annotations=anns, n_annotations=len(anns))
+        row = Image(
+            project_id=pid,
+            name=name,
+            sha256=name,
+            width=w,
+            height=h,
+            path=rel,
+            thumb=rel,
+            split=split,
+            status="done",
+            annotations=anns,
+            n_annotations=len(anns),
+        )
         db.add(row)
         db.commit()
         return row.id
 
 
 def box(aid: str, x: float, y: float, w: float, h: float, cid: str = "c1") -> dict:
-    return {"id": aid, "classId": cid, "shape": {"kind": "bbox", "x": x, "y": y, "w": w, "h": h}}
+    return {
+        "id": aid,
+        "classId": cid,
+        "shape": {"kind": "bbox", "x": x, "y": y, "w": w, "h": h},
+    }
 
 
 def test_size_buckets_scale_with_imgsz(project):
     pid = project["id"]
-    add_image(pid, "bucket-mid", 640, 640, [box("b1", .4, .4, .1, .1), box("b2", .1, .1, .01, .01)])
+    add_image(
+        pid,
+        "bucket-mid",
+        640,
+        640,
+        [box("b1", 0.4, 0.4, 0.1, 0.1), box("b2", 0.1, 0.1, 0.01, 0.01)],
+    )
     with SessionLocal() as db:
         p = db.get(Project, pid)
         at640 = health.checks(db, p, imgsz=640)["size_buckets"]
@@ -81,13 +112,19 @@ def test_size_buckets_scale_with_imgsz(project):
 
 def test_label_quality_flags_tiny_and_oob(project):
     pid = project["id"]
-    add_image(pid, "quality", 640, 640, [
-        box("tiny", .2, .2, .002, .002),
-        box("oob", -.05, .1, .2, .2),
-        box("zero", .5, .5, 0, .1),
-        box("dup-a", .6, .6, .1, .1),
-        box("dup-b", .6, .6, .1, .1),
-    ])
+    add_image(
+        pid,
+        "quality",
+        640,
+        640,
+        [
+            box("tiny", 0.2, 0.2, 0.002, 0.002),
+            box("oob", -0.05, 0.1, 0.2, 0.2),
+            box("zero", 0.5, 0.5, 0, 0.1),
+            box("dup-a", 0.6, 0.6, 0.1, 0.1),
+            box("dup-b", 0.6, 0.6, 0.1, 0.1),
+        ],
+    )
     with SessionLocal() as db:
         p = db.get(Project, pid)
         found = health.checks(db, p)["label_quality"]
@@ -101,15 +138,23 @@ def test_label_quality_flags_tiny_and_oob(project):
 
 def test_missing_box_found_when_model_predicts_unlabeled_object(project, monkeypatch):
     pid = project["id"]
-    image_id = add_image(pid, "missing", 333, 333, [box("gt", .1, .1, .2, .2)])
+    image_id = add_image(pid, "missing", 333, 333, [box("gt", 0.1, 0.1, 0.2, 0.2)])
     with SessionLocal() as db:
         p = db.get(Project, pid)
         v = Version(project_id=pid, number=99, name="health", status="ready", stats={})
         db.add(v)
         db.flush()
-        m = TrainedModel(workspace_id=p.workspace_id, project_id=pid, version_id=v.id, name="health model",
-                         arch="yolo26n", task="detect", status="ready", weights="fake.pt",
-                         metrics={"eval": {"f1_best": {"conf": 0.55}}})
+        m = TrainedModel(
+            workspace_id=p.workspace_id,
+            project_id=pid,
+            version_id=v.id,
+            name="health model",
+            arch="yolo26n",
+            task="detect",
+            status="ready",
+            weights="fake.pt",
+            metrics={"eval": {"f1_best": {"conf": 0.55}}},
+        )
         db.add(m)
         db.commit()
         model_id = m.id
@@ -118,16 +163,43 @@ def test_missing_box_found_when_model_predicts_unlabeled_object(project, monkeyp
 
     def predict(im, **kw):
         calls.append(kw)
-        if im.size != (333, 333):                    # only the target image produces detections
-            return {"predictions": [], "image": {"width": im.width, "height": im.height}}
-        return {"predictions": [
-            # unlabeled object: centre 0.5, 0.5, size 0.2 -> no overlap with the GT box
-            {"class": "person", "confidence": .9, "x": 166.5, "y": 166.5, "width": 66.6, "height": 66.6},
-            # matches the GT box at 0.1..0.3 -> not missing
-            {"class": "person", "confidence": .8, "x": 66.6, "y": 66.6, "width": 66.6, "height": 66.6},
-            # below the model threshold -> ignored
-            {"class": "person", "confidence": .2, "x": 300, "y": 300, "width": 20, "height": 20},
-        ], "image": {"width": im.width, "height": im.height}}
+        if im.size != (333, 333):  # only the target image produces detections
+            return {
+                "predictions": [],
+                "image": {"width": im.width, "height": im.height},
+            }
+        return {
+            "predictions": [
+                # unlabeled object: centre 0.5, 0.5, size 0.2 -> no overlap with the GT box
+                {
+                    "class": "person",
+                    "confidence": 0.9,
+                    "x": 166.5,
+                    "y": 166.5,
+                    "width": 66.6,
+                    "height": 66.6,
+                },
+                # matches the GT box at 0.1..0.3 -> not missing
+                {
+                    "class": "person",
+                    "confidence": 0.8,
+                    "x": 66.6,
+                    "y": 66.6,
+                    "width": 66.6,
+                    "height": 66.6,
+                },
+                # below the model threshold -> ignored
+                {
+                    "class": "person",
+                    "confidence": 0.2,
+                    "x": 300,
+                    "y": 300,
+                    "width": 20,
+                    "height": 20,
+                },
+            ],
+            "image": {"width": im.width, "height": im.height},
+        }
 
     def fake_resolve(ref, db, workspace_id=None):
         assert ref == f"trained:{model_id}" and workspace_id
@@ -136,36 +208,170 @@ def test_missing_box_found_when_model_predicts_unlabeled_object(project, monkeyp
     monkeypatch.setattr(health, "resolve", fake_resolve)
     with SessionLocal() as db:
         p = db.get(Project, pid)
-        result = health.scan_missing_boxes(db, p)
-        assert calls and calls[0]["conf"] == pytest.approx(.55)
-        assert [x["image_id"] for x in result["missing_boxes"]] == [image_id]
-        assert result["missing_boxes"][0]["class"] == "person"
-        assert result["missing_boxes"][0]["box"] == pytest.approx([.4, .4, .2, .2], abs=1e-4)
+        result = health.scan_health(db, p)
+        found = result["checks"]["missing_boxes"]
+        assert calls and calls[0]["conf"] == pytest.approx(0.55)
+        assert [x["image_id"] for x in found] == [image_id]
+        assert found[0]["class"] == "person"
+        assert found[0]["box"] == pytest.approx([0.4, 0.4, 0.2, 0.2], abs=1e-4)
         # the scan is cached: reading checks() must not run inference again
         calls.clear()
-        db.add(Job(workspace_id=p.workspace_id, project_id=pid, kind="health", status="done",
-                   result={**result, "signature": result["signature"]}))
+        db.add(
+            Job(
+                workspace_id=p.workspace_id,
+                project_id=pid,
+                kind="health",
+                status="done",
+                result=result,
+            )
+        )
         db.commit()
         cached = health.checks(db, p)["missing_boxes"]
     assert calls == []
-    assert cached == result["missing_boxes"]
+    assert cached == found
+
+
+def test_model_sourced_box_does_not_hide_a_miss(project, monkeypatch):
+    """A trained/SAM box is not ground truth: the same predicted box is still a miss over it."""
+    pid = project["id"]
+    human = add_image(
+        pid,
+        "gt-human",
+        334,
+        334,
+        [{**box("h1", 0.1, 0.1, 0.2, 0.2), "source": "human"}],
+    )
+    model_made = add_image(
+        pid,
+        "gt-trained",
+        335,
+        335,
+        [{**box("m1", 0.1, 0.1, 0.2, 0.2), "source": "trained:abc"}],
+    )
+
+    def predict(im, **kw):
+        if im.size not in ((334, 334), (335, 335)):
+            return {"predictions": []}
+        return {
+            "predictions": [
+                {
+                    "class": "person",
+                    "confidence": 0.9,
+                    "x": im.width * 0.2,
+                    "y": im.height * 0.2,
+                    "width": im.width * 0.2,
+                    "height": im.height * 0.2,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        health, "resolve", lambda *a, **k: SimpleNamespace(predict=predict)
+    )
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        found = health.scan_health(db, p)["checks"]["missing_boxes"]
+    assert [x["image_id"] for x in found] == [model_made] and human not in [
+        x["image_id"] for x in found
+    ]
+
+
+def test_duplicate_check_ignores_model_sourced_boxes(project, monkeypatch):
+    pid = project["id"]
+    add_image(
+        pid,
+        "dup-model",
+        320,
+        320,
+        [
+            {**box("dm-a", 0.5, 0.5, 0.1, 0.1), "source": "sam3"},
+            {**box("dm-b", 0.5, 0.5, 0.1, 0.1), "source": "trained:abc"},
+        ],
+    )
+    add_image(
+        pid,
+        "dup-human",
+        320,
+        320,
+        [box("dh-a", 0.5, 0.5, 0.1, 0.1), box("dh-b", 0.5, 0.5, 0.1, 0.1)],
+    )
+    monkeypatch.setattr(
+        health,
+        "resolve",
+        lambda *a, **k: SimpleNamespace(predict=lambda im, **kw: {"predictions": []}),
+    )
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        flags = health.compute_checks(db, p)["label_quality"]
+    assert {f["annotation_id"] for f in flags if f["kind"] == "duplicate"} >= {"dh-b"}
+    assert not {f["annotation_id"] for f in flags if f["kind"] == "duplicate"} & {
+        "dm-a",
+        "dm-b",
+    }
 
 
 def test_recommendation_for_small_objects():
-    recs = health.recommendations({"size_buckets": {"small": 41, "medium": 30, "large": 29},
-                                   "label_quality": [], "missing_boxes": [], "leakage_pairs": 0})
+    recs = health.recommendations(
+        {
+            "size_buckets": {"small": 41, "medium": 30, "large": 29},
+            "label_quality": [],
+            "missing_boxes": [],
+            "leakage_pairs": 0,
+        }
+    )
     hit = next(r for r in recs if r["key"] == "imgsz")
     assert hit["suggest"] == {"imgsz": 1024}
     assert "41" in hit["message"] and "1024" in hit["message"]
 
 
-def test_leakage_pairs_from_phash_groups(project):
+def test_leakage_pairs_from_phash_groups(project, monkeypatch):
     pid = project["id"]
     shared = noise(320, 320, "leak")
-    add_image(pid, "leak-train", 320, 320, [box("l1", .2, .2, .2, .2)], split="train", im=shared)
-    add_image(pid, "leak-test", 320, 320, [box("l2", .2, .2, .2, .2)], split="test", im=shared)
+    add_image(
+        pid,
+        "leak-train",
+        320,
+        320,
+        [box("l1", 0.2, 0.2, 0.2, 0.2)],
+        split="train",
+        im=shared,
+    )
+    add_image(
+        pid,
+        "leak-test",
+        320,
+        320,
+        [box("l2", 0.2, 0.2, 0.2, 0.2)],
+        split="test",
+        im=shared,
+    )
+    monkeypatch.setattr(
+        health,
+        "resolve",
+        lambda *a, **k: SimpleNamespace(predict=lambda im, **kw: {"predictions": []}),
+    )
     with SessionLocal() as db:
         p = db.get(Project, pid)
+        scan = health.scan_health(db, p)
+        assert scan["checks"]["leakage_pairs"] == 1
+        db.add(
+            Job(
+                workspace_id=p.workspace_id,
+                project_id=pid,
+                kind="health",
+                status="done",
+                result=scan,
+            )
+        )
+        db.commit()
+        # analytics reads the count from the job row and never groups images itself
+        monkeypatch.setattr(
+            health.versioning,
+            "phash_groups",
+            lambda rows: (_ for _ in ()).throw(
+                AssertionError("no phash in the request")
+            ),
+        )
         assert health.checks(db, p)["leakage_pairs"] == 1
 
 
@@ -188,7 +394,13 @@ def test_analytics_merges_checks_and_recommendations(c, project):
     r = c.get(f"/api/ws/{WS}/projects/{project['slug']}/analytics")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body["checks"]) == {"imgsz", "size_buckets", "label_quality", "missing_boxes", "leakage_pairs"}
+    assert set(body["checks"]) == {
+        "imgsz",
+        "size_buckets",
+        "label_quality",
+        "missing_boxes",
+        "leakage_pairs",
+    }
     assert isinstance(body["recommendations"], list)
     assert isinstance(body["checks"]["missing_boxes"], list)
     assert isinstance(body["health_stale"], bool)
@@ -196,6 +408,7 @@ def test_analytics_merges_checks_and_recommendations(c, project):
 
 def test_analytics_never_runs_inference_inline(c, project, monkeypatch):
     """The missing-box scan is a background job: the analytics request must not resolve a model."""
+
     def boom(*a, **kw):
         raise AssertionError("analytics must not run inference inline")
 
@@ -208,39 +421,86 @@ def test_analytics_never_runs_inference_inline(c, project, monkeypatch):
 def test_malformed_annotations_do_not_break_checks(project):
     """Remote workers and hand-edited JSON can store annotations the UI never writes."""
     pid = project["id"]
-    add_image(pid, "malformed", 320, 320, [
-        None, "junk", {"shape": "bbox"}, {"shape": {"kind": "bbox", "x": "a", "y": 0, "w": 1, "h": 1}},
-        {"id": "ok", "classId": "c1", "shape": {"kind": "bbox", "x": .1, "y": .1, "w": .2, "h": .2}},
-    ])
+    add_image(
+        pid,
+        "malformed",
+        320,
+        320,
+        [
+            None,
+            "junk",
+            {"shape": "bbox"},
+            {"shape": {"kind": "bbox", "x": "a", "y": 0, "w": 1, "h": 1}},
+            {
+                "id": "ok",
+                "classId": "c1",
+                "shape": {"kind": "bbox", "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2},
+            },
+        ],
+    )
     with SessionLocal() as db:
         p = db.get(Project, pid)
-        found = health.checks(db, p)
+        found = health.checks(db, p, auto_scan=False)
     assert sum(found["size_buckets"].values()) >= 1
     assert all(f["kind"] for f in found["label_quality"])
 
 
-def test_missing_box_conf_falls_back_to_04(project, monkeypatch):
+def test_missing_box_conf_falls_back_to_04(monkeypatch):
     """No eval metrics: the scan uses the historical 0.4 default (PM ruling)."""
-    pid = project["id"]
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        p = Project(
+            workspace_id=ws.id,
+            slug="health-fallback-qa",
+            name="health-fallback-qa",
+            settings={},
+        )
+        db.add(p)
+        db.commit()
+        pid = p.id
+    add_image(pid, "fallback-img", 340, 340, [])
     with SessionLocal() as db:
         p = db.get(Project, pid)
-        v = Version(project_id=pid, number=101, name="health-fallback", status="ready", stats={})
+        v = Version(
+            project_id=pid, number=1, name="health-fallback", status="ready", stats={}
+        )
         db.add(v)
         db.flush()
-        db.add(TrainedModel(workspace_id=p.workspace_id, project_id=pid, version_id=v.id, name="fallback model",
-                            arch="yolo26n", task="detect", status="ready", weights="fake.pt", metrics={}))
+        db.add(
+            TrainedModel(
+                workspace_id=p.workspace_id,
+                project_id=pid,
+                version_id=v.id,
+                name="fallback model",
+                arch="yolo26n",
+                task="detect",
+                status="ready",
+                weights="fake.pt",
+                metrics={},
+            )
+        )
         db.commit()
         calls: list[dict] = []
-        monkeypatch.setattr(health, "resolve", lambda ref, db, workspace_id=None: SimpleNamespace(
-            predict=lambda im, **kw: calls.append(kw) or {"predictions": []}))
-        health.scan_missing_boxes(db, p)
-    assert calls and calls[0]["conf"] == pytest.approx(.4)
+        monkeypatch.setattr(
+            health,
+            "resolve",
+            lambda ref, db, workspace_id=None: SimpleNamespace(
+                predict=lambda im, **kw: calls.append(kw) or {"predictions": []}
+            ),
+        )
+        health.scan_health(db, p)
+    assert calls and calls[0]["conf"] == pytest.approx(0.4)
 
 
 def test_health_job_endpoint_runs_scan_and_caches_result(c):
     with SessionLocal() as db:
         ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
-        p = Project(workspace_id=ws.id, slug="health-job-api", name="health-job-api", settings={})
+        p = Project(
+            workspace_id=ws.id,
+            slug="health-job-api",
+            name="health-job-api",
+            settings={},
+        )
         db.add(p)
         db.commit()
     base = f"/api/ws/{WS}/projects/{p.slug}"
@@ -260,6 +520,6 @@ def test_health_job_endpoint_runs_scan_and_caches_result(c):
     assert "signature" in job["result"]
 
     body = c.get(f"{base}/analytics").json()
-    assert body["checks"]["missing_boxes"] == []          # no ready model yet
+    assert body["checks"]["missing_boxes"] == []  # no ready model yet
     assert body["health_job"]["id"] == job["id"]
     assert body["health_stale"] is False

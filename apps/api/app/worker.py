@@ -304,10 +304,10 @@ def run_autolabel(job: Job):
 
 
 def run_health(job: Job):
-    """Missing-box scan (needs the model): the result is cached on the job row for the analytics page."""
+    """Leakage + missing-box scan (needs the model): cached on the job row for the analytics page."""
     with SessionLocal() as db:
         p = db.get(Project, job.project_id)
-        return health.scan_missing_boxes(db, p)
+        return health.scan_health(db, p)
 
 
 HANDLERS = {"version": run_version, "export": run_export, "train": run_train, "autolabel": run_autolabel,

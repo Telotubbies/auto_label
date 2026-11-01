@@ -129,13 +129,17 @@ def test_annotation_payload_validation(admin):
 
 
 def test_login_rate_limited_and_no_user_enumeration():
+    was = ratelimit.ENABLED
     ratelimit.ENABLED = True
-    c = TestClient(app)
-    codes = [c.post("/api/auth/login", json={"email": "nobody@x.io", "password": "x"}).status_code for _ in range(10)]
-    assert codes[0] == 401 and 429 in codes
-    r1 = c.post("/api/auth/login", json={"email": "ghost1@x.io", "password": "x"}).json()["detail"]
-    r2 = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "wrong"}).json()["detail"]
-    assert r1 == r2
+    try:
+        c = TestClient(app)
+        codes = [c.post("/api/auth/login", json={"email": "nobody@x.io", "password": "x"}).status_code for _ in range(10)]
+        assert codes[0] == 401 and 429 in codes
+        r1 = c.post("/api/auth/login", json={"email": "ghost1@x.io", "password": "x"}).json()["detail"]
+        r2 = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "wrong"}).json()["detail"]
+        assert r1 == r2
+    finally:
+        ratelimit.ENABLED = was
 
 
 def test_refresh_tokens_hashed_and_rotated():
