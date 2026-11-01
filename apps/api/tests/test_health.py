@@ -14,14 +14,14 @@ os.environ["LD_SAM_ENABLED"] = "0"
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
 from app.models import Image, Job, Project, TrainedModel, User, Version, Workspace
 from app.security import issue_access
-from app.services import health
+from app.services import health, health_scan
 
 WS = "labeldesk-demo"
 NAME = "health-check-qa"
@@ -47,9 +47,7 @@ def project(c):
 def noise(w: int, h: int, seed: str) -> PImage.Image:
     """Distinct pixels per seed so pHash groups only the images we duplicate on purpose."""
     rng = random.Random(seed)
-    return PImage.frombytes(
-        "RGB", (w, h), bytes(rng.getrandbits(8) for _ in range(w * h * 3))
-    )
+    return PImage.frombytes("RGB", (w, h), bytes(rng.getrandbits(8) for _ in range(w * h * 3)))
 
 
 def add_image(
@@ -205,7 +203,7 @@ def test_missing_box_found_when_model_predicts_unlabeled_object(project, monkeyp
         assert ref == f"trained:{model_id}" and workspace_id
         return SimpleNamespace(predict=predict)
 
-    monkeypatch.setattr(health, "resolve", fake_resolve)
+    monkeypatch.setattr(health_scan, "resolve", fake_resolve)
     with SessionLocal() as db:
         p = db.get(Project, pid)
         result = health.scan_health(db, p)
@@ -265,15 +263,11 @@ def test_model_sourced_box_does_not_hide_a_miss(project, monkeypatch):
             ]
         }
 
-    monkeypatch.setattr(
-        health, "resolve", lambda *a, **k: SimpleNamespace(predict=predict)
-    )
+    monkeypatch.setattr(health_scan, "resolve", lambda *a, **k: SimpleNamespace(predict=predict))
     with SessionLocal() as db:
         p = db.get(Project, pid)
         found = health.scan_health(db, p)["checks"]["missing_boxes"]
-    assert [x["image_id"] for x in found] == [model_made] and human not in [
-        x["image_id"] for x in found
-    ]
+    assert [x["image_id"] for x in found] == [model_made] and human not in [x["image_id"] for x in found]
 
 
 def test_duplicate_check_ignores_model_sourced_boxes(project, monkeypatch):
@@ -296,7 +290,7 @@ def test_duplicate_check_ignores_model_sourced_boxes(project, monkeypatch):
         [box("dh-a", 0.5, 0.5, 0.1, 0.1), box("dh-b", 0.5, 0.5, 0.1, 0.1)],
     )
     monkeypatch.setattr(
-        health,
+        health_scan,
         "resolve",
         lambda *a, **k: SimpleNamespace(predict=lambda im, **kw: {"predictions": []}),
     )
@@ -346,7 +340,7 @@ def test_leakage_pairs_from_phash_groups(project, monkeypatch):
         im=shared,
     )
     monkeypatch.setattr(
-        health,
+        health_scan,
         "resolve",
         lambda *a, **k: SimpleNamespace(predict=lambda im, **kw: {"predictions": []}),
     )
@@ -366,11 +360,9 @@ def test_leakage_pairs_from_phash_groups(project, monkeypatch):
         db.commit()
         # analytics reads the count from the job row and never groups images itself
         monkeypatch.setattr(
-            health.versioning,
+            health_scan.versioning,
             "phash_groups",
-            lambda rows: (_ for _ in ()).throw(
-                AssertionError("no phash in the request")
-            ),
+            lambda rows: (_ for _ in ()).throw(AssertionError("no phash in the request")),
         )
         assert health.checks(db, p)["leakage_pairs"] == 1
 
@@ -412,7 +404,7 @@ def test_analytics_never_runs_inference_inline(c, project, monkeypatch):
     def boom(*a, **kw):
         raise AssertionError("analytics must not run inference inline")
 
-    monkeypatch.setattr(health, "resolve", boom)
+    monkeypatch.setattr(health_scan, "resolve", boom)
     r = c.get(f"/api/ws/{WS}/projects/{project['slug']}/analytics")
     assert r.status_code == 200, r.text
     assert "checks" in r.json()
@@ -445,7 +437,7 @@ def test_malformed_annotations_do_not_break_checks(project):
     assert all(f["kind"] for f in found["label_quality"])
 
 
-def test_missing_box_conf_falls_back_to_04(monkeypatch):
+def test_missing_box_conf_falls_back_to_04(c, monkeypatch):
     """No eval metrics: the scan uses the historical 0.4 default (PM ruling)."""
     with SessionLocal() as db:
         ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
@@ -461,9 +453,7 @@ def test_missing_box_conf_falls_back_to_04(monkeypatch):
     add_image(pid, "fallback-img", 340, 340, [])
     with SessionLocal() as db:
         p = db.get(Project, pid)
-        v = Version(
-            project_id=pid, number=1, name="health-fallback", status="ready", stats={}
-        )
+        v = Version(project_id=pid, number=1, name="health-fallback", status="ready", stats={})
         db.add(v)
         db.flush()
         db.add(
@@ -482,7 +472,7 @@ def test_missing_box_conf_falls_back_to_04(monkeypatch):
         db.commit()
         calls: list[dict] = []
         monkeypatch.setattr(
-            health,
+            health_scan,
             "resolve",
             lambda ref, db, workspace_id=None: SimpleNamespace(
                 predict=lambda im, **kw: calls.append(kw) or {"predictions": []}
@@ -490,6 +480,51 @@ def test_missing_box_conf_falls_back_to_04(monkeypatch):
         )
         health.scan_health(db, p)
     assert calls and calls[0]["conf"] == pytest.approx(0.4)
+
+
+def test_failed_health_job_does_not_trigger_a_second_scan(c):
+    """A failed scan for the same dataset/model must not be retried by GET /analytics polling."""
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        p = Project(workspace_id=ws.id, slug="health-failed-qa", name="health-failed-qa", settings={})
+        db.add(p)
+        db.commit()
+        pid = p.id
+    add_image(pid, "failed-img", 341, 341, [])
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        v = Version(project_id=pid, number=1, name="failed", status="ready", stats={})
+        db.add(v)
+        db.flush()
+        m = TrainedModel(
+            workspace_id=p.workspace_id,
+            project_id=pid,
+            version_id=v.id,
+            name="failed model",
+            arch="yolo26n",
+            task="detect",
+            status="ready",
+            weights="fake.pt",
+            metrics={},
+        )
+        db.add(m)
+        db.flush()
+        db.add(
+            Job(
+                workspace_id=p.workspace_id,
+                project_id=pid,
+                kind="health",
+                status="failed",
+                params={"imgsz": 640, "signature": health.signature(db, p), "model_id": m.id},
+            )
+        )
+        db.commit()
+        count = select(func.count(Job.id)).where(Job.project_id == pid, Job.kind == "health")
+        before = db.scalar(count)
+        out = health.checks(db, p)
+        after = db.scalar(count)
+    assert after == before
+    assert out["missing_boxes"] == []
 
 
 def test_health_job_endpoint_runs_scan_and_caches_result(c):
