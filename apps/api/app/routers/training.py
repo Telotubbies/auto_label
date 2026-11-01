@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..adapters import ADAPTERS, resolve
-from ..adapters.refine import label_image
+from ..adapters.refine import label_image, sam_available
 from ..config import CREDIT_COST, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
@@ -337,10 +337,11 @@ def autolabel_preview(body: AutoLabelPreviewIn, c: Ctx = Depends(project_ctx)):
                            .order_by(LabelClass.created)).all()
     names = {x.id: x.name for x in classes}
     images, counts = [], {}
+    sam_ok = sam_available()          # one probe for the whole preview
     for img in _autolabel_images(c, body, max(3, min(5, body.sample))):
         try:
             anns = label_image(imaging.load(img.path), project_type=c.project.type, params=body.model_dump(),
-                               classes=classes, db=c.db, workspace_id=c.ws.id)
+                               classes=classes, db=c.db, workspace_id=c.ws.id, sam_ok=sam_ok)
         except RuntimeError as e:      # model runtime down (vLLM / SAM): a readable 503, not a 500
             raise HTTPException(503, str(e))
         except ValueError as e:        # our own adapter validation, e.g. YOLO-World without classes

@@ -188,7 +188,6 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
 
         rows.sort(key=rank)
         rows = rows[start:start + size]
-        rows = rows[start:start + size]
     else:
         order = {"newest": Image.created.desc(), "oldest": Image.created, "name": Image.name,
                  "most": Image.n_annotations.desc(), "least": Image.n_annotations}.get(sort, Image.created.desc())

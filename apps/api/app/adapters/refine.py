@@ -90,7 +90,8 @@ def _verified(vlm, im, pred: dict, cls_name: str) -> bool:
         raise _vlm_down(vlm) from e
 
 
-def _sam_ok() -> bool:
+def sam_available() -> bool:
+    """One probe per job: SAM availability is stable for the duration of a batch."""
     sam = ADAPTERS.get("sam3")
     try:
         return bool(sam and sam.probe().ok)
@@ -108,8 +109,11 @@ def _ref(params: dict) -> str:
     raise ValueError("choose a model_ref or a trained model")
 
 
-def label_image(im, *, project_type: str, params: dict, classes: list, db, workspace_id: str) -> list[dict]:
-    """Run the selected model over one image and return editor annotations (never writes)."""
+def label_image(im, *, project_type: str, params: dict, classes: list, db, workspace_id: str,
+                sam_ok: bool | None = None) -> list[dict]:
+    """Run the selected model over one image and return editor annotations (never writes).
+
+    sam_ok is the batch's one-time SAM probe; pass it on loops so a job does not re-probe per image."""
     r = resolve(_ref(params), db, workspace_id=workspace_id)
     family = r.adapter.family
     conf = float(raw) if (raw := params.get("confidence")) is not None else None
@@ -158,7 +162,8 @@ def label_image(im, *, project_type: str, params: dict, classes: list, db, works
         return anns
 
     out = r.predict(im, classes=[c.name for c in wanted] or None, **conf_kw)
-    if "top" not in out and project_type == "instance-segmentation" and _sam_ok():
+    if "top" not in out and project_type == "instance-segmentation" \
+            and (sam_ok if sam_ok is not None else sam_available()):
         for p in out.get("predictions", []):
             if p.get("points"):          # native segmenters already return a mask polygon
                 continue

@@ -56,7 +56,7 @@ def scratch(c):
     """A throwaway detection project with 4 fresh images — seeded images are never touched."""
     name = f"autolabel-v2-{uuid.uuid4().hex[:8]}"
     p = c.post(f"/api/ws/{WS}/projects", json={"name": name, "type": "object-detection",
-                                               "classes": ["person", THAI]}).json()
+                                               "classes": ["person", THAI, "safety vest"]}).json()
     base = f"/api/ws/{WS}/projects/{p['slug']}"
     files = [("files", (f"v2-{i}.jpg", jpeg((10 + i * 40, 60, 90)))) for i in range(4)]
     up = c.post(f"{base}/upload", files=files, data={"split": "train", "batch_name": "autolabel v2"})
@@ -134,11 +134,13 @@ class FakeVlm:
     family = "vlm"
     url = "http://localhost:8000/v1"
 
-    def __init__(self, preds=None, phrases=None, fail_after=None, verify_result=True):
+    def __init__(self, preds=None, phrases=None, fail_after=None, verify_result=True, echo_classes=False):
         self.preds = [box()] if preds is None else preds
         self.phrases = phrases or []
         self.fail_after = fail_after
         self.verify_result = verify_result
+        self.echo_classes = echo_classes
+        self.ground_classes = []
         self.calls = 0
 
     def probe(self):
@@ -149,9 +151,12 @@ class FakeVlm:
 
     def ground(self, im, classes):
         self.calls += 1
+        self.ground_classes = list(classes)
         if self.fail_after is not None and self.calls > self.fail_after:
             raise httpx.ConnectError("vLLM went away")
-        return {"model": "vlm:qwen2.5-vl-7b", "predictions": [dict(p) for p in self.preds], "time": 0.0,
+        preds = ([{**box(), "class": c, "class_id": i} for i, c in enumerate(classes)]
+                 if self.echo_classes else [dict(p) for p in self.preds])
+        return {"model": "vlm:qwen2.5-vl-7b", "predictions": preds, "time": 0.0,
                 "image": {"width": im.width, "height": im.height}}
 
     def verify(self, im, box_xyxy, cls):
@@ -222,15 +227,31 @@ def test_zero_annotations_not_charged(c, scratch, monkeypatch):
     assert _usage(c) == before
 
 
+def test_vlm_ground_keeps_thai_and_multiword_labels(c, scratch, monkeypatch):
+    vlm = FakeVlm(echo_classes=True)
+    monkeypatch.setitem(ADAPTERS, "vlm", vlm)
+    monkeypatch.setitem(ADAPTERS, "sam3", FakeSam())
+    ids = [scratch["classes"][THAI], scratch["classes"]["safety vest"]]
+    img_id = scratch["images"][3]
+    j = run_job(c, scratch["base"], {"model_ref": "vlm:qwen2.5-vl-7b", "class_ids": ids,
+                                     "only_unannotated": False, "image_ids": [img_id]})
+    assert j["status"] == "done", j
+    assert vlm.ground_classes == [THAI, "safety vest"]          # enum goes out verbatim
+    assert {a["classId"] for a in _saved_for(img_id)} == set(ids)   # and maps back to the right classes
+
+
 def test_vlm_down_mid_batch_fails_readably(c, scratch, monkeypatch):
     ids = scratch["images"][:2]
     monkeypatch.setitem(ADAPTERS, "vlm", FakeVlm(fail_after=1))
     monkeypatch.setitem(ADAPTERS, "sam3", FakeSam())
+    before = _usage(c)
     j = run_job(c, scratch["base"], {"model_ref": "vlm:qwen2.5-vl-7b", "only_unannotated": False,
                                      "image_ids": ids})
     assert j["status"] == "failed"
     assert "vLLM not reachable" in j["error"] and "Traceback" not in j["error"]
     assert any(a["source"] == "vlm+sam3" for a in _saved(scratch["id"]))
+    # the one image labeled before the failure is still billed
+    assert _usage(c) - before == pytest.approx(0.01)
 
 
 def test_thai_class_names_reach_sam_prompts(c, scratch, monkeypatch):
@@ -270,3 +291,20 @@ def test_ready_trained_model_in_registry(c, scratch):
     finally:
         with SessionLocal() as s:
             s.delete(s.get(TrainedModel, mid)); s.commit()
+
+
+def test_review_sort_paginates_with_offset(c, scratch):
+    cid = scratch["classes"]["person"]
+    shape = {"kind": "bbox", "x": .1, "y": .1, "w": .3, "h": .3}
+    # low-confidence AI, then vlm+sam3, then two plain detections
+    for k, (img_id, conf, source) in enumerate(zip(
+            scratch["images"], (0.2, 0.5, 0.9, 0.9), ("ultralytics:yolo26n", "vlm+sam3",
+                                                      "ultralytics:yolo26n", "ultralytics:yolo26n"))):
+        ann = [{"id": f"pg{k}", "classId": cid, "shape": shape, "confidence": conf, "source": source}]
+        assert c.put(f"/api/images/{img_id}/annotations", json={"annotations": ann}).status_code == 200
+    url = f"{scratch['base']}/images"
+    page1 = c.get(url, params={"sort": "review", "limit": 2, "offset": 0}).json()["items"]
+    page2 = c.get(url, params={"sort": "review", "limit": 2, "offset": 2}).json()["items"]
+    ids = [x["id"] for x in page1 + page2]
+    assert ids[:2] == scratch["images"][:2]              # low confidence, then vlm+sam3
+    assert len(ids) == 4 and set(ids) == set(scratch["images"])
