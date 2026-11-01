@@ -3,10 +3,11 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Circle, Group, Image as KImage, Layer, Line, Rect, Stage, Transformer } from 'react-konva'
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, Bot, Check, ChevronLeft, ChevronRight, Eye, EyeOff, FileCode, Hand,
-  History, Keyboard, LoaderCircle, Lock, MessageSquare, Plus, Redo2, RotateCw, Send, SlidersHorizontal, Sparkles,
-  SquareDashed, Spline, Tag, TriangleAlert, Undo2, Unlock, Waypoints, X,
-  type LucideIcon,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, Bot, Check, ChevronLeft,
+  ChevronRight, Eye, EyeOff, FileCode, Hand, History, Info, Keyboard,
+  LoaderCircle, Lock, MessageSquare, Plus, Redo2, RotateCw, Send, SlidersHorizontal,
+  Sparkles, SquareDashed, Spline, Tag, TriangleAlert, Undo2, Unlock, Waypoints,
+  X, type LucideIcon,
 } from 'lucide-react'
 import { ApiError, api, fileUrl, get, patch, post, put } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -266,6 +267,7 @@ export default function Editor() {
   const [loadedFor, setLoadedFor] = useState('')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [selId, setSelId] = useState<string | null>(null)
   const [selClass, setSelClass] = useState('')
   const [activeJoint, setActiveJoint] = useState(0)
@@ -573,6 +575,20 @@ export default function Editor() {
     if (dirty) await save()
     try { await patch(`/images/${imageId}`, { status: 'review' }); qc.invalidateQueries({ queryKey: ['image', imageId] }); toast.ok('Sent to review'); go(1) } catch (e) { toast.err(e as Error) }
   }
+  // Autosave keeps the draft private; only this sends it to the consensus job.
+  const submitConsensusDraft = async () => {
+    if (!img?.consensusJob) return
+    setSubmitting(true)
+    try {
+      await api.submitConsensus(ws, project, img.consensusJob, imageId, anns)
+      toast.ok('Consensus draft submitted')
+      qc.invalidateQueries({ queryKey: ['labeling-tasks', ws, project] })
+      qc.invalidateQueries({ queryKey: ['labeling-dashboard', ws, project] })
+      qc.invalidateQueries({ queryKey: ['labeling-jobs', ws, project] })
+      qc.invalidateQueries({ queryKey: ['labeling-job', ws, project] })
+      qc.invalidateQueries({ queryKey: ['image', imageId] })
+    } catch (e) { toast.err(e as Error) } finally { setSubmitting(false) }
+  }
   const labelAssist = async (modelId: string) => {
     setAssistBusy(true)
     try {
@@ -646,6 +662,11 @@ export default function Editor() {
             </Button>
           )}
           {img?.status === 'annotating' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={submitForReview}><Send className="h-3.5 w-3.5" /> Submit for review</Button>}
+          {img?.consensusJob && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={submitting} onClick={submitConsensusDraft}>
+              {submitting ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Submit consensus draft
+            </Button>
+          )}
           {can('reviewer') && <>
             <Button size="sm" className="h-7 bg-success text-xs text-background hover:bg-success/90" onClick={() => review(true)}><Check className="h-3.5 w-3.5" /> Approve</Button>
             <Button size="sm" variant="outline" className="h-7 border-destructive/50 text-xs text-destructive hover:bg-destructive/10" onClick={() => review(false)}><Ban className="h-3.5 w-3.5" /> Reject</Button>
@@ -654,6 +675,12 @@ export default function Editor() {
           <Button variant="ghost" size="icon" onClick={() => setShortcuts(true)} title="Shortcuts (?)"><Keyboard className="h-4 w-4" /></Button>
         </div>
       </div>
+      {img?.consensusJob && (
+        <div role="status" className="flex items-center gap-2 border-b border-info/40 bg-info/10 px-4 py-1.5 text-xs font-medium text-info">
+          <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Consensus draft — autosave is private; press Submit consensus draft when you are done.
+        </div>
+      )}
       {reviewMode && <div className="flex items-center gap-2 border-b border-warning/50 bg-warning/15 px-4 py-1.5 text-xs font-medium text-foreground"><TriangleAlert className="h-3.5 w-3.5" /> Review mode — approve to add to the dataset, reject to send back.</div>}
       <div className="flex min-h-0 flex-1">
         <div className={cn('w-16 flex-col items-center border-r py-2 md:flex', panelsOpen ? 'flex' : 'hidden')}>

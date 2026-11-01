@@ -109,6 +109,7 @@ class _Watchdog:
         """Refresh liveness only (a polling adapter saw real progress); never an epoch sample."""
         with self._lock:
             self.last = time.monotonic()
+            self.stalled = False
 
     def reset(self) -> None:
         with self._lock:

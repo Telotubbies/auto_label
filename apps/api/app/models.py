@@ -439,6 +439,18 @@ class DeploymentAlias(Base):
     model_id: Mapped[str | None] = mapped_column(ForeignKey("trained_models.id", ondelete="SET NULL"), nullable=True)
     previous_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # rollback target
     updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+class ConsensusJob(Base):
+    """One image set sent to K labelers; the merge writes the agreed labels back."""
+    __tablename__ = "consensus_jobs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="collecting")   # collecting | ready | merged
+    k: Mapped[int] = mapped_column(Integer)
+    iou_threshold: Mapped[float] = mapped_column(Float, default=0.5)
+    image_ids: Mapped[list] = mapped_column(JSON, default=list)
+    agreement: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)
 
@@ -506,3 +518,55 @@ class UsageEvent(Base):
     quantity: Mapped[float] = mapped_column(Float, default=0.0)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[float] = mapped_column(Float, default=now, index=True)
+class ConsensusAssignment(Base):
+    """A labeler's private draft for one image of a job; the Image row is only written on merge."""
+    __tablename__ = "consensus_assignments"
+    __table_args__ = (UniqueConstraint("job_id", "image_id", "user_id"),
+                      Index("ix_consensus_assignments_project_image", "project_id", "image_id"))
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    job_id: Mapped[str] = mapped_column(ForeignKey("consensus_jobs.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32))
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    annotations: Mapped[list] = mapped_column(JSON, default=list)
+    submitted: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class Honeypot(Base):
+    """An image with known-good ground truth; a labeler's save is scored against it once."""
+    __tablename__ = "honeypots"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), unique=True)
+    annotations: Mapped[list] = mapped_column(JSON, default=list)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class HoneypotAttempt(Base):
+    __tablename__ = "honeypot_attempts"
+    __table_args__ = (UniqueConstraint("honeypot_id", "user_id"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    honeypot_id: Mapped[str] = mapped_column(ForeignKey("honeypots.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class LabelEvent(Base):
+    """One annotation save — throughput, AI-acceptance and consensus-pending live here."""
+    __tablename__ = "label_events"
+    __table_args__ = (Index("ix_label_events_project_user_created", "project_id", "user_id", "created"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32))
+    image_id: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[str] = mapped_column(String(32))
+    annotations: Mapped[int] = mapped_column(Integer, default=0)
+    ai_seen: Mapped[int] = mapped_column(Integer, default=0)
+    ai_kept: Mapped[int] = mapped_column(Integer, default=0)
+    created: Mapped[float] = mapped_column(Float, default=now)

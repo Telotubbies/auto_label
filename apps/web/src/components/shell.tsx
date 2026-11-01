@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database,
-  Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor, Moon,
-  Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User,
-  X, Zap, Wrench,
+  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, ClipboardCheck, Cpu,
+  Database, Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor,
+  Moon, Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload,
+  User, X, Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -153,6 +153,9 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
     { to: 'insights', label: 'Insights', icon: LineChart, perm: 'project.review' },
     { to: 'classes', label: 'Classes & Tags', icon: Tags, perm: 'project.classes' },
   ]},
+  { group: 'QUALITY', items: [
+    { to: 'qa', label: 'QA & Workforce', icon: ClipboardCheck, perm: 'project.annotate' },
+  ]},
   { group: 'MODELS', items: [
     { to: 'train', label: 'Train', icon: BrainCircuit, perm: 'project.train' },
     { to: 'models', label: 'Models', icon: Boxes, perm: 'project.models' },
@@ -227,7 +230,7 @@ export function GpuBadge() {
 
 const pageLabels: Record<string, string> = {
   models: 'Models', deployments: 'Deployments', activity: 'Activity', audit: 'Audit log', admin: 'Admin console',
-  settings: 'Settings', legal: 'Legal',
+  settings: 'Settings', legal: 'Legal', qa: 'QA & Workforce',
 }
 
 export function TopBar({ onMenu }: { onMenu?: () => void }) {
@@ -278,7 +281,7 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
   )
 }
 
-const RESERVED = new Set(['models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal'])
+const RESERVED = new Set(['models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal', 'qa'])
 const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
   train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
   insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',

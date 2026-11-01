@@ -25,6 +25,7 @@ const Versions = lazy(() => import('@/features/project/Versions'))
 const Analytics = lazy(() => import('@/features/project/Analytics'))
 const Insights = lazy(() => import('@/features/project/Insights'))
 const ModelInsights = lazy(() => import('@/features/insights/Insights'))
+const QA = lazy(() => import('@/features/project/QA'))
 import Classes from '@/features/project/Classes'
 import Train from '@/features/project/Train'
 const Models = lazy(() => import('@/features/project/Models'))
@@ -158,6 +159,7 @@ export default function App() {
             <Route path="deploy" element={<PermGate perm="project.models"><Deploy /></PermGate>} />
             <Route path="settings" element={<ProjectSettings />} />
             <Route path="access" element={<ProjectSettings initialTab="access" />} />
+            <Route path="qa" element={<PermGate perm="project.review"><QA /></PermGate>} />
           </Route>
         </Route>
       </Route>
