@@ -310,6 +310,9 @@ def export_model(mid: str, body: ExportModelIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, "TensorRT export is available for ultralytics models only")
     if "world" in (m.variant or ""):
         raise HTTPException(400, "TensorRT export is not available for open-vocabulary models")
+    trt = ADAPTERS.get("tensorrt")
+    if trt is None or not trt.probe().ok:
+        raise HTTPException(503, "TensorRT is not available on this worker")
     if "export_engine" not in LOCAL_JOB_KINDS:
         raise HTTPException(503, "no local GPU worker builds TensorRT engines")
     active = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "export_engine",
@@ -367,7 +370,8 @@ def _autolabel_target(c: Ctx, body: AutoLabelIn):
     if "autolabel" not in LOCAL_JOB_KINDS:
         # the pip worker only knows trained ultralytics weights and SAM text prompts (Phase 7 ports adapters)
         remote_ok = not (body.prompt or "").strip() and not body.vlm_verify and (
-            r.adapter.family == "sam3" or (r.adapter.family == "ultralytics" and r.ref.startswith("trained:")))
+            r.adapter.family == "sam3"
+            or (r.adapter.family in ("ultralytics", "tensorrt") and r.ref.startswith("trained:")))
         if not remote_ok:
             raise HTTPException(400, _REMOTE_UNSUPPORTED)
     return r

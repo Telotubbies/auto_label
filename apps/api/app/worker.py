@@ -160,9 +160,13 @@ def run_export_engine(job: Job):
     if not src.exists():
         raise RuntimeError("model weights are missing")
     dest = DATA_DIR / "engines" / f"{mid}.engine"
+    adapter = ADAPTERS.get(family)
+    build = getattr(adapter, "export", None)
+    if build is None:
+        raise RuntimeError(f"{family} models cannot be exported to TensorRT")
     _set(job.id, progress=10.0)
     with scheduler.exclusive(f"engine export {variant}"):         # the build owns the whole card
-        out = ADAPTERS[family].export(str(src), "engine", half=True, dest=dest)
+        out = build(str(src), "engine", half=True, dest=dest)
     rel = out.relative_to(DATA_DIR).as_posix()
     with SessionLocal() as db:                                    # fresh row: the build ran for minutes
         tm = db.get(TrainedModel, mid)

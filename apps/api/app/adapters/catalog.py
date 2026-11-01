@@ -89,10 +89,28 @@ def model_conf(m: TrainedModel) -> float | None:
     return float(conf) if isinstance(conf, (int, float)) and 0 < conf < 1 else None
 
 
+_failed_engines: dict[str, float] = {}     # engine path -> mtime that failed to load (per process)
+
+
+def mark_engine_failed(rel: str) -> None:
+    """Remember a broken engine so resolve() stops selecting it until a rebuild changes the file."""
+    try:
+        _failed_engines[rel] = (DATA_DIR / rel).stat().st_mtime
+    except OSError:
+        _failed_engines[rel] = 0.0
+
+
 def engine_ref(m: TrainedModel) -> str | None:
-    """The cached TensorRT engine for a model, or None when it was never built / the file is gone."""
+    """The cached TensorRT engine for a model, or None when it was never built / the file is gone / broken."""
     rel = (m.runtime_refs or {}).get("engine")
-    return rel if isinstance(rel, str) and (DATA_DIR / rel).is_file() else None
+    if not isinstance(rel, str) or not (DATA_DIR / rel).is_file():
+        return None
+    try:
+        if _failed_engines.get(rel) == (DATA_DIR / rel).stat().st_mtime:
+            return None
+    except OSError:
+        return None
+    return rel
 
 
 def _engine_usable() -> bool:
@@ -108,16 +126,20 @@ def resolve(model_ref: str, db: Session, *, workspace_id: str | None = None) -> 
     ready, is reported as unknown — same message as a missing id, so ids don't leak across tenants.
     An exported TensorRT engine wins over the .pt checkpoint; a missing engine falls back to .pt."""
     fam, rest = parse_ref(model_ref)
-    weights = conf = None
+    weights = conf = pt_weights = None
+    base_fam = fam
     if fam == "trained":
         m = db.get(TrainedModel, rest)
         if m is None or (workspace_id is not None and (m.workspace_id != workspace_id or m.status != "ready")):
             raise ValueError(f"unknown trained model {rest!r}")
         fam, rest, weights = m.family or "ultralytics", m.variant or _TASK_VARIANT[m.task], m.weights
+        conf = model_conf(m)
         engine = engine_ref(m)
         if engine is not None and "world" not in rest and _engine_usable():
-            fam, weights = "tensorrt", engine
-        conf = model_conf(m)
+            pt_weights, weights, fam = m.weights, engine, "tensorrt"
+        base_fam = m.family or "ultralytics"
     if fam not in ADAPTERS:
         raise ValueError(f"no adapter for family {fam!r}")
-    return Resolved(ADAPTERS[fam], rest, weights, model_ref, conf)
+    fallback = Resolved(ADAPTERS[base_fam], rest, pt_weights, model_ref, conf) \
+        if pt_weights and base_fam in ADAPTERS else None
+    return Resolved(ADAPTERS[fam], rest, weights, model_ref, conf, fallback)

@@ -1,9 +1,12 @@
 """Adapter contract shared by every model family (ultralytics, sam3, vlm, ...)."""
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from PIL import Image as PImage
+
+log = logging.getLogger("labeldesk.adapters")
 
 
 @dataclass
@@ -63,11 +66,23 @@ class Resolved:
     weights: str | None
     ref: str
     conf: float | None = None
+    fallback: "Resolved | None" = None      # the .pt runtime, retried when a TensorRT engine fails to load
 
     def predict(self, im: PImage.Image, **kw) -> dict:
         if self.conf is not None and "conf" not in kw:
             kw["conf"] = self.conf
-        out = self.adapter.predict(self.variant, im, weights=self.weights, **kw)
+        try:
+            out = self.adapter.predict(self.variant, im, weights=self.weights, **kw)
+        except (RuntimeError, ValueError, OSError, ImportError) as e:
+            from ..gpu import GpuBusy
+            if isinstance(e, (GpuBusy, Cancelled)) or self.fallback is None:
+                raise
+            if self.adapter.family == "tensorrt" and self.weights:
+                from .catalog import mark_engine_failed
+                mark_engine_failed(self.weights)          # a dead engine must not be retried per image
+            log.warning("model %s failed on the %s runtime (%s); falling back to %s",
+                        self.ref, self.adapter.family, e, self.fallback.adapter.family)
+            out = self.fallback.adapter.predict(self.variant, im, weights=self.fallback.weights, **kw)
         out["model"] = self.ref
         return out
 

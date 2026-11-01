@@ -63,6 +63,7 @@ const KIND: Record<Job['kind'], { label: string; page: string }> = {
   export_engine: { label: 'TensorRT export', page: 'models' },
   health: { label: 'Health check', page: 'analytics' },
 }
+const kindOf = (kind: Job['kind']) => KIND[kind] ?? { label: kind, page: 'versions' }
 
 export function Activity() {
   const { ws = '' } = useParams()
@@ -80,8 +81,8 @@ export function Activity() {
             {[...active, ...(jobs.data ?? []).filter((j) => !active.includes(j)).slice(0, 15)].map((j) => (
               <div key={j.id} className="flex items-center gap-3 text-sm">
                 <StatusPill status={j.status} />
-                <span className="w-24 capitalize">{KIND[j.kind].label}</span>
-                <Link to={`/${ws}/${j.project}/${KIND[j.kind].page}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
+                <span className="w-24 capitalize">{kindOf(j.kind).label}</span>
+                <Link to={`/${ws}/${j.project}/${kindOf(j.kind).page}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
                 {['running', 'queued'].includes(j.status) ? <Progress className="flex-1" value={j.progress} /> : <span className="flex-1 truncate text-xs text-muted-foreground">{j.error || (j.result?.format ? `format ${j.result.format}` : '')}</span>}
                 <span className="w-24 text-right text-xs text-muted-foreground">{fmtAgo(j.created)}</span>
               </div>

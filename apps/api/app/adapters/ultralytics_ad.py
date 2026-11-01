@@ -224,7 +224,14 @@ class UltralyticsAdapter:
             raise ValueError(f"unsupported export format {fmt!r}")
         import ultralytics
 
-        out = Path(ultralytics.YOLO(str(weights)).export(format=fmt, half=half))
+        kw = {"format": fmt, "half": half}
+        if TRAIN_DEVICE:
+            kw["device"] = TRAIN_DEVICE
+        onnx = Path(weights).with_suffix(".onnx")
+        try:
+            out = Path(ultralytics.YOLO(str(weights)).export(**kw))
+        finally:
+            onnx.unlink(missing_ok=True)                  # ultralytics leaves the intermediate ONNX behind
         if dest is None:
             return out
         dest.parent.mkdir(parents=True, exist_ok=True)

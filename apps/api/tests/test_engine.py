@@ -3,6 +3,8 @@ import os
 import shutil
 import sys
 import tempfile
+import logging
+import importlib
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +43,12 @@ def client():
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _tensorrt_available(monkeypatch):
+    """The dev/CI box has no TensorRT runtime; endpoint tests assume a GPU worker that does."""
+    monkeypatch.setattr(ADAPTERS["tensorrt"], "probe", lambda: Availability(True))
+
+
 def _demo(db):
     ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
     p = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == PR))
@@ -56,9 +64,9 @@ def _new_version(db, p) -> Version:
 
 
 def _new_model(db, ws, p, v, *, status="ready", weights="models/x/best.pt", variant="yolo26n",
-               runtime_refs=None) -> TrainedModel:
+               family="ultralytics", runtime_refs=None) -> TrainedModel:
     m = TrainedModel(workspace_id=ws.id, project_id=p.id, version_id=v.id, name=f"engine-{v.number}",
-                     arch=variant, family="ultralytics", variant=variant, task="detect", status=status,
+                     arch=variant, family=family, variant=variant, task="detect", status=status,
                      classes=["person"], weights=weights, runtime_refs=runtime_refs or {})
     db.add(m)
     db.flush()
@@ -185,6 +193,21 @@ def test_export_endpoint_rejects_open_vocabulary_models(client):
     try:
         r = client.post(f"{BASE}/models/{mid}/export", json={"format": "engine"})
         assert r.status_code == 400 and "open-vocabulary" in r.json()["detail"]
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid])
+
+
+def test_export_endpoint_reports_when_tensorrt_is_unavailable(client, monkeypatch):
+    monkeypatch.setattr(ADAPTERS["tensorrt"], "probe", lambda: Availability(False, "tensorrt not installed"))
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        m = _new_model(db, ws, p, v)
+        mid, vid = m.id, v.id
+        db.commit()
+    try:
+        r = client.post(f"{BASE}/models/{mid}/export", json={"format": "engine"})
+        assert r.status_code == 503 and "TensorRT" in r.json()["detail"]
     finally:
         _drop(model_ids=[mid], version_ids=[vid])
 
@@ -470,6 +493,49 @@ def test_resolve_ignores_an_engine_for_open_vocabulary_models(client, monkeypatc
         _drop(model_ids=[mid], version_ids=[vid])
 
 
+def test_resolve_falls_back_to_pt_when_the_engine_fails_to_load(client, monkeypatch, caplog):
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        m = _new_model(db, ws, p, v, runtime_refs={"pt": "models/x/best.pt", "engine": "engines/broken.engine"})
+        m.metrics = {"eval": {"f1_best": {"conf": 0.62}}}
+        mid, vid = m.id, v.id
+        db.commit()
+
+    monkeypatch.setattr(importlib.import_module("app.adapters.catalog"), "_failed_engines", {})
+    monkeypatch.setattr(ADAPTERS["tensorrt"], "probe", lambda: Availability(True))
+    engine = DATA_DIR / "engines" / "broken.engine"
+    engine.parent.mkdir(parents=True, exist_ok=True)
+    engine.write_bytes(b"NOT-AN-ENGINE")
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("engine deserialize failed")
+
+    seen: dict = {}
+
+    def fake_pt(variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5):
+        seen.update(variant=variant, weights=weights, conf=conf)
+        return {"predictions": [], "time": 0.0, "image": {"width": im.width, "height": im.height}}
+
+    monkeypatch.setattr(ADAPTERS["tensorrt"], "predict", boom)
+    monkeypatch.setattr(ADAPTERS["ultralytics"], "predict", fake_pt)
+    try:
+        with SessionLocal() as db:
+            r = resolve(f"trained:{mid}", db, workspace_id=ws.id)
+        with caplog.at_level(logging.WARNING):
+            out = r.predict(PImage.new("RGB", (10, 10)))
+        assert out["model"] == f"trained:{mid}"
+        assert seen["variant"] == "yolo26n" and seen["weights"] == "models/x/best.pt"
+        assert seen["conf"] == 0.62                       # the model's best-F1 threshold survives the fallback
+        assert "falling back" in caplog.text
+        with SessionLocal() as db:
+            again = resolve(f"trained:{mid}", db, workspace_id=ws.id)
+        assert again.adapter.family == "ultralytics"      # the dead engine is not retried every image
+    finally:
+        engine.unlink(missing_ok=True)
+        _drop(model_ids=[mid], version_ids=[vid])
+
+
 def test_resolve_falls_back_to_pt_when_the_engine_file_is_gone(client):
     with SessionLocal() as db:
         ws, p = _demo(db)
@@ -489,25 +555,29 @@ def test_resolve_falls_back_to_pt_when_the_engine_file_is_gone(client):
 def test_export_caches_the_engine_atomically(monkeypatch, tmp_path):
     from app.adapters import ultralytics_ad
 
-    calls = [0]
+    calls: list[dict] = []
 
     class FakeYOLO:
         def __init__(self, path):
             self.path = Path(path)
 
-        def export(self, format, half):
-            calls[0] += 1
+        def export(self, **kw):
+            calls.append(kw)
+            self.path.with_suffix(".onnx").write_bytes(b"ONNX")     # ultralytics leaves this behind
             out = self.path.with_suffix(".engine")
-            out.write_bytes(b"ENGINE-" + str(calls[0]).encode())
+            out.write_bytes(b"ENGINE-" + str(len(calls)).encode())
             return str(out)
 
     monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    monkeypatch.setattr(ultralytics_ad, "TRAIN_DEVICE", "")
     src = tmp_path / "best.pt"
     src.write_bytes(b"PT")
     dest = tmp_path / "engines" / "m.engine"
 
     out = ultralytics_ad.UltralyticsAdapter().export(str(src), "engine", half=True, dest=dest)
     assert out == dest and dest.read_bytes() == b"ENGINE-1"
+    assert calls[0] == {"format": "engine", "half": True}
+    assert not src.with_suffix(".onnx").exists()                    # intermediate ONNX is cleaned up
     assert not dest.with_name(dest.name + ".tmp").exists()
 
     ultralytics_ad.UltralyticsAdapter().export(str(src), "engine", half=True, dest=dest)   # rebuild overwrites
@@ -521,6 +591,99 @@ def test_export_caches_the_engine_atomically(monkeypatch, tmp_path):
         ultralytics_ad.UltralyticsAdapter().export(str(src), "engine", half=True, dest=dest)
     assert dest.read_bytes() == b"ENGINE-2"                     # the previous engine survives a failed rebuild
     assert not dest.with_name(dest.name + ".tmp").exists()
+
+
+def test_export_passes_train_device(monkeypatch, tmp_path):
+    from app.adapters import ultralytics_ad
+
+    seen: dict = {}
+
+    class FakeYOLO:
+        def __init__(self, path):
+            self.path = Path(path)
+
+        def export(self, **kw):
+            seen.update(kw)
+            out = self.path.with_suffix(".engine")
+            out.write_bytes(b"ENGINE")
+            return str(out)
+
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    monkeypatch.setattr(ultralytics_ad, "TRAIN_DEVICE", "0")
+    src = tmp_path / "best.pt"
+    src.write_bytes(b"PT")
+
+    ultralytics_ad.UltralyticsAdapter().export(str(src), "engine", half=True, dest=tmp_path / "engines" / "m.engine")
+    assert seen == {"format": "engine", "half": True, "device": "0"}
+
+
+def test_failed_export_removes_the_intermediate_onnx(monkeypatch, tmp_path):
+    from app.adapters import ultralytics_ad
+
+    class FakeYOLO:
+        def __init__(self, path):
+            self.path = Path(path)
+
+        def export(self, **_kw):
+            self.path.with_suffix(".onnx").write_bytes(b"ONNX")
+            raise RuntimeError("engine build failed")
+
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    src = tmp_path / "best.pt"
+    src.write_bytes(b"PT")
+    with pytest.raises(RuntimeError, match="engine build failed"):
+        ultralytics_ad.UltralyticsAdapter().export(str(src), "engine", half=True, dest=tmp_path / "m.engine")
+    assert not src.with_suffix(".onnx").exists()
+
+
+def test_export_job_rejects_a_family_without_export(client, monkeypatch):
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        m = _new_model(db, ws, p, v, family="rfdetr", variant="nano")
+        m.weights = f"models/{m.id}/best.pt"
+        job = Job(workspace_id=ws.id, project_id=p.id, kind="export_engine", status="running",
+                  params={"model_id": m.id, "format": "engine"})
+        db.add(job)
+        db.flush()
+        mid, vid, jid = m.id, v.id, job.id
+        db.commit()
+    src = DATA_DIR / "models" / mid / "best.pt"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(b"PT")
+    monkeypatch.setattr(worker, "ADAPTERS", {"rfdetr": object()})
+    monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
+    try:
+        with SessionLocal() as db:
+            job = db.get(Job, jid)
+        with pytest.raises(RuntimeError, match="cannot be exported"):
+            worker.run_export_engine(job)
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
+
+
+def test_remote_autolabel_accepts_an_engine_backed_trained_model(client, monkeypatch):
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        m = _new_model(db, ws, p, v, runtime_refs={"pt": "models/x/best.pt", "engine": "engines/remote.engine"})
+        mid, vid = m.id, v.id
+        db.commit()
+    engine = DATA_DIR / "engines" / "remote.engine"
+    engine.parent.mkdir(parents=True, exist_ok=True)
+    engine.write_bytes(b"ENGINE")
+    monkeypatch.setattr(training_router, "LOCAL_JOB_KINDS",
+                        [k for k in LOCAL_JOB_KINDS if k != "autolabel"])
+    jid = None
+    try:
+        r = client.post(f"{BASE}/autolabel", json={"method": "model", "model_ref": f"trained:{mid}"})
+        assert r.status_code == 200, r.text
+        jid = r.json()["id"]
+    finally:
+        if jid:
+            _cancel(jid)
+        engine.unlink(missing_ok=True)
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid] if jid else [])
 
 
 class _FakeYolo:
