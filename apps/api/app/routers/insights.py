@@ -1,12 +1,17 @@
 """Insights Studio dataset analytics: read-only aggregates plus on-demand scan jobs."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from ..deps import Ctx, audit, project_ctx
 from ..models import Version
 from ..services import insights
 
 router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/insights", tags=["insights"])
+
+
+class SelectionIn(BaseModel):
+    image_ids: list[str]
 
 
 def _version(c: Ctx, version_id: str) -> Version | None:
@@ -96,3 +101,17 @@ def version_diff(base: str = Query(...), target: str = Query(...), c: Ctx = Depe
 @router.get("/labeling")
 def labeling(c: Ctx = Depends(project_ctx)):
     return insights.labeling(c.db, c.project)
+
+
+@router.post("/selections")
+def create_selection(body: SelectionIn, c: Ctx = Depends(project_ctx)):
+    """Save the lasso's image ids for a follow-up browse request; any project member may create one."""
+    return insights.save_selection(c.db, c.project, body.image_ids)
+
+
+@router.get("/selections/{token}")
+def get_selection(token: str, c: Ctx = Depends(project_ctx)):
+    info = insights.selection_info(c.db, c.project, token)
+    if info is None:
+        raise HTTPException(404, "selection not found")
+    return info

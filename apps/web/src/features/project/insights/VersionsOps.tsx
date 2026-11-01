@@ -100,6 +100,9 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
   }
 
   const throughput = labeling.throughput
+  const byAssignee = labeling.throughput_basis === 'image_assignee'
+  const actorNoun = byAssignee ? 'assignee' : 'author'
+  const actorColumn = byAssignee ? 'Assignee' : 'Author'
   const dates = [...new Set(throughput.map((r) => r.date))].sort()
   const totals = new Map<string, number>()
   for (const r of throughput) totals.set(r.labeler, (totals.get(r.labeler) ?? 0) + r.annotations)
@@ -137,8 +140,8 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
   const ai = labeling.ai
   const aiSlices = [
     { name: 'Human labels', value: ai.human, color: cssColor(classColor(4)) },
-    { name: 'AI accepted', value: ai.accepted_ai, color: cssColor(classColor(2)) },
-    { name: 'AI not accepted', value: Math.max(0, ai.ai - ai.accepted_ai), color: cssColor(classColor(5)) },
+    { name: 'AI still unchanged', value: ai.accepted_ai, color: cssColor(classColor(2)) },
+    { name: 'AI on unapproved images', value: Math.max(0, ai.ai - ai.accepted_ai), color: cssColor(classColor(5)) },
   ].filter((s) => s.value > 0)
   const aiTotal = aiSlices.reduce((s, x) => s + x.value, 0)
   const aiOption = {
@@ -235,18 +238,22 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
       <section aria-labelledby="labeling-heading" className="space-y-4 pt-2">
         <div>
           <h2 id="labeling-heading" className="text-lg font-semibold tracking-tight">Labeling operations</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">Throughput, review quality and how much AI work humans accept.</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">Throughput, review quality, and how many AI labels on approved images are still unchanged.</p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard
-            title="Throughput per labeler"
-            desc="Annotations completed per day; top five labelers by total output."
-            ariaLabel={`Line chart of daily annotation throughput for ${topLabelers.length} labelers.`}
+            title={byAssignee ? 'Assignee activity (image-level proxy)' : 'Annotations per author per day'}
+            desc={byAssignee
+              ? 'Per-annotation authors are not recorded, so this counts annotations on images last updated by each assignee.'
+              : 'Annotations completed per day; top five authors by total output.'}
+            ariaLabel={`Line chart of daily annotation activity for ${topLabelers.length} ${actorNoun}s.`}
             option={throughputOption}
             table={{
-              caption: 'Daily annotations and images per labeler (top five).',
-              columns: ['Date', 'Labeler', 'Annotations', 'Images'],
+              caption: byAssignee
+                ? 'Daily annotations on images last updated by each assignee (top five).'
+                : 'Daily annotations and images per author (top five).',
+              columns: ['Date', actorColumn, 'Annotations', 'Images'],
               rows: throughput.filter((r) => topLabelers.includes(r.labeler)).map((r) => [r.date, r.labeler, r.annotations, r.images]),
             }}
             empty={throughput.length ? undefined : 'No annotations recorded in this period.'}
@@ -268,29 +275,29 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
 
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard
-            title="AI acceptance"
-            desc={`Humans accepted ${ratePct(ai.acceptance_rate)}% of AI-proposed labels.`}
-            ariaLabel={`Donut chart of ${fmt(aiTotal)} labels: human, accepted AI and unaccepted AI.`}
+            title="AI labels still unchanged on approved images"
+            desc={`${fmt(ai.accepted_ai)} of ${fmt(ai.ai)} AI labels on approved images are still unchanged; the chart also shows human label volume for scale.`}
+            ariaLabel={`Donut chart of ${fmt(aiTotal)} labels: human, AI still unchanged on approved images, and AI on unapproved images.`}
             option={aiOption}
             table={{
-              caption: 'Label volume by origin and AI acceptance.',
+              caption: 'Label volume by origin; AI segments count labels on approved images.',
               columns: ['Segment', 'Labels', 'Share'],
               rows: aiSlices.map((s) => [s.name, s.value, `${pct(s.value, aiTotal)}%`]),
             }}
             empty={aiTotal ? undefined : 'No labels recorded yet.'}
-            footnote={`Automation efficiency: ${ratePct(ai.acceptance_rate)}% acceptance across ${fmt(ai.ai)} AI labels.`}
+            footnote="“Unchanged” means nobody edited the AI-proposed label after it was applied on an approved image. It is not a record of human acceptance — per-annotation reviewers are not tracked."
           />
 
           <ChartCard
-            title="Labels by source"
-            desc="Where annotations come from — human, SAM, VLM or trained models."
-            ariaLabel={`Bar chart of label counts across ${sources.length} sources.`}
+            title="AI labels by source"
+            desc="AI labels on approved images by source, with how many are still unchanged."
+            ariaLabel={`Bar chart of AI label counts across ${sources.length} sources.`}
             option={sourceOption}
             height={Math.max(240, 60 + sources.length * 28)}
             table={{
-              caption: 'Annotation counts by label source.',
-              columns: ['Source', 'Annotations', 'Share'],
-              rows: sources.map((s) => [s.source, s.count, `${pct(s.count, sourceTotal)}%`]),
+              caption: 'AI labels on approved images by source; unchanged counts are those nobody has edited.',
+              columns: ['Source', 'AI labels', 'Unchanged', 'Share'],
+              rows: sources.map((s) => [s.source, s.count, s.accepted, `${pct(s.count, sourceTotal)}%`]),
             }}
             empty={sources.length ? undefined : 'No label sources recorded yet.'}
           />

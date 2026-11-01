@@ -227,12 +227,31 @@ export interface InsightEmbeddingPoint {
   split: Split; class: string | null; source: string; error: boolean | string | null; thumb: string | null
 }
 
+/** Which features the map was built from: CLIP image embeddings, or colour/layout fallbacks. */
+export type EmbeddingFeatures = 'clip' | 'cv'
+
 export interface InsightEmbedding {
   points: InsightEmbeddingPoint[]
   projection: 'umap' | 'pca'
+  features: EmbeddingFeatures
+  /** Images the map was asked to place; `used` is how many points the backend actually returned. */
+  total: number
+  used: number
+  sampled: boolean
   job: Job | null
   stale: boolean
 }
+
+/** A short-lived, server-side lasso selection; the token is the only thing that travels in URLs. */
+export interface InsightSelection {
+  token: string
+  image_ids: string[]
+  count: number
+  expires: number
+}
+
+/** What POST /insights/selections returns: the ids stay on the server. */
+export type InsightSelectionRef = Pick<InsightSelection, 'token' | 'count' | 'expires'>
 
 export interface InsightVersionMeta {
   id: string; number: number; name: string; status: string
@@ -251,10 +270,13 @@ export interface InsightVersionDiff {
 }
 
 export interface InsightLabeling {
+  /** `annotation` = per-annotation author is recorded; `image_assignee` = only the image assignee is known. */
+  throughput_basis: 'annotation' | 'image_assignee'
   throughput: { date: string; labeler_id: string | null; labeler: string; annotations: number; images: number }[]
   review: { date: string; approved: number; rejected: number; rate: number }[]
   ai: {
     human: number; ai: number; accepted_ai: number; acceptance_rate: number
-    by_source: { source: string; count: number }[]
+    /** `accepted` = AI labels on approved images that nobody has changed since. */
+    by_source: { source: string; count: number; accepted: number }[]
   }
 }

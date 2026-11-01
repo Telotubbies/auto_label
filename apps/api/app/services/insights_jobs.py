@@ -1,7 +1,8 @@
-"""Expensive Insights scans: image pixel stats, pHash leakage pairs and the embedding map.
+"""Expensive Insights scans: image pixel stats and pHash leakage pairs.
 
 Each function is the body of one worker job and stores its payload on the job row; the GET
-endpoints only read that row, so no request decodes pixels or runs a projection.
+endpoints only read that row, so no request decodes pixels. The embedding map lives in
+`insights_embedding` (CLIP/UMAP dependencies stay isolated there) and is re-exported for the worker.
 """
 
 import math
@@ -15,16 +16,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
-from ..models import Image, LabelClass, Project
+from ..models import Image, Project
 from . import imaging, insights, versioning
+from .insights_embedding import scan_embedding  # noqa: F401  re-exported for worker.HANDLERS
 
-IMGSZ = 640
 THUMB = 256
 RESOLUTION_MAX = 2000
-EMBED_MAX = 3000
 GALLERY_MAX = 200
 BLUR_BUCKETS = ("0–10", "10–30", "30–100", "100–300", "300–1000", "≥1000")
-
 
 def _live(db: Session, project: Project) -> list[Image]:
     return db.scalars(
@@ -38,7 +37,6 @@ def _sample(items: list, limit: int) -> list:
     if len(items) <= limit:
         return items
     return items[:: math.ceil(len(items) / limit)][:limit]
-
 
 def _blur_bucket(variance: float) -> str:
     for bucket, edge in zip(BLUR_BUCKETS, (10, 30, 100, 300, 1000)):
@@ -141,84 +139,3 @@ def scan_leakage(db: Session, project: Project) -> dict:
         "split_pairs": split_pairs,
         "total_pairs": total,
     }
-
-
-def _features(row: Image) -> np.ndarray:
-    image = imaging.load(row.thumb or row.path)
-    image.thumbnail((64, 64))
-    gray = np.asarray(image.convert("L").resize((8, 8)), dtype=np.float64).ravel() / 255.0
-    hsv = np.asarray(image.convert("HSV").resize((16, 16)), dtype=np.uint8)
-    hist: list[float] = []
-    for channel in range(3):
-        counts, _ = np.histogram(hsv[:, :, channel], bins=4, range=(0, 256))
-        total = float(counts.sum()) or 1.0
-        hist.extend((counts / total).tolist())
-    return np.concatenate([gray, np.asarray(hist, dtype=np.float64)])
-
-
-def _projection(features: list[np.ndarray]) -> tuple[list[tuple[float, float]], str]:
-    n = len(features)
-    if n == 0:
-        return [], "pca"
-    if n == 1:
-        return [(0.0, 0.0)], "pca"
-    matrix = np.asarray(features, dtype=np.float64)
-    std = matrix.std(axis=0)
-    std[std == 0] = 1.0
-    standardised = (matrix - matrix.mean(axis=0)) / std
-    try:
-        import umap
-
-        reducer = umap.UMAP(n_neighbors=max(2, min(15, n - 1)), min_dist=0.1, random_state=42)
-        coords = reducer.fit_transform(standardised)
-        projection = "umap"
-    except Exception:  # not installed, or too few points for the reducer
-        _, _, components = np.linalg.svd(standardised, full_matrices=False)
-        components = components[:2]
-        for row in range(len(components)):  # deterministic sign: largest loading points positive
-            if components[row][int(np.argmax(np.abs(components[row])))] < 0:
-                components[row] = -components[row]
-        coords = standardised @ components.T
-        if coords.shape[1] < 2:
-            coords = np.column_stack([coords, np.zeros(len(coords))])
-        projection = "pca"
-    coords = np.nan_to_num(np.asarray(coords, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0)
-    return [(round(float(x), 6), round(float(y), 6)) for x, y in coords], projection
-
-
-def scan_embedding(db: Session, project: Project) -> dict:
-    """Cheap deterministic image features projected to 2-D for the embedding scatter."""
-    signature = list(insights.signature(db, project))
-    classes = {c.id: c.name for c in db.scalars(select(LabelClass).where(LabelClass.project_id == project.id))}
-    rows = _live(db, project)[:EMBED_MAX]
-    kept: list[Image] = []
-    features: list[np.ndarray] = []
-    for row in rows:
-        try:
-            features.append(_features(row))
-        except Exception:  # unreadable row: omitted rather than given a fake position
-            continue
-        kept.append(row)
-    coords, projection = _projection(features)
-    points = []
-    for row, (x, y) in zip(kept, coords, strict=True):
-        anns = [a for a in (row.annotations or []) if isinstance(a, dict)]
-        counts = Counter(
-            classes[a["classId"]] for a in anns if isinstance(a.get("classId"), str) and a["classId"] in classes
-        )
-        most_common = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        ai = any(isinstance(a.get("source"), str) and a["source"].strip() and a["source"] != "human" for a in anns)
-        points.append(
-            {
-                "image_id": row.id,
-                "name": row.name,
-                "x": x,
-                "y": y,
-                "split": row.split,
-                "class": most_common[0][0] if most_common else None,
-                "source": "ai" if ai else "human",
-                "error": row.review == "rejected",
-                "thumb": row.thumb or None,
-            }
-        )
-    return {"signature": signature, "points": points, "projection": projection}

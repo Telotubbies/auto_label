@@ -21,7 +21,7 @@ from ..gpu import GpuBusy
 from ..models import SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Member, Project, TrainedModel, User, new_id, now, set_annotations
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import imaging, importers, ml, segment
+from ..services import imaging, importers, insights, ml, segment
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -152,13 +152,18 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
 
 @router.get(P + "/images")
 def list_images(q: str = "", split: str = "", status: str = "", class_id: str = "", tag: str = "", batch_id: str = "",
-                ids: str = "", annotated: str = "", assignee: str = "", min_mp: float | None = None,
+                ids: str = "", selection: str = "", annotated: str = "", assignee: str = "", min_mp: float | None = None,
                 max_mp: float | None = None, min_ar: float | None = None, max_ar: float | None = None,
                 min_ann: int | None = None, max_ann: int | None = None, sort: str = "newest",
                 offset: int = 0, limit: int = 100, c: Ctx = Depends(project_ctx)):
     s = _visible(select(Image).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
     if ids:  # chart click-throughs / insights lasso: an explicit id set
         s = s.where(Image.id.in_([x for x in ids.split(",") if x][:5000]))
+    if selection:  # short-lived lasso hand-off: the token resolves inside this project only
+        selected_ids = insights.resolve_selection(c.db, c.project, selection)
+        if selected_ids is None:
+            raise HTTPException(404, "selection not found")
+        s = s.where(Image.id.in_(selected_ids))
     if q:
         s = s.where(Image.name.ilike(f"%{q.replace('%', '').replace('_', '')}%"))
     if split:

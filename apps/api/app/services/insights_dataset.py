@@ -214,9 +214,47 @@ def _date(ts: float) -> str:
     return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%d")
 
 
-def labeling(rows: list, audits: list, users: dict, now_ts: float) -> dict:
-    """Throughput per labeler/day, review decisions and AI-label acceptance."""
-    cutoff = float(now_ts) - WINDOW_DAYS * DAY
+AUTHOR_KEYS = ("author", "author_id")
+
+
+def _author(ann: dict) -> str | None:
+    """Annotation-level author when the writer recorded one; older rows only carry an image assignee."""
+    for key in AUTHOR_KEYS:
+        value = ann.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _throughput(rows: list, users: dict, cutoff: float) -> tuple[list[dict], str]:
+    """Per-labeler/day counts. Real annotation authors beat the image-assignee proxy when present."""
+    if any(_author(ann) for row in rows for ann in _annotations(row)):
+        entries: dict[tuple, dict] = {}
+        touched: dict[tuple, set] = {}
+        for row in rows:
+            if not row.updated or row.updated < cutoff:
+                continue
+            date = _date(row.updated)
+            for ann in _annotations(row):
+                author = _author(ann)
+                if author is None:
+                    continue
+                key = (date, author)
+                entry = entries.get(key)
+                if entry is None:
+                    entry = entries[key] = {
+                        "date": date,
+                        "labeler_id": author,
+                        "labeler": users.get(author) or "Unassigned",
+                        "annotations": 0,
+                        "images": 0,
+                    }
+                entry["annotations"] += 1
+                touched.setdefault(key, set()).add(id(row))
+        for key, seen in touched.items():
+            entries[key]["images"] = len(seen)
+        return [entries[k] for k in sorted(entries, key=lambda k: (k[0], k[1] or ""))], "annotation"
+
     groups: dict[tuple, dict] = {}
     for row in rows:
         if not row.updated or row.updated < cutoff:
@@ -234,7 +272,13 @@ def labeling(rows: list, audits: list, users: dict, now_ts: float) -> dict:
             }
         entry["annotations"] += int(row.n_annotations or 0)
         entry["images"] += 1
-    throughput = [groups[k] for k in sorted(groups, key=lambda k: (k[0], k[1] or ""))]
+    return [groups[k] for k in sorted(groups, key=lambda k: (k[0], k[1] or ""))], "image_assignee"
+
+
+def labeling(rows: list, audits: list, users: dict, now_ts: float) -> dict:
+    """Throughput per labeler/day, review decisions and AI-label acceptance."""
+    cutoff = float(now_ts) - WINDOW_DAYS * DAY
+    throughput, throughput_basis = _throughput(rows, users, cutoff)
 
     review: dict[str, dict] = {}
     for audit in audits:
@@ -251,6 +295,7 @@ def labeling(rows: list, audits: list, users: dict, now_ts: float) -> dict:
 
     human = ai = accepted = 0
     by_source: Counter = Counter()
+    accepted_by_source: Counter = Counter()
     for row in rows:
         accepted_image = row.review == "approved" or row.status == "done"
         for ann in row.annotations or []:
@@ -262,17 +307,21 @@ def labeling(rows: list, audits: list, users: dict, now_ts: float) -> dict:
             else:
                 ai += 1
                 by_source[src] += 1
-                if accepted_image:
+                if accepted_image:      # still an AI source on an approved/done image: not rewritten
                     accepted += 1
+                    accepted_by_source[src] += 1
     top = sorted(by_source.items(), key=lambda kv: (-kv[1], kv[0]))[:8]
     return {
         "throughput": throughput,
+        "throughput_basis": throughput_basis,
         "review": review_rows,
         "ai": {
             "human": human,
             "ai": ai,
             "accepted_ai": accepted,
             "acceptance_rate": round(accepted / ai, 4) if ai else 0.0,
-            "by_source": [{"source": src, "count": n} for src, n in top],
+            "by_source": [
+                {"source": src, "count": n, "accepted": accepted_by_source.get(src, 0)} for src, n in top
+            ],
         },
     }

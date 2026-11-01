@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, Search, Sparkles, Tag, Trash2, X } from 'lucide-react'
-import { api, fileUrl, post } from '@/lib/api'
+import { api, ApiError, fileUrl, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import type { ImageItem } from '@/lib/types'
 import { Badge, Button, Dropdown, EmptyState, Input, PageHeader, Select, Spinner, toast } from '@/components/ui'
@@ -33,18 +33,32 @@ export default function Dataset() {
     // analytics chart links filter by image size (megapixels), aspect ratio and annotation count
     min_mp: sp.get('min_mp') ?? '', max_mp: sp.get('max_mp') ?? '', min_ar: sp.get('min_ar') ?? '', max_ar: sp.get('max_ar') ?? '',
     min_ann: sp.get('min_ann') ?? '', max_ann: sp.get('max_ann') ?? '',
-    // the embedding lasso opens exactly the images it selected
-    ids: sp.get('ids') ?? '',
+    // the embedding lasso hands off a short-lived server token, never the ids themselves
+    selection: sp.get('selection') ?? '',
   }
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n, { replace: true }) }
   const clearF = (...keys: string[]) => { const n = new URLSearchParams(sp); keys.forEach((k) => n.delete(k)); setSp(n, { replace: true }) }
+  const selection = f.selection
+  const selectionQ = useQuery({
+    queryKey: ['insights', 'selection', ws, project.slug, selection],
+    queryFn: () => api.insights.selection(ws, project.slug, selection),
+    enabled: !!selection,
+    retry: false,
+  })
+  const selectionCount = selectionQ.data?.count
+  const selectionExpired = !!selection && selectionQ.error instanceof ApiError && selectionQ.error.status === 404
+  // Wait for the token lookup before touching the grid, so a dead token never becomes a failed image request.
+  const selectionResolved = !selection || selectionQ.isFetched
+  // A token already known to be dead must not fail the grid behind it; the chip explains why.
+  const activeF = selectionExpired ? { ...f, selection: '' } : f
   const PAGE = 200
   const imgs = useInfiniteQuery({
-    queryKey: ['images', ws, project.slug, f, 'pages'],
+    queryKey: ['images', ws, project.slug, activeF, 'pages'],
     // empty numeric params would be rejected by the API, so send only the filters that are set
     queryFn: ({ pageParam }) => api.images(ws, project.slug, {
-      ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== '')), limit: PAGE, offset: pageParam,
+      ...Object.fromEntries(Object.entries(activeF).filter(([, v]) => v !== '')), limit: PAGE, offset: pageParam,
     }),
+    enabled: selectionResolved,
     initialPageParam: 0,
     getNextPageParam: (last, all) => { const n = all.reduce((s, p) => s + p.items.length, 0); return n < last.total ? n : undefined },
   })
@@ -73,14 +87,16 @@ export default function Dataset() {
       .catch(toast.err)
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const openEditor = (im: ImageItem) => {
-    const q = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== 'ids').map(([k, v]) => [k === 'batch_id' ? 'batch' : k, v]) as [string, string][])
+    const q = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== 'selection').map(([k, v]) => [k === 'batch_id' ? 'batch' : k, v]) as [string, string][])
     nav(`/${ws}/${project.slug}/images/${im.id}?${q}`)
   }
 
   // Filters that analytics links can set but the toolbar has no select for: show them so the grid is explainable.
-  const lassoIds = f.ids ? f.ids.split(',').filter(Boolean) : []
-  const rangeFilters = [
-    ...(lassoIds.length ? [{ keys: ['ids'], label: `Lasso selection (${lassoIds.length})` }] : []),
+  const lassoLabel = selectionExpired
+    ? 'Lasso selection (expired)'
+    : selectionCount !== undefined ? `Lasso selection (${selectionCount.toLocaleString()})` : 'Lasso selection'
+  const rangeFilters: { keys: string[]; label: string; expired?: boolean }[] = [
+    ...(f.selection ? [{ keys: ['selection'], label: lassoLabel, expired: selectionExpired }] : []),
     { keys: ['min_mp', 'max_mp'], label: rangeText(f.min_mp, f.max_mp, 'MP') },
     { keys: ['min_ar', 'max_ar'], label: `Aspect ${rangeText(f.min_ar, f.max_ar)}` },
     { keys: ['min_ann', 'max_ann'], label: rangeText(f.min_ann, f.max_ann, 'annotations') },
@@ -104,14 +120,16 @@ export default function Dataset() {
       </div>
       {rangeFilters.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-8 pb-2">
-          <span className="text-xs text-muted-foreground">Analytics filter:</span>
+          <span className="text-xs text-muted-foreground">Filters:</span>
           {rangeFilters.map((c) => (
             <button key={c.keys.join()} type="button" onClick={() => clearF(...c.keys)} aria-label={`Remove filter ${c.label}`}
-              className="flex cursor-pointer items-center gap-1 rounded-full border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+              className={cn('flex cursor-pointer items-center gap-1 rounded-full border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+                c.expired && 'border-destructive/40 bg-destructive/10 text-destructive hover:text-destructive')}>
               {c.label}<X className="h-3 w-3" aria-hidden="true" />
             </button>
           ))}
-          <button type="button" onClick={() => clearF('ids', 'min_mp', 'max_mp', 'min_ar', 'max_ar', 'min_ann', 'max_ann')}
+          {selectionExpired && <span role="status" className="text-xs text-destructive">Selection expired — not applied.</span>}
+          <button type="button" onClick={() => clearF('selection', 'min_mp', 'max_mp', 'min_ar', 'max_ar', 'min_ann', 'max_ann')}
             className="cursor-pointer text-xs text-muted-foreground underline hover:text-foreground">Clear all</button>
         </div>
       )}
@@ -130,7 +148,7 @@ export default function Dataset() {
         </div>
       )}
       <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
-        {imgs.isLoading && <div className="py-20 text-center"><Spinner /></div>}
+        {(imgs.isLoading || !selectionResolved) && <div className="py-20 text-center"><Spinner /></div>}
         {imgs.isSuccess && !items.length && <EmptyState title="No images match these filters." hint={f.status === 'done' ? 'Images enter the dataset once approved on the Annotate board.' : undefined}
           action={can('reviewer') && <Button size="sm" onClick={() => nav('../upload')}>Upload images</Button>} />}
         <div style={{ height: v.getTotalSize(), position: 'relative' }}>

@@ -9,6 +9,7 @@ import time
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
@@ -25,7 +26,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import Audit, Image, LabelClass, Project, User, Version, Workspace
 from app.security import issue_access
-from app.services import insights
+from app.services import insights, insights_dataset, insights_embedding
 
 WS = "labeldesk-demo"
 SLUG = "insights-qa"
@@ -340,6 +341,10 @@ def test_embedding_scan_returns_finite_projection(c, data):
     assert points[data["ids"]["both"]]["source"] == "human"
     assert points[data["ids"]["rejected"]]["error"] is True
     assert points[data["ids"]["both"]]["error"] is False
+    assert body["features"] == "cv"          # transformers is not installed: the CV fallback runs
+    assert body["total"] >= body["used"]
+    assert body["used"] == len(body["points"])
+    assert body["sampled"] is (body["total"] > body["used"])
     assert body["stale"] is False
 
 
@@ -490,14 +495,15 @@ def test_labeling_throughput_review_and_ai_acceptance(c, data):
     review = next(x for x in body["review"] if x["date"] == today)
     assert review["approved"] >= 2 and review["rejected"] >= 1
     assert review["rate"] == pytest.approx(review["rejected"] / (review["approved"] + review["rejected"]), abs=1e-3)
+    assert body["throughput_basis"] == "image_assignee"
     assert body["ai"] == {
         "human": 5,
         "ai": 2,
         "accepted_ai": 1,
         "acceptance_rate": 0.5,
         "by_source": [
-            {"source": "sam3", "count": 1},
-            {"source": "vlm+sam3", "count": 1},
+            {"source": "sam3", "count": 1, "accepted": 1},
+            {"source": "vlm+sam3", "count": 1, "accepted": 0},
         ],
     }
 
@@ -552,3 +558,159 @@ def test_image_list_ids_filter(c, data):
     body = c.get(f"{BASE}/images", params={"ids": ",".join(ids)}).json()
     assert body["total"] == 2
     assert {x["id"] for x in body["items"]} == set(ids)
+
+
+def test_summary_cache_hit_loads_no_rows(c, data, monkeypatch):
+    """A cache hit must not hydrate images: the signature alone decides."""
+    first = c.get(f"{INS}/summary")
+    assert first.status_code == 200, first.text
+    baseline = first.json()
+
+    def boom(*_a, **_kw):
+        raise AssertionError("a cache hit loaded image rows")
+
+    monkeypatch.setattr(insights, "live_images", boom)
+    try:
+        second = c.get(f"{INS}/summary")
+        assert second.status_code == 200, second.text
+        assert second.json() == baseline
+    finally:
+        monkeypatch.undo()
+
+
+def test_manifest_cache_returns_same_object_until_the_file_changes(c, data):
+    pid = data["project"]["id"]
+    vid = _make_version(pid, 90, "manifest-cache", {data["ids"]["both"]: "train"}, {"person": 1}, [data["ids"]["both"]])
+    version = SimpleNamespace(id=vid)
+    first = insights._manifest(version)
+    second = insights._manifest(version)
+    assert first is not None, "manifest was not written by _make_version"
+    assert second is first                     # parsed once, reused
+
+    path = DATA_DIR / "versions" / vid / "manifest.json"
+    path.write_text(json.dumps({**first, "version_hash": "rewritten-longer"}))
+    third = insights._manifest(version)
+    assert third is not None and third["version_hash"] == "rewritten-longer"
+    assert third is not first
+
+
+def test_sample_images_is_bounded_deterministic_and_keeps_every_split():
+    rows = (
+        [SimpleNamespace(id=f"train-{i}", split="train") for i in range(50)]
+        + [SimpleNamespace(id=f"valid-{i}", split="valid") for i in range(10)]
+        + [SimpleNamespace(id=f"test-{i}", split="test") for i in range(5)]
+        + [SimpleNamespace(id=f"other-{i}", split="holdout") for i in range(5)]
+    )
+    first = insights_embedding._sample_images(rows, 12)
+    second = insights_embedding._sample_images(rows, 12)
+    assert len(first) == 12
+    assert [r.id for r in first] == [r.id for r in second]
+    assert len({r.id for r in first}) == 12
+    assert {r.split for r in first} == {"train", "valid", "test", "holdout"}
+    assert insights_embedding._sample_images(rows, 1000) == rows
+    assert len(insights_embedding._sample_images(rows, 3)) == 3
+
+
+def test_labeling_counts_annotation_authors_when_present():
+    ts = time.time()
+    rows = [
+        SimpleNamespace(
+            id="i1",
+            updated=ts,
+            assignee_id=None,
+            review=None,
+            status="done",
+            n_annotations=2,
+            annotations=[
+                {"classId": "c1", "author": "u1"},
+                {"classId": "c1", "author": "u1"},
+            ],
+        ),
+        SimpleNamespace(
+            id="i2",
+            updated=ts,
+            assignee_id=None,
+            review=None,
+            status="done",
+            n_annotations=1,
+            annotations=[{"classId": "c1", "author_id": "u2"}],
+        ),
+    ]
+    body = insights_dataset.labeling(rows, [], {"u1": "One", "u2": "Two"}, ts)
+    assert body["throughput_basis"] == "annotation"
+    got = {(r["labeler_id"], r["annotations"], r["images"]) for r in body["throughput"]}
+    assert got == {("u1", 2, 1), ("u2", 1, 1)}
+    assert {r["labeler"] for r in body["throughput"]} == {"One", "Two"}
+
+
+def test_selection_roundtrip_and_cross_project_isolation(c, data):
+    ids = [data["ids"]["both"], data["ids"]["person"]]
+    r = c.post(f"{INS}/selections", json={"image_ids": ids})
+    assert r.status_code == 200, r.text
+    saved = r.json()
+    assert saved["token"] and saved["count"] == 2
+    assert saved["expires"] > time.time()
+
+    got = c.get(f"{INS}/selections/{saved['token']}")
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["token"] == saved["token"] and body["count"] == 2
+    assert set(body["image_ids"]) == set(ids)
+    assert body["expires"] == saved["expires"]
+
+    listed = c.get(f"{BASE}/images", params={"selection": saved["token"]}).json()
+    assert listed["total"] == 2
+    assert {x["id"] for x in listed["items"]} == set(ids)
+
+    assert c.get(f"{INS}/selections/not-a-token").status_code == 404
+    bad = c.get(f"{BASE}/images", params={"selection": "not-a-token"})
+    assert bad.status_code == 404 and bad.json()["detail"] == "selection not found"
+
+    # a token is scoped to the project it was created for
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        other = Project(
+            workspace_id=ws.id,
+            slug=f"insights-other-{uuid.uuid4().hex[:8]}",
+            name="other",
+            type="object-detection",
+            settings={},
+        )
+        db.add(other)
+        db.flush()
+        img = Image(
+            project_id=other.id,
+            name="other-1",
+            sha256="f" * 64,
+            width=8,
+            height=8,
+            path="",
+            thumb="",
+            split="train",
+        )
+        db.add(img)
+        db.commit()
+        other_pid, other_image_id = other.id, img.id
+    with SessionLocal() as db:
+        other_token = insights.save_selection(db, db.get(Project, other_pid), [other_image_id])["token"]
+
+    assert c.get(f"{INS}/selections/{other_token}").status_code == 404
+    assert c.get(f"{BASE}/images", params={"selection": other_token}).status_code == 404
+
+
+def test_embedding_job_runs_under_the_gpu_lease(c, data, monkeypatch):
+    from app import worker
+    from app.gpu import GpuScheduler
+
+    seen = {}
+
+    def fake_scan(_db, _project):
+        seen["holder"] = worker.scheduler.holder
+        return {"signature": [], "points": [], "projection": "pca"}
+
+    sched = GpuScheduler(4500, None)
+    monkeypatch.setattr(worker, "scheduler", sched)
+    monkeypatch.setattr(worker.insights_jobs, "scan_embedding", fake_scan)
+    worker.run_insights_embedding(SimpleNamespace(id="job-test", project_id=data["project"]["id"]))
+    assert seen["holder"] == "insights embedding"
+    assert sched.state()["holder"] is None

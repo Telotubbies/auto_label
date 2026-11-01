@@ -14,11 +14,14 @@ from sqlalchemy.orm import Session
 from ..models import Audit, Image, Job, LabelClass, Member, Project, User, Version, now
 from ..security import sign_path
 from . import insights_dataset, versioning
+from .insights_selection import resolve_selection, save_selection, selection_info  # noqa: F401 re-exported
 
 IMGSZ = 640
 CACHE_MAX = 256
+MANIFEST_CACHE_MAX = 32
 JOB_KINDS = ("insights_images", "insights_leakage", "insights_embedding")
 _CACHE: dict[tuple, tuple] = {}
+_MANIFEST_CACHE: dict[str, tuple[tuple[int, int], dict | None]] = {}
 _ENQ_LOCK = threading.Lock()  # one uvicorn process: serialise the enqueue read-then-insert
 
 
@@ -83,13 +86,25 @@ def _cached(db: Session, project: Project, version: Version | None, kind: str, c
 
 
 def _manifest(version: Version) -> dict | None:
+    """Parse manifest.json at most once per (mtime_ns, size); a version dir is immutable once written."""
     path = versioning.version_dir(version) / "manifest.json"
-    if not path.exists():
-        return None
     try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
+        stat = path.stat()
+    except OSError:
+        _MANIFEST_CACHE.pop(version.id, None)
         return None
+    stamp = (int(stat.st_mtime_ns), int(stat.st_size))
+    hit = _MANIFEST_CACHE.get(version.id)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    try:
+        parsed = json.loads(path.read_text())
+    except (OSError, ValueError):
+        parsed = None
+    _MANIFEST_CACHE[version.id] = (stamp, parsed)
+    while len(_MANIFEST_CACHE) > MANIFEST_CACHE_MAX:
+        _MANIFEST_CACHE.pop(next(iter(_MANIFEST_CACHE)))
+    return parsed
 
 
 def source_splits(manifest: dict) -> dict:
@@ -133,15 +148,11 @@ def _scoped(db: Session, project: Project, version: Version | None) -> tuple[lis
 
 
 def summary(db: Session, project: Project, version: Version | None = None) -> dict:
-    rows, split_of = _scoped(db, project, version)
-    cls = classes(db, project)
-    payload = _cached(
-        db,
-        project,
-        version,
-        "summary",
-        lambda: insights_dataset.summary(rows, cls, split_of),
-    )
+    def compute() -> dict:
+        rows, split_of = _scoped(db, project, version)
+        return insights_dataset.summary(rows, classes(db, project), split_of)
+
+    payload = _cached(db, project, version, "summary", compute)
     return {
         **payload,
         "project": {"id": project.id, "name": project.name, "type": project.type},
@@ -150,27 +161,19 @@ def summary(db: Session, project: Project, version: Version | None = None) -> di
 
 
 def distribution(db: Session, project: Project, version: Version | None = None) -> dict:
-    rows, split_of = _scoped(db, project, version)
-    cls = classes(db, project)
-    return _cached(
-        db,
-        project,
-        version,
-        "distribution",
-        lambda: insights_dataset.distribution(rows, cls, split_of),
-    )
+    def compute() -> dict:
+        rows, split_of = _scoped(db, project, version)
+        return insights_dataset.distribution(rows, classes(db, project), split_of)
+
+    return _cached(db, project, version, "distribution", compute)
 
 
 def geometry(db: Session, project: Project, version: Version | None = None) -> dict:
-    rows, split_of = _scoped(db, project, version)
-    cls = classes(db, project)
-    return _cached(
-        db,
-        project,
-        version,
-        "geometry",
-        lambda: insights_dataset.geometry(rows, cls, IMGSZ, split_of),
-    )
+    def compute() -> dict:
+        rows, split_of = _scoped(db, project, version)
+        return insights_dataset.geometry(rows, classes(db, project), IMGSZ, split_of)
+
+    return _cached(db, project, version, "geometry", compute)
 
 
 def _review_audits(db: Session, project: Project) -> list[Audit]:
@@ -190,21 +193,18 @@ def _review_audits(db: Session, project: Project) -> list[Audit]:
 
 
 def labeling(db: Session, project: Project) -> dict:
-    rows = live_images(db, project)
-    audits = _review_audits(db, project)
-    users = {
-        u.id: u.name
-        for u in db.scalars(
-            select(User).join(Member, Member.user_id == User.id).where(Member.workspace_id == project.workspace_id)
-        )
-    }
-    return _cached(
-        db,
-        project,
-        None,
-        "labeling",
-        lambda: insights_dataset.labeling(rows, audits, users, now()),
-    )
+    def compute() -> dict:
+        rows = live_images(db, project)
+        audits = _review_audits(db, project)
+        users = {
+            u.id: u.name
+            for u in db.scalars(
+                select(User).join(Member, Member.user_id == User.id).where(Member.workspace_id == project.workspace_id)
+            )
+        }
+        return insights_dataset.labeling(rows, audits, users, now())
+
+    return _cached(db, project, None, "labeling", compute)
 
 
 # --- jobs ----------------------------------------------------------------------------------
@@ -335,9 +335,14 @@ def leakage(db: Session, project: Project, version: Version | None = None, *, au
 
 def embedding(db: Session, project: Project, *, auto: bool = True) -> dict:
     payload, job, stale = _read_or_enqueue(db, project, "insights_embedding", signature(db, project), auto)
+    points = [_signed(p) for p in payload.get("points") or []]
     return {
-        "points": [_signed(p) for p in payload.get("points") or []],
+        "points": points,
         "projection": payload.get("projection") or "pca",
+        "features": payload.get("features") or "cv",
+        "total": int(payload.get("total") or 0),
+        "used": int(payload.get("used") if payload.get("used") is not None else len(points)),
+        "sampled": bool(payload.get("sampled")),
         "job": job,
         "stale": stale,
     }

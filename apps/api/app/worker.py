@@ -275,9 +275,7 @@ def run_train(job: Job):
                             watchdog.reset()
                 finally:
                     watchdog.stop()
-                # A normal return after at least one epoch is progress, even if the watchdog tripped
-                # between the last epoch callback and the adapter returning.
-                if watchdog.stalled and not history:
+                if watchdog.stalled:
                     raise RuntimeError(f"no training progress for {watchdog.limit:g} s")
                 mark("train", note=train_note)
                 mark("evaluate", "running")
@@ -368,7 +366,9 @@ def run_insights_leakage(job: Job):
 
 def run_insights_embedding(job: Job):
     with SessionLocal() as db:
-        return insights_jobs.scan_embedding(db, db.get(Project, job.project_id))
+        project = db.get(Project, job.project_id)
+        with scheduler.exclusive("insights embedding"):     # CLIP may use the GPU; cv simply runs inside
+            return insights_jobs.scan_embedding(db, project)
 
 
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,

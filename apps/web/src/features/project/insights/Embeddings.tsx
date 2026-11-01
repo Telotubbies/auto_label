@@ -36,13 +36,47 @@ export function Embeddings({ ws, slug, summary, embedding }: {
   const [selected, setSelected] = useState<number[]>([])
   const job = embedding.job
   const running = !!job && (job.status === 'queued' || job.status === 'running')
+  // An unbuilt map reports the API default ('cv'), which says nothing about the backend the next build picks.
+  const hasMap = embedding.points.length > 0
+  // Older builds sent neither field; treat that as the CLIP map it actually was.
+  const isClip = embedding.features !== 'cv'
+  const mapLabel = hasMap ? (isClip ? 'Embedding' : 'Colour/layout') : 'Image'
+  const mapName = `${mapLabel} map`
+
   const run = useMutation({
     mutationFn: () => api.insights.scanEmbedding(ws, slug),
-    onSuccess: () => { toast.ok('Embedding scan queued'); setSelected([]); qc.invalidateQueries({ queryKey: ['insights'] }) },
+    onSuccess: () => {
+      toast.ok(!hasMap ? 'Map build queued' : isClip ? 'Embedding scan queued' : 'Map rebuild queued')
+      setSelected([])
+      qc.invalidateQueries({ queryKey: ['insights'] })
+    },
+    onError: (e) => toast.err(e as Error),
+  })
+
+  // The lasso's ids stay on the server; only the token is navigated to.
+  const open = useMutation({
+    mutationFn: (ids: string[]) => api.insights.saveSelection(ws, slug, ids),
+    onSuccess: (saved) => nav(`/${ws}/${slug}/browse?selection=${encodeURIComponent(saved.token)}&status=all`),
     onError: (e) => toast.err(e as Error),
   })
 
   const points = embedding.points
+  const projectImages = summary.images
+  const usedCount = embedding.used ?? points.length
+  // Before the first scan the API reports 0/0; the project total keeps the badge truthful.
+  const totalCount = points.length ? Math.max(usedCount, embedding.total) : projectImages
+  const sampled = !!embedding.sampled
+  let sampledNote = 'Every image in the project is placed on this map.'
+  if (!projectImages) sampledNote = 'This project has no images yet.'
+  else if (usedCount < totalCount) sampledNote = `${fmt(totalCount - usedCount)} images were not placed in this map${sampled ? ' (sampled build)' : ''}.`
+  const emptyCopy = !projectImages
+    ? 'No images to map yet — upload images to this project first.'
+    : 'No map yet — run the scan to place images by CLIP embeddings when the server has CLIP, otherwise by colour and coarse layout.'
+  const scatterDesc = hasMap
+    ? isClip
+      ? 'Similar images sit close together. Colour by split, class, label source or error flag.'
+      : 'Images with similar colour and coarse layout sit close together — not semantic embeddings. Colour by split, class, label source or error flag.'
+    : 'Nothing is plotted yet; the scan positions every image once it finishes.'
   const classIndex = useMemo(() => {
     const m = new Map<string, number>(summary.classes.map((c, i) => [c.name, i]))
     for (const p of points) {
@@ -161,73 +195,82 @@ export function Embeddings({ ws, slug, summary, embedding }: {
   const selectedPoints = selected.map((i) => points[i]).filter((p): p is InsightEmbeddingPoint => !!p)
   const openInDataset = () => {
     const ids = selectedPoints.slice(0, OPEN_CAP).map((p) => p.image_id)
+    if (!ids.length || open.isPending) return
     if (selectedPoints.length > OPEN_CAP) toast.ok(`Opening the first ${fmt(OPEN_CAP)} of ${fmt(selectedPoints.length)} selected images`)
-    const params = new URLSearchParams({ ids: ids.join(','), status: 'all' })
-    nav(`/${ws}/${slug}/browse?${params.toString()}`)
+    open.mutate(ids)
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">Embedding map</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">Similar images cluster together. Lasso a cluster to open exactly those images in the dataset.</p>
+        <h2 className="text-lg font-semibold tracking-tight">{mapName}</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {hasMap
+            ? isClip
+              ? 'Similar images cluster together — positions come from CLIP ViT-B/32 image embeddings. Lasso a cluster to open exactly those images in the dataset.'
+              : 'CLIP is unavailable; this map uses colour and coarse layout features. Lasso a cluster to open exactly those images in the dataset.'
+            : 'No map has been built yet. A scan places images by CLIP embeddings when the server has CLIP, otherwise by colour and coarse layout.'}
+        </p>
       </div>
       <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3">
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
             Map state
             <Badge className="uppercase">{embedding.projection}</Badge>
+            <Badge>{hasMap ? (isClip ? 'CLIP ViT-B/32' : 'Colour + layout') : 'Feature backend pending'}</Badge>
             {running && <span className="text-xs font-normal text-muted-foreground">{Math.round(job?.progress ?? 0)}%</span>}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Activate the lasso in the chart toolbar, draw around a cluster, then open the selection in the dataset.
           </p>
         </div>
-        <Badge>{fmt(points.length)} images</Badge>
+        <Badge title={sampledNote}>
+          {fmt(usedCount)} of {fmt(totalCount)} images{sampled ? ' (sampled)' : ''}
+        </Badge>
         <Button variant="outline" size="sm" onClick={() => run.mutate()} disabled={run.isPending || running}
-          title={running ? 'An embedding scan is already running' : undefined}>
+          title={running ? (hasMap ? (isClip ? 'An embedding scan is already running' : 'A map rebuild is already running') : 'A map build is already running') : undefined}>
           {running || run.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />}
-          {running ? 'Embedding…' : 'Re-embed'}
+          {running ? (!hasMap ? 'Building…' : isClip ? 'Embedding…' : 'Rebuilding…') : (!hasMap ? 'Build map' : isClip ? 'Re-embed' : 'Rebuild map')}
         </Button>
       </Card>
 
       {running && (
         <div role="status" className="rounded-lg border px-4 py-3 text-sm">
-          <div className="flex items-center gap-2"><span className="font-medium">{job?.status === 'queued' ? 'Embedding queued' : 'Embedding images…'}</span><span className="ml-auto text-xs tabular-nums text-muted-foreground">{Math.round(job?.progress ?? 0)}%</span></div>
+          <div className="flex items-center gap-2"><span className="font-medium">{job?.status === 'queued' ? (!hasMap ? 'Map build queued' : isClip ? 'Embedding queued' : 'Map rebuild queued') : (!hasMap ? 'Building the map…' : isClip ? 'Embedding images…' : 'Building the colour/layout map…')}</span><span className="ml-auto text-xs tabular-nums text-muted-foreground">{Math.round(job?.progress ?? 0)}%</span></div>
           <Progress className="mt-2" value={job?.progress ?? 0} />
           <p className="mt-2 text-xs text-muted-foreground">This page refreshes automatically when the map is ready.</p>
         </div>
       )}
       {job?.status === 'failed' && !running && (
         <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-          The last embedding scan failed: {job.error || 'unknown error'}
+          The last {!hasMap || !isClip ? 'map build' : 'embedding scan'} failed: {job.error || 'unknown error'}
         </p>
       )}
       {embedding.stale && !running && (
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-          <p className="min-w-0 flex-1">Images changed since this map was built — re-embed for current positions.</p>
+          <p className="min-w-0 flex-1">Images changed since this map was built — {hasMap && isClip ? 're-embed' : 'rebuild the map'} for current positions.</p>
         </div>
       )}
 
       <ChartCard
-        title="Embedding scatter"
-        desc="Similar images sit close together. Colour by split, class, label source or error flag."
-        ariaLabel={`Embedding scatter of ${fmt(points.length)} images, coloured by ${COLOR_OPTIONS.find((o) => o.id === colorBy)?.label.toLowerCase()}.`}
+        title={`${mapLabel} scatter`}
+        desc={scatterDesc}
+        ariaLabel={`${mapLabel} scatter of ${fmt(points.length)} plotted images, coloured by ${COLOR_OPTIONS.find((o) => o.id === colorBy)?.label.toLowerCase()}.`}
         option={option}
         height={440}
         onEvents={events}
         actions={(
-          <Select value={colorBy} onChange={(e) => setColorBy(e.target.value as ColorBy)} aria-label="Colour embedding points by" className="h-8 text-xs">
+          <Select value={colorBy} onChange={(e) => setColorBy(e.target.value as ColorBy)} aria-label="Colour map points by" className="h-8 text-xs">
             {COLOR_OPTIONS.map((o) => <option key={o.id} value={o.id}>Colour: {o.label}</option>)}
           </Select>
         )}
         table={{
-          caption: `Embedding coordinates.${points.length > TABLE_CAP ? ` Showing the first ${fmt(TABLE_CAP)} of ${fmt(points.length)}.` : ''}`,
+          caption: `${mapLabel} coordinates.${points.length > TABLE_CAP ? ` Showing the first ${fmt(TABLE_CAP)} of ${fmt(points.length)} plotted points.` : ''}`,
           columns: ['Image', 'Split', 'Class', 'Source', 'Error', 'X', 'Y'],
           rows: points.slice(0, TABLE_CAP).map((p) => [p.name, p.split, p.class ?? NO_CLASS, p.source, p.error ? 'yes' : '', p.x.toFixed(2), p.y.toFixed(2)]),
         }}
-        empty={points.length ? undefined : 'No embedding map yet — run the scan to project images with UMAP.'}
+        empty={points.length ? undefined : emptyCopy}
         footnote={points.length ? 'Brushing uses the polygon tool in the chart toolbar; the lasso stays active until you clear it.' : undefined}
       />
 
@@ -237,8 +280,9 @@ export function Embeddings({ ws, slug, summary, embedding }: {
           <b className="tabular-nums">{fmt(selectedPoints.length)}</b> selected
           {selectedPoints.length > OPEN_CAP && <span className="text-muted-foreground"> · only the first {fmt(OPEN_CAP)} open</span>}
         </span>
-        <Button size="sm" onClick={openInDataset} disabled={!selectedPoints.length}>
-          Open {selectedPoints.length > OPEN_CAP ? fmt(OPEN_CAP) : fmt(selectedPoints.length)} selected in dataset
+        <Button size="sm" onClick={openInDataset} disabled={!selectedPoints.length || open.isPending} aria-busy={open.isPending}>
+          {open.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+          {open.isPending ? 'Saving selection…' : `Open ${selectedPoints.length > OPEN_CAP ? fmt(OPEN_CAP) : fmt(selectedPoints.length)} selected in dataset`}
         </Button>
       </Card>
 
