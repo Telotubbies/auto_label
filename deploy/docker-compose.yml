@@ -35,8 +35,10 @@ services:
       LD_SEED_DEMO: ${LD_SEED_DEMO:-0}
       LD_SUPERADMINS: ${LD_SUPERADMINS:-}
       LD_SAM_ENABLED: "0"
-      # Production: closes the dev mail inbox even if SMTP is missing. Set LD_SMTP_* to deliver mail.
-      LD_ENV: production
+      # Production is the default posture. The dev mail inbox also requires LD_MAIL_DEV=1 and a
+      # localhost LD_PUBLIC_URL, so it stays closed here even if mail is misconfigured.
+      LD_ENV: ${LD_ENV:-production}
+      LD_MAIL_DEV: ${LD_MAIL_DEV:-}
       LD_SMTP_HOST: ${LD_SMTP_HOST:-}
       LD_SMTP_PORT: ${LD_SMTP_PORT:-587}
       LD_SMTP_USER: ${LD_SMTP_USER:-}

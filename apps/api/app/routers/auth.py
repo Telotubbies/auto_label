@@ -1,4 +1,5 @@
 """Signup / login / refresh / profile / invites, plus account v2: email links, TOTP MFA, sessions, history."""
+import logging
 import re
 import secrets
 import time
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .. import mailer, oidc, totp
@@ -16,11 +17,13 @@ from ..db import get_db
 from ..deps import audit, current_user, plan
 from ..models import EmailToken, Invite, LoginEvent, Member, RefreshToken, User, Workspace
 from ..ratelimit import client_ip, limit
-from ..security import (hash_password, issue_access, issue_mfa_pending, new_refresh, token_hash,
-                        verify_access, verify_mfa, verify_password)
+from ..security import (hash_password, issue_access, issue_mfa_pending, new_refresh, recovery_hash, recovery_match,
+                        token_hash, verify_mfa, verify_password)
 
 _DUMMY_HASH = hash_password('timing-equaliser')
-from ..services import segment
+from ..services import secretbox, segment
+
+log = logging.getLogger("labeldesk")
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -57,10 +60,11 @@ def _agent(request: Request | None) -> tuple[str, str]:
     return client_ip(request), (request.headers.get("user-agent") or "")[:255]
 
 
-def tokens(db: Session, u: User, request: Request | None = None) -> dict:
+def tokens(db: Session, u: User, request: Request | None = None, created: float | None = None) -> dict:
     rt, exp = new_refresh()
     ip, ua = _agent(request)
-    row = RefreshToken(token=token_hash(rt), user_id=u.id, expires=exp, created=time.time(), last_seen=time.time(),
+    now = time.time()
+    row = RefreshToken(token=token_hash(rt), user_id=u.id, expires=exp, created=created or now, last_seen=now,
                        ip=ip, user_agent=ua)
     db.add(row); db.commit()                                  # only the hash is stored
     return {"token": issue_access(u.id), "refresh_token": rt, "user": user_out(u), "session": row.token}
@@ -76,10 +80,9 @@ def _record(db: Session, u: User | None, request: Request, method: str, ok: bool
 
 
 def _email_token(db: Session, u: User, kind: str, ttl: float) -> str:
-    """Mint one link token; older unused tokens of the same kind stop working."""
+    """Mint one link token; any other token of the same kind stops working immediately."""
     now = time.time()
-    db.execute(delete(EmailToken).where(EmailToken.user_id == u.id, EmailToken.kind == kind,
-                                        or_(EmailToken.used.is_(True), EmailToken.expires < now)))
+    db.execute(delete(EmailToken).where(EmailToken.user_id == u.id, EmailToken.kind == kind))
     raw = secrets.token_urlsafe(32)
     db.add(EmailToken(token=token_hash(raw), user_id=u.id, kind=kind, expires=now + ttl))
     db.commit()
@@ -100,21 +103,41 @@ def _send_link(u: User, kind: str, raw: str):
     mailer.send(u.email, subject, text, link=link, kind=kind)
 
 
+def _totp_secret(u: User) -> str | None:
+    """Decrypt the stored seed through secretbox (which also accepts a not-yet-migrated plaintext seed)."""
+    if not u.totp_secret:
+        return None
+    try:
+        return secretbox.decrypt(u.totp_secret)
+    except ValueError:
+        log.warning("TOTP secret for user %s cannot be decrypted (LD_SECRET changed?)", u.id)
+        return None
+
+
 def _second_factor_ok(db: Session, u: User, code: str) -> bool:
     """TOTP code or an unused recovery code (consumed on success). A code can only be used once."""
-    step = totp.matching_step(u.totp_secret, code)
+    step = totp.matching_step(_totp_secret(u), code)
     if step is not None:
         if step <= (u.totp_last_step or 0):           # replay of a code already spent this step
             return False
         u.totp_last_step = step
         db.add(u); db.commit()
         return True
-    wanted = token_hash(totp.normalize_recovery_code(code))
-    if wanted in (u.recovery_codes or []):
-        u.recovery_codes = [h for h in u.recovery_codes if h != wanted]
+    matched = recovery_match(code, u.recovery_codes or [])
+    if matched:
+        u.recovery_codes = [h for h in u.recovery_codes if h != matched]
         db.add(u); db.commit()
         return True
     return False
+
+
+def _revoke_other_sessions(db: Session, u: User, request: Request):
+    """Sign out every other device; the caller's session id travels in X-Session."""
+    keep = request.headers.get("x-session", "").strip()
+    stmt = delete(RefreshToken).where(RefreshToken.user_id == u.id)
+    if keep:
+        stmt = stmt.where(RefreshToken.token != keep)
+    db.execute(stmt)
 
 
 @router.get("/config")
@@ -208,8 +231,11 @@ def refresh(body: RefreshIn, request: Request, db: Session = Depends(get_db)):
     if not row or row.expires < time.time():
         raise HTTPException(401, "session expired")
     u = db.get(User, row.user_id)
+    if not u:
+        db.execute(delete(RefreshToken).where(RefreshToken.token == row.token)); db.commit()
+        raise HTTPException(401, "session expired")
     db.execute(delete(RefreshToken).where((RefreshToken.token == row.token) | (RefreshToken.expires < time.time())))
-    return tokens(db, u, request)
+    return tokens(db, u, request, created=row.created)
 
 
 @router.post("/auth/logout")
@@ -252,6 +278,7 @@ def reset_password(body: ResetIn, request: Request, db: Session = Depends(get_db
     if not u:
         raise HTTPException(400, "invalid or expired reset link")
     u.pw_hash = hash_password(body.password)
+    u.email_verified = u.email_verified or time.time()     # the link arrived in their inbox
     row.used = True
     # A stolen password should not survive its reset: sign every device out.
     db.execute(delete(RefreshToken).where(RefreshToken.user_id == u.id))
@@ -301,7 +328,7 @@ def mfa_setup(body: MfaSetupIn, u: User = Depends(current_user), db: Session = D
     if u.mfa_enabled:
         raise HTTPException(400, "two-factor authentication is already enabled")
     secret = totp.new_secret()
-    u.totp_secret = secret
+    u.totp_secret = secretbox.encrypt(secret)
     db.add(u); db.commit()
     uri = totp.provisioning_uri(secret, u.email)
     return {"secret": secret, "otpauth": uri, "qr": totp.qr_data_uri(uri)}
@@ -312,20 +339,22 @@ class MfaCodeIn(BaseModel):
 
 
 @router.post("/auth/mfa/enable")
-def mfa_enable(body: MfaCodeIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+def mfa_enable(body: MfaCodeIn, request: Request, u: User = Depends(current_user), db: Session = Depends(get_db)):
     limit(f"mfa-enable:{u.id}", 10, 3600)
     if u.mfa_enabled:
         raise HTTPException(400, "two-factor authentication is already enabled")
     if not u.totp_secret:
         raise HTTPException(400, "start the setup first")
-    step = totp.matching_step(u.totp_secret, body.code)
+    step = totp.matching_step(_totp_secret(u), body.code)
     if step is None:
         raise HTTPException(400, "that code didn't work — check your authenticator and try again")
     codes = totp.new_recovery_codes()
-    u.recovery_codes = [token_hash(totp.normalize_recovery_code(c)) for c in codes]
+    u.recovery_codes = [recovery_hash(c) for c in codes]
     u.totp_last_step = step                        # the enrolment code cannot be replayed at sign-in
     u.mfa_enabled = True
-    db.add(u); db.commit()
+    db.add(u)
+    _revoke_other_sessions(db, u, request)          # a stolen session must not survive enrolment
+    db.commit()
     return {"recovery_codes": codes}
 
 
@@ -334,7 +363,7 @@ class MfaDisableIn(BaseModel):
 
 
 @router.post("/auth/mfa/disable")
-def mfa_disable(body: MfaDisableIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+def mfa_disable(body: MfaDisableIn, request: Request, u: User = Depends(current_user), db: Session = Depends(get_db)):
     limit(f"pwcheck:{u.id}", 5, 900)
     if not verify_password(body.password, u.pw_hash):
         raise HTTPException(400, "password is incorrect")
@@ -345,7 +374,10 @@ def mfa_disable(body: MfaDisableIn, u: User = Depends(current_user), db: Session
     u.mfa_enabled = False
     u.totp_secret = None
     u.recovery_codes = []
-    db.add(u); db.commit()
+    u.totp_last_step = 0
+    db.add(u)
+    _revoke_other_sessions(db, u, request)          # removing a factor signs other devices out
+    db.commit()
     return {"ok": True}
 
 
@@ -368,7 +400,7 @@ class MePatch(BaseModel):
 
 
 @router.patch("/me")
-def patch_me(body: MePatch, u: User = Depends(current_user), db: Session = Depends(get_db)):
+def patch_me(body: MePatch, request: Request, u: User = Depends(current_user), db: Session = Depends(get_db)):
     if body.name:
         u.name = body.name.strip()
     if body.password:
@@ -376,6 +408,7 @@ def patch_me(body: MePatch, u: User = Depends(current_user), db: Session = Depen
         if u.pw_hash and not verify_password(body.current_password or "", u.pw_hash):
             raise HTTPException(400, "current password is incorrect")
         u.pw_hash = hash_password(body.password)
+        _revoke_other_sessions(db, u, request)      # a new password should end old sessions
     db.add(u); db.commit()
     return user_out(u)
 

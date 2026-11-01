@@ -1,5 +1,9 @@
 """Account v2: reset/verification tokens, TOTP MFA, workspace enforcement, sessions, history."""
+import hashlib
+import hmac
+import logging
 import os
+import re
 import secrets
 import tempfile
 import time
@@ -10,14 +14,20 @@ os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 os.environ["LD_MAIL_DEV"] = "1"
 os.environ["LD_ENV"] = "dev"
+os.environ["LD_PUBLIC_URL"] = "http://localhost:5173"   # the inbox also requires a localhost origin
 os.environ.pop("LD_SMTP_HOST", None)          # a developer's exported SMTP config must not change these tests
+os.environ.pop("LD_SECRET_OLD", None)
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app import mailer, ratelimit, totp
+from app import mailer, ratelimit, security, totp
+from app.db import SessionLocal
 from app.main import app
-from app.security import token_hash
+from app.models import User
+from app.security import recovery_hash, recovery_match, token_hash
+from app.services import secretbox
 
 PW = "longpassword1"
 
@@ -118,6 +128,38 @@ def test_forgot_password_does_not_reveal_accounts():
     assert a.status_code == b.status_code == 200
     assert a.json() == b.json()
     assert mail_to("reset", email)
+
+
+def test_new_reset_link_invalidates_the_previous_one():
+    c, email, _, _ = signup("reset-chain")
+    c.post("/api/auth/password/forgot", json={"email": email})
+    first = token_from_link(mail_to("reset", email)["link"])
+    c.post("/api/auth/password/forgot", json={"email": email})
+    second = token_from_link(mail_to("reset", email)["link"])
+    assert first != second
+
+    assert c.post("/api/auth/password/reset", json={"token": first, "password": "brand-new-pass1"}).status_code == 400
+    assert c.post("/api/auth/password/reset", json={"token": second, "password": "brand-new-pass1"}).status_code == 200
+
+
+def test_new_verify_link_invalidates_the_previous_one():
+    c, email, _, _ = signup("verify-chain")
+    first = token_from_link(mail_to("verify", email)["link"])
+    assert c.post("/api/auth/email/resend").status_code == 200
+    second = token_from_link(mail_to("verify", email)["link"])
+    assert first != second
+
+    assert c.post("/api/auth/email/verify", json={"token": first}).status_code == 400
+    assert c.post("/api/auth/email/verify", json={"token": second}).status_code == 200
+
+
+def test_reset_also_verifies_the_email_address():
+    c, email, _, _ = signup("reset-verify")
+    assert c.get("/api/me").json()["email_verified"] is None
+    c.post("/api/auth/password/forgot", json={"email": email})
+    token = token_from_link(mail_to("reset", email)["link"])
+    assert c.post("/api/auth/password/reset", json={"token": token, "password": "brand-new-pass1"}).status_code == 200
+    assert c.get("/api/me").json()["email_verified"] is not None
 
 
 def test_reset_revokes_existing_sessions():
@@ -223,6 +265,172 @@ def test_mfa_disable_needs_password():
     assert c.get("/api/me").json()["mfa_enabled"] is True
     assert c.post("/api/auth/mfa/disable", json={"password": PW}).status_code == 200
     assert c.get("/api/me").json()["mfa_enabled"] is False
+
+
+def test_totp_secret_is_encrypted_at_rest():
+    c, email, _, _ = signup("sealed")
+    setup = c.post("/api/auth/mfa/setup", json={"password": PW})
+    assert setup.status_code == 200, setup.text
+    plain = setup.json()["secret"]
+    with SessionLocal() as db:
+        stored = db.scalar(select(User).where(User.email == email)).totp_secret
+    assert stored and stored != plain and stored.startswith(secretbox.PREFIX)
+    assert secretbox.decrypt(stored) == plain
+    # the encrypted seed still verifies codes
+    assert c.post("/api/auth/mfa/enable", json={"code": totp.code_at(plain)}).status_code == 200
+
+
+def test_plaintext_totp_secret_is_encrypted_by_secretbox_migration():
+    c, email, _, _ = signup("legacy-totp")
+    secret = totp.new_secret()
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.email == email))
+        u.totp_secret = secret
+        db.commit()
+
+    secretbox.migrate()                         # TOTP seeds ride the shared secretbox migration
+    with SessionLocal() as db:
+        stored = db.scalar(select(User).where(User.email == email)).totp_secret
+    assert stored.startswith(secretbox.PREFIX) and secretbox.decrypt(stored) == secret
+
+    secretbox.migrate()                         # idempotent: a second boot must not double-encrypt
+    with SessionLocal() as db:
+        assert db.scalar(select(User).where(User.email == email)).totp_secret == stored
+
+
+def test_totp_decrypt_failure_logs_a_warning(caplog):
+    c, email, _, _ = signup("bad-seed")
+    enrol(c)
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.email == email))
+        u.totp_secret = "enc:v1:not-a-valid-token"
+        db.commit()
+
+    caplog.set_level(logging.WARNING, logger="labeldesk")
+    anon = TestClient(app)
+    challenge = login(anon, email).json()["mfa_token"]
+    assert anon.post("/api/auth/mfa/verify", json={"mfa_token": challenge, "code": "123456"}).status_code == 401
+    assert any("cannot be decrypted" in record.message for record in caplog.records)
+
+
+def test_recovery_codes_are_10_base32_characters_and_hmac_hashed():
+    c, email, _, _ = signup("recovery-format")
+    _, codes = enrol(c)
+    assert all(re.fullmatch(r"[A-Z2-7]{10}", code) for code in codes)
+    with SessionLocal() as db:
+        stored = list(db.scalar(select(User).where(User.email == email)).recovery_codes)
+    assert stored == [recovery_hash(code) for code in codes]
+
+    anon = TestClient(app)
+    challenge = login(anon, email).json()["mfa_token"]
+    assert anon.post("/api/auth/mfa/verify", json={"mfa_token": challenge, "code": codes[0]}).status_code == 200
+
+
+def test_recovery_code_matches_old_secret_during_rotation(monkeypatch):
+    code = "ABCDE23456"
+    old = "old-secret-rotation-value-0123456789abcdef"
+    old_hash = hmac.new(old.encode(), code.encode(), hashlib.sha256).hexdigest()
+
+    assert recovery_match(code, [old_hash]) is None
+    monkeypatch.setattr(security, "SECRET_OLD", old)
+    assert recovery_match(code, [old_hash]) == old_hash
+
+
+def test_recovery_code_from_old_secret_signs_in(monkeypatch):
+    c, email, _, _ = signup("rotation-recovery")
+    _, codes = enrol(c)
+    old = "old-secret-rotation-value-0123456789abcdef"
+    old_hash = hmac.new(old.encode(), codes[0].encode(), hashlib.sha256).hexdigest()
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.email == email))
+        u.recovery_codes = [old_hash]         # row written before LD_SECRET rotated
+        db.commit()
+
+    monkeypatch.setattr(security, "SECRET_OLD", old)
+    anon = TestClient(app)
+    challenge = login(anon, email).json()["mfa_token"]
+    assert anon.post("/api/auth/mfa/verify", json={"mfa_token": challenge, "code": codes[0]}).status_code == 200
+
+
+def test_mfa_changes_revoke_other_sessions_but_keep_the_caller():
+    email = _email("sessions-mfa")
+    c = TestClient(app)
+    first = c.post("/api/auth/signup", json={"name": "Session Tester", "email": email, "password": PW}).json()
+    c.headers["Authorization"] = f"Bearer {first['token']}"
+    second = login(c, email).json()
+    assert len(c.get("/api/me/sessions").json()) == 2
+
+    setup = c.post("/api/auth/mfa/setup", json={"password": PW}).json()
+    enabled = c.post("/api/auth/mfa/enable", json={"code": totp.code_at(setup["secret"])},
+                     headers={"X-Session": first["session"]})
+    assert enabled.status_code == 200, enabled.text
+    assert [r["id"] for r in c.get("/api/me/sessions").json()] == [first["session"]]
+
+    challenge = login(c, email).json()["mfa_token"]
+    extra = c.post("/api/auth/mfa/verify", json={"mfa_token": challenge, "code": enabled.json()["recovery_codes"][0]})
+    assert extra.status_code == 200
+    assert len(c.get("/api/me/sessions").json()) == 2
+
+    disabled = c.post("/api/auth/mfa/disable", json={"password": PW}, headers={"X-Session": first["session"]})
+    assert disabled.status_code == 200, disabled.text
+    assert [r["id"] for r in c.get("/api/me/sessions").json()] == [first["session"]]
+
+
+def test_password_change_revokes_other_sessions():
+    email = _email("sessions-pw")
+    c = TestClient(app)
+    first = c.post("/api/auth/signup", json={"name": "Session Tester", "email": email, "password": PW}).json()
+    c.headers["Authorization"] = f"Bearer {first['token']}"
+    second = login(c, email).json()
+    assert len(c.get("/api/me/sessions").json()) == 2
+
+    r = c.patch("/api/me", json={"current_password": PW, "password": "brand-new-pass1"},
+                headers={"X-Session": first["session"]})
+    assert r.status_code == 200, r.text
+    assert [row["id"] for row in c.get("/api/me/sessions").json()] == [first["session"]]
+    assert c.post("/api/auth/refresh", json={"refresh_token": second["refresh_token"]}).status_code == 401
+
+
+def test_refresh_keeps_the_session_created_time():
+    email = _email("rotate")
+    c = TestClient(app)
+    first = c.post("/api/auth/signup", json={"name": "Rotate Tester", "email": email, "password": PW}).json()
+    c.headers["Authorization"] = f"Bearer {first['token']}"
+    before = c.get("/api/me/sessions").json()[0]
+
+    rotated = c.post("/api/auth/refresh", json={"refresh_token": first["refresh_token"]}).json()
+    assert rotated["session"] != before["id"]
+    c.headers["Authorization"] = f"Bearer {rotated['token']}"
+    after = c.get("/api/me/sessions").json()[0]
+    assert after["id"] == rotated["session"] and after["created"] == before["created"]
+    assert after["last_seen"] >= before["last_seen"]
+
+
+def test_refresh_rejects_deleted_user():
+    from app.models import RefreshToken
+    from app.security import new_refresh
+
+    email = _email("deleted")
+    with SessionLocal() as db:
+        u = User(email=email, name="Gone Tester", pw_hash="")
+        db.add(u); db.flush()
+        rt, exp = new_refresh()
+        db.add(RefreshToken(token=token_hash(rt), user_id=u.id, expires=exp))
+        db.commit()
+        uid = u.id
+    with SessionLocal() as db:
+        db.delete(db.get(User, uid))
+        db.commit()
+    assert TestClient(app).post("/api/auth/refresh", json={"refresh_token": rt}).status_code == 401
+
+
+def test_dev_inbox_requires_explicit_flag_and_local_origin():
+    assert mailer.inbox_allowed(True, "1", "http://localhost:5173")
+    assert mailer.inbox_allowed(True, "1", "http://127.0.0.1:8010")
+    assert not mailer.inbox_allowed(True, None, "http://localhost:5173")
+    assert not mailer.inbox_allowed(True, "0", "http://localhost:5173")
+    assert not mailer.inbox_allowed(True, "1", "https://app.labeldesk.dev")
+    assert not mailer.inbox_allowed(False, "1", "http://localhost:5173")
 
 
 # --- sessions & login history -------------------------------------------------------

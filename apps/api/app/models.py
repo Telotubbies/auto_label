@@ -34,7 +34,8 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255))
     pw_hash: Mapped[str] = mapped_column(String(255), default="")
     email_verified: Mapped[float | None] = mapped_column(Float, nullable=True)   # timestamp of verification
-    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)   # set before mfa_enabled (pending)
+    # Fernet-encrypted TOTP seed (ciphertext, not base32); nullable until enrolment starts.
+    totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     recovery_codes: Mapped[list] = mapped_column(JSON, default=list)             # sha256 of each one-time code
     totp_last_step: Mapped[int] = mapped_column(Integer, default=0)              # replay guard for TOTP codes

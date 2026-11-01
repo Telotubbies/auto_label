@@ -53,6 +53,8 @@ export async function req<T>(path: string, init: RequestInit = {}, retry = true)
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) }
   if (!isForm && init.body) headers['Content-Type'] = 'application/json'
   if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`
+  // Lets auth endpoints revoke every other device while keeping this one signed in.
+  if (tokens.session) headers['X-Session'] = tokens.session
   const r = await fetch(`${API_ORIGIN}/api${path}`, { ...init, headers })
   if (r.status === 401 && retry && tokens.refresh) {
     if (await tryRefresh()) return req<T>(path, init, false)
@@ -80,6 +82,7 @@ export function upload<T>(path: string, form: FormData, onProgress: (f: number) 
     const x = new XMLHttpRequest()
     x.open('POST', `${API_ORIGIN}/api${path}`)
     if (tokens.access) x.setRequestHeader('Authorization', `Bearer ${tokens.access}`)
+    if (tokens.session) x.setRequestHeader('X-Session', tokens.session)
     x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     x.onload = () => {
       let d: any = {}

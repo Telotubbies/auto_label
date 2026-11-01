@@ -193,7 +193,9 @@ function useSubmit(fn: () => Promise<void>) {
 function useNext(): string {
   const { search } = useLocation()
   const raw = new URLSearchParams(search).get('next') ?? ''
-  return raw.startsWith('/') && !raw.startsWith('//') ? raw : '/'
+  // Backslashes and control characters can be normalised into an off-site path by some browsers.
+  const unsafe = raw.includes('\\') || /[\u0000-\u001f]/.test(raw)
+  return raw.startsWith('/') && !raw.startsWith('//') && !unsafe ? raw : '/'
 }
 
 const withNext = (path: string, next: string) => next === '/' ? path : `${path}?next=${encodeURIComponent(next)}`

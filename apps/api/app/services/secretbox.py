@@ -1,4 +1,4 @@
-"""Symmetric encryption for secrets stored in the DB (connector credentials, webhook signing keys).
+"""Symmetric encryption for secrets stored in the DB (connector credentials, webhook signing keys, TOTP seeds).
 
 The Fernet key is derived from `config.SECRET` with SHA-256. Ciphertext carries the `enc:v1:`
 prefix; values without it are legacy plaintext and are encrypted once by `migrate()` at startup.
@@ -64,12 +64,12 @@ def encrypt_config(config: dict, fields: tuple[str, ...]) -> dict:
 
 
 def migrate() -> None:
-    """Encrypt existing plaintext connector/webhook secrets exactly once. Idempotent."""
+    """Encrypt existing plaintext secrets (connectors, webhooks, TOTP seeds) and finish a key rotation. Idempotent."""
     from sqlalchemy import select
 
     from ..config import SECRET_OLD
     from ..db import SessionLocal
-    from ..models import Connector, Webhook
+    from ..models import Connector, User, Webhook
     from .connectors import SECRET_FIELDS
 
     with SessionLocal() as db:
@@ -95,4 +95,11 @@ def migrate() -> None:
                 hook.secret = encrypt(hook.secret)
             elif SECRET_OLD:
                 hook.secret = _reencrypt(hook.secret)
+        for user in db.scalars(select(User).where(User.totp_secret.is_not(None))):
+            if not user.totp_secret:
+                continue
+            if not is_encrypted(user.totp_secret):
+                user.totp_secret = encrypt(user.totp_secret)
+            elif SECRET_OLD:
+                user.totp_secret = _reencrypt(user.totp_secret)
         db.commit()

@@ -8,6 +8,9 @@ import threading
 import time
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
+from urllib.parse import urlparse
+
+from .config import PUBLIC_URL
 
 log = logging.getLogger("labeldesk.mail")
 
@@ -20,9 +23,17 @@ SMTP_TLS = os.environ.get("LD_SMTP_TLS", "1") != "0"
 SMTP_SSL = os.environ.get("LD_SMTP_SSL", "0") == "1"
 
 DEV = not SMTP_HOST
-# No SMTP in a dev run: keep the last mails in memory so /__mail can show them. Closed in production and
-# whenever LD_MAIL_DEV=0 — an open inbox would print live reset links to anyone who can reach the API.
-INBOX_ENABLED = DEV and os.environ.get("LD_MAIL_DEV", "1") == "1" and os.environ.get("LD_ENV", "dev") != "production"
+
+
+def inbox_allowed(dev: bool, flag: str | None, public_url: str) -> bool:
+    """Fail closed: the inbox needs an explicit LD_MAIL_DEV=1 AND a localhost PUBLIC_URL."""
+    host = (urlparse(public_url).hostname or "").lower()
+    return dev and flag == "1" and host in {"localhost", "127.0.0.1", "::1"}
+
+
+# No SMTP in a dev run: keep the last mails in memory so /__mail can show them. Never open by default —
+# the page prints live reset links, so both an explicit flag and a localhost origin are required.
+INBOX_ENABLED = inbox_allowed(DEV, os.environ.get("LD_MAIL_DEV"), PUBLIC_URL)
 
 if DEV:
     if INBOX_ENABLED:

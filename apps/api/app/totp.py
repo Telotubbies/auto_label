@@ -68,9 +68,5 @@ def qr_data_uri(text: str) -> str:
 
 
 def new_recovery_codes(n: int = 8) -> list[str]:
-    """Human-copyable one-time codes; only their hashes are stored."""
-    return ["-".join(secrets.token_hex(2) for _ in range(2)) for _ in range(n)]
-
-
-def normalize_recovery_code(code: str) -> str:
-    return code.strip().lower().replace("-", "").replace(" ", "")
+    """Eight 10-character base32 codes; only HMAC hashes are stored."""
+    return [base64.b32encode(secrets.token_bytes(6)).decode().rstrip("=") for _ in range(n)]

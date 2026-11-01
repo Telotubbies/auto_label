@@ -1,13 +1,14 @@
-"""Passwords, JWTs, signed file URLs, API keys."""
+"""Passwords, JWTs, signed file URLs, API keys, recovery-code hashes."""
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import time
 
 import jwt
 
-from .config import SECRET
+from .config import SECRET, SECRET_OLD
 
 ALG = "HS256"
 ACCESS_TTL = 15 * 60
@@ -62,6 +63,29 @@ def verify_mfa(token: str) -> dict | None:
 
 def token_hash(t: str) -> str:
     return hashlib.sha256(t.encode()).hexdigest()
+
+
+# --- recovery codes ----------------------------------------------------------------
+
+def _secret_keys() -> list[str]:
+    """Current LD_SECRET first, then any LD_SECRET_OLD values still trusted during rotation."""
+    return [SECRET] + [s.strip() for s in (SECRET_OLD or "").split(",") if s.strip()]
+
+
+def recovery_hash(code: str) -> str:
+    """HMAC-SHA256 of the normalised code, so a leaked DB row is not enough to sign in."""
+    normalised = re.sub(r"[\s-]", "", code).upper()
+    return hmac.new(SECRET.encode(), normalised.encode(), hashlib.sha256).hexdigest()
+
+
+def recovery_match(code: str, stored: list[str]) -> str | None:
+    """The stored hash this code matches (current or old LD_SECRET), or None. Codes stay one-time."""
+    normalised = re.sub(r"[\s-]", "", code).upper()
+    for secret in _secret_keys():
+        digest = hmac.new(secret.encode(), normalised.encode(), hashlib.sha256).hexdigest()
+        if digest in stored:
+            return digest
+    return None
 
 
 def new_refresh() -> tuple[str, float]:
