@@ -82,3 +82,43 @@ def test_remote_autolabel_annotation_meters_an_ai_call():
         calls = db.scalar(select(func.count()).select_from(UsageEvent).where(
             UsageEvent.workspace_id == ids["ws"], UsageEvent.metric == "ai_calls"))
     assert calls == 1
+
+
+def test_remote_fail_notifies_and_meters_the_failed_run():
+    """I19: a failed GPU run still consumed the card and integrations wait on job.done."""
+    ids = _train_job()
+    with SessionLocal() as db:
+        j = db.get(Job, ids["job"])
+        j.started = now() - 40                      # a run that held the GPU before it failed
+        db.commit()
+    with TestClient(app) as c:
+        r = c.post(f"/api/worker/jobs/{ids['job']}/fail", headers=TOKEN, json={"error": "CUDA out of memory"})
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        job = db.get(Job, ids["job"])
+        assert job.status == "failed"
+        assert db.get(TrainedModel, ids["model"]).status == "failed"
+        gpu = db.scalar(select(UsageEvent).where(UsageEvent.workspace_id == ids["ws"],
+                                                 UsageEvent.metric == "gpu_seconds"))
+        assert gpu is not None and gpu.quantity > 0
+        events = {d.event for d in db.scalars(select(WebhookDelivery).where(
+            WebhookDelivery.workspace_id == ids["ws"]))}
+        assert "job.done" in events
+
+
+def test_remote_autolabel_complete_meters_elapsed_gpu_time():
+    """I19: autolabel uploads no weights, but it still occupied the GPU and must be metered."""
+    ids = _train_job()
+    with SessionLocal() as db:
+        j = Job(workspace_id=ids["ws"], project_id=ids["project"], kind="autolabel", status="running",
+                started=now() - 30, params={"model_id": ids["model"]})
+        db.add(j); db.commit()
+        jid = j.id
+    with TestClient(app) as c:
+        r = c.post(f"/api/worker/jobs/{jid}/complete", headers=TOKEN, data={"result": "{}"})
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        gpu = db.scalar(select(UsageEvent).where(UsageEvent.workspace_id == ids["ws"],
+                                                 UsageEvent.metric == "gpu_seconds"))
+        assert gpu is not None and gpu.quantity > 0
+        assert db.get(Job, jid).status == "done"

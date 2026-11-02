@@ -155,6 +155,10 @@ async def complete(jid: str, result: str = Form("{}"), weights: UploadFile | Non
     if not j:
         raise HTTPException(404, "job not found")
     res = json.loads(result or "{}")
+    # Every kind that reaches the remote worker held the GPU; meter it before any kind-specific work.
+    elapsed = max(0.0, now() - (j.started or now()))
+    metering.record(db, j.workspace_id, "gpu_seconds", round(elapsed, 2),
+                    project_id=j.project_id, job_id=j.id)
     if j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         if not weights:
@@ -166,9 +170,6 @@ async def complete(jid: str, result: str = Form("{}"), weights: UploadFile | Non
         tm.weights = dst.relative_to(DATA_DIR).as_posix()
         tm.history = res.get("history", tm.history)
         tm.status = "ready"
-        elapsed = max(0.0, now() - (j.started or now()))
-        metering.record(db, j.workspace_id, "gpu_seconds", round(elapsed, 2),
-                        project_id=j.project_id, job_id=j.id)
         res = {"model_id": tm.id, **finalize.evaluate_and_announce(db, tm)}
     j.status = "cancelled" if j.status == "cancelling" else "done"
     j.progress, j.result, j.finished = 100.0, {**(j.result or {}), **res}, now()
@@ -191,5 +192,9 @@ def fail(jid: str, body: FailIn, db: Session = Depends(get_db)):
         tm = db.get(TrainedModel, j.params["model_id"])
         if tm:
             tm.status = "failed"
+    elapsed = max(0.0, now() - (j.started or now()))
+    metering.record(db, j.workspace_id, "gpu_seconds", round(elapsed, 2),
+                    project_id=j.project_id, job_id=j.id)       # a failed run still held the card
+    finalize.job_done(db, j, "failed", j.error)
     db.commit()
     return {"ok": True}
