@@ -33,7 +33,8 @@ def init_db():
     ensure_columns(engine, "members", {"custom_role_id": "VARCHAR(32)"})
     ensure_columns(engine, "project_members", {"custom_role_id": "VARCHAR(32)"})
     ensure_columns(engine, "classes", {"skeleton": "JSON"})
-    ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER"})
+    ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER",
+                                      "sharpness": "FLOAT", "luminance": "FLOAT"})
     ensure_columns(engine, "label_events", {"ai_ids": "JSON"})
     ensure_columns(engine, "consensus_jobs", {"image_metrics": "JSON"})
     ensure_columns(engine, "refresh_tokens", {

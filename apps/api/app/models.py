@@ -249,6 +249,9 @@ class Image(Base):
     path: Mapped[str] = mapped_column(String(1024))       # relative to DATA_DIR
     thumb: Mapped[str] = mapped_column(String(1024))
     size: Mapped[int] = mapped_column(Integer, default=0)
+    # data-quality signals measured once at ingest; NULL means unknown, never "good"
+    sharpness: Mapped[float | None] = mapped_column(Float, nullable=True)   # 0-1 Laplacian-variance score
+    luminance: Mapped[float | None] = mapped_column(Float, nullable=True)   # 0-1 mean grayscale
     split: Mapped[str] = mapped_column(String(8), default="train")
     status: Mapped[str] = mapped_column(String(16), default="unassigned")
     assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
