@@ -17,6 +17,10 @@ class BlockedURL(ValueError):
     pass
 
 
+class UnresolvableHost(BlockedURL):
+    """Transient resolver failure (gaierror), distinct from a policy rejection."""
+
+
 NAT64 = ipaddress.ip_network("64:ff9b::/96")       # IPv4-embedded IPv6: resolves to private v4 just as easily
 
 
@@ -24,7 +28,7 @@ def _public_ip(host: str, port: int) -> str:
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except socket.gaierror as e:
-        raise BlockedURL(f"cannot resolve {host}") from e
+        raise UnresolvableHost(f"cannot resolve {host}") from e
     for *_, addr in infos:
         ip = ipaddress.ip_address(addr[0])
         if not ip.is_global or ip.is_multicast or (ip.version == 6 and ip in NAT64):

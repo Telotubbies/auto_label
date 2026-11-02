@@ -86,6 +86,19 @@ Kaggle ต้องเปิด Settings → Internet: On ด้วย worker �
 
 ---
 
+## Live streams (egress)
+
+กล้อง/ไฟล์วิดีโอที่เพิ่มในหน้า Streams ถูกดึงจาก **ตัว API เอง** ไม่ใช่จากเบราว์เซอร์:
+
+- รับเฉพาะ `rtsp`, `rtsps`, `http`, `https` หรือไฟล์ที่อัปโหลด (`file:videos/<name>`) เท่านั้น
+- ต้นทางต้อง resolve เป็น **public unicast** — ที่อยู่ private, loopback และ link-local จะถูกปฏิเสธ
+  (กล้องใน LAN ต้องมี reverse proxy/public URL หรืออัปโหลดเป็นไฟล์วิดีโอ)
+- HTTP(S) วิ่งผ่าน loopback guard ที่ pin IP และปฏิเสธ redirect ไปยังเครือข่ายภายใน
+  ส่วน RTSP ถูกต่อด้วย IP ที่ตรวจแล้วโดยตรง เพื่อปิดช่อง DNS rebinding
+- เปิด egress จาก container `api` ไปยัง port ของกล้องเท่าที่จำเป็น; ไม่ต้องเปิด ingress เพิ่ม
+
+---
+
 ## หมุน LD_SECRET (secret rotation)
 
 `LD_SECRET` เข้ารหัส connector credentials และ webhook signing secrets ที่เก็บใน DB

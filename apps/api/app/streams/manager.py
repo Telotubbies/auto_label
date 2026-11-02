@@ -18,7 +18,7 @@ import re
 import threading
 import time
 from collections import deque
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import cv2
 import numpy as np
@@ -30,15 +30,19 @@ from ..db import session_scope
 from ..gpu import GpuBusy
 from ..models import Project, Stream, StreamEvent, new_id
 from ..services import metering
-from ..services.safefetch import _public_ip
+from ..services.safefetch import UnresolvableHost, _public_ip
 from .creds import open_source
 from .event_fields import filter_fields
+from .guard import GuardedMediaProxy
 from .rules import Engine
 
 log = logging.getLogger("labeldesk.streams")
 
 # UDP loses H.264 slices under load; TCP plus a finite socket timeout keeps reconnects bounded.
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;3000000")
+# `follow_redirects;0` is defence in depth on OpenCV builds that honour the environment (4.12+);
+# the loopback guard below is what enforces it for HTTP(S) on every build.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS",
+                      "rtsp_transport;tcp|stimeout;3000000|follow_redirects;0")
 
 _MAX_BACKOFF = 30
 _FILE_FAILURES = 3             # consecutive open/read failures on a local file -> fatal, not endless retry
@@ -60,13 +64,18 @@ def display_source(source: str) -> str:
 ALLOWED_SCHEMES = ("rtsp", "rtsps", "http", "https")
 
 
-def check_source(source: str) -> str:
+class SourceTransient(ValueError):
+    """The source host could not be resolved; the worker should retry, not fail."""
+
+
+def canonical_source(source: str) -> str:
     """Allowlist every string that may reach OpenCV/FFmpeg (PM ruling, 2026-11-02).
 
     Remote sources must be rtsp/rtsps/http/https with a host; local files are limited to a flat
     name under the uploaded `videos/` folder. FFmpeg accepts far more protocols (concat:, data:,
     subfile:, …), so this runs in the router *and* again in the worker before `VideoCapture`.
-    Returns the canonical source (lower-case scheme, canonical file prefix).
+    Returns the canonical source (lower-case scheme, canonical file prefix). No DNS here: the
+    worker must be able to create its row even when the camera is briefly unresolvable.
     """
     if not isinstance(source, str):
         raise ValueError("invalid source")
@@ -92,13 +101,43 @@ def check_source(source: str) -> str:
         raise ValueError("invalid source: use rtsp, rtsps, http, https or an uploaded video")
     if not parts.netloc:
         raise ValueError("invalid source: the URL needs a host")
-    # SSRF: FFmpeg/OpenCV would connect with the API host's own network position. Resolve the
-    # host on every validation (create, update and each reconnect) and refuse non-public unicast.
+    return scheme + s[len(parts.scheme):]
+
+
+def resolve_source(source: str) -> tuple[str, str]:
+    """Canonicalise and resolve a remote source; returns ``(canonical, vetted IP)``.
+
+    The IP is pinned by the caller (loopback guard for HTTP(S), URL rewrite for RTSP) so
+    libavformat cannot re-resolve the name into the internal network. A resolver failure is
+    ``SourceTransient``; a resolved private/loopback/link-local address stays a hard ValueError.
+    """
+    s = canonical_source(source)
+    if s.startswith("file:"):
+        return s, ""
+    parts = urlsplit(s)
+    scheme = parts.scheme.lower()
     try:
-        _public_ip(parts.hostname, parts.port or _DEFAULT_PORTS[scheme])
+        ip = _public_ip(parts.hostname, parts.port or _DEFAULT_PORTS[scheme])
+    except UnresolvableHost as e:
+        raise SourceTransient(f"cannot resolve {parts.hostname}") from e
     except ValueError as e:
         raise ValueError(f"invalid source: {e}") from e
-    return scheme + s[len(parts.scheme):]
+    return s, ip
+
+
+def check_source(source: str) -> str:
+    """Validate a source for the router and the worker; returns the canonical string."""
+    return resolve_source(source)[0]
+
+
+def pinned_url(source: str, ip: str) -> str:
+    """Rewrite an RTSP authority to the vetted IP literal (no DNS left for FFmpeg to redo)."""
+    parts = urlsplit(source)
+    host = f"[{ip}]" if ":" in ip else ip
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    if "@" in parts.netloc:
+        netloc = parts.netloc.rpartition("@")[0] + "@" + netloc
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 def rule_label(rule: dict, index: int) -> str:
@@ -176,10 +215,18 @@ class _Worker:
         # status text, logs) must see the real URL, never `enc:v1:...`.
         self._source_error = ""
         try:
-            self.source = open_source(row.source)
+            raw_source = open_source(row.source)
         except ValueError:
-            self.source = ""
+            raw_source = ""
             self._source_error = "stream credentials cannot be decrypted"
+        if not self._source_error:
+            try:
+                self.source = canonical_source(raw_source)
+            except ValueError as e:
+                self.source = ""
+                self._source_error = str(e)
+        else:
+            self.source = ""
         self.model_ref = row.model_ref
         self.sample_fps = min(30.0, max(0.5, float(row.sample_fps or 5.0)))
         self.zones = list(row.zones or [])
@@ -205,6 +252,8 @@ class _Worker:
         self._fps_times: deque[float] = deque()
         self._threads: list[threading.Thread] = []
         self._metered_until = time.time()
+        self._active_proxy: GuardedMediaProxy | None = None
+        self._open_error = ""
 
     # ---- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -244,6 +293,7 @@ class _Worker:
         for t in reversed(self._threads):      # processor leaves first, the grabber may be in a read timeout
             t.join(2.0)
         self._threads.clear()
+        self._close_proxy()
         self._meter()
 
     # ---- metering ----------------------------------------------------------
@@ -335,15 +385,52 @@ class _Worker:
         path = (DATA_DIR / rel).resolve()
         return path if base in path.parents else None
 
+    def _close_proxy(self) -> None:
+        proxy, self._active_proxy = self._active_proxy, None
+        if proxy is not None:
+            proxy.stop()
+
     def _open(self):
-        source = check_source(self.source)     # second gate: nothing unlisted reaches FFmpeg
+        self._open_error = ""
+        self._close_proxy()
+        source, ip = resolve_source(self.source)   # second gate: nothing unlisted reaches FFmpeg
+        self.source = source
         if source.startswith("file:"):
             path = self._file_path()
             if path is None:
                 return None
             cap = cv2.VideoCapture(str(path))
         else:
-            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG,
+            parts = urlsplit(source)
+            if parts.scheme in ("http", "https"):
+                # libavformat resolves the host itself and follows redirects; hand it a
+                # loopback guard that pins every hop and refuses non-public redirect targets.
+                proxy = GuardedMediaProxy(source, ip=ip)
+                try:
+                    url = proxy.start()
+                except OSError as e:
+                    raise SourceTransient(f"cannot open source: {display_source(source)}") from e
+                self._active_proxy = proxy
+                try:
+                    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG,
+                                           [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
+                                            cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
+                except Exception:
+                    self._close_proxy()
+                    raise
+                if not cap.isOpened():
+                    cap.release()
+                    reason, transient = proxy.error, proxy.transient
+                    self._close_proxy()
+                    if reason and not transient:
+                        raise ValueError(f"invalid source: {reason}")
+                    self._open_error = reason or f"cannot open source: {display_source(source)}"
+                    return None
+                return cap
+            # RTSP has no proxy support in libavformat: pin the vetted IP so re-resolution
+            # cannot rebind. TLS keeps the hostname so certificate validation still applies.
+            target = source if parts.scheme == "rtsps" else pinned_url(source, ip)
+            cap = cv2.VideoCapture(target, cv2.CAP_FFMPEG,
                                    [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
                                     cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
         if not cap.isOpened():
@@ -379,11 +466,6 @@ class _Worker:
         return f"video file not found: {path.name if path is not None else display_source(self.source)}"
 
     def _grab(self) -> None:
-        try:
-            self.source = check_source(self.source)
-        except ValueError as e:
-            self._fail(str(e))
-            return
         missing = self._missing_file()
         if missing:
             self._fail(missing)
@@ -398,13 +480,25 @@ class _Worker:
                 self._fail(missing)
                 return
             self._reopen.clear()
-            cap = self._open()
+            try:
+                cap = self._open()
+            except SourceTransient as e:
+                # A DNS hiccup is not a camera fault: back off and retry, like any lost source.
+                self._set("reconnecting", display_source(str(e)))
+                if self._stop.wait(backoff):
+                    return
+                backoff = min(backoff * 2, _MAX_BACKOFF)
+                continue
+            except ValueError as e:
+                self._fail(str(e))              # an allowlist/policy rejection is fatal
+                return
             if cap is None:
                 failures += 1
                 if self._is_file and failures >= _FILE_FAILURES:
                     self._fail(f"cannot open video file: {display_source(self.source)}")
                     return
-                self._set("reconnecting", f"cannot open source: {display_source(self.source)}")
+                self._set("reconnecting", self._open_error
+                          or f"cannot open source: {display_source(self.source)}")
                 if self._stop.wait(backoff):
                     return
                 backoff = min(backoff * 2, _MAX_BACKOFF)
@@ -459,6 +553,8 @@ class _Worker:
                     cap.release()
                 except Exception:
                     log.exception("stream %s: capture release failed", self.id)
+                finally:
+                    self._close_proxy()
             if self._stop.is_set():
                 return
             if read_failed:
