@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
+from .. import rbac
 from ..models import (
     ConsensusAssignment,
     ConsensusJob,
@@ -26,8 +27,6 @@ from ..models import (
     User,
     now,
 )
-
-ROLES = ("annotator", "reviewer", "admin")
 
 
 def _accepted(img: Image) -> bool:
@@ -135,10 +134,14 @@ def statistics(db, *, workspace_id: str, project_id: str, days: int = 30,
               "review_queue": int(review_count or 0)}
 
     members_q = select(Member, User).join(User, User.id == Member.user_id).where(
-        Member.workspace_id == workspace_id, Member.role.in_(ROLES))
+        Member.workspace_id == workspace_id)
     if only_user:
         members_q = members_q.where(Member.user_id == only_user)
-    members = db.execute(members_q.order_by(Member.created, Member.user_id)).all()
+    # I5: a legacy `annotator`/`reviewer` filter hid every new-style (workspace `member`) labeler.
+    # The effective project role is the only thing that says who can label this project.
+    annotators = set(rbac.project_permission_holders(db, workspace_id, project_id, "project.annotate"))
+    members = [(m, u) for m, u in db.execute(members_q.order_by(Member.created, Member.user_id)).all()
+               if u.id in annotators]
     user_ids = [user.id for _, user in members]
 
     reviews: dict[str, tuple[int, int]] = {}

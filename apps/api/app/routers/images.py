@@ -51,6 +51,11 @@ def image_out(i: Image, full: bool = False, class_ids: list[str] | None = None) 
     return out
 
 
+def _labeler(c: Ctx) -> bool:
+    """A project labeler, i.e. the effective project role — never the legacy Member.role (I4)."""
+    return c.project_role == "labeler"
+
+
 def _assigned(c: Ctx, img: Image) -> tuple[Ctx, Image]:
     """Labelers may only touch images assigned to them; reviewers/admins see everything.
 
@@ -204,10 +209,10 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         s = s.where(Image.id.in_(selected_ids))
     # Annotators must not learn which images are honeypots through counts, filters or ordering:
     # their effective annotation count is 0 everywhere, matching the blanked payload.
-    is_annotator = c.role == "annotator"
+    is_labeler = _labeler(c)
     honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
     n_ann = (case((Image.id.in_(honeypot_ids), 0), else_=Image.n_annotations)
-             if is_annotator else Image.n_annotations)
+             if is_labeler else Image.n_annotations)
     if q:
         s = s.where(Image.name.ilike(f"%{q.replace('%', '').replace('_', '')}%"))
     if split:
@@ -230,7 +235,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
             raise HTTPException(400, "bad quality") from None
     if class_id:
         s = s.where(exists().where(ImageClass.image_id == Image.id, ImageClass.class_id == class_id))
-        if is_annotator:
+        if is_labeler:
             s = s.where(Image.id.not_in(honeypot_ids))     # the class index would name the answer key
     if tag:
         # tags is a JSON list; match the quoted element in its text form (portable sqlite/postgres)
@@ -256,7 +261,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         conf = float((c.project.settings or {}).get("autolabel_conf", 0.4))
         rows = c.db.scalars(s.order_by(Image.created.desc(), Image.id).limit(2000)).all()
         hidden_rows = (set(c.db.scalars(select(Honeypot.image_id).where(
-            Honeypot.image_id.in_([r.id for r in rows])))) if is_annotator and rows else set())
+            Honeypot.image_id.in_([r.id for r in rows])))) if is_labeler and rows else set())
 
         def rank(img):
             anns = [] if img.id in hidden_rows else (img.annotations or [])
@@ -279,7 +284,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
             by_img.setdefault(iid, []).append(cid)
     # a honeypot row would otherwise leak its answer key through counts and AI-review flags
     hidden = set()
-    if is_annotator and rows:
+    if is_labeler and rows:
         hidden = set(c.db.scalars(select(Honeypot.image_id).where(
             Honeypot.image_id.in_([r.id for r in rows]))))
     items = []
@@ -359,7 +364,7 @@ def board(c: Ctx = Depends(project_ctx)):
     honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
     # the "annotated" badge must not count a honeypot's hidden answer key for annotators
     known = (case((and_(Image.n_annotations > 0, Image.id.not_in(honeypot_ids)), 1), else_=0)
-             if c.role == "annotator" else case((Image.n_annotations > 0, 1), else_=0))
+             if _labeler(c) else case((Image.n_annotations > 0, 1), else_=0))
     s = _visible(select(Image.batch_id, Image.assignee_id, Image.status, func.count(),
                         func.sum(known)).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
     rows = c.db.execute(s.group_by(Image.batch_id, Image.assignee_id, Image.status)).all()
@@ -400,7 +405,7 @@ def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
         s = s.where(Image.assignee_id == (body.assignee_id or None))
     if body.only_annotated:
         n_ann = Image.n_annotations
-        if c.role == "annotator":
+        if _labeler(c):
             honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
             n_ann = case((Image.id.in_(honeypot_ids), 0), else_=Image.n_annotations)
         s = s.where(n_ann > 0)
@@ -429,7 +434,7 @@ def _image_with_annotations(c: Ctx, img: Image) -> dict:
     hide_key = False
     if assignment is not None:                  # consensus drafts stay private until the job is merged
         anns, job_id = list(assignment.annotations or []), assignment.job_id
-    elif c.role == "annotator" and labeling_ops.honeypot_for_image(c.db, img.id) is not None:
+    elif _labeler(c) and labeling_ops.honeypot_for_image(c.db, img.id) is not None:
         # the answer key stays with reviewers; labelers are scored on an empty canvas, with no hint why
         anns, hide_key = [], True
     else:
@@ -542,7 +547,7 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
         labeling_ops.record_save(db, c.ws.id, img, u.id, before, checked, assignment)
         db.commit()
         return {"saved": len(checked), "status": "consensus", "jobId": assignment.job_id}
-    if c.role == "annotator":
+    if _labeler(c):
         # A rejected merge goes back to the labeler (status "annotating"); any other state is frozen.
         if (labeling_ops.merged_assignment_for(db, img.id, u.id) is not None
                 and img.status != "annotating"):
@@ -671,7 +676,7 @@ MAX_SUGGEST_CLASSES = 24       # one VLM round-trip per class; keep a single cli
 @router.post("/api/images/{image_id}/suggest-class")
 def suggest_class(image_id: str, body: SuggestIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     c, img = _assigned(*image_ctx(db, u, image_id))
-    if c.role == "annotator" and labeling_ops.honeypot_for_image(db, img.id) is not None:
+    if _labeler(c) and labeling_ops.honeypot_for_image(db, img.id) is not None:
         # no oracle: the labeler cannot see the key, so they cannot ask the VLM about a hidden annotation
         raise HTTPException(404, "annotation not found")
     ann = next((a for a in img.annotations or [] if a.get("id") == body.annotation_id), None)

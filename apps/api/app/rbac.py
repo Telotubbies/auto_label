@@ -5,7 +5,9 @@ project roles describe what they may do inside one project. Legacy Member rows s
 ``admin``/``reviewer``/``annotator`` and are mapped here, never rewritten in the database.
 Custom roles are grant-only permission bundles unioned on top of the base role.
 """
-from .models import WORKSPACE_ROLES
+from sqlalchemy import select
+
+from .models import WORKSPACE_ROLES, CustomRole, Member, ProjectMember, Workspace
 
 Level = str
 
@@ -84,6 +86,47 @@ def base_project_role(raw: str, ws_role: str) -> str:
     if ws_role == "billing":
         return "viewer"
     return "labeler"
+
+
+def effective_project_role(raw: str, ws_role: str, project_role: str | None) -> str:
+    """The role the API will act with: an explicit project row, else the inherited base.
+
+    Workspace owners/admins always stay managers in every project, matching ``apply_project_role``.
+    """
+    if ws_role in ("owner", "admin"):
+        return "manager"
+    return project_role or base_project_role(raw, ws_role)
+
+
+def custom_permissions(db, role_id: str | None, level: str) -> tuple[str, ...]:
+    """A custom role's grants, ignoring stale ids and level mismatches."""
+    if not role_id:
+        return ()
+    row = db.get(CustomRole, role_id)
+    if not row or row.level != level:
+        return ()
+    return tuple(row.permissions or ())
+
+
+def project_permission_holders(db, workspace_id: str, project_id: str, perm: str) -> list[str]:
+    """User ids of workspace members whose effective project role grants ``perm``.
+
+    The result keeps ``Member.created``/``user_id`` order so round-robin assignment stays stable.
+    """
+    ws = db.get(Workspace, workspace_id)
+    explicit = {user_id: (role, custom_role_id) for user_id, role, custom_role_id in db.execute(
+        select(ProjectMember.user_id, ProjectMember.role, ProjectMember.custom_role_id)
+        .where(ProjectMember.project_id == project_id))}
+    out: list[str] = []
+    for member in db.scalars(select(Member).where(Member.workspace_id == workspace_id)
+                             .order_by(Member.created, Member.user_id)):
+        ws_role = workspace_role(member.role, bool(ws) and ws.owner_id == member.user_id)
+        row = explicit.get(member.user_id)
+        role = effective_project_role(member.role, ws_role, row[0] if row else None)
+        if has(perm, ws_role, role, custom_permissions(db, member.custom_role_id, "workspace"),
+               custom_permissions(db, row[1], "project") if row else ()):
+            out.append(member.user_id)
+    return out
 
 
 def permissions_for(ws_role: str, project_role: str | None = None, ws_custom: tuple[str, ...] = (),

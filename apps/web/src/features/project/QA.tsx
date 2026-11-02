@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useApp } from '@/lib/store'
 import { PageHeader, Tabs } from '@/components/ui'
+import { useProjectPermissions } from '@/lib/perms'
 import { useProject } from './ProjectLayout'
 import Workforce from './qa/Workforce'
 import ReviewQueue from './qa/ReviewQueue'
@@ -9,9 +9,10 @@ import Honeypots from './qa/Honeypots'
 
 export default function QA() {
   const { project, ws } = useProject()
-  const can = useApp((s) => s.can)
+  const { can } = useProjectPermissions(ws, project.slug)
   const [tab, setTab] = useState('workforce')
-  const tabs = can('reviewer')
+  // Review-backed tabs follow the effective project role, not the workspace rank (I5).
+  const tabs = can('project.review')
     ? [
         { id: 'workforce', label: 'Workforce' },
         { id: 'review', label: 'Review queue' },

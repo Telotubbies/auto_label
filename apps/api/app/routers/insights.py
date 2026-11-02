@@ -104,6 +104,8 @@ def version_diff(base: str = Query(...), target: str = Query(...), c: Ctx = Depe
 
 @router.get("/labeling")
 def labeling(c: Ctx = Depends(project_ctx)):
+    # per-labeler throughput and acceptance: project-wide reads need review rights (I5)
+    c.perm("project.review")
     return insights.labeling(c.db, c.project)
 
 

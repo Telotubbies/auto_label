@@ -26,7 +26,6 @@ router = APIRouter(prefix=P, tags=["streams"])
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 TOKEN_TTL = 12 * 3600
 _MODEL_MSG = "stream model must be ultralytics:*, trained:* or tensorrt:*"
-_MODEL_FAMILIES = ("ultralytics", "trained", "tensorrt")
 _RULE_KINDS = {"count", "zone", "line", "dwell", "vlm"}
 _OPS = {">=", ">", "<=", "<", "=="}
 
@@ -182,16 +181,12 @@ def check_model(c: Ctx, ref: str) -> str:
     if not isinstance(ref, str) or ":" not in ref:
         raise HTTPException(400, _MODEL_MSG)
     ref = ref.strip()[:255]
-    family = ref.partition(":")[0]
-    if family not in _MODEL_FAMILIES:
+    try:
+        resolved = resolve(ref, c.db, workspace_id=c.ws.id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if resolved.adapter.family not in ("ultralytics", "tensorrt"):
         raise HTTPException(400, _MODEL_MSG)
-    if family == "trained":
-        try:
-            resolved = resolve(ref, c.db, workspace_id=c.ws.id)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
-        if resolved.adapter.family != "ultralytics":
-            raise HTTPException(400, _MODEL_MSG)
     return ref
 
 

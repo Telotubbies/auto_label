@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, fileUrl } from '@/lib/api'
+import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { LabelerStat } from '@/lib/types'
 import { Card, EmptyState, Stat, fmtDate } from '@/components/ui'
@@ -160,13 +161,14 @@ function MyTasks({ ws, slug }: { ws: string; slug: string }) {
 
 export default function Workforce({ ws, slug }: { ws: string; slug: string }) {
   const me = useApp((s) => s.me)
-  const can = useApp((s) => s.can)
+  const { can } = useProjectPermissions(ws, slug)
+  const canReview = can('project.review')
   const q = useQuery({ queryKey: ['labeling-dashboard', ws, slug], queryFn: () => api.labelingDashboard(ws, slug) })
   if (q.isLoading) return <Loading />
   if (q.isError) return <ErrorNote error={q.error} />
   const d = q.data!
   // Annotators get their own row only; reviewers see the whole team.
-  const rows = can('reviewer') ? d.labelers : d.labelers.filter((l) => l.user_id === me?.id)
+  const rows = canReview ? d.labelers : d.labelers.filter((l) => l.user_id === me?.id)
 
   return (
     <div className="space-y-4">
@@ -183,7 +185,7 @@ export default function Workforce({ ws, slug }: { ws: string; slug: string }) {
 
       <section aria-labelledby="labelers-heading" className="space-y-2">
         <SectionTitle id="labelers-heading" title="Labelers"
-          desc={can('reviewer') ? 'Throughput and quality across everyone who labeled in this window.' : 'Your throughput and quality in this window.'} />
+          desc={canReview ? 'Throughput and quality across everyone who labeled in this window.' : 'Your throughput and quality in this window.'} />
         {rows.length ? <LabelerTable rows={rows} /> : (
           <Card className="p-4"><EmptyState title="No labeling activity yet." hint="Numbers appear once images are labeled or reviewed." /></Card>
         )}
