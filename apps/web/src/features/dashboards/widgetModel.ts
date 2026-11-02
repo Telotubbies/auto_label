@@ -327,7 +327,9 @@ export function validateWidgetDraft(spec: WidgetSpec): string[] {
     errors.push(`${spec.source} does not support the "${spec.dimension}" dimension.`)
   }
   if (spec.dimension2) {
-    if (!DIMENSIONS[spec.source]?.includes(spec.dimension2)) {
+    if (spec.source === 'model') {
+      errors.push('The model source has no second dimension.')
+    } else if (!DIMENSIONS[spec.source]?.includes(spec.dimension2)) {
       errors.push(`The second dimension "${spec.dimension2}" does not belong to ${spec.source}.`)
     } else if (spec.dimension2 === spec.dimension) {
       errors.push('The second heatmap dimension must differ from the first.')

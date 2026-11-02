@@ -536,6 +536,21 @@ def test_query_model_kpi_respects_the_class_filter(c, data):
     assert table["total"] == pytest.approx(0.5)
 
 
+def test_query_model_rejects_a_second_heatmap_dimension(c, data):
+    """The stored evaluation has one dimension; a heatmap would silently drop the second."""
+    for dimension, dimension2 in (("none", "class"), ("class", "none")):
+        response = query(
+            c,
+            source="model",
+            measure="ap",
+            dimension=dimension,
+            dimension2=dimension2,
+            filters={"model": data["model"]},
+        )
+        assert response.status_code == 400, (dimension, dimension2, response.text)
+        assert response.json()["detail"] == "the model source has no second dimension"
+
+
 def test_query_model_without_an_evaluation_is_not_a_zero_ap(c, data):
     """A queued or failed model has unknown AP; a real-looking 0.0 is a different claim."""
     with SessionLocal() as db:

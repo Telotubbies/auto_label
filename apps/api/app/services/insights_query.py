@@ -65,6 +65,9 @@ def validate(spec: dict) -> dict:
     if dimension not in DIMENSIONS[source]:
         raise ValueError(f"{source} supports dimensions {list(DIMENSIONS[source])}")
     dimension2 = spec.get("dimension2") or None
+    if source == "model" and dimension2 is not None:
+        # A stored evaluation is one-dimensional; accepting a second dimension would silently drop it.
+        raise ValueError("the model source has no second dimension")
     if dimension2 is not None and dimension2 not in DIMENSIONS[source]:
         raise ValueError(f"{source} supports dimensions {list(DIMENSIONS[source])}")
     if dimension2 == dimension:

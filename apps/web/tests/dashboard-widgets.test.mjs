@@ -205,6 +205,14 @@ test('validateWidgetDraft catches the cases the API would reject', () => {
   assert.match(validateWidgetDraft(spec({ source: 'dataset', measure: 'ap' }))[0], /measure/i)
 })
 
+test('a model widget rejects a second heatmap dimension instead of dropping it', () => {
+  const draft = spec({
+    source: 'model', measure: 'ap', dimension: 'none', dimension2: 'class',
+    chart: 'heatmap', filters: { model: 'm1' },
+  })
+  assert.match(validateWidgetDraft(draft)[0], /no second dimension/i)
+})
+
 test('moveWidget reorders without mutating and clamps at both ends', () => {
   const list = [spec({ id: 'a' }), spec({ id: 'b' }), spec({ id: 'c' })]
   assert.deepEqual(moveWidget(list, 2, -1).map((w) => w.id), ['a', 'c', 'b'])
