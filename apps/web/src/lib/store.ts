@@ -9,6 +9,8 @@ interface Session {
   authed: boolean
   me: Me | null
   role: Role | null              // role in the workspace currently open
+  /** Platform operator (not a workspace role). Drives the /:ws/admin console entry. */
+  superadmin: boolean
   collapsed: boolean
   setMe: (me: Me | null) => void
   setRole: (r: Role | null) => void
@@ -39,9 +41,10 @@ export const useApp = create<Session>((set, get) => {
     authed: !!tokens.access,
     me: null,
     role: null,
+    superadmin: false,
     // narrow screens start with the icon rail so the project page keeps usable width
     collapsed: typeof window !== 'undefined' && window.innerWidth < 900,
-    setMe: (me) => set({ me }),
+    setMe: (me) => set({ me, superadmin: !!me?.superadmin }),
     setRole: (role) => set({ role }),
     signIn: async (path, body) => {
       const d = await authRequest(path, body)
@@ -56,13 +59,14 @@ export const useApp = create<Session>((set, get) => {
       const rt = tokens.refresh
       if (rt) fetch(`${API_ORIGIN}/api/auth/logout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) }).catch(() => {})
       tokens.clear()
-      set({ authed: false, me: null, role: null })
+      set({ authed: false, me: null, role: null, superadmin: false })
     },
-    // admin > reviewer > annotator — `can('reviewer')` means "reviewer or higher"
+    // owner > admin > billing > member; legacy reviewer/annotator keep their old ranks.
+    // `can('admin')` still means "admin or higher" (owner included).
     can: (...roles) => {
       const r = get().role
       if (!r) return false
-      const rank = { annotator: 1, reviewer: 2, admin: 3 }
+      const rank: Record<Role, number> = { owner: 4, admin: 3, billing: 2, member: 1, reviewer: 2, annotator: 1 }
       return roles.some((x) => rank[r] >= rank[x])
     },
     toggleSidebar: () => set((s) => ({ collapsed: !s.collapsed })),

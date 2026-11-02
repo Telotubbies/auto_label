@@ -131,6 +131,12 @@ def _claim():
 def _set(jid: str, **kw):
     with SessionLocal() as db:
         db.execute(update(Job).where(Job.id == jid).values(**kw)); db.commit()
+    try:                                          # long jobs keep the admin console green
+        from .services import heartbeat
+        done = kw.get("status") in ("done", "failed", "cancelled")
+        heartbeat.beat(LOCAL_JOB_KINDS, current_job=None if done else jid)
+    except Exception:                             # a heartbeat failure must never fail a job
+        log.exception("worker heartbeat failed")
 
 
 def _cancelled(jid: str) -> bool:
@@ -387,12 +393,17 @@ def run_insights_embedding(job: Job):
             return insights_jobs.scan_embedding(db, project)
         finally:
             insights_embedding.release_clip()                # CLIP never outlives the scan
+def run_retention(job: Job):
+    """PDPA cleanup. Imported lazily so the worker starts even on a build without the privacy extra."""
+    from .services.retention import run_retention as cleanup
+    return cleanup(job)
 
 
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
             "train": run_train, "autolabel": run_autolabel, "health": run_health,
-            "connector_sync": connectors.sync_job, "insights_images": run_insights_images,
-            "insights_leakage": run_insights_leakage, "insights_embedding": run_insights_embedding}
+            "connector_sync": connectors.sync_job, "retention": run_retention,
+            "insights_images": run_insights_images, "insights_leakage": run_insights_leakage,
+            "insights_embedding": run_insights_embedding}
 
 
 def _notify(job: Job, status: str, error: str = ""):
@@ -433,12 +444,27 @@ def recover():
 
 
 def loop(stop: threading.Event | None = None):
+    from .config import RETENTION_CHECK_S
+    from .services import heartbeat, retention
     recover()
+    heartbeat.beat(LOCAL_JOB_KINDS)
+    next_cleanup = 0.0
     while not (stop and stop.is_set()):
+        if time.monotonic() >= next_cleanup:
+            try:
+                retention.enqueue_if_due()
+            except Exception:                    # a broken retention pass must not stop every job
+                log.exception("could not enqueue the retention job")
+            next_cleanup = time.monotonic() + RETENTION_CHECK_S
         jid = _claim()
         if jid:
-            run_one(jid)
+            heartbeat.beat(LOCAL_JOB_KINDS, current_job=jid)
+            try:
+                run_one(jid)
+            finally:
+                heartbeat.beat(LOCAL_JOB_KINDS)
         else:
+            heartbeat.beat(LOCAL_JOB_KINDS)
             time.sleep(POLL)
 
 

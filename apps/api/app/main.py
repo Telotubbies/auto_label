@@ -13,9 +13,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
-from .routers import (auth, connectors, devapi, devmail, images, insights, insights_models, playground, projects,
+from .routers import (admin, audit, auth, connectors, devapi, devmail, images, insights, insights_models, playground,
+                      privacy, projects, rbac,
                       registry, remote, training, versions, webhooks, workspaces)
 from .security import check_signature
+from .services.streamaudit import StreamViewAuditMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -60,10 +62,12 @@ async def security_headers(request, call_next):
 
 
 for r in (auth, workspaces, projects, images, versions, devapi, training, remote, registry, playground, connectors,
-          webhooks, insights, insights_models):
+          webhooks, insights, insights_models, rbac, privacy, admin, audit):
     app.include_router(r.router)
 app.include_router(registry.gpu_router)
 app.include_router(devmail.router)
+# PDPA: every request for stream footage lands in the audit log (signed URLs carry no session cookie).
+app.add_middleware(StreamViewAuditMiddleware)
 
 
 @app.get("/api/health")

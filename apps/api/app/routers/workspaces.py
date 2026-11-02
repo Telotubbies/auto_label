@@ -1,23 +1,24 @@
 """Workspace-level: settings, members, invites, API keys, usage, audit, folders, trash."""
-import os
 import shutil
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..apikeys import scopes_of
 from ..config import DATA_DIR, PLANS, PUBLIC_URL
 from ..deps import Ctx, audit, credits_left, plan, ws_ctx
-from ..models import (API_SCOPES, ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project, TrainedModel,
-                      User, Workspace)
+from ..models import (API_SCOPES, ROLES, WORKSPACE_ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project,
+                      ProjectMember, TrainedModel, User, Workspace)
 from ..security import new_api_key
+from ..superadmin import is_superadmin
 from .. import mailer
 
 router = APIRouter(prefix="/api/ws/{ws}", tags=["workspace"])
-SUPERADMINS = {e.strip().lower() for e in os.environ.get("LD_SUPERADMINS", "").split(",") if e.strip()}
+# Roles an admin may hand out. Ownership is separate: it only moves through a transfer flow.
+ASSIGNABLE = tuple(WORKSPACE_ROLES) + ROLES
 
 
 def usage(db: Session, ws: Workspace) -> dict:
@@ -52,7 +53,7 @@ def patch_ws(body: WsPatch, c: Ctx = Depends(ws_ctx)):
         c.ws.name = body.name.strip()
     if body.plan:
         # no billing provider wired: plan changes are a platform-operator action
-        if c.user.email.lower() not in SUPERADMINS:
+        if not is_superadmin(c.user):
             raise HTTPException(403, "plan changes are handled by the platform operator (LD_SUPERADMINS)")
         if body.plan not in PLANS:
             raise HTTPException(400, "unknown plan")
@@ -91,6 +92,7 @@ def members(c: Ctx = Depends(ws_ctx)):
         if c.role == "admin" else []
     return {
         "members": [{"id": m.user_id, "name": m.user.name, "email": m.user.email, "role": m.role,
+                     "custom_role_id": m.custom_role_id,
                      "owner": m.user_id == c.ws.owner_id, "joined": m.created} for m in rows],
         "invites": [{"token": i.token, "email": i.email, "role": i.role, "created": i.created,
                      "link": f"{PUBLIC_URL}/invite/{i.token}"} for i in invites],
@@ -105,8 +107,10 @@ class InviteIn(BaseModel):
 @router.post("/invites")
 def invite(body: InviteIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
-    if body.role not in ROLES:
-        raise HTTPException(400, f"role must be one of {ROLES}")
+    if body.role == "owner":
+        raise HTTPException(400, "ownership transfers are not supported")
+    if body.role not in ASSIGNABLE:
+        raise HTTPException(400, f"role must be one of {ASSIGNABLE}")
     pending = c.db.scalar(select(func.count()).where(Invite.workspace_id == c.ws.id, Invite.accepted.is_(False)))
     if usage(c.db, c.ws)["seats"] + pending >= plan(c.ws)["seats"]:
         raise HTTPException(402, f"seat limit reached on the {plan(c.ws)['label']} plan")
@@ -142,8 +146,10 @@ class RoleIn(BaseModel):
 @router.patch("/members/{uid}")
 def set_role(uid: str, body: RoleIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
-    if body.role not in ROLES:
-        raise HTTPException(400, f"role must be one of {ROLES}")
+    if body.role == "owner":
+        raise HTTPException(400, "ownership transfers are not supported")
+    if body.role not in ASSIGNABLE:
+        raise HTTPException(400, f"role must be one of {ASSIGNABLE}")
     if uid == c.ws.owner_id:
         raise HTTPException(400, "the workspace owner is always an admin")
     m = c.db.get(Member, (c.ws.id, uid))
@@ -169,7 +175,11 @@ def remove_member(uid: str, c: Ctx = Depends(ws_ctx)):
     pids = select(Project.id).where(Project.workspace_id == c.ws.id)
     for img in c.db.scalars(select(Image).where(Image.project_id.in_(pids), Image.assignee_id == uid)):
         img.assignee_id = None
-    audit(c.db, c.ws.id, c.user.id, "member.remove", email)
+    # No FK from project_members to members: revoke every project role explicitly, otherwise a later
+    # re-invite silently inherits the old project manager/reviewer row (I5).
+    revoked = c.db.execute(sa_delete(ProjectMember).where(ProjectMember.user_id == uid,
+                                                          ProjectMember.project_id.in_(pids))).rowcount or 0
+    audit(c.db, c.ws.id, c.user.id, "member.remove", email, projects=revoked)
     c.db.commit()
     return {"ok": True}
 
@@ -225,9 +235,29 @@ def revoke_key(kid: str, c: Ctx = Depends(ws_ctx)):
 # --- audit / activity ----------------------------------------------------------------
 
 @router.get("/audit")
-def audit_log(limit: int = 200, c: Ctx = Depends(ws_ctx)):
-    rows = c.db.execute(select(Audit, User.name).outerjoin(User, User.id == Audit.user_id)
-                        .where(Audit.workspace_id == c.ws.id).order_by(Audit.created.desc()).limit(min(limit, 1000))).all()
+def audit_log(action: str = "", user: str = "", since: float | None = None, until: float | None = None,
+              q: str = "", offset: int = 0, limit: int = 200, c: Ctx = Depends(ws_ctx)):
+    """Workspace audit trail. Filters are additive; `action` also matches its dotted prefix."""
+    c.perm("workspace.audit")
+    s = select(Audit, User.name).outerjoin(User, User.id == Audit.user_id).where(Audit.workspace_id == c.ws.id)
+    if action:
+        s = s.where(or_(Audit.action == action, Audit.action.like(f"{action}.%")))
+    if user:
+        needle = f"%{user.lower()}%"
+        cond = or_(func.lower(User.name).like(needle), func.lower(User.email).like(needle))
+        if user.lower() in ("api", "system"):
+            cond = or_(cond, Audit.user_id.is_(None))
+        s = s.where(cond)
+    if since is not None:
+        s = s.where(Audit.created >= since)
+    if until is not None:
+        s = s.where(Audit.created <= until)
+    if q:
+        needle = f"%{q.lower()}%"
+        s = s.where(or_(func.lower(Audit.target).like(needle),
+                        func.lower(cast(Audit.meta, Text)).like(needle)))
+    s = s.order_by(Audit.created.desc()).offset(max(offset, 0)).limit(min(max(limit, 1), 1000))
+    rows = c.db.execute(s).all()
     return [{"id": a.id, "action": a.action, "target": a.target, "meta": a.meta, "created": a.created,
              "user": name or ("API" if a.user_id is None else a.user_id)} for a, name in rows]
 

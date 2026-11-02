@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
 import { AppLayout } from '@/components/shell'
@@ -31,6 +32,9 @@ const Deploy = lazy(() => import('@/features/project/Deploy'))
 import ProjectSettings from '@/features/project/ProjectSettings'
 const Editor = lazy(() => import('@/features/editor/Editor'))
 const Playground = lazy(() => import('@/features/playground/Playground'))
+const AuditLog = lazy(() => import('@/features/governance/AuditLog'))
+const Dpa = lazy(() => import('@/features/governance/Dpa'))
+const AdminConsole = lazy(() => import('@/features/admin/AdminConsole'))
 
 function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
@@ -76,6 +80,24 @@ function Gate({ min, children }: { min: Role; children: React.ReactNode }) {
   return can(min) ? <>{children}</> : <Navigate to=".." replace />
 }
 
+/** Project routes gate on the effective project permission, not the workspace rank (I7). */
+function PermGate({ perm, children }: { perm: string; children: React.ReactNode }) {
+  const { ws = '', project = '' } = useParams()
+  const { can, ready } = useProjectPermissions(ws, project)
+  if (!project) return null
+  if (!ready) return <Loading />
+  return can(perm) ? <>{children}</> : <Navigate to=".." replace />
+}
+
+/** Platform operators only; the API enforces the same flag on /api/admin. */
+function SuperAdminGate({ children }: { children: React.ReactNode }) {
+  // Read the cached /me result directly: the store's superadmin flag is published in an effect,
+  // so a hard refresh on /:ws/admin would otherwise redirect before the flag arrives.
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
+  if (me.isLoading) return <Loading />
+  return me.data?.superadmin ? <>{children}</> : <Navigate to=".." replace />
+}
+
 export default function App() {
   const authed = useApp((s) => s.authed)
   if (!authed) {
@@ -113,22 +135,27 @@ export default function App() {
           <Route path="models" element={<WorkspaceModels />} />
           <Route path="deployments" element={<Deployments />} />
           <Route path="activity" element={<Activity />} />
+          <Route path="audit" element={<Gate min="admin"><AuditLog /></Gate>} />
+          <Route path="admin" element={<SuperAdminGate><AdminConsole /></SuperAdminGate>} />
+          <Route path="legal" element={<Navigate to="dpa" replace />} />
+          <Route path="legal/dpa" element={<Dpa />} />
           <Route path="playground" element={<Playground />} />
           <Route path="settings/*" element={<Settings />} />
           <Route path=":project" element={<ProjectLayout />}>
             <Route index element={<Navigate to="browse" replace />} />
-            <Route path="upload" element={<Gate min="reviewer"><Upload /></Gate>} />
+            <Route path="upload" element={<PermGate perm="project.upload"><Upload /></PermGate>} />
             <Route path="annotate" element={<AnnotateBoard />} />
             <Route path="browse" element={<Dataset />} />
-            <Route path="versions" element={<Gate min="reviewer"><Versions /></Gate>} />
-            <Route path="analytics" element={<Gate min="reviewer"><Analytics /></Gate>} />
-            <Route path="model-insights" element={<Gate min="reviewer"><ModelInsights /></Gate>} />
-            <Route path="classes" element={<Gate min="reviewer"><Classes /></Gate>} />
-            <Route path="train" element={<Gate min="admin"><Train /></Gate>} />
-            <Route path="models" element={<Gate min="reviewer"><Models /></Gate>} />
-            <Route path="insights" element={<Gate min="reviewer"><Insights /></Gate>} />
-            <Route path="deploy" element={<Gate min="reviewer"><Deploy /></Gate>} />
-            <Route path="settings" element={<Gate min="admin"><ProjectSettings /></Gate>} />
+            <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />
+            <Route path="analytics" element={<PermGate perm="project.review"><Analytics /></PermGate>} />
+            <Route path="insights" element={<PermGate perm="project.review"><Insights /></PermGate>} />
+            <Route path="model-insights" element={<PermGate perm="project.review"><ModelInsights /></PermGate>} />
+            <Route path="classes" element={<PermGate perm="project.classes"><Classes /></PermGate>} />
+            <Route path="train" element={<PermGate perm="project.train"><Train /></PermGate>} />
+            <Route path="models" element={<PermGate perm="project.models"><Models /></PermGate>} />
+            <Route path="deploy" element={<PermGate perm="project.models"><Deploy /></PermGate>} />
+            <Route path="settings" element={<ProjectSettings />} />
+            <Route path="access" element={<ProjectSettings initialTab="access" />} />
           </Route>
         </Route>
       </Route>

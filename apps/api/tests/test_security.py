@@ -162,3 +162,26 @@ def test_worker_endpoints_need_token():
     assert c.post("/api/worker/claim", json={}).status_code == 401
     assert c.post("/api/worker/claim", json={}, headers={"X-Worker-Token": "guess"}).status_code == 401
     assert c.post("/api/worker/jobs/x/complete", data={"result": "{}"}).status_code == 401
+
+
+def test_signed_paths_can_bind_a_viewer():
+    """I8: adding a viewer to the signature changes it; a viewer cannot be swapped on a signed URL."""
+    import time
+
+    from app.security import check_signature, sign_path, sign_query
+
+    url = sign_path("projects/p/images/a.jpg", viewer="user-1")
+    assert "viewer=user-1" in url
+    exp = int(url.split("exp=")[1].split("&")[0])
+    sig = url.split("sig=")[1].split("&")[0]
+    assert check_signature("projects/p/images/a.jpg", exp, sig, "user-1")
+    assert not check_signature("projects/p/images/a.jpg", exp, sig, "user-2")
+    assert not check_signature("projects/p/images/a.jpg", exp, sig)
+    assert exp > time.time()
+
+    qs = sign_query("ws/w/projects/p/streams/s/frame", viewer="user-1")
+    exp = int(qs.split("exp=")[1].split("&")[0])
+    sig = qs.split("sig=")[1].split("&")[0]
+    assert check_signature("ws/w/projects/p/streams/s/frame", exp, sig, "user-1")
+    assert "viewer=" not in sign_path("x.jpg")
+

@@ -1,10 +1,13 @@
-export type Role = 'admin' | 'reviewer' | 'annotator'
+/** Workspace roles. reviewer/annotator are legacy names still returned for older rows. */
+export type Role = 'owner' | 'admin' | 'billing' | 'member' | 'reviewer' | 'annotator'
+export type ProjectRole = 'manager' | 'reviewer' | 'labeler' | 'viewer'
+export type RoleLevel = 'workspace' | 'project'
 export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classification'
 export type Split = 'train' | 'valid' | 'test'
 export type Status = 'unassigned' | 'annotating' | 'review' | 'done'
 
 export interface WorkspaceRef { id: string; slug: string; name: string; role: Role; plan: string; plan_label: string; owner: boolean; mfa_required: boolean }
-export interface Me { id: string; email: string; name: string; email_verified: number | null; mfa_enabled: boolean; workspaces: WorkspaceRef[] }
+export interface Me { id: string; email: string; name: string; email_verified: number | null; mfa_enabled: boolean; superadmin: boolean; workspaces: WorkspaceRef[] }
 export interface SessionRow { id: string; created: number; last_seen: number; ip: string; user_agent: string }
 export interface LoginEvent { method: 'password' | 'mfa' | 'oidc'; ok: boolean; ip: string; user_agent: string; created: number }
 export interface MfaSetup { secret: string; otpauth: string; qr: string }
@@ -106,7 +109,7 @@ export interface LeaderboardRow {
 export interface TrainVariant { id: string; label: string; weights: string }
 export interface TrainFamily { family: string; label: string; adapter?: string; license: string; available: boolean; reason: string; variants: TrainVariant[] }
 export interface TrainOptions { supported: boolean; reason?: string; task?: string; families?: TrainFamily[] }
-export interface Member { id: string; name: string; email: string; role: Role; owner: boolean; joined: number }
+export interface Member { id: string; name: string; email: string; role: Role; owner: boolean; joined: number; custom_role_id?: string | null }
 
 export type LabelIssueKind = 'tiny' | 'out_of_bounds' | 'zero_area' | 'duplicate'
 
@@ -361,3 +364,123 @@ export interface CompareInsights {
   disagreement: CompareDisagreement[]
   cache: InsightsCache
 }
+// --- RBAC ---------------------------------------------------------------------
+
+export interface Permissions {
+  workspace_role: Role
+  project_role: ProjectRole | null
+  permissions: string[]
+  /** role name -> permission names; workspace and project scopes are separate. */
+  matrix: { workspace: Record<string, string[]>; project: Record<string, string[]> }
+  roles: ProjectRole[]
+  workspace_roles: Role[]
+}
+
+export interface CustomRole {
+  id: string; name: string; level: RoleLevel; permissions: string[]; created: number
+}
+
+export interface ProjectAccessMember {
+  id: string; name: string; email: string
+  /** null for a member inherited from the workspace who has no explicit project row. */
+  role: ProjectRole | null
+  custom_role_id: string | null
+  effective: string[]
+  inherited: boolean
+}
+
+export interface ProjectAccess { members: ProjectAccessMember[]; roles: ProjectRole[] }
+
+// --- audit --------------------------------------------------------------------
+
+export interface AuditRow {
+  id: string; action: string; target: string; meta: Record<string, unknown>; created: number; user: string
+}
+
+export interface AuditFilters {
+  limit?: number; offset?: number; action?: string; user?: string; since?: number; until?: number; q?: string
+}
+
+// --- privacy / PDPA -----------------------------------------------------------
+
+export interface WorkspacePrivacyProject {
+  slug: string; name: string
+  retention_days: number | null
+  face_blur: boolean
+  biometrics: boolean
+}
+
+export interface WorkspacePrivacy {
+  data_region: string
+  regions: string[]
+  region_label: string
+  projects: WorkspacePrivacyProject[]
+  retention_presets: number[]
+}
+
+export interface ProjectPrivacy {
+  retention_days: number | null
+  face_blur: boolean
+  biometrics: boolean
+  legal_basis: string
+  retention_presets: number[]
+  images_expiring: number
+  snapshots_expiring: number
+  data_region: string
+}
+
+export interface ProjectPrivacyInput {
+  retention_days?: number | null
+  face_blur?: boolean
+  biometrics?: boolean
+  legal_basis?: string
+}
+
+export interface DpaDoc {
+  /** `updated` is an ISO date string on current builds; epoch seconds are also accepted. */
+  workspace: string; version: string; updated: string | number; region: string; markdown: string
+}
+
+// --- super-admin --------------------------------------------------------------
+
+export type AdminJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+
+export interface AdminOverview {
+  version: string
+  workspaces: number
+  users: number
+  projects: number
+  images: number
+  jobs: Partial<Record<AdminJobStatus, number>>
+  gpu: { used_mb: number; budget_mb: number; holder: string | null; leases: { key: string; vram_mb: number }[] }
+  workers_online: number
+  vllm: { configured: boolean; sleeping: boolean }
+  generated: number
+}
+
+export interface AdminWorkspace {
+  id: string; slug: string; name: string; plan: string; plan_label: string; region: string
+  owner_email: string | null; created: number
+  members: number; projects: number; images: number; credits_used: number; credits_limit: number
+}
+
+export interface AdminJobRow {
+  id: string; workspace: string; project: string; kind: string
+  status: AdminJobStatus | string; progress: number; error: string
+  created: number; started: number | null; finished: number | null; age_s: number
+}
+
+export interface AdminJobsHealth {
+  counts: Partial<Record<AdminJobStatus, number>>
+  oldest_queued_s: number | null
+  items: AdminJobRow[]
+}
+
+export interface WorkerRow {
+  id: string; host: string; kinds: string[]
+  started: number; last_seen: number; current_job: string | null; online: boolean
+}
+
+export type ComponentStatus = 'operational' | 'degraded' | 'unknown'
+export interface StatusComponent { name: string; status: ComponentStatus; detail: string }
+export interface AdminStatus { checked: number; components: StatusComponent[] }

@@ -21,7 +21,7 @@ from ..gpu import GpuBusy
 from ..models import SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Member, Project, TrainedModel, User, new_id, now, set_annotations
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import imaging, importers, insights, ml, segment
+from ..services import faceblur, imaging, importers, insights, ml, segment
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -49,14 +49,14 @@ def image_out(i: Image, full: bool = False, class_ids: list[str] | None = None) 
 
 def _assigned(c: Ctx, img: Image) -> tuple[Ctx, Image]:
     """Labelers may only touch images assigned to them; reviewers/admins see everything."""
-    if c.role == "annotator" and img.assignee_id != c.user.id:
+    if c.project_role == "labeler" and img.assignee_id != c.user.id:
         raise HTTPException(403, "this image is not assigned to you")
     return c, img
 
 
 def _visible(q, c: Ctx):
     """Annotators only ever see images assigned to them."""
-    return q.where(Image.assignee_id == c.user.id) if c.role == "annotator" else q
+    return q.where(Image.assignee_id == c.user.id) if c.project_role == "labeler" else q
 
 
 # --- upload -------------------------------------------------------------------------------
@@ -100,6 +100,8 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
         except Exception:
             failed.append({"name": safe_name(path), "reason": "unreadable image"})
             continue
+        if source == "stream" and p.face_blur:      # PDPA: face blur before stream frames reach a dataset
+            im, _ = faceblur.blur_faces(im)
         img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, name=safe_name(path), sha256=h, width=im.width,
                     height=im.height, size=len(data), path="", thumb="", tags=list(tags))
         img.path, img.thumb = imaging.store(f"projects/{p.id}/images", img.id, im)
@@ -305,7 +307,7 @@ def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
     if body.to_status not in STATUSES:
         raise HTTPException(400, "bad status")
     # annotators may only submit their own work for review; everything else needs reviewer+
-    if not (c.role == "annotator" and body.from_status == "annotating" and body.to_status == "review"):
+    if not (c.project_role == "labeler" and body.from_status == "annotating" and body.to_status == "review"):
         c.need("reviewer")
     s = _visible(select(Image).where(Image.project_id == c.project.id, Image.status == body.from_status,
                                      Image.deleted_at.is_(None), Image.batch_id == body.batch_id), c)
@@ -409,7 +411,7 @@ def patch_image(image_id: str, body: ImagePatch, u: User = Depends(current_user)
     if body.status:
         if body.status not in STATUSES:
             raise HTTPException(400, "bad status")
-        if not (c.role == "annotator" and body.status == "review" and img.assignee_id == u.id):
+        if not (c.project_role == "labeler" and body.status == "review" and img.assignee_id == u.id):
             c.need("reviewer")
         img.status = body.status
     img.updated = now(); db.commit()

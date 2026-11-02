@@ -1,11 +1,13 @@
 // Typed API client. VITE_API_URL points at the API origin when web and api are on
 // different hosts (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 import type {
-  Analytics, Annotation, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, ImageItem,
-  InsightDistribution, InsightEmbedding, InsightGeometry, InsightImageStats, InsightLabeling, InsightLeakage,
-  InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass, LeaderboardRow, Me,
-  Member, ModelDetections, ModelInsights, ModelItem, PlaygroundResult, Project, RegistryItem, TrainingInsights,
-  Version, WorkspaceInfo,
+  AdminJobsHealth, AdminOverview, AdminStatus, AdminWorkspace, Analytics, Annotation, AuditFilters,
+  AuditRow, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, CustomRole,
+  DpaDoc, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry, InsightImageStats, InsightLabeling,
+  InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass,
+  LeaderboardRow, Me, Member, ModelDetections, ModelInsights, ModelItem, Permissions,
+  PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput, ProjectRole, RegistryItem,
+  RoleLevel, TrainingInsights, Version, WorkerRow, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -99,6 +101,40 @@ export function upload<T>(path: string, form: FormData, onProgress: (f: number) 
 
 const P = (ws: string, p: string) => `/ws/${ws}/projects/${p}`
 
+/** Query string from defined, non-empty values only. */
+const qs = (q: Record<string, string | number | boolean | null | undefined>) => {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+  const s = p.toString()
+  return s ? `?${s}` : ''
+}
+
+/**
+ * Download a token-protected file. The bearer token stays in an Authorization header (never in the URL),
+ * so audit exports and future CSV links never leak it through history, logs or Referer.
+ */
+export async function download(path: string, fallbackName: string, retry = true): Promise<void> {
+  const headers: Record<string, string> = {}
+  if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`
+  if (tokens.session) headers['X-Session'] = tokens.session
+  const r = await fetch(`${API_ORIGIN}/api${path}`, { headers })
+  if (r.status === 401 && retry && tokens.refresh && (await tryRefresh())) return download(path, fallbackName, false)
+  if (!r.ok) {
+    const d: { detail?: unknown } = await r.json().catch(() => ({}))
+    throw new ApiError(r.status, typeof d.detail === 'string' ? d.detail : r.statusText)
+  }
+  const disposition = r.headers.get('Content-Disposition') ?? ''
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition)
+  const name = match?.[1] ? decodeURIComponent(match[1].replace(/"/g, '')) : fallbackName
+  const url = URL.createObjectURL(await r.blob())
+  const a = document.createElement('a')
+  a.href = url; a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export const api = {
   config: () => get<{ signup_enabled: boolean; sam: { loaded: boolean; error: string | null } }>('/config'),
   me: () => get<Me>('/me'),
@@ -157,5 +193,42 @@ export const api = {
     selection: (ws: string, p: string, token: string) =>
       get<InsightSelection>(`${P(ws, p)}/insights/selections/${encodeURIComponent(token)}`),
   },
+
+  // --- RBAC ---
+  permissions: (ws: string, project?: string) => get<Permissions>(`/ws/${ws}/permissions${qs({ project })}`),
+  customRoles: (ws: string) => get<CustomRole[]>(`/ws/${ws}/roles`),
+  createCustomRole: (ws: string, body: { name: string; level: RoleLevel; permissions: string[] }) =>
+    post<CustomRole>(`/ws/${ws}/roles`, body),
+  updateCustomRole: (ws: string, id: string, body: { name?: string; level?: RoleLevel; permissions?: string[] }) =>
+    patch<CustomRole>(`/ws/${ws}/roles/${id}`, body),
+  deleteCustomRole: (ws: string, id: string) => del<{ ok: boolean }>(`/ws/${ws}/roles/${id}`),
+  setWorkspaceCustomRole: (ws: string, uid: string, custom_role_id: string | null) =>
+    patch<{ id: string; custom_role_id: string | null }>(`/ws/${ws}/members/${uid}/custom-role`, { custom_role_id }),
+  projectAccess: (ws: string, project: string) => get<ProjectAccess>(`${P(ws, project)}/roles`),
+  setProjectMember: (ws: string, project: string, uid: string, body: { role: ProjectRole; custom_role_id?: string | null }) =>
+    patch<{ id: string; role: ProjectRole; custom_role_id: string | null }>(`${P(ws, project)}/members/${uid}`, body),
+  removeProjectMember: (ws: string, project: string, uid: string) => del<{ ok: boolean }>(`${P(ws, project)}/members/${uid}`),
+
+  // --- audit ---
+  audit: (ws: string, f: AuditFilters = {}) => get<AuditRow[]>(`/ws/${ws}/audit${qs({ ...f })}`),
+  auditExportPath: (ws: string, f: AuditFilters = {}) => `/ws/${ws}/audit/export${qs({ format: 'csv', ...f })}`,
+
+  // --- privacy / PDPA ---
+  privacy: (ws: string) => get<WorkspacePrivacy>(`/ws/${ws}/privacy`),
+  setWorkspacePrivacy: (ws: string, body: { data_region: string }) =>
+    patch<{ data_region: string; region_label: string }>(`/ws/${ws}/privacy`, body),
+  projectPrivacy: (ws: string, project: string) => get<ProjectPrivacy>(`${P(ws, project)}/privacy`),
+  setProjectPrivacy: (ws: string, project: string, body: ProjectPrivacyInput) =>
+    patch<ProjectPrivacy>(`${P(ws, project)}/privacy`, body),
+  runRetention: (ws: string, project: string) => post<{ job_id: string }>(`${P(ws, project)}/privacy/retention/run`),
+  dpa: (ws: string, project?: string) => get<DpaDoc>(`/ws/${ws}/dpa${qs({ project })}`),
+
+  // --- super-admin ---
+  adminOverview: () => get<AdminOverview>('/admin/overview'),
+  adminWorkspaces: (q = '') => get<AdminWorkspace[]>(`/admin/workspaces${qs({ q })}`),
+  adminSetPlan: (id: string, plan: string) => patch<AdminWorkspace>(`/admin/workspaces/${id}`, { plan }),
+  adminJobs: (f: { status?: string; kind?: string; limit?: number } = {}) => get<AdminJobsHealth>(`/admin/jobs${qs(f)}`),
+  adminWorkers: () => get<{ stale_after: number; workers: WorkerRow[] }>('/admin/workers'),
+  adminStatus: () => get<AdminStatus>('/admin/status'),
   P,
 }

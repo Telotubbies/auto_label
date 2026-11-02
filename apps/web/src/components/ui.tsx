@@ -44,7 +44,7 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
       className={cn('relative h-5 w-9 rounded-full transition-colors cursor-pointer', checked ? 'bg-primary' : 'bg-input')}>
-      <span className={cn('absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', checked && 'translate-x-4')} />
+      <span className={cn('absolute top-1 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', checked && 'translate-x-4')} />
     </button>
   )
 }

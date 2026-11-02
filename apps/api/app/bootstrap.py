@@ -23,8 +23,14 @@ def init_db():
     ensure_columns(engine, "connectors", {"last_sync": "FLOAT", "last_status": "VARCHAR(16) DEFAULT ''"})
     ensure_columns(engine, "users", {
         "email_verified": "FLOAT", "totp_secret": "VARCHAR(255)", "mfa_enabled": "BOOLEAN DEFAULT FALSE",
-        "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0"})
-    ensure_columns(engine, "workspaces", {"require_mfa": "BOOLEAN DEFAULT FALSE"})
+        "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0",
+        "platform_admin": "BOOLEAN DEFAULT FALSE"})
+    ensure_columns(engine, "workspaces", {"require_mfa": "BOOLEAN DEFAULT FALSE",
+                                          "data_region": "VARCHAR(16) DEFAULT 'th'"})
+    ensure_columns(engine, "projects", {"retention_days": "INTEGER", "face_blur": "BOOLEAN DEFAULT TRUE",
+                                        "biometrics": "BOOLEAN DEFAULT FALSE", "legal_basis": "TEXT DEFAULT ''"})
+    ensure_columns(engine, "members", {"custom_role_id": "VARCHAR(32)"})
+    ensure_columns(engine, "project_members", {"custom_role_id": "VARCHAR(32)"})
     ensure_columns(engine, "refresh_tokens", {
         "created": "FLOAT DEFAULT 0", "last_seen": "FLOAT DEFAULT 0",
         "ip": "VARCHAR(64) DEFAULT ''", "user_agent": "VARCHAR(255) DEFAULT ''"})
@@ -33,6 +39,7 @@ def init_db():
     from .services.secretbox import migrate as _encrypt_secrets
     # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
     _encrypt_secrets()
+    _seal_stream_sources()
     _backfill_image_classes()
     if SEED_DEMO:
         seed()
@@ -45,6 +52,15 @@ def _backfill_sessions():
         db.execute(update(RefreshToken).where(RefreshToken.created == 0)
                    .values(created=time.time(), last_seen=time.time()))
         db.commit()
+
+
+def _seal_stream_sources():
+    """Encrypt RTSP credentials already stored by a Task-10b build (no-op until Stream exists)."""
+    from .streams.creds import seal_existing
+    with SessionLocal() as db:
+        changed = seal_existing(db)
+    if changed:
+        log.info("encrypted %s stream source(s) at rest", changed)
 
 
 def _widen_totp_secret():
