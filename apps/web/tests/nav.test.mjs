@@ -4,8 +4,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, visibleProjectNav,
-  visibleWorkspaceNav, workspaceIndexPath, workspaceNav,
+  isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, RESERVED_WORKSPACE_SEGMENTS,
+  visibleProjectNav, visibleWorkspaceNav, WORKSPACE_PAGE_LABELS, workspaceIndexPath, workspaceNav,
 } from '../src/lib/nav.ts'
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -233,6 +233,26 @@ test('every workspace nav destination has a route', () => {
   }
 })
 
+// Fix round 4 (I2): the shell decides "workspace page vs project" from this set. A destination
+// missing from it is wrapped in project chrome — no top padding, no page scroll — which painted
+// the Playground title under the floating top bar and clipped the page below the fold.
+test('every workspace nav destination renders as a workspace page', () => {
+  for (const item of workspaceNav.flatMap((g) => g.items)) {
+    if (!item.to) continue
+    const segment = item.to.split('/')[0]
+    assert.ok(RESERVED_WORKSPACE_SEGMENTS.has(segment),
+      `${item.label} (${item.to}) would be treated as a project slug`)
+    assert.ok(WORKSPACE_PAGE_LABELS[segment], `${item.label} has no breadcrumb label`)
+  }
+  assert.equal(WORKSPACE_PAGE_LABELS.playground, 'Playground')
+})
+
+test('every reserved workspace segment has a breadcrumb label', () => {
+  for (const segment of RESERVED_WORKSPACE_SEGMENTS) {
+    assert.ok(WORKSPACE_PAGE_LABELS[segment], `${segment} has no breadcrumb label`)
+  }
+})
+
 test('every project nav destination has a route', () => {
   for (const item of projectNav.flatMap((g) => g.items)) {
     assert.ok(appSrc.includes(`path="${item.to}"`), `${item.label} points at ${item.to}, which has no route`)
@@ -259,9 +279,23 @@ test('a plain settings tab keeps Settings active', () => {
   assert.equal(active('Members', '/acme/settings/account'), false)
 })
 
-test('the workspace root is active only at the root', () => {
+test('the workspace root is active only at the root, with or without a trailing slash', () => {
   assert.equal(active('Projects', '/acme'), true)
+  // React Router keeps the slash the sidebar link renders (`/acme/`), so clicking Projects must
+  // still mark it current; before fix round 4 it matched only the slashless pathname.
+  assert.equal(active('Projects', '/acme/'), true)
   assert.equal(active('Projects', '/acme/models'), false)
+  assert.equal(active('Models', '/acme/models/'), true)
+})
+
+// Fix round 4 (I1): a click-level guard. The sidebar renders `${base}/${item.to}`, so every item
+// must be active at exactly that href — the rendered link and the matcher cannot drift apart.
+test('every workspace nav link is active at the href the sidebar renders', () => {
+  for (const item of workspaceNav.flatMap((g) => g.items)) {
+    const href = `/acme/${item.to}`
+    assert.equal(isWorkspaceNavActive(item, href, '/acme'), true,
+      `${item.label} renders ${href} but is not the current item there`)
+  }
 })
 
 // Fix round 2 (I1): the compact strip used to filter on permission alone, so a project labeler saw

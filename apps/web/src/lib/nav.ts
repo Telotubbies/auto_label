@@ -116,6 +116,23 @@ export const LEGACY_PROJECT_PATHS = {
   analytics: 'insights?tab=health',
 } as const
 
+/**
+ * Workspace-level route segments that must never be read as a project slug. The shell gives
+ * anything outside this set project chrome (no top padding, no page scroll), so every workspace
+ * destination has to be listed here — see `tests/nav.test.mjs`.
+ */
+export const RESERVED_WORKSPACE_SEGMENTS = new Set([
+  'models', 'playground', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal',
+])
+
+/** Breadcrumb names for workspace routes; project pages use their project nav label instead. */
+export const WORKSPACE_PAGE_LABELS: Record<string, string> = {
+  models: 'Models', playground: 'Playground', deployments: 'Deployments', activity: 'Activity',
+  audit: 'Audit log', admin: 'Admin console', settings: 'Settings', legal: 'Legal',
+  'settings/members': 'Members & Roles', 'settings/usage': 'Usage & Billing', 'settings/api': 'Integrations',
+  'settings/roles': 'Roles', 'settings/trash': 'Trash',
+}
+
 /** True when an item's optional audience admits the caller; no audience means everyone. */
 function inAudience<T extends string>(roles: readonly T[] | undefined, role: T | null | undefined): boolean {
   return !roles || !role || roles.includes(role)
@@ -174,12 +191,15 @@ export function visibleProjectNav(
  * /settings/members. A shorter match loses to a longer one in the same nav.
  */
 export function isWorkspaceNavActive(item: WorkspaceNavItem, pathname: string, base: string): boolean {
+  // React Router keeps the trailing slash the sidebar link renders (`/acme/`), so normalise the
+  // pathname once: without it the core Projects entry is never the current item after a click.
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
   const target = `${base}/${item.to}`.replace(/\/+$/, '')
-  const matches = item.end ? pathname === target : pathname === target || pathname.startsWith(`${target}/`)
+  const matches = item.end ? path === target : path === target || path.startsWith(`${target}/`)
   if (!matches) return false
   return !workspaceNav.flatMap((g) => g.items).some((other) => {
     if (other.to.length <= item.to.length) return false
     const t = `${base}/${other.to}`.replace(/\/+$/, '')
-    return pathname === t || pathname.startsWith(`${t}/`)
+    return path === t || path.startsWith(`${t}/`)
   })
 }

@@ -12,7 +12,8 @@ import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
 import type { Job, Project, ProjectRole } from '@/lib/types'
 import { useProjectPermissions } from '@/lib/perms'
 import {
-  isWorkspaceNavActive, visibleProjectNav, visibleWorkspaceNav, type NavIcon,
+  isWorkspaceNavActive, RESERVED_WORKSPACE_SEGMENTS, visibleProjectNav, visibleWorkspaceNav,
+  WORKSPACE_PAGE_LABELS, type NavIcon,
 } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 import { Glass } from './glass'
@@ -78,7 +79,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   // Inside a project the effective project role narrows the IA; workspace-level URLs are not projects.
   const projectMatch = useMatch('/:ws/:project/*')
   const projectSlug = projectMatch?.params.project ?? ''
-  const inProject = !!projectSlug && !RESERVED.has(projectSlug)
+  const inProject = !!projectSlug && !RESERVED_WORKSPACE_SEGMENTS.has(projectSlug)
   const { role: projectRole } = useProjectPermissions(ws, inProject ? projectSlug : '')
   const info = useQuery({ queryKey: ['ws', ws], queryFn: () => api.workspace(ws), enabled: !!ws })
   const current = me?.workspaces.find((w) => w.slug === ws)
@@ -254,13 +255,6 @@ export function GpuBadge() {
   return <span className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title="GPU holder"><Cpu className="h-3.5 w-3.5" aria-hidden />{text}</span>
 }
 
-const pageLabels: Record<string, string> = {
-  models: 'Models', deployments: 'Deployments', activity: 'Activity', audit: 'Audit log', admin: 'Admin console',
-  settings: 'Settings', legal: 'Legal',
-  'settings/members': 'Members & Roles', 'settings/usage': 'Usage & Billing', 'settings/api': 'Integrations',
-  'settings/roles': 'Roles', 'settings/trash': 'Trash',
-}
-
 export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
   onMenu?: () => void
   menuOpen?: boolean
@@ -270,13 +264,13 @@ export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
   const me = useApp((s) => s.me)
   const m = useMatch('/:ws/:project/*')
   const slug = m?.params.project ?? ''
-  const isProject = !!slug && !RESERVED.has(slug)
+  const isProject = !!slug && !RESERVED_WORKSPACE_SEGMENTS.has(slug)
   const proj = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug), enabled: isProject })
   const rest = (m?.params['*'] ?? '').split('/')[0]
-  const nested = slug && rest ? pageLabels[`${slug}/${rest}`] : undefined
+  const nested = slug && rest ? WORKSPACE_PAGE_LABELS[`${slug}/${rest}`] : undefined
   const page = isProject
     ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label
-    : slug === 'legal' && rest === 'dpa' ? 'Data Processing Agreement' : (nested ?? (slug ? pageLabels[slug] : 'Projects'))
+    : slug === 'legal' && rest === 'dpa' ? 'Data Processing Agreement' : (nested ?? (slug ? WORKSPACE_PAGE_LABELS[slug] : 'Projects'))
   const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'
   const { mode } = useThemePrefs()
   const next = THEME_CYCLE[(THEME_CYCLE.findIndex((x) => x.id === mode) + 1) % THEME_CYCLE.length]
@@ -315,7 +309,6 @@ export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
   )
 }
 
-const RESERVED = new Set(['models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal'])
 const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
   train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
   insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',
@@ -326,7 +319,7 @@ const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])
 export function JobTray() {
   const m = useMatch('/:ws/:project/*')
   const ws = m?.params.ws ?? '', project = m?.params.project ?? ''
-  const enabled = !!ws && !!project && !RESERVED.has(project)
+  const enabled = !!ws && !!project && !RESERVED_WORKSPACE_SEGMENTS.has(project)
   const seen = useRef(new Map<string, Job>())
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const q = useQuery({
@@ -363,7 +356,7 @@ export function JobTray() {
 
 export function AppLayout() {
   const m = useMatch('/:ws/:project/*')
-  const isProject = !!m?.params.project && !RESERVED.has(m.params.project)
+  const isProject = !!m?.params.project && !RESERVED_WORKSPACE_SEGMENTS.has(m.params.project)
   const [navOpen, setNavOpen] = useState(false)
   const menuRef = useRef<HTMLButtonElement>(null)
   const drawerWasOpen = useRef(false)
