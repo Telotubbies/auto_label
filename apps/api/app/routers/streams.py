@@ -17,7 +17,7 @@ from ..db import SessionLocal
 from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, Workspace
 from ..security import sign_path
-from ..streams.manager import display_source, manager
+from ..streams.manager import check_source, display_source, manager
 from .images import ingest, safe_name
 
 P = "/api/ws/{ws}/projects/{project}/streams"
@@ -200,9 +200,13 @@ class StreamIn(BaseModel):
 @router.post("")
 def create(body: StreamIn, c: Ctx = Depends(project_ctx)):
     c.need("admin")
-    name, source = body.name.strip(), body.source.strip()
-    if not name or not source:
+    name = body.name.strip()
+    if not name:
         raise HTTPException(400, "name and source are required")
+    try:
+        source = check_source(body.source)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     zones = check_zones(body.zones)
     rules = check_rules(body.rules, {z["id"] for z in zones})
     s = Stream(workspace_id=c.ws.id, project_id=c.project.id, name=name[:255], source=source,
@@ -245,9 +249,10 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
             raise HTTPException(400, "name must not be empty")
         s.name = body.name.strip()[:255]
     if body.source is not None:
-        if not body.source.strip():
-            raise HTTPException(400, "source must not be empty")
-        s.source = body.source.strip()
+        try:
+            s.source = check_source(body.source)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
     if body.model_ref is not None:
         s.model_ref = check_model(c, body.model_ref)
     if body.sample_fps is not None:
@@ -450,11 +455,13 @@ def event_to_dataset(sid: str, eid: str, c: Ctx = Depends(project_ctx)):
     ev = c.db.get(StreamEvent, eid)
     if ev is None or ev.stream_id != sid:
         raise HTTPException(404, "event not found")
-    if not ev.snapshot_path:
+    # Reviewers see the annotated snapshot; the dataset must receive the untouched frame.
+    rel = ev.clean_path or ev.snapshot_path        # fallback only for events captured before the fix
+    if not rel:
         raise HTTPException(404, "snapshot not found")
-    path = (DATA_DIR / ev.snapshot_path).resolve()
+    path = (DATA_DIR / rel).resolve()
     if DATA_DIR not in path.parents or not path.is_file():
-        raise HTTPException(404, "snapshot not found")
+        raise HTTPException(404, "clean frame not found" if ev.clean_path else "snapshot not found")
     res = ingest(c.db, c, [(f"{ev.id}.jpg", path.read_bytes())], f"{s.name} · stream event", "auto",
                  ["stream"], source="stream", to_dataset=True, user_id=c.user.id)
     audit(c.db, c.ws.id, c.user.id, "stream.event.to_dataset", s.name, event=ev.id, uploaded=res["uploaded"])

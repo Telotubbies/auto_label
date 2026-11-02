@@ -432,7 +432,8 @@ class StreamEvent(Base):
     ts: Mapped[float] = mapped_column(Float, default=now)
     rule: Mapped[dict] = mapped_column(JSON, default=dict)
     summary: Mapped[str] = mapped_column(Text, default="")
-    snapshot_path: Mapped[str] = mapped_column(String(1024), default="")     # relative to DATA_DIR
+    snapshot_path: Mapped[str] = mapped_column(String(1024), default="")     # annotated, relative to DATA_DIR
+    clean_path: Mapped[str] = mapped_column(String(1024), default="")        # no overlays: the dataset copy
     predictions: Mapped[list] = mapped_column(JSON, default=list)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
 
