@@ -1,5 +1,6 @@
 """R1 tenancy/permission regressions: cross-project classes, viewer access, connector sync."""
 import io
+import json
 import os
 import uuid
 
@@ -14,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import (Connector, Image, LabelClass, Member, Project, ProjectMember, TrainedModel, User, Version,
+from app.models import (Connector, Image, Job, LabelClass, Member, Project, ProjectMember, TrainedModel, User, Version,
                         Workspace)
 from app.security import hash_password
 
@@ -98,6 +99,28 @@ def test_labeler_can_list_models_without_weights_or_metrics(ids):
     assert row is not None
     assert row["weightsUrl"] is None and row["metrics"] == {} and row["runtimeRefs"] == {}
     assert lab.get(f"{BASE}/models/{ids['model']}").status_code == 403
+
+
+def test_labeler_model_list_drops_the_eval_report_inside_the_job(ids, admin):
+    """I15: the lean list must not hand back the held-out eval report through job.result either."""
+    with SessionLocal() as db:
+        j = Job(workspace_id=ids["ws"], project_id=ids["project"], kind="train", status="done",
+                params={"options": {"family": "ultralytics", "max_minutes": 5}},
+                result={"stages": {"train": {"status": "done"}},
+                        "eval": {"split": "test", "worst": [{"file": "held-out-secret.jpg"}],
+                                 "confusion": {"images": {"a": ["held-out-secret.jpg"]}}}})
+        db.add(j); db.flush()
+        m = db.get(TrainedModel, ids["model"])
+        m.job_id = j.id
+        db.commit()
+    lab = _login("labeler@labeldesk.dev")
+    row = next(m for m in lab.get(f"{BASE}/models").json() if m["id"] == ids["model"])
+    blob = json.dumps(row["job"])
+    assert "eval" not in blob and "held-out-secret.jpg" not in blob, blob
+    assert "options" not in blob and "max_minutes" not in blob, blob
+    assert row["job"]["result"]["stages"]["train"]["status"] == "done"
+    manager_row = next(m for m in admin.get(f"{BASE}/models").json() if m["id"] == ids["model"])
+    assert "eval" in json.dumps(manager_row["job"])          # project.models still sees the report
 
 
 def test_viewer_cannot_run_model_inference(viewer, ids):

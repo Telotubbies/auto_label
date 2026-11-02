@@ -22,9 +22,18 @@ PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#1
 RESERVED = {"models", "deployments", "activity", "settings"}
 
 
-def job_out(j: Job) -> dict:
-    return {"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress, "params": j.params,
-            "result": j.result, "error": j.error, "created": j.created, "started": j.started, "finished": j.finished}
+LEAN_JOB_KEYS = ("id", "kind", "status", "progress", "error", "created", "finished")
+
+
+def job_out(j: Job, lean: bool = False) -> dict:
+    out = {"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress, "params": j.params,
+           "result": j.result, "error": j.error, "created": j.created, "started": j.started, "finished": j.finished}
+    if lean:
+        # label-assist needs the stage stepper only; training options and the eval report stay
+        # behind project.models (I15).
+        out = {k: out[k] for k in LEAN_JOB_KEYS}
+        out["result"] = {"stages": (j.result or {}).get("stages")}
+    return out
 
 
 def _counts(db: Session, pids: list[str]) -> tuple[dict, dict, dict]:
