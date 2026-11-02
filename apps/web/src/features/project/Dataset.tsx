@@ -4,7 +4,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, Search, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import { api, ApiError, fileUrl, post } from '@/lib/api'
-import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import type { ImageItem } from '@/lib/types'
 import { Badge, Button, Dropdown, EmptyState, Input, PageHeader, Select, Spinner, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -25,10 +25,10 @@ export default function Dataset() {
   const { project, ws } = useProject()
   const nav = useNavigate()
   const qc = useQueryClient()
-  const can = useApp((s) => s.can)
+  const { can } = useProjectPermissions(ws, project.slug)
   const [sp, setSp] = useSearchParams()
   const f = {
-    q: sp.get('q') ?? '', split: sp.get('split') ?? '', status: sp.get('status') ?? (can('reviewer') ? 'done' : 'all'),
+    q: sp.get('q') ?? '', split: sp.get('split') ?? '', status: sp.get('status') ?? (can('project.review') ? 'done' : 'all'),
     class_id: sp.get('class') ?? '', tag: sp.get('tag') ?? '', batch_id: sp.get('batch') ?? '', annotated: sp.get('annotated') ?? '', sort: sp.get('sort') ?? 'newest',
     // analytics chart links filter by image size (megapixels), aspect ratio and annotation count
     min_mp: sp.get('min_mp') ?? '', max_mp: sp.get('max_mp') ?? '', min_ar: sp.get('min_ar') ?? '', max_ar: sp.get('max_ar') ?? '',
@@ -105,7 +105,7 @@ export default function Dataset() {
   return (
     <div className="anim-page flex h-full flex-col">
       <PageHeader title="Dataset" desc={`${total ?? '…'} images${f.status === 'done' ? ' in the dataset' : ''}`}
-        actions={can('reviewer') && <Button variant="outline" onClick={() => setAuto(true)}><Sparkles className="h-4 w-4" /> Auto Label</Button>} />
+        actions={can('project.review') && <Button variant="outline" onClick={() => setAuto(true)}><Sparkles className="h-4 w-4" /> Auto Label</Button>} />
       <div className="flex flex-wrap items-center gap-2 px-8 pb-3">
         <div className="relative w-56"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8" placeholder="Search filename" value={f.q} onChange={(e) => setF('q', e.target.value)} /></div>
         <Select value={f.status} onChange={(e) => setF('status', e.target.value)}>
@@ -133,7 +133,7 @@ export default function Dataset() {
             className="cursor-pointer text-xs text-muted-foreground underline hover:text-foreground">Clear all</button>
         </div>
       )}
-      {sel.size > 0 && can('reviewer') && (
+      {sel.size > 0 && can('project.review') && (
         <div className="mx-8 mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-accent/40 px-3 py-2 text-sm">
           <b>{sel.size} selected</b>
           <button className="cursor-pointer text-xs text-muted-foreground underline" onClick={() => setSel(new Set(items.map((i) => i.id)))}>select all {items.length} loaded</button>
@@ -150,7 +150,7 @@ export default function Dataset() {
       <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
         {(imgs.isLoading || !selectionResolved) && <div className="py-20 text-center"><Spinner /></div>}
         {imgs.isSuccess && !items.length && <EmptyState title="No images match these filters." hint={f.status === 'done' ? 'Images enter the dataset once approved on the Annotate board.' : undefined}
-          action={can('reviewer') && <Button size="sm" onClick={() => nav('../upload')}>Upload images</Button>} />}
+          action={can('project.upload') && <Button size="sm" onClick={() => nav('../upload')}>Upload images</Button>} />}
         <div style={{ height: v.getTotalSize(), position: 'relative' }}>
           {v.getVirtualItems().map((row) => (
             <div key={row.key} className="absolute left-0 grid w-full grid-cols-5 gap-3" style={{ top: row.start, height: 180 }}>
@@ -164,7 +164,7 @@ export default function Dataset() {
                     <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white', SPLIT_TONE[im.split])}>{im.split}</span>
                     {im.annotationCount === 0 && <span className="rounded bg-gray-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">NULL</span>}
                   </div>
-                  {can('reviewer') && (
+                  {can('project.review') && (
                     <button onClick={(e) => { e.stopPropagation(); toggle(im.id) }} aria-label="Select image"
                       className={cn('absolute right-1.5 top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded border bg-white/90', sel.has(im.id) ? 'border-primary bg-primary text-white' : 'opacity-0 group-hover:opacity-100')}>
                       {sel.has(im.id) && <Check className="h-3 w-3" />}

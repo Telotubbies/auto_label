@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { FileText, Lock, ScanFace, ShieldCheck, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { ProjectPrivacy, WorkspacePrivacyProject } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Select, Spinner, Switch, toast } from '@/components/ui'
@@ -83,8 +84,12 @@ function LegalBasis({ value, disabled, onChange }: { value: string; disabled: bo
 }
 
 /** One project row in the workspace privacy table. Fetches its own detail for counts and legal basis. */
-function PrivacyRow({ ws, project, canEdit }: { ws: string; project: WorkspacePrivacyProject; canEdit: boolean }) {
+function PrivacyRow({ ws, project }: { ws: string; project: WorkspacePrivacyProject }) {
   const qc = useQueryClient()
+  const { can } = useProjectPermissions(ws, project.slug)
+  // The API checks project.privacy on every row save; a project manager who is a workspace
+  // member may edit, while a workspace billing/viewer user sees the row read-only.
+  const canEdit = can('project.privacy')
   const detail = useQuery({ queryKey: ['project-privacy', ws, project.slug], queryFn: () => api.projectPrivacy(ws, project.slug) })
   const [draft, setDraft] = useState<Pick<ProjectPrivacy, 'retention_days' | 'face_blur' | 'biometrics' | 'legal_basis'> | null>(null)
   const [saving, setSaving] = useState(false)
@@ -167,6 +172,7 @@ export default function PrivacyWorkspace() {
   const { ws = '' } = useParams()
   const qc = useQueryClient()
   const can = useApp((s) => s.can)
+  // Residency is a workspace setting (workspace.update); per-project rows use their own role.
   const canEdit = can('admin')
   const q = useQuery({ queryKey: ['privacy', ws], queryFn: () => api.privacy(ws), enabled: !!ws })
   const [region, setRegion] = useState<string | null>(null)
@@ -253,13 +259,10 @@ export default function PrivacyWorkspace() {
                 </tr>
               </thead>
               <tbody>
-                {(q.data?.projects ?? []).map((p) => <PrivacyRow key={p.slug} ws={ws} project={p} canEdit={canEdit} />)}
+                {(q.data?.projects ?? []).map((p) => <PrivacyRow key={p.slug} ws={ws} project={p} />)}
               </tbody>
             </table>
           </div>
-        )}
-        {!canEdit && q.isSuccess && (
-          <p className="border-t px-4 py-3 text-xs text-muted-foreground">Read only — workspace admins change project retention here; project managers can edit their own project under Project Settings → Privacy &amp; retention.</p>
         )}
       </Card>
 

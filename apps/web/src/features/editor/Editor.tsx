@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { ApiError, api, fileUrl, get, patch, post, put } from '@/lib/api'
-import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import type { Annotation, LabelClass, Shape, Skeleton } from '@/lib/types'
 import { Badge, Button, Input, Select, StatusPill, Tabs, toast } from '@/components/ui'
 import { Glass } from '@/components/glass'
@@ -216,7 +216,7 @@ export default function Editor() {
   const nav = useNavigate()
   const qc = useQueryClient()
   const [sp] = useSearchParams()
-  const can = useApp((s) => s.can)
+  const { can } = useProjectPermissions(ws, project)
   const reviewMode = sp.get('review') === 'true'
   const listQuery = useMemo(() => ({
     status: sp.get('status') ?? '', batch_id: sp.get('batch') ?? '', split: sp.get('split') ?? '', class_id: sp.get('class_id') ?? '',
@@ -227,7 +227,7 @@ export default function Editor() {
   const classesQ = useQuery({ queryKey: ['classes', ws, project], queryFn: () => api.classes(ws, project) })
   const list = useQuery({ queryKey: ['images', ws, project, listQuery], queryFn: () => api.images(ws, project, listQuery) })
   const imgQ = useQuery({ queryKey: ['image', imageId], queryFn: () => api.image(imageId) })
-  const models = useQuery({ queryKey: ['models', ws, project], queryFn: () => api.models(ws, project), enabled: can('annotator') })
+  const models = useQuery({ queryKey: ['models', ws, project], queryFn: () => api.models(ws, project), enabled: can('project.infer') })
   const commentsQ = useQuery({ queryKey: ['comments', imageId], queryFn: () => get<EditorComment[]>(`/images/${imageId}/comments`) })
   const img = imgQ.data
   const classes: LabelClass[] = classesQ.data ?? []
@@ -635,7 +635,7 @@ export default function Editor() {
         {img && <StatusPill status={img.review ?? img.status} />}
         <span className="flex items-center gap-1 text-xs text-muted-foreground">{saving ? <><LoaderCircle className="h-3 w-3 animate-spin" /> Saving…</> : dirty ? 'Unsaved' : <><Check className="h-3.5 w-3.5" /> Saved</>}</span>
         <div className="ml-auto flex items-center gap-1.5">
-          {img && can('reviewer') && (
+          {img && can('project.review') && (
             <Select aria-label="Train / valid / test split" className="h-7 text-xs" value={img.split} onChange={(e) => patch(`/images/${imageId}`, { split: e.target.value }).then(() => qc.invalidateQueries({ queryKey: ['image', imageId] })).catch(toast.err)}>
               <option value="train">TRAIN</option><option value="valid">VALID</option><option value="test">TEST</option>
             </Select>
@@ -646,7 +646,7 @@ export default function Editor() {
             </Button>
           )}
           {img?.status === 'annotating' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={submitForReview}><Send className="h-3.5 w-3.5" /> Submit for review</Button>}
-          {can('reviewer') && <>
+          {can('project.review') && <>
             <Button size="sm" className="h-7 bg-success text-xs text-background hover:bg-success/90" onClick={() => review(true)}><Check className="h-3.5 w-3.5" /> Approve</Button>
             <Button size="sm" variant="outline" className="h-7 border-destructive/50 text-xs text-destructive hover:bg-destructive/10" onClick={() => review(false)}><Ban className="h-3.5 w-3.5" /> Reject</Button>
           </>}
