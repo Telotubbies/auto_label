@@ -1,26 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
+import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, ClipboardCheck, Cpu,
-  Database, Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor,
-  Moon, Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload,
-  User, X, Zap, Wrench, Cctv,} from 'lucide-react'
+  BarChart3, Bell, Boxes, BrainCircuit, Cctv, Check, ChevronDown, ChevronRight, ChevronsLeft, ClipboardCheck,
+  CreditCard, Cpu, Database, Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor,
+  Moon, Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User, Users, Wrench, X, Zap,
+} from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
-import type { Job, Project } from '@/lib/types'
+import type { Job, Project, ProjectRole } from '@/lib/types'
 import { useProjectPermissions } from '@/lib/perms'
+import {
+  isWorkspaceNavActive, RESERVED_WORKSPACE_SEGMENTS, visibleProjectNav, visibleWorkspaceNav,
+  WORKSPACE_PAGE_LABELS, type NavIcon,
+} from '@/lib/nav'
 import { cn } from '@/lib/utils'
 import { Glass } from './glass'
 import { Button, Dropdown, Input, Modal, Progress, toast } from './ui'
 
-const mainNav = [
-  { to: '', label: 'Projects', icon: Layers, end: true },
-  { to: 'models', label: 'Models', icon: Boxes },
-  { to: 'playground', label: 'Playground', icon: FlaskConical },
-  { to: 'deployments', label: 'Deployments', icon: Rocket },
-]
+const ICONS: Record<NavIcon, typeof Layers> = {
+  projects: Layers, models: Boxes, playground: FlaskConical, deployments: Rocket,
+  members: Users, audit: ScrollText, usage: CreditCard, integrations: KeyRound,
+  activity: Bell, settings: Settings, admin: ShieldCheck,
+  upload: Upload, annotate: Tag, dataset: Database, video: Film, versions: FolderGit2, classes: Tags,
+  insights: LineChart, train: BrainCircuit, modelInsights: BarChart3, deploy: Rocket, qa: ClipboardCheck,
+  streams: Cctv, access: KeyRound, projectSettings: Wrench,
+}
+
+/** Elements the drawer's Tab trap cycles through, in DOM order. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 function NewWorkspace({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('')
@@ -42,21 +51,67 @@ function NewWorkspace({ open, onClose }: { open: boolean; onClose: () => void })
   )
 }
 
+function SideNavLink({ to, label, icon: Icon, active, collapsed, onClick }: {
+  to: string; label: string; icon: typeof Layers; active: boolean; collapsed: boolean; onClick?: () => void
+}) {
+  return (
+    <Link to={to} onClick={onClick} aria-label={label} aria-current={active ? 'page' : undefined} title={collapsed ? label : undefined}
+      className={cn(
+        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-all duration-150',
+        active ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
+        collapsed && 'justify-center px-0',
+      )}>
+      <Icon className="h-4 w-4 shrink-0" aria-hidden />{!collapsed && <span className="truncate">{label}</span>}
+    </Link>
+  )
+}
+
 export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean; onClose?: () => void }) {
   const { collapsed, toggleSidebar, logout, me } = useApp()
+  // Subscribe to the role itself: `can` is a stable function reference, so selecting it alone would
+  // not re-render the sidebar when the workspace role arrives after /me loads.
   const role = useApp((s) => s.role)
   const superadmin = useApp((s) => s.superadmin)
-  const isAdmin = role === 'owner' || role === 'admin'
   const { ws = '' } = useParams()
+  const { pathname } = useLocation()
   const nav = useNavigate()
   const [newWs, setNewWs] = useState(false)
+  // Inside a project the effective project role narrows the IA; workspace-level URLs are not projects.
+  const projectMatch = useMatch('/:ws/:project/*')
+  const projectSlug = projectMatch?.params.project ?? ''
+  const inProject = !!projectSlug && !RESERVED_WORKSPACE_SEGMENTS.has(projectSlug)
+  const { role: projectRole } = useProjectPermissions(ws, inProject ? projectSlug : '')
   const info = useQuery({ queryKey: ['ws', ws], queryFn: () => api.workspace(ws), enabled: !!ws })
   const current = me?.workspaces.find((w) => w.slug === ws)
   const u = info.data?.usage
   const pct = u ? (u.credits_used / u.limits.credits) * 100 : 0
+  const base = `/${ws}`
+  const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null)
+  const main = groups.filter((g) => g.id !== 'footer')
+  const footer = groups.find((g) => g.id === 'footer')?.items ?? []
+  // Active nesting is resolved against what this role renders, so a hidden longer item
+  // (Members / Plan & Usage for a member) never leaves the sidebar with no current entry.
+  const navItems = groups.flatMap((g) => g.items)
+  // The icon rail is a desktop affordance; the phone drawer always shows labels.
+  const rail = collapsed && !mobileOpen
+  const closeRef = useRef<HTMLButtonElement>(null)
+  // A phone drawer is modal: move focus in on open and keep Tab inside until it closes.
+  useEffect(() => { if (mobileOpen) closeRef.current?.focus() }, [mobileOpen])
+  const trapFocus = (e: KeyboardEvent<HTMLElement>) => {
+    if (!mobileOpen || e.key !== 'Tab') return
+    // Only stops the browser would actually tab to: the desktop collapse button is in this DOM but
+    // display:none on a phone, so counting it sent Tab out from under the scrim.
+    const nodes = [...e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)]
+      .filter((n) => n.getClientRects().length > 0)
+    if (!nodes.length) return
+    const first = nodes[0]
+    const last = nodes[nodes.length - 1]
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+  }
   return (
-    <Glass as="aside" className={cn(
-      'glass-sidebar relative m-2 mr-0 shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width]',
+    <Glass as="aside" id="app-sidebar" onKeyDown={trapFocus} className={cn(
+      'glass-sidebar relative m-2 mr-0 shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width] print:hidden',
       mobileOpen ? 'fixed inset-y-0 left-0 z-50 flex w-64' : 'hidden',
       'md:relative md:inset-auto md:z-auto md:flex md:h-[calc(100vh-1rem)]',
       collapsed ? 'md:w-14' : 'md:w-56',
@@ -64,7 +119,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
       {mobileOpen && (
         <div className="flex items-center justify-between px-3 pt-2 md:hidden">
           <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">Navigation</span>
-          <button type="button" onClick={onClose} aria-label="Close navigation"
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Close navigation"
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-sidebar-accent">
             <X className="h-4 w-4" />
           </button>
@@ -75,7 +130,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
           trigger={
             <button className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/50 px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sidebar-primary text-[11px] font-bold text-sidebar-primary-foreground">{current?.name?.[0]?.toUpperCase() ?? 'L'}</span>
-              {!collapsed && <><span className="flex-1 truncate text-left font-medium">{current?.name ?? 'LabelDesk'}</span><ChevronDown className="h-3.5 w-3.5" /></>}
+              {!rail && <><span className="flex-1 truncate text-left font-medium">{current?.name ?? 'LabelDesk'}</span><ChevronDown className="h-3.5 w-3.5" /></>}
             </button>
           }
           items={[
@@ -88,45 +143,35 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
           ]}
         />
       </div>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
-        {mainNav.map(({ to, label, icon: Icon, end }) => (
-          <NavLink key={label} to={`/${ws}/${to}`} end={end} onClick={onClose}
-            className={({ isActive }) => cn(
-              'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-all duration-150',
-              isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
-              collapsed && 'justify-center px-0',
-            )}>
-            <Icon className="h-4 w-4 shrink-0" />{!collapsed && label}
-          </NavLink>
+      <nav aria-label="Workspace" className="flex-1 space-y-0.5 overflow-y-auto px-2">
+        {main.map((g) => (
+          <div key={g.id} role={g.label ? 'group' : undefined} aria-labelledby={g.label ? `ws-nav-${g.id}` : undefined}
+            className={cn('space-y-0.5', rail && g.label && 'mt-1 border-t border-sidebar-border/60 pt-1')}>
+            {g.label && (rail
+              ? <span id={`ws-nav-${g.id}`} className="sr-only">{g.label}</span>
+              : <div id={`ws-nav-${g.id}`} className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.label}</div>)}
+            {g.items.map((i) => (
+              <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
+                active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
+            ))}
+          </div>
         ))}
       </nav>
       <div className="space-y-0.5 p-2">
-        {!collapsed && u && (
+        {!rail && u && (
           <Link to={`/${ws}/settings/usage`} className="mb-2 block rounded-lg border border-sidebar-border px-3 py-2 text-[12px] hover:bg-sidebar-accent/60">
             <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium"><Zap className="h-3.5 w-3.5 text-warning" /> {u.plan_label} plan</span><span>{Math.round(u.credits_left)} cr</span></div>
             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', pct > 80 ? 'bg-destructive' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, pct)}%` }} /></div>
           </Link>
         )}
-        <NavLink to={`/${ws}/activity`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
-          <Bell className="h-4 w-4" />{!collapsed && 'Activity'}
-        </NavLink>
-        {isAdmin && (
-          <NavLink to={`/${ws}/audit`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
-            <ScrollText className="h-4 w-4" />{!collapsed && 'Audit log'}
-          </NavLink>
-        )}
-        {superadmin && (
-          <NavLink to={`/${ws}/admin`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
-            <ShieldCheck className="h-4 w-4" />{!collapsed && 'Admin'}
-          </NavLink>
-        )}
-        <NavLink to={`/${ws}/settings`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
-          <Settings className="h-4 w-4" />{!collapsed && 'Settings'}
-        </NavLink>
+        {footer.map((i) => (
+          <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
+            active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
+        ))}
         <div className="flex items-center gap-2 px-2.5 py-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
-          {!collapsed && <span className="flex-1 truncate text-[12px]">{me?.name}</span>}
-          {!collapsed && (
+          {!rail && <span className="flex-1 truncate text-[12px]">{me?.name}</span>}
+          {!rail && (
             <Dropdown align="right" trigger={<button className="cursor-pointer" aria-label="Account menu"><ChevronDown className="h-3.5 w-3.5" /></button>}
               items={[{ label: <><User className="h-3.5 w-3.5" /> Account</>, onClick: () => nav(`/${ws}/settings/account`) },
                 { label: <><LogOut className="h-3.5 w-3.5" /> Sign Out</>, onClick: logout, danger: true }]} />
@@ -141,34 +186,19 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   )
 }
 
-export const projNav: { group: string; items: { to: string; label: string; icon: typeof Upload; perm: string; count?: boolean }[] }[] = [
-  { group: 'DATA', items: [
-    { to: 'upload', label: 'Upload Data', icon: Upload, perm: 'project.upload' },
-    { to: 'annotate', label: 'Annotate', icon: Tag, perm: 'project.annotate' },
-    { to: 'browse', label: 'Dataset', icon: Database, perm: 'project.read', count: true },
-    { to: 'videos', label: 'Video', icon: Film, perm: 'project.annotate' },
-    { to: 'versions', label: 'Versions', icon: FolderGit2, perm: 'project.export' },
-    { to: 'analytics', label: 'Analytics', icon: BarChart3, perm: 'project.review' },
-    { to: 'insights', label: 'Insights', icon: LineChart, perm: 'project.review' },
-    { to: 'classes', label: 'Classes & Tags', icon: Tags, perm: 'project.classes' },
-  ]},
-  { group: 'QUALITY', items: [
-    { to: 'qa', label: 'QA & Workforce', icon: ClipboardCheck, perm: 'project.annotate' },
-  ]},
-  { group: 'LIVE', items: [
-    { to: 'streams', label: 'Streams', icon: Cctv, perm: 'project.read' },
-  ]},
-  { group: 'MODELS', items: [
-    { to: 'train', label: 'Train', icon: BrainCircuit, perm: 'project.train' },
-    { to: 'models', label: 'Models', icon: Boxes, perm: 'project.models' },
-    { to: 'model-insights', label: 'Model insights', icon: BarChart3, perm: 'project.review' },
-  ]},
-  { group: 'DEPLOY', items: [
-    { to: 'deploy', label: 'Deploy & Test', icon: Rocket, perm: 'project.models' },
-    { to: 'access', label: 'Access', icon: KeyRound, perm: 'project.settings' },
-    { to: 'settings', label: 'Project Settings', icon: Wrench, perm: 'project.settings' },
-  ]},
-]
+/**
+ * Icon-carrying project nav for every renderer. The desktop panel and the compact strip both call
+ * this with the same permission check and project role, so a role never sees a different IA by width.
+ */
+export function projectNavGroups(can: (perm: string) => boolean, role?: ProjectRole | null) {
+  return visibleProjectNav(can, role).map((g) => ({
+    group: g.label ?? '',
+    items: g.items.map((i) => ({ ...i, icon: ICONS[i.icon] })),
+  }))
+}
+
+/** Unfiltered shape used for breadcrumb label lookup. */
+export const projNav = projectNavGroups(() => true)
 
 export const typeLabel = (t: string) =>
   ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection' } as Record<string, string>)[t] ?? t
@@ -178,8 +208,9 @@ export function ProjectPanel({ project }: { project: Project }) {
   const can = useApp((s) => s.can)
   // Project routes follow the resolved project role (manager/reviewer may sit on a member workspace
   // account). Until the fetch lands, workspace admins keep seeing the full nav.
-  const { can: canProject, ready } = useProjectPermissions(ws, project.slug)
+  const { can: canProject, ready, role: projectRole } = useProjectPermissions(ws, project.slug)
   const visible = (perm: string) => (ready ? canProject(perm) : can('admin'))
+  const groups = projectNavGroups(visible, projectRole)
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">
@@ -191,24 +222,21 @@ export function ProjectPanel({ project }: { project: Project }) {
           <div className="px-2.5 py-2 text-sm font-semibold">{project.name}</div>
         </div>
       </div>
-      <nav className="flex-1 px-2 pb-4">
-        {projNav.map((g) => {
-          const items = g.items.filter((i) => visible(i.perm))
-          return items.length ? (
-            <div key={g.group} className="mb-3">
-              <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
-              {items.map(({ to, label, icon: Icon, count }) => (
-                <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
-                  className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
-                    isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span className="flex-1">{label}</span>
-                  {count && <span className="text-[11px] text-muted-foreground">{project.images}</span>}
-                </NavLink>
-              ))}
-            </div>
-          ) : null
-        })}
+      <nav aria-label="Project sections" className="flex-1 px-2 pb-4">
+        {groups.map((g) => (
+          <div key={g.group} role="group" aria-labelledby={`proj-nav-${g.group}`} className="mb-3">
+            <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
+            {g.items.map(({ to, label, icon: Icon, count }) => (
+              <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
+                className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+                  isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">{label}</span>
+                {count && <span className="text-[11px] text-muted-foreground">{project.images}</span>}
+              </NavLink>
+            ))}
+          </div>
+        ))}
       </nav>
     </Glass>
   )
@@ -230,22 +258,22 @@ export function GpuBadge() {
   return <span className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title="GPU holder"><Cpu className="h-3.5 w-3.5" aria-hidden />{text}</span>
 }
 
-const pageLabels: Record<string, string> = {
-  models: 'Models', deployments: 'Deployments', activity: 'Activity', audit: 'Audit log', admin: 'Admin console',
-  settings: 'Settings', legal: 'Legal', qa: 'QA & Workforce',
-}
-
-export function TopBar({ onMenu }: { onMenu?: () => void }) {
+export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
+  onMenu?: () => void
+  menuOpen?: boolean
+  menuButtonRef?: RefObject<HTMLButtonElement | null>
+}) {
   const { ws = '' } = useParams()
   const me = useApp((s) => s.me)
   const m = useMatch('/:ws/:project/*')
   const slug = m?.params.project ?? ''
-  const isProject = !!slug && !RESERVED.has(slug)
+  const isProject = !!slug && !RESERVED_WORKSPACE_SEGMENTS.has(slug)
   const proj = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug), enabled: isProject })
   const rest = (m?.params['*'] ?? '').split('/')[0]
+  const nested = slug && rest ? WORKSPACE_PAGE_LABELS[`${slug}/${rest}`] : undefined
   const page = isProject
     ? projNav.flatMap((g) => g.items).find((i) => i.to === rest)?.label
-    : slug === 'legal' && rest === 'dpa' ? 'Data Processing Agreement' : (slug ? pageLabels[slug] : 'Projects')
+    : slug === 'legal' && rest === 'dpa' ? 'Data Processing Agreement' : (nested ?? (slug ? WORKSPACE_PAGE_LABELS[slug] : 'Projects'))
   const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? 'LabelDesk'
   const { mode } = useThemePrefs()
   const next = THEME_CYCLE[(THEME_CYCLE.findIndex((x) => x.id === mode) + 1) % THEME_CYCLE.length]
@@ -257,7 +285,8 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
     : page ? [{ label: page, to: '' }] : []
   return (
     <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4 print:hidden">
-      <button type="button" onClick={onMenu} aria-label="Open navigation menu"
+      <button ref={menuButtonRef} type="button" onClick={onMenu} aria-label="Open navigation menu"
+        aria-expanded={menuOpen} aria-controls="app-sidebar"
         className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground md:hidden">
         <Menu className="h-4 w-4" />
       </button>
@@ -283,7 +312,6 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
   )
 }
 
-const RESERVED = new Set(['models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal', 'qa'])
 const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
   train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
   insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',
@@ -294,7 +322,7 @@ const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])
 export function JobTray() {
   const m = useMatch('/:ws/:project/*')
   const ws = m?.params.ws ?? '', project = m?.params.project ?? ''
-  const enabled = !!ws && !!project && !RESERVED.has(project)
+  const enabled = !!ws && !!project && !RESERVED_WORKSPACE_SEGMENTS.has(project)
   const seen = useRef(new Map<string, Job>())
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const q = useQuery({
@@ -331,13 +359,22 @@ export function JobTray() {
 
 export function AppLayout() {
   const m = useMatch('/:ws/:project/*')
-  const isProject = !!m?.params.project && !RESERVED.has(m.params.project)
+  const isProject = !!m?.params.project && !RESERVED_WORKSPACE_SEGMENTS.has(m.params.project)
   const [navOpen, setNavOpen] = useState(false)
+  const menuRef = useRef<HTMLButtonElement>(null)
+  const drawerWasOpen = useRef(false)
   useEffect(() => {
     if (!navOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false) }
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [navOpen])
+  // Closing the drawer (Escape, scrim or a link) returns focus to the button that opened it.
+  useEffect(() => {
+    if (navOpen) { drawerWasOpen.current = true; return }
+    if (!drawerWasOpen.current) return
+    drawerWasOpen.current = false
+    menuRef.current?.focus()
   }, [navOpen])
   return (
     <div className="app-bg flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
@@ -347,7 +384,7 @@ export function AppLayout() {
       )}
       <AppSidebar mobileOpen={navOpen} onClose={() => setNavOpen(false)} />
       <div className="relative min-w-0 flex-1 print:min-w-full">
-        <TopBar onMenu={() => setNavOpen(true)} />
+        <TopBar onMenu={() => setNavOpen(true)} menuOpen={navOpen} menuButtonRef={menuRef} />
         {/* Content scrolls underneath the floating glass bar, so the blur has something to blur. Project pages scroll inside ProjectLayout. */}
         <main data-scroll className={cn('h-full print:h-auto print:overflow-visible print:pt-0', isProject ? 'overflow-hidden' : 'overflow-y-auto pt-14')}><Outlet /></main>
       </div>
