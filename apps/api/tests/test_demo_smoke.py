@@ -5,7 +5,9 @@ The script is loaded by path (it is not an installed package) and every step is 
 run finishes in milliseconds.
 """
 
+import copy
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -14,6 +16,14 @@ import httpx
 
 TOOL = Path(__file__).resolve().parents[3] / "tools" / "demo_smoke.py"
 PREFIX = "/api/ws/labeldesk-demo/projects/ppe-detection"
+PREVIEW_IDS = ["i1", "i2", "i3", "i4", "i5"]
+GROUND_TRUTH = {
+    "i1": [{"id": "g1", "classId": "person", "shape": {"kind": "bbox", "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.3}}],
+    "i2": [{"id": "g2", "classId": "helmet", "shape": {"kind": "bbox", "x": 0.2, "y": 0.2, "w": 0.1, "h": 0.1}}],
+    "i3": [],
+    "i4": [{"id": "g4", "classId": "harness", "shape": {"kind": "bbox", "x": 0.3, "y": 0.3, "w": 0.1, "h": 0.2}}],
+    "i5": [],
+}
 
 
 def _load_tool():
@@ -49,16 +59,50 @@ def _api_handler(state: dict, calls: list[tuple[str, str]]):
             return httpx.Response(200, json={"token": "tok-123"})
         auth = request.headers.get("authorization")
         assert auth == "Bearer tok-123", "every project call must be authenticated"
+        image = re.fullmatch(r"/api/images/([^/]+)(/annotations)?", path)
+        if image:
+            image_id, suffix = image.group(1), image.group(2)
+            if method == "GET":
+                stored = state["images"][image_id]
+                return httpx.Response(
+                    200,
+                    json={"id": image_id, "annotations": copy.deepcopy(stored["annotations"]),
+                          "status": stored["status"]},
+                )
+            body = json.loads(request.content or b"{}")
+            if method == "PUT" and suffix == "/annotations":
+                state["images"][image_id]["annotations"] = body["annotations"]
+                state["restored"].append(image_id)
+                return httpx.Response(200, json={"saved": len(body["annotations"]), "status": "done"})
+            if method == "PATCH" and suffix is None:
+                state["images"][image_id]["status"] = body["status"]
+                state["statuses_restored"].append(image_id)
+                return httpx.Response(200, json={"id": image_id, **body})
+            raise AssertionError(f"unexpected image call {method} {path}")
+        if path == f"{PREFIX}/images":
+            return httpx.Response(
+                200,
+                json={"total": len(PREVIEW_IDS), "items": [{"id": i} for i in PREVIEW_IDS]},
+            )
         if path == f"{PREFIX}/autolabel/preview":
+            if not state.get("preview_ok", True):
+                return httpx.Response(503, json={"detail": "vLLM not reachable"})
             state["preview_timeout"] = request.extensions.get("timeout", {})
             return httpx.Response(
                 200,
                 json={
-                    "images": [{"annotations": [{"x": 1.0}]}, {"annotations": []}],
+                    "images": [{"id": image_id, "annotations": [{"x": 1.0}]} for image_id in PREVIEW_IDS],
                     "counts": {"person": 1},
                 },
             )
         if path == f"{PREFIX}/autolabel":
+            payload = json.loads(request.content or b"{}")
+            state["autolabel_payload"] = payload
+            # The real worker appends its boxes to whatever the image already has.
+            for image_id in payload.get("image_ids") or []:
+                state["images"][image_id]["annotations"].append(
+                    {"id": f"sam-{image_id}", "classId": "helmet", "source": "sam3"}
+                )
             return httpx.Response(200, json={"id": "job-auto", "status": "queued"})
         if path == f"{PREFIX}/jobs/job-auto":
             return httpx.Response(
@@ -110,7 +154,15 @@ def _run(state: dict, *, fps: float = 6.0) -> tuple[int, list[tuple[str, str]], 
     clock = FakeClock()
     api_calls: list[tuple[str, str]] = []
     vllm_calls: list[tuple[str, str]] = []
-    state = {**state, "fps": fps, "stops": 0}
+    images = copy.deepcopy(GROUND_TRUTH)
+    state = {
+        **state,
+        "fps": fps,
+        "stops": 0,
+        "images": {image_id: {"annotations": anns, "status": "done"} for image_id, anns in images.items()},
+        "restored": [],
+        "statuses_restored": [],
+    }
     api_client = httpx.Client(transport=httpx.MockTransport(_api_handler(state, api_calls)))
     vllm_client = httpx.Client(transport=httpx.MockTransport(_vllm_handler(state, vllm_calls)))
     gpu = demo_smoke.Gpu(sample=lambda: 4096, interval=0.01)
@@ -154,6 +206,31 @@ def test_all_six_steps_pass_in_order_with_sleep_and_wake_times(capsys):
     assert state["stops"] == 1
     assert ("POST", "/wake_up") in calls
     assert state["preview_timeout"]["read"] == demo_smoke.DEFAULT_PREVIEW_TIMEOUT
+
+
+def test_autolabel_is_scoped_to_the_preview_images_and_restores_annotations(capsys):
+    code, _, state = _run({"models": [{"id": "qwen"}], "sleeping": False})
+
+    assert code == 0
+    payload = state["autolabel_payload"]
+    assert payload["method"] == "sam"
+    assert payload["model_ref"] == demo_smoke.SAM_REF
+    assert payload["image_ids"] == PREVIEW_IDS, "the job must only touch the previewed images"
+    assert state["restored"] == PREVIEW_IDS
+    assert state["statuses_restored"] == PREVIEW_IDS
+    for image_id in PREVIEW_IDS:
+        assert state["images"][image_id]["annotations"] == GROUND_TRUTH[image_id]
+        assert state["images"][image_id]["status"] == "done"
+
+
+def test_autolabel_falls_back_to_project_images_when_preview_fails(capsys):
+    code, _, state = _run({"models": [{"id": "qwen"}], "sleeping": False, "preview_ok": False})
+
+    assert code == 1, "the ground check fails; the other five still run"
+    assert state["autolabel_payload"]["image_ids"] == PREVIEW_IDS
+    assert state["restored"] == PREVIEW_IDS
+    fails = [line for line in capsys.readouterr().out.splitlines() if line.startswith("FAIL  ")]
+    assert fails[0].startswith("FAIL  VLM->SAM")
 
 
 def test_preview_gets_a_long_timeout_and_fast_calls_keep_the_short_one():

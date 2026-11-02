@@ -15,6 +15,10 @@ wake (sleep and wake times recorded); a gate-camera stream at ≥ 5 FPS for 60 s
 GPU memory sampled every second for the whole run (< 11 500 MiB). Every line prints PASS or
 FAIL, and the exit code is 1 if any check failed. Nothing outside the demo workspace is touched.
 
+The SAM auto-label check is scoped to the images the preview looked at (or the newest five when
+the preview fails) and each image's annotations and status are snapshotted and restored around
+the job, so rehearsing the run twice leaves the seeded dataset unchanged.
+
 All IO sits behind three small seams — :class:`Api`, :class:`Vllm` and :class:`Gpu` — and the
 decision helpers are pure, so the whole run can be driven from tests without network or GPU.
 """
@@ -280,7 +284,7 @@ class Api:
         )
         return self._json(response)
 
-    def autolabel(self) -> dict:
+    def autolabel(self, image_ids: list[str] | None = None) -> dict:
         return self.post(
             "/autolabel",
             {
@@ -288,7 +292,36 @@ class Api:
                 "model_ref": SAM_REF,
                 "only_unannotated": False,
                 "send_to_review": True,
+                "image_ids": list(image_ids or []),
             },
+        )
+
+    def image_ids(self, limit: int = SEED_IMAGES) -> list[str]:
+        """Newest image ids; the fallback when the preview did not tell us which images it used."""
+        payload = self.get(f"/images?limit={int(limit)}")
+        return [str(item["id"]) for item in payload.get("items") or [] if item.get("id")][:limit]
+
+    def image(self, image_id: str) -> dict:
+        return self._json(
+            self.client.get(f"{self.root}/api/images/{quote(image_id, safe='')}", headers=self._headers())
+        )
+
+    def save_annotations(self, image_id: str, annotations: list[dict]) -> dict:
+        return self._json(
+            self.client.put(
+                f"{self.root}/api/images/{quote(image_id, safe='')}/annotations",
+                headers=self._headers(),
+                json={"annotations": annotations},
+            )
+        )
+
+    def set_status(self, image_id: str, status: str) -> dict:
+        return self._json(
+            self.client.patch(
+                f"{self.root}/api/images/{quote(image_id, safe='')}",
+                headers=self._headers(),
+                json={"status": status},
+            )
         )
 
     def job(self, job_id: str) -> dict:
@@ -410,28 +443,91 @@ def step_models(vllm: Vllm) -> tuple[bool, str]:
     return models_ok(payload), f"{count} model(s)"
 
 
-def step_ground(api: Api) -> tuple[bool, str]:
+def step_ground(api: Api, image_ids: list[str] | None = None) -> tuple[bool, str]:
     try:
         payload = api.preview_ground()
     except Exception as exc:
         return False, _err(exc)
     images = payload.get("images") or []
+    if image_ids is not None:
+        # Remember which images the preview used so the auto-label job touches the same small set.
+        image_ids[:] = [str(image["id"]) for image in images if image.get("id")][:SEED_IMAGES]
     count = sum(len(image.get("annotations") or []) for image in images)
     return annotations_ok(count), f"{count} annotation(s) over {len(images)} image(s)"
 
 
+@dataclass(frozen=True)
+class ImageSnapshot:
+    """One image's annotations and status, captured before the smoke mutates them."""
+
+    image_id: str
+    annotations: list[dict]
+    status: str | None
+
+
+def snapshot_images(api: Api, image_ids: list[str]) -> list[ImageSnapshot]:
+    snapshots = []
+    for image_id in image_ids:
+        detail = api.image(image_id)
+        snapshots.append(ImageSnapshot(image_id, list(detail.get("annotations") or []), detail.get("status")))
+    return snapshots
+
+
+def restore_images(api: Api, snapshots: list[ImageSnapshot]) -> list[str]:
+    """Undo the appends: a rehearsal must leave the seeded dataset exactly as it found it."""
+    problems: list[str] = []
+    for snap in snapshots:
+        try:
+            api.save_annotations(snap.image_id, snap.annotations)
+            if snap.status:
+                api.set_status(snap.image_id, snap.status)
+        except Exception as exc:
+            problems.append(f"{snap.image_id}: {_err(exc)}")
+    return problems
+
+
 def step_autolabel(
-    api: Api, timeout: float, clock: Callable[[], float], sleep: Callable[[float], None]
+    api: Api, image_ids: list[str], timeout: float, clock: Callable[[], float], sleep: Callable[[float], None]
 ) -> tuple[bool, str]:
+    """SAM text auto-label on a bounded image set, with the pre-run annotations restored afterwards.
+
+    The worker appends its boxes to whatever an image already carries and the seed's images hold
+    ground truth, so an unscoped run (and therefore the mandated two-run rehearsal) would stack
+    duplicate boxes on the demo data. Scoping to the previewed images keeps the check real while
+    the snapshot/restore keeps the dataset unchanged.
+    """
     try:
-        job = wait_job(api, api.autolabel()["id"], timeout=timeout, clock=clock, sleep=sleep)
+        scoped = list(image_ids) or api.image_ids()
     except Exception as exc:
-        return False, _err(exc)
-    count = int((job.get("result") or {}).get("annotations") or 0)
-    detail = f"job {job.get('status')}, {count} annotation(s)"
-    if job.get("error"):
-        detail += f": {job['error']}"
-    return job_passed(job, 1), detail
+        return False, f"could not pick images: {_err(exc)}"
+    if not scoped:
+        return False, "no seed images to auto-label"
+    try:
+        snapshots = snapshot_images(api, scoped)
+    except Exception as exc:
+        return False, f"snapshot failed: {_err(exc)}"
+
+    job: dict | None = None
+    problem = ""
+    try:
+        job = wait_job(api, api.autolabel(scoped)["id"], timeout=timeout, clock=clock, sleep=sleep)
+    except Exception as exc:
+        problem = _err(exc)
+    finally:
+        restore_problems = restore_images(api, snapshots)  # always: a dead job may have written some images
+
+    if job is None:
+        detail = problem or "no job"
+    else:
+        count = int((job.get("result") or {}).get("annotations") or 0)
+        detail = f"job {job.get('status')}, {count} annotation(s) on {len(scoped)} image(s)"
+        if job.get("error"):
+            detail += f": {job['error']}"
+    if restore_problems:
+        detail += "; restore failed: " + "; ".join(restore_problems)
+    else:
+        detail += f"; {len(snapshots)} image(s) restored"
+    return job is not None and job_passed(job, 1) and not restore_problems, detail
 
 
 def _first_ready_version(api: Api) -> str | None:
@@ -614,12 +710,13 @@ def run(
     if gpu is not None:
         gpu.start()
     try:
+        scoped_images: list[str] = []
         _record(report, "vLLM /v1/models", lambda: step_models(vllm), clock)
-        _record(report, "VLM->SAM ground (5 seed images)", lambda: step_ground(api), clock)
+        _record(report, "VLM->SAM ground (5 seed images)", lambda: step_ground(api, scoped_images), clock)
         _record(
             report,
             "SAM text auto-label",
-            lambda: step_autolabel(api, cfg.timeout, clock, sleep),
+            lambda: step_autolabel(api, scoped_images, cfg.timeout, clock, sleep),
             clock,
         )
         _record(
