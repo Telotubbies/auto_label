@@ -24,12 +24,18 @@ EXPORT = f"/api/ws/{WS}/audit/export"
 PW = "demo1234"
 
 
-def login(email: str = "demo@labeldesk.dev") -> TestClient:
+def login(email: str = "demo@labeldesk.dev", pw: str = PW) -> TestClient:
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": PW})
+    r = c.post("/api/auth/login", json={"email": email, "password": pw})
     assert r.status_code == 200, r.text
     c.headers["Authorization"] = f"Bearer {r.json()['token']}"
     return c
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _started():
+    with TestClient(app):
+        yield
 
 
 @pytest.fixture(scope="module")
@@ -181,6 +187,37 @@ def test_annotator_cannot_export():
     assert r.json()["detail"] == "requires workspace.audit"
 
 
+def test_labeler_cannot_list_audit():
+    """I1: the list endpoint carries the same workspace.audit check as the export."""
+    labeler = login("labeler@labeldesk.dev")
+    r = labeler.get(f"/api/ws/{WS}/audit")
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == "requires workspace.audit"
+
+
+def test_billing_cannot_list_audit():
+    from app.models import Member
+
+    email = f"billing-audit-{secrets.token_hex(4)}@example.test"
+    c = TestClient(app)
+    assert c.post("/api/auth/signup", json={"name": "Bill Ing", "email": email,
+                                            "password": "longpassword1"}).status_code == 200
+    with SessionLocal() as db:
+        uid = db.scalar(select(User.id).where(User.email == email))
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        db.add(Member(workspace_id=ws.id, user_id=uid, role="billing"))
+        db.commit()
+    try:
+        bill = login(email, "longpassword1")
+        r = bill.get(f"/api/ws/{WS}/audit")
+        assert r.status_code == 403, r.text
+        assert r.json()["detail"] == "requires workspace.audit"
+    finally:
+        with SessionLocal() as db:
+            db.execute(delete(Member).where(Member.user_id == uid))
+            db.commit()
+
+
 def test_export_is_itself_audited(admin, ids, marker):
     rid = add(ids["ws"], ids["demo"], "workspace.update", f"{marker}-self")
     try:
@@ -225,3 +262,26 @@ def test_failed_stream_request_is_not_audited(admin):
     assert admin.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream404/frame").status_code == 404
     with SessionLocal() as db:
         assert db.scalar(select(Audit.id).where(Audit.target == "stream404")) is None
+
+
+def test_signed_stream_url_records_the_bound_viewer(ids):
+    """I8: a signed frame URL names its viewer; the middleware must attribute the view to them."""
+    from app.security import sign_query
+
+    with SessionLocal() as db:
+        db.execute(delete(Audit).where(Audit.action == "stream.view"))
+        db.commit()
+    qs = sign_query(f"ws/{WS}/projects/ppe-detection/streams/stream123/frame", viewer=ids["labeler"])
+    raw = TestClient(app)                                  # no bearer token: viewer comes from the signature
+    assert raw.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream123/frame?{qs}").status_code == 200
+    with SessionLocal() as db:
+        row = db.scalar(select(Audit).where(Audit.action == "stream.view").order_by(Audit.created.desc()))
+        assert row is not None and row.user_id == ids["labeler"]
+
+    # Tampering with the viewer invalidates the signature, so the row is not attributed to anyone else.
+    tampered = qs.replace(f"viewer={ids['labeler']}", f"viewer={ids['demo']}")
+    assert raw.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream123/frame?{tampered}").status_code == 200
+    with SessionLocal() as db:
+        row = db.scalar(select(Audit).where(Audit.action == "stream.view").order_by(Audit.created.desc()))
+        assert row is not None and row.user_id is None
+

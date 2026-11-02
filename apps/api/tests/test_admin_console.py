@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from app.config import PLANS, WORKER_STALE_S
 from app.db import SessionLocal
 from app.main import app
-from app.models import Audit, Job, Worker, Workspace, now
+from app.models import Audit, Job, Member, User, Worker, Workspace, now
 from app.services import heartbeat
 
 DEMO = "demo@labeldesk.dev"
@@ -170,3 +170,34 @@ def test_status_page_reports_known_components(admin, superadmin):
         assert comp["status"] in allowed, comp
         assert isinstance(comp["detail"], str)
     assert names["database"]["status"] == "operational"
+
+
+def test_unverified_superadmin_email_is_refused(monkeypatch):
+    """I6: an unverified address must not inherit platform admin, even when pre-listed."""
+    email = f"ops-{secrets.token_hex(4)}@platform.test"
+    monkeypatch.setenv("LD_SUPERADMINS", email)
+    c = TestClient(app)
+    r = c.post("/api/auth/signup", json={"name": "Platform Ops", "email": email, "password": "longpassword1"})
+    assert r.status_code == 200, r.text
+    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.email == email))
+        uid = u.id
+    try:
+        assert c.get("/api/admin/overview").status_code == 403
+        assert c.get("/api/me").json()["superadmin"] is False
+        # A persisted flag is not a bypass for an unverified address either.
+        with SessionLocal() as db:
+            db.get(User, uid).platform_admin = True
+            db.commit()
+        assert c.get("/api/admin/overview").status_code == 403
+        with SessionLocal() as db:
+            db.get(User, uid).email_verified = now()
+            db.commit()
+        assert c.get("/api/admin/overview").status_code == 200
+        assert c.get("/api/me").json()["superadmin"] is True
+    finally:
+        with SessionLocal() as db:
+            db.execute(delete(Member).where(Member.user_id == uid))
+            db.commit()
+

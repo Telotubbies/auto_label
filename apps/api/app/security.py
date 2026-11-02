@@ -5,6 +5,7 @@ import hmac
 import re
 import secrets
 import time
+from urllib.parse import quote
 
 import jwt
 
@@ -94,19 +95,33 @@ def new_refresh() -> tuple[str, float]:
 
 # --- signed file urls: <img src> can't send bearer headers ------------------
 
-def sign_path(rel: str, ttl: int = FILE_URL_TTL) -> str:
+def _signature(rel: str, exp: int, viewer: str | None = None) -> str:
+    """HMAC of the path, expiry and (optionally) the viewer bound into the URL."""
+    payload = f"{rel}:{exp}" if not viewer else f"{rel}:{exp}:{viewer}"
+    return hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def sign_query(rel: str, ttl: int = FILE_URL_TTL, viewer: str | None = None) -> str:
+    """Query string signing one API-relative path, optionally naming the expected viewer.
+
+    Task 10b's frame/MJPEG routes sign their own path with this instead of ``/api/files``; the
+    audit middleware verifies the signature before trusting the viewer id.
+    """
     # expiry is rounded up to the hour so the same file keeps the same URL for a while —
     # otherwise every API response mints new URLs and the browser can never cache thumbnails
     exp = (int(time.time()) // 3600 + 1) * 3600 + ttl
-    sig = hmac.new(SECRET.encode(), f"{rel}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
-    return f"/api/files/{rel}?exp={exp}&sig={sig}"
+    query = f"exp={exp}&sig={_signature(rel, exp, viewer)}"
+    return f"{query}&viewer={quote(viewer, safe='')}" if viewer else query
 
 
-def check_signature(rel: str, exp: int, sig: str) -> bool:
+def sign_path(rel: str, ttl: int = FILE_URL_TTL, viewer: str | None = None) -> str:
+    return f"/api/files/{rel}?{sign_query(rel, ttl, viewer)}"
+
+
+def check_signature(rel: str, exp: int, sig: str, viewer: str | None = None) -> bool:
     if exp < time.time():
         return False
-    want = hmac.new(SECRET.encode(), f"{rel}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
-    return hmac.compare_digest(want, sig)
+    return hmac.compare_digest(_signature(rel, exp, viewer), sig)
 
 
 # --- api keys ----------------------------------------------------------------

@@ -39,6 +39,8 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255))
     pw_hash: Mapped[str] = mapped_column(String(255), default="")
     email_verified: Mapped[float | None] = mapped_column(Float, nullable=True)   # timestamp of verification
+    # Persisted platform-operator flag; out-of-band grant, still requires a verified address.
+    platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     # Fernet-encrypted TOTP seed (ciphertext, not base32); nullable until enrolment starts.
     totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

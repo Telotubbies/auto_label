@@ -179,7 +179,7 @@ def ensure_class(db: Session, p: Project, name: str) -> LabelClass:
 
 @router.post("/{project}/classes")
 def add_class(body: ClassIn, c: Ctx = Depends(project_ctx)):
-    c.need("annotator")   # Roboflow lets labelers add classes while annotating
+    c.perm("project.classes")   # Roboflow lets labelers add classes while annotating
     name = body.name.strip()
     if c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id, LabelClass.name == name)):
         raise HTTPException(409, "class already exists")
@@ -192,7 +192,7 @@ def add_class(body: ClassIn, c: Ctx = Depends(project_ctx)):
 
 @router.patch("/{project}/classes/{cid}")
 def edit_class(cid: str, body: ClassIn, c: Ctx = Depends(project_ctx)):
-    c.need("reviewer")
+    c.perm("project.classes")
     lc = c.db.get(LabelClass, cid)
     if not lc or lc.project_id != c.project.id:
         raise HTTPException(404, "class not found")
@@ -233,7 +233,7 @@ def merge_classes(body: MergeIn, c: Ctx = Depends(project_ctx)):
 
 @router.delete("/{project}/classes/{cid}")
 def delete_class(cid: str, c: Ctx = Depends(project_ctx)):
-    c.need("reviewer")
+    c.perm("project.classes")
     lc = c.db.get(LabelClass, cid)
     if not lc or lc.project_id != c.project.id:
         raise HTTPException(404, "class not found")

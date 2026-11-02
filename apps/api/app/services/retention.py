@@ -2,11 +2,17 @@
 
 "Frames" are ``Image`` rows (plus their stored JPEG and thumbnail), "snapshots" are files under the
 project's snapshots directory (and StreamEvent.snapshot_path), "events" are ``StreamEvent`` rows.
+Snapshots are only ever swept from directories that are attributable to the project: the project
+directory and the project-keyed subfolder of the shared snapshots root (Task 10b must write footage
+under ``snapshots/<project id>/``). Flat files directly under the shared root carry no attribution
+and are deliberately left alone — one tenant's retention policy must never delete another's footage.
 Stream models arrive with the Task 10b stream router, so they are looked up with ``getattr`` — this
 module must import on a build that has no streams at all.
 """
 
+import json
 import logging
+import shutil
 from pathlib import Path
 
 from sqlalchemy import delete as sa_delete
@@ -17,7 +23,7 @@ from .. import models
 from ..config import DATA_DIR
 from ..db import SessionLocal
 from ..deps import audit
-from ..models import Comment, Image, ImageClass, Job, Project, now
+from ..models import Comment, Image, ImageClass, Job, Project, Version, now
 
 log = logging.getLogger(__name__)
 DAY = 86400.0
@@ -50,6 +56,31 @@ def _unlink(rel_or_path: str | Path) -> int | None:
     except OSError:  # missing, locked or vanished mid-sweep: keep going
         log.warning("retention could not remove %s", path, exc_info=True)
         return None
+
+
+def _delete_stored(rel_or_path: str | Path) -> tuple[bool, int]:
+    """Remove one stored file; (True, bytes) when gone or never stored, (False, 0) when it remains."""
+    if not rel_or_path:
+        return True, 0
+    path = Path(rel_or_path)
+    if not path.is_absolute():
+        path = DATA_DIR / path
+    try:
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError:
+        return True, 0                       # nothing left on disk: the row may go
+    except OSError:
+        log.warning("retention could not resolve %s", path, exc_info=True)
+        return False, 0
+    try:
+        if not resolved.is_file() or not _inside(resolved):
+            return False, 0                  # unsafe path: keep the row rather than lose attribution
+        size = resolved.stat().st_size
+        resolved.unlink()
+        return True, size
+    except OSError:                          # locked/read-only: keep the row so a later run retries
+        log.warning("retention could not remove %s", path, exc_info=True)
+        return False, 0
 
 
 def _older_than(path: Path, cutoff: float) -> bool:
@@ -94,28 +125,63 @@ def count_events(db: Session, project_id: str, cutoff: float) -> int:
     return len(event_rows(db, project_id, cutoff))
 
 
+def _invalidate_exports(db: Session, project_id: str, image_ids: set[str]) -> int:
+    """Delete cached export archives of versions that include any of the deleted frames.
+
+    Version snapshots stay until the version itself is deleted, but a zip built from them would keep
+    serving the "deleted" personal data, so the affected caches are dropped and rebuilt on demand.
+    """
+    if not image_ids:
+        return 0
+    removed = 0
+    for version in db.scalars(select(Version).where(Version.project_id == project_id)):
+        try:
+            manifest = json.loads((DATA_DIR / "versions" / version.id / "manifest.json").read_text())
+        except (OSError, ValueError):         # never generated/kept: no cache can be attributed to it
+            continue
+        sources = {s.get("id") for s in manifest.get("sources") or [] if isinstance(s, dict)}
+        if not image_ids & sources:
+            continue
+        for target in (DATA_DIR / "exports" / version.id, DATA_DIR / "versions" / version.id / "exports"):
+            if target.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+                removed += 1
+    return removed
+
+
 def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
     """Delete one project's expired frames, events and snapshot files; caller commits."""
-    stats = {"images": 0, "events": 0, "snapshots": 0, "bytes": 0}
+    stats = {"images": 0, "events": 0, "snapshots": 0, "exports": 0, "bytes": 0, "failed": 0}
+    deleted_ids: set[str] = set()
     for image in db.scalars(select(Image).where(Image.project_id == project.id, Image.created < cutoff)):
-        stats["bytes"] += (_unlink(image.path) or 0) + (_unlink(image.thumb) or 0)
+        path_ok, path_bytes = _delete_stored(image.path)
+        thumb_ok, thumb_bytes = _delete_stored(image.thumb)
+        stats["bytes"] += path_bytes + thumb_bytes
+        if not (path_ok and thumb_ok):
+            stats["failed"] += 1             # row survives, so the next run retries the remaining file
+            continue
         # SQLite does not enforce ON DELETE CASCADE: clear the derived rows explicitly.
         db.execute(sa_delete(ImageClass).where(ImageClass.image_id == image.id))
         db.execute(sa_delete(Comment).where(Comment.image_id == image.id))
         db.delete(image)
         stats["images"] += 1
+        deleted_ids.add(image.id)
 
     for event in event_rows(db, project.id, cutoff):
-        stats["bytes"] += _unlink(getattr(event, "snapshot_path", "") or "") or 0
+        ok, freed = _delete_stored(getattr(event, "snapshot_path", "") or "")
+        stats["bytes"] += freed
+        if not ok:
+            stats["failed"] += 1
+            continue
         db.delete(event)
         stats["events"] += 1
 
-    files, freed = _sweep(DATA_DIR / "projects" / project.id / "snapshots", cutoff)
-    stats["snapshots"] += files
-    stats["bytes"] += freed
-    files, freed = _sweep(DATA_DIR / "snapshots", cutoff)  # legacy global snapshot folder
-    stats["snapshots"] += files
-    stats["bytes"] += freed
+    # Only project-attributable snapshot folders: the flat shared root has no owner, so it stays.
+    for directory in (DATA_DIR / "projects" / project.id / "snapshots", DATA_DIR / "snapshots" / project.id):
+        files, freed = _sweep(directory, cutoff)
+        stats["snapshots"] += files
+        stats["bytes"] += freed
+    stats["exports"] = _invalidate_exports(db, project.id, deleted_ids)
     return stats
 
 
@@ -126,7 +192,8 @@ def run_retention(job) -> dict:
     otherwise every live project with a positive ``retention_days``.
     """
     params = getattr(job, "params", None) or {}
-    result = {"projects": 0, "images_deleted": 0, "events_deleted": 0, "snapshots_deleted": 0, "bytes_freed": 0}
+    result = {"projects": 0, "images_deleted": 0, "events_deleted": 0, "snapshots_deleted": 0,
+              "exports_deleted": 0, "bytes_freed": 0, "failed": 0}
     with SessionLocal() as db:
         project_id = params.get("project_id")
         if project_id:
@@ -150,14 +217,18 @@ def run_retention(job) -> dict:
                 images=stats["images"],
                 events=stats["events"],
                 snapshots=stats["snapshots"],
+                exports=stats["exports"],
                 bytes=stats["bytes"],
+                failed=stats["failed"],
             )
             db.commit()
             result["projects"] += 1
             result["images_deleted"] += stats["images"]
             result["events_deleted"] += stats["events"]
             result["snapshots_deleted"] += stats["snapshots"]
+            result["exports_deleted"] += stats["exports"]
             result["bytes_freed"] += stats["bytes"]
+            result["failed"] += stats["failed"]
     return result
 
 

@@ -4,14 +4,14 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Text, cast, func, or_, select
+from sqlalchemy import Text, cast, delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..apikeys import scopes_of
 from ..config import DATA_DIR, PLANS, PUBLIC_URL
 from ..deps import Ctx, audit, credits_left, plan, ws_ctx
 from ..models import (API_SCOPES, ROLES, WORKSPACE_ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project,
-                      TrainedModel, User, Workspace)
+                      ProjectMember, TrainedModel, User, Workspace)
 from ..security import new_api_key
 from ..superadmin import is_superadmin
 from .. import mailer
@@ -175,7 +175,11 @@ def remove_member(uid: str, c: Ctx = Depends(ws_ctx)):
     pids = select(Project.id).where(Project.workspace_id == c.ws.id)
     for img in c.db.scalars(select(Image).where(Image.project_id.in_(pids), Image.assignee_id == uid)):
         img.assignee_id = None
-    audit(c.db, c.ws.id, c.user.id, "member.remove", email)
+    # No FK from project_members to members: revoke every project role explicitly, otherwise a later
+    # re-invite silently inherits the old project manager/reviewer row (I5).
+    revoked = c.db.execute(sa_delete(ProjectMember).where(ProjectMember.user_id == uid,
+                                                          ProjectMember.project_id.in_(pids))).rowcount or 0
+    audit(c.db, c.ws.id, c.user.id, "member.remove", email, projects=revoked)
     c.db.commit()
     return {"ok": True}
 
@@ -234,6 +238,7 @@ def revoke_key(kid: str, c: Ctx = Depends(ws_ctx)):
 def audit_log(action: str = "", user: str = "", since: float | None = None, until: float | None = None,
               q: str = "", offset: int = 0, limit: int = 200, c: Ctx = Depends(ws_ctx)):
     """Workspace audit trail. Filters are additive; `action` also matches its dotted prefix."""
+    c.perm("workspace.audit")
     s = select(Audit, User.name).outerjoin(User, User.id == Audit.user_id).where(Audit.workspace_id == c.ws.id)
     if action:
         s = s.where(or_(Audit.action == action, Audit.action.like(f"{action}.%")))

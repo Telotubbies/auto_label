@@ -215,6 +215,10 @@ events are deleted by a scheduled job and by manual runs:
 
 {retention_text}
 
+Deleting a frame also invalidates cached dataset exports: export archives built from a dataset
+version that contains a deleted frame are removed, while the dataset version snapshot itself is
+removed only when the Controller deletes that version.
+
 ## 6. Sub-processors
 
 Model inference (LLM and vision) runs on the Controller's own GPU host. No third-party transfer or

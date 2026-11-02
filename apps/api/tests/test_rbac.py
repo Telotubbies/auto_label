@@ -349,6 +349,74 @@ def test_workspace_roles_endpoint_and_permission_shape(admin):
                                                    "permissions": ["workspace.read"]}).status_code == 400
 
 
+# --- classes -------------------------------------------------------------------------
+
+def test_project_classes_follow_the_matrix(admin):
+    """I4: add/edit/delete use project.classes — viewer 403, labeler 200."""
+    lab_id = user_id("labeler@labeldesk.dev")
+    assert admin.patch(f"{BASE}/members/{lab_id}", json={"role": "viewer"}).status_code == 200
+    lab = login("labeler@labeldesk.dev")
+    name = f"rbac-{TAG}-class"
+    r = lab.post(f"{BASE}/classes", json={"name": name})
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == "requires project.classes"
+    existing = admin.get(f"{BASE}/classes").json()[0]
+    assert lab.patch(f"{BASE}/classes/{existing['id']}", json={"name": f"{name}-x"}).status_code == 403
+    assert lab.delete(f"{BASE}/classes/{existing['id']}").status_code == 403
+
+    assert admin.patch(f"{BASE}/members/{lab_id}", json={"role": "labeler"}).status_code == 200
+    created = lab.post(f"{BASE}/classes", json={"name": name})
+    assert created.status_code == 200, created.text
+    cid = created.json()["id"]
+    assert lab.patch(f"{BASE}/classes/{cid}", json={"name": f"{name}-renamed"}).status_code == 200
+    assert lab.delete(f"{BASE}/classes/{cid}").status_code == 200
+    assert admin.delete(f"{BASE}/members/{lab_id}").status_code == 200
+
+
+# --- leaving and removal -------------------------------------------------------------
+
+def test_removal_and_leaving_revoke_project_roles():
+    """I5: removal (and self-leave) deletes ProjectMember rows, so a re-invite cannot inherit them."""
+    email = f"returning-{TAG}@rbac.test"
+    c = TestClient(app)
+    assert c.post("/api/auth/signup", json={"name": "Returning User", "email": email,
+                                            "password": "longpassword1"}).status_code == 200
+    uid = user_id(email)
+    with SessionLocal() as db:
+        db.add(Member(workspace_id=ws_id(), user_id=uid, role="member"))
+        db.add(ProjectMember(project_id=project_id(), user_id=uid, role="manager"))
+        db.commit()
+    user = login(email, "longpassword1")
+    assert user.get(f"/api/ws/{WS}/permissions", params={"project": PR}).json()["project_role"] == "manager"
+
+    admin = login()
+    assert admin.delete(f"/api/ws/{WS}/members/{uid}").status_code == 200
+    with SessionLocal() as db:
+        assert db.get(ProjectMember, (project_id(), uid)) is None
+        row = db.scalar(select(Audit).where(Audit.action == "member.remove", Audit.target == email)
+                        .order_by(Audit.created.desc()))
+        assert row is not None and row.meta["projects"] == 1
+
+    # Re-invited as a plain annotator: the stale manager role must not come back.
+    with SessionLocal() as db:
+        db.add(Member(workspace_id=ws_id(), user_id=uid, role="annotator"))
+        db.commit()
+    assert login(email, "longpassword1").get(
+        f"/api/ws/{WS}/permissions", params={"project": PR}).json()["project_role"] == "labeler"
+
+    # Leaving on your own takes the same cleanup path.
+    with SessionLocal() as db:
+        db.add(ProjectMember(project_id=project_id(), user_id=uid, role="manager"))
+        db.commit()
+    assert login(email, "longpassword1").delete(f"/api/ws/{WS}/members/{uid}").status_code == 200
+    with SessionLocal() as db:
+        assert db.get(ProjectMember, (project_id(), uid)) is None
+        row = db.get(Member, (ws_id(), uid))
+        if row:
+            db.delete(row)
+        db.commit()
+
+
 # --- audit filters -------------------------------------------------------------------
 
 def test_audit_filters_and_pagination(admin):

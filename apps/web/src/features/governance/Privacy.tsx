@@ -232,7 +232,7 @@ export default function PrivacyWorkspace() {
         <div className="flex flex-wrap items-start justify-between gap-2 border-b p-5 pb-4">
           <div>
             <h2 className="font-semibold">Project retention &amp; biometrics</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Frames, snapshots and events older than a project's retention are deleted by the cleanup job. Face blur is on by default.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Frames, snapshots and events older than a project's retention are deleted by the cleanup job, along with cached exports containing deleted frames. Face blur is on by default.</p>
           </div>
           <Badge className="gap-1 bg-card text-foreground"><ShieldCheck className="h-3 w-3 text-success" aria-hidden />PDPA defaults</Badge>
         </div>
@@ -326,7 +326,7 @@ export function ProjectPrivacySection({ ws, project, canEdit }: { ws: string; pr
       <Card className="space-y-4 p-5">
         <div>
           <h2 className="font-semibold">Privacy &amp; retention</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">Old frames, snapshots and events are deleted after the retention window. Deleting is permanent.</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">Old frames, snapshots and events are deleted after the retention window, together with cached exports that contain deleted frames. Deleting is permanent.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <Badge className="bg-card text-foreground">{q.data.images_expiring} images past retention</Badge>

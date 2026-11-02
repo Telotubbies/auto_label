@@ -23,7 +23,8 @@ def init_db():
     ensure_columns(engine, "connectors", {"last_sync": "FLOAT", "last_status": "VARCHAR(16) DEFAULT ''"})
     ensure_columns(engine, "users", {
         "email_verified": "FLOAT", "totp_secret": "VARCHAR(255)", "mfa_enabled": "BOOLEAN DEFAULT FALSE",
-        "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0"})
+        "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0",
+        "platform_admin": "BOOLEAN DEFAULT FALSE"})
     ensure_columns(engine, "workspaces", {"require_mfa": "BOOLEAN DEFAULT FALSE",
                                           "data_region": "VARCHAR(16) DEFAULT 'th'"})
     ensure_columns(engine, "projects", {"retention_days": "INTEGER", "face_blur": "BOOLEAN DEFAULT TRUE",

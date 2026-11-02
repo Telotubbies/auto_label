@@ -10,7 +10,8 @@ import {
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
-import type { Job, Project, Role } from '@/lib/types'
+import type { Job, Project } from '@/lib/types'
+import { useProjectPermissions } from '@/lib/perms'
 import { cn } from '@/lib/utils'
 import { Glass } from './glass'
 import { Button, Dropdown, Input, Modal, Progress, toast } from './ui'
@@ -127,25 +128,25 @@ export function AppSidebar() {
   )
 }
 
-export const projNav: { group: string; items: { to: string; label: string; icon: typeof Upload; min: Role; count?: boolean }[] }[] = [
+export const projNav: { group: string; items: { to: string; label: string; icon: typeof Upload; perm: string; count?: boolean }[] }[] = [
   { group: 'DATA', items: [
-    { to: 'upload', label: 'Upload Data', icon: Upload, min: 'reviewer' },
-    { to: 'annotate', label: 'Annotate', icon: Tag, min: 'annotator' },
-    { to: 'browse', label: 'Dataset', icon: Database, min: 'annotator', count: true },
-    { to: 'versions', label: 'Versions', icon: FolderGit2, min: 'reviewer' },
-    { to: 'analytics', label: 'Analytics', icon: BarChart3, min: 'reviewer' },
-    { to: 'insights', label: 'Insights', icon: LineChart, min: 'reviewer' },
-    { to: 'classes', label: 'Classes & Tags', icon: Tags, min: 'reviewer' },
+    { to: 'upload', label: 'Upload Data', icon: Upload, perm: 'project.upload' },
+    { to: 'annotate', label: 'Annotate', icon: Tag, perm: 'project.annotate' },
+    { to: 'browse', label: 'Dataset', icon: Database, perm: 'project.read', count: true },
+    { to: 'versions', label: 'Versions', icon: FolderGit2, perm: 'project.export' },
+    { to: 'analytics', label: 'Analytics', icon: BarChart3, perm: 'project.review' },
+    { to: 'insights', label: 'Insights', icon: LineChart, perm: 'project.review' },
+    { to: 'classes', label: 'Classes & Tags', icon: Tags, perm: 'project.classes' },
   ]},
   { group: 'MODELS', items: [
-    { to: 'train', label: 'Train', icon: BrainCircuit, min: 'admin' },
-    { to: 'models', label: 'Models', icon: Boxes, min: 'reviewer' },
-    { to: 'insights', label: 'Insights', icon: LineChart, min: 'reviewer' },
+    { to: 'train', label: 'Train', icon: BrainCircuit, perm: 'project.train' },
+    { to: 'models', label: 'Models', icon: Boxes, perm: 'project.models' },
+    { to: 'model-insights', label: 'Model insights', icon: BarChart3, perm: 'project.review' },
   ]},
   { group: 'DEPLOY', items: [
-    { to: 'deploy', label: 'Deploy & Test', icon: Rocket, min: 'reviewer' },
-    { to: 'access', label: 'Access', icon: KeyRound, min: 'admin' },
-    { to: 'settings', label: 'Project Settings', icon: Wrench, min: 'admin' },
+    { to: 'deploy', label: 'Deploy & Test', icon: Rocket, perm: 'project.models' },
+    { to: 'access', label: 'Access', icon: KeyRound, perm: 'project.settings' },
+    { to: 'settings', label: 'Project Settings', icon: Wrench, perm: 'project.settings' },
   ]},
 ]
 
@@ -155,12 +156,10 @@ export const typeLabel = (t: string) =>
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()
   const can = useApp((s) => s.can)
-  // Project managers may open Project Settings even when their workspace role is only member.
-  const perms = useQuery({
-    queryKey: ['permissions', ws, project.slug], queryFn: () => api.permissions(ws, project.slug),
-    enabled: !!ws && !!project.slug && !can('admin'), retry: false, staleTime: 60_000,
-  })
-  const isManager = perms.data?.project_role === 'manager'
+  // Project routes follow the resolved project role (manager/reviewer may sit on a member workspace
+  // account). Until the fetch lands, workspace admins keep seeing the full nav.
+  const { can: canProject, ready } = useProjectPermissions(ws, project.slug)
+  const visible = (perm: string) => (ready ? canProject(perm) : can('admin'))
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">
@@ -174,7 +173,7 @@ export function ProjectPanel({ project }: { project: Project }) {
       </div>
       <nav className="flex-1 px-2 pb-4">
         {projNav.map((g) => {
-          const items = g.items.filter((i) => (i.to === 'settings' || i.to === 'access' ? can('admin') || isManager : can(i.min)))
+          const items = g.items.filter((i) => visible(i.perm))
           return items.length ? (
             <div key={g.group} className="mb-3">
               <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
