@@ -4,11 +4,9 @@ Run from apps/api:  pytest -q        (training uses 1 epoch @ 160px on CPU, ~1 m
 """
 import io
 import os
-import tempfile
 import time
 import zipfile
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

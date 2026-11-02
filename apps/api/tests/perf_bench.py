@@ -11,7 +11,8 @@ import tempfile
 import time
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 20000
-os.environ["LD_DATA_DIR"] = tempfile.mkdtemp(prefix="ld-perf-")
+_PERF_TMP = tempfile.TemporaryDirectory(prefix="ld-perf-", dir=os.environ.get("LD_TEST_TMP") or None)
+os.environ["LD_DATA_DIR"] = _PERF_TMP.name
 os.environ["LD_EMBEDDED_WORKER"] = "0"
 os.environ["LD_SEED_IMAGES"] = os.environ["LD_DATA_DIR"]      # no sample images
 os.environ["LD_RATE_LIMIT"] = "0"

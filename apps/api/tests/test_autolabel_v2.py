@@ -1,11 +1,9 @@
 """Auto-label v2: model_ref, SAM refinement, VLM verify, prompt parsing, preview and `source`."""
 import io
 import os
-import tempfile
 import time
 import uuid
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

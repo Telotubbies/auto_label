@@ -2,9 +2,7 @@ import base64
 import io
 import json
 import os
-import tempfile
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp())
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

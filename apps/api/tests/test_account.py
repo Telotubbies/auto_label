@@ -5,10 +5,8 @@ import logging
 import os
 import re
 import secrets
-import tempfile
 import time
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-account-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

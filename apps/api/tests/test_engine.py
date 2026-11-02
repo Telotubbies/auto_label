@@ -2,14 +2,12 @@
 import os
 import shutil
 import sys
-import tempfile
 import logging
 import importlib
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
