@@ -40,6 +40,8 @@ PROJECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
 }
 
 _LEVELS = {"workspace": WORKSPACE_PERMISSIONS, "project": PROJECT_PERMISSIONS}
+# Owner/admin-only rights that must never travel in a delegated bundle (I18).
+CUSTOM_DENIED = frozenset({"workspace.members", "workspace.delete"})
 
 
 def _table(level: Level) -> dict[str, tuple[str, ...]]:
@@ -113,6 +115,8 @@ def validate_permissions(level: Level, perms: list[str]) -> list[str]:
     for perm in perms:
         if not isinstance(perm, str) or perm not in table:
             raise ValueError(f"unknown {level} permission: {perm}")
+        if perm in CUSTOM_DENIED:
+            raise ValueError(f"{perm} cannot be granted by a custom role")
         if perm not in seen:
             seen.append(perm)
     return seen

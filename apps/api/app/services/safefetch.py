@@ -83,7 +83,8 @@ def post(url: str, body: bytes, headers: dict, timeout: float = TIMEOUT) -> int:
         conn.close()
 
 
-def fetch(url: str, max_redirects: int = 3) -> bytes:
+def _get(url: str, max_bytes: int, timeout: float, max_redirects: int) -> bytes:
+    """GET a public URL, pinning the connection to the one vetted IP (I12: no rebinding window)."""
     for _ in range(max_redirects + 1):
         u = urlsplit(url)
         if u.scheme not in ("http", "https") or not u.hostname:
@@ -91,25 +92,35 @@ def fetch(url: str, max_redirects: int = 3) -> bytes:
         port = u.port or (443 if u.scheme == "https" else 80)
         ip = _public_ip(u.hostname, port)
         if u.scheme == "https":
-            conn = http.client.HTTPSConnection(ip, port, timeout=TIMEOUT, context=ssl.create_default_context())
+            conn = http.client.HTTPSConnection(ip, port, timeout=timeout, context=ssl.create_default_context())
             conn._tunnel_host = None
             # connect to the vetted IP but validate the certificate for the real hostname
             conn.sock = ssl.create_default_context().wrap_socket(
-                socket.create_connection((ip, port), timeout=TIMEOUT), server_hostname=u.hostname)
+                socket.create_connection((ip, port), timeout=timeout), server_hostname=u.hostname)
         else:
-            conn = http.client.HTTPConnection(ip, port, timeout=TIMEOUT)
+            conn = http.client.HTTPConnection(ip, port, timeout=timeout)
         path = (u.path or "/") + (f"?{u.query}" if u.query else "")
         conn.request("GET", path, headers={"Host": _host_header(u, port), "User-Agent": "LabelDesk/1.0"})
         r = conn.getresponse()
-        if r.status in (301, 302, 303, 307, 308) and r.getheader("Location"):
+        if r.status in (301, 302, 303, 307, 308) and r.getheader("Location") and max_redirects:
             url = urljoin(url, r.getheader("Location"))
             conn.close()
             continue
         if r.status != 200:
-            raise BlockedURL(f"image URL returned HTTP {r.status}")
-        data = r.read(MAX_BYTES + 1)
+            conn.close()
+            raise BlockedURL(f"URL returned HTTP {r.status}")
+        data = r.read(max_bytes + 1)
         conn.close()
-        if len(data) > MAX_BYTES:
-            raise BlockedURL("image larger than 20 MB")
+        if len(data) > max_bytes:
+            raise BlockedURL(f"response larger than {max_bytes // (1024 * 1024)} MB")
         return data
     raise BlockedURL("too many redirects")
+
+
+def fetch(url: str, max_redirects: int = 3) -> bytes:
+    return _get(url, MAX_BYTES, TIMEOUT, max_redirects)
+
+
+def fetch_bytes(url: str, max_bytes: int = MAX_BYTES, timeout: float = TIMEOUT) -> bytes:
+    """Download one object (up to ``max_bytes``) without following redirects."""
+    return _get(url, max_bytes, timeout, 0)

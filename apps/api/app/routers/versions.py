@@ -1,6 +1,4 @@
 """Dataset versions + exports."""
-import shutil
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -9,7 +7,7 @@ from ..config import CREDIT_COST, DATA_DIR
 from ..deps import Ctx, audit, charge, project_ctx
 from ..models import Job, Version
 from ..security import sign_path
-from ..services import exporters, versioning
+from ..services import erasure, exporters
 from .projects import job_out
 
 router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/versions", tags=["versions"])
@@ -85,9 +83,8 @@ def delete_version(vid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     v = _get(c, vid)
     audit(c.db, c.ws.id, c.user.id, "version.delete", f"{c.project.name} v{v.number}")
+    erasure.delete_version_data(c.db, v)     # bytes first: a failed delete never loses the row
     c.db.delete(v); c.db.commit()
-    shutil.rmtree(versioning.version_dir(v), ignore_errors=True)
-    shutil.rmtree(DATA_DIR / "exports" / v.id, ignore_errors=True)
     return {"ok": True}
 
 
@@ -97,6 +94,7 @@ class ExportIn(BaseModel):
 
 @router.post("/{vid}/export")
 def export(vid: str, body: ExportIn, c: Ctx = Depends(project_ctx)):
+    c.perm("project.export")
     v = _get(c, vid)
     if v.status != "ready":
         raise HTTPException(409, "version is still generating")

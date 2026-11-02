@@ -145,7 +145,7 @@ export default function App() {
           <Route path=":project" element={<ProjectLayout />}>
             <Route index element={<Navigate to="browse" replace />} />
             <Route path="upload" element={<PermGate perm="project.upload"><Upload /></PermGate>} />
-            <Route path="annotate" element={<AnnotateBoard />} />
+            <Route path="annotate" element={<PermGate perm="project.annotate"><AnnotateBoard /></PermGate>} />
             <Route path="browse" element={<Dataset />} />
             <Route path="videos" element={<PermGate perm="project.annotate"><VideoTimeline /></PermGate>} />
             <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />

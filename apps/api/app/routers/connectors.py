@@ -86,7 +86,7 @@ class SyncIn(BaseModel):
 
 @router.post("/projects/{project}/connectors/{cid}/sync")
 def sync_connector(cid: str, body: SyncIn, c: Ctx = Depends(project_ctx)):
-    c.need("admin")
+    c.perm("workspace.connectors")     # the credential belongs to the workspace, not the project
     conn = _connector(c.db, c.ws.id, cid)
     if body.split not in (*SPLITS, "auto"):
         raise HTTPException(400, f"split must be one of {(*SPLITS, 'auto')}")

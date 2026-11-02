@@ -10,7 +10,6 @@ import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
 
-import httpx
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 
@@ -40,6 +39,24 @@ def _ensure_public(url: str, field: str) -> None:
         safefetch.check_url(url)
     except safefetch.BlockedURL as e:
         raise ValueError(f"{field} must be a public http(s) URL: {e}")
+
+
+def _recheck_public(cfg: dict) -> None:
+    """Re-validate the endpoint the SDK is about to use (I12).
+
+    The SDK resolves the endpoint host again; checking here narrows the window between our guard
+    and its connect, but the pinned-IP guarantee only holds on the safefetch download path.
+    """
+    endpoints = []
+    if str(cfg.get("endpoint_url") or "").strip():
+        endpoints.append((str(cfg["endpoint_url"]).strip(), "endpoint_url"))
+    if str(cfg.get("account_url") or "").strip() or str(cfg.get("account_name") or "").strip():
+        endpoints.append((_azure_account_url(cfg), "account_url"))
+    for url, field in endpoints:
+        try:
+            _ensure_public(url, field)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
 
 def _config(conn) -> dict:
@@ -210,6 +227,7 @@ def list_objects(conn, prefix: str = "", limit: int = 100) -> list[dict]:
 
     if conn.kind == "s3":
         boto3 = _import_boto3()
+        _recheck_public(cfg)              # the SDK resolves the endpoint again: narrow the TOCTOU
         try:
             client = _s3_client(boto3, cfg)
             resp = client.list_objects_v2(Bucket=cfg["bucket"], Prefix=prefix, MaxKeys=limit)
@@ -239,6 +257,7 @@ def list_objects(conn, prefix: str = "", limit: int = 100) -> list[dict]:
 
     if conn.kind == "azure":
         BlobServiceClient, generate_blob_sas, permissions = _import_azure()
+        _recheck_public(cfg)
         try:
             container = _azure_service(BlobServiceClient, cfg).get_container_client(cfg["container"])
             out = []
@@ -270,6 +289,7 @@ def _signed_url(conn, key: str) -> str:
 
     if conn.kind == "s3":
         boto3 = _import_boto3()
+        _recheck_public(cfg)
         try:
             return _s3_client(boto3, cfg).generate_presigned_url(
                 "get_object", Params={"Bucket": cfg["bucket"], "Key": key}, ExpiresIn=URL_TTL_SECONDS)
@@ -289,6 +309,7 @@ def _signed_url(conn, key: str) -> str:
 
     if conn.kind == "azure":
         BlobServiceClient, generate_blob_sas, permissions = _import_azure()
+        _recheck_public(cfg)
         try:
             blob = _azure_service(BlobServiceClient, cfg).get_container_client(cfg["container"]).get_blob_client(key)
             return _azure_blob_url(cfg, blob, generate_blob_sas, permissions)
@@ -300,23 +321,14 @@ def _signed_url(conn, key: str) -> str:
 
 
 def fetch_bytes(conn, key: str) -> bytes:
-    """Download one object over its presigned HTTP(S) GET URL, aborting past the size cap."""
+    """Download one object over its presigned URL through the pinned-IP safefetch path."""
     url = _signed_url(conn, key)
     if urlsplit(url).scheme.lower() not in ("http", "https"):
         raise RuntimeError("refusing to download from a non-http(s) object URL")
-    chunks: list[bytes] = []
-    total = 0
-    with httpx.stream("GET", url, timeout=FETCH_TIMEOUT, follow_redirects=False) as resp:
-        if 300 <= resp.status_code < 400:
-            raise RuntimeError("object download redirected; redirects are not followed")
-        if not 200 <= resp.status_code < 300:
-            raise RuntimeError(f"download failed (HTTP {resp.status_code})")
-        for chunk in resp.iter_bytes():
-            total += len(chunk)
-            if total > MAX_FETCH_BYTES:
-                raise RuntimeError(f"object is larger than {MAX_FETCH_BYTES // (1024 * 1024)} MB")
-            chunks.append(chunk)
-    return b"".join(chunks)
+    try:
+        return safefetch.fetch_bytes(url, max_bytes=MAX_FETCH_BYTES, timeout=FETCH_TIMEOUT)
+    except safefetch.BlockedURL as e:
+        raise RuntimeError(f"object download refused: {e}") from e
 
 
 # --- worker handler ------------------------------------------------------------------
@@ -355,8 +367,10 @@ def sync_job(job) -> dict:
                 raise RuntimeError(f"plan image limit: {len(image_objects)} objects requested, {remaining} slots left")
 
             from ..routers.images import ingest
+            from .. import jobs
             uploaded = duplicates = annotated = failed = 0
             for start in range(0, len(image_objects), SYNC_CHUNK):
+                jobs.check(job)
                 batch = []
                 for obj in image_objects[start:start + SYNC_CHUNK]:
                     try:

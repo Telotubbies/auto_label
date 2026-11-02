@@ -32,7 +32,7 @@ def _required_version(c: Ctx, version_id: str) -> Version:
 
 def _auto(c: Ctx) -> bool:
     """Annotators can read analytics but must not queue scans just by opening the page."""
-    return c.role != "annotator"
+    return c.can("project.review")
 
 
 def _scan(c: Ctx, kind: str, version: Version | None = None) -> dict:
@@ -60,6 +60,7 @@ def geometry(version: str = "", c: Ctx = Depends(project_ctx)):
 
 @router.get("/image-stats")
 def image_stats(c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")
     return insights.image_stats(c.db, c.project, auto=_auto(c))
 
 
@@ -70,6 +71,7 @@ def scan_image_stats(c: Ctx = Depends(project_ctx)):
 
 @router.get("/leakage")
 def leakage(version: str = "", c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")
     return insights.leakage(c.db, c.project, _version(c, version), auto=_auto(c))
 
 
@@ -80,6 +82,7 @@ def scan_leakage(version: str = "", c: Ctx = Depends(project_ctx)):
 
 @router.get("/embedding")
 def embedding(c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")
     return insights.embedding(c.db, c.project, auto=_auto(c))
 
 
