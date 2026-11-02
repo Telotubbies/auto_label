@@ -463,6 +463,58 @@ def test_world_stream_passes_the_rule_vocabulary(c, monkeypatch, video):
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
 
 
+class _FakeVlm:
+    """Task 13: the stream only needs the yes/no question and the sleep probe."""
+
+    def __init__(self, sleeping: bool = False, answer: bool = True):
+        self.sleeping, self.answer = sleeping, answer
+        self.asked: list[str] = []
+
+    def is_sleeping(self) -> bool:
+        return self.sleeping
+
+    def ask_yes_no(self, im, question: str) -> bool:
+        self.asked.append(question)
+        return self.answer
+
+
+def test_vlm_rule_fires_on_yes_and_skips_while_sleeping(c, monkeypatch, video):
+    from app.adapters import ADAPTERS
+    fake = _FakeVlm(sleeping=True)
+    monkeypatch.setitem(ADAPTERS, "vlm", fake)
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    question = "Is anyone without a helmet?"
+    sid = create_stream(c, source=video, sample_fps=10,
+                        rules=[{"kind": "vlm", "question": question, "every_s": 1}])
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=10)
+    time.sleep(2.5)                                 # two full intervals while vLLM sleeps
+    assert fake.asked == []                         # asleep: the question is skipped, not queued
+    assert c.get(f"{BASE}/{sid}/events").json()["total"] == 0
+
+    fake.sleeping, fake.answer = False, True
+    events = _poll(lambda: c.get(f"{BASE}/{sid}/events").json()["items"] or None, timeout=8)
+    ev = events[0]
+    assert ev["rule"]["kind"] == "vlm"
+    assert ev["summary"] == f"{question} → yes"
+    assert fake.asked[0] == question          # a later interval may already have asked again
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
+def test_vlm_rule_ignores_a_no_answer(c, monkeypatch, video):
+    from app.adapters import ADAPTERS
+    fake = _FakeVlm(answer=False)
+    monkeypatch.setitem(ADAPTERS, "vlm", fake)
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    sid = create_stream(c, source=video, sample_fps=10,
+                        rules=[{"kind": "vlm", "question": "Is the gate clear?", "every_s": 1}])
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(lambda: fake.asked or None, timeout=10)   # it did ask
+    time.sleep(1.5)
+    assert c.get(f"{BASE}/{sid}/events").json()["total"] == 0   # only "yes" creates an event
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
 def test_internal_exception_text_never_reaches_last_error(c, monkeypatch, video):
     """Finding I3: only our own ValueError text is user-facing; everything else is logged."""
     def broken(*_a, **_k):

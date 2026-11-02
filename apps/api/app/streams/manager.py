@@ -538,12 +538,14 @@ class _Worker:
         try:
             if adapter.is_sleeping():
                 return
-            answer = adapter.ask(im, rule.get("question", ""))
+            # Only a "yes" is an event: the rule is a question, not a caption.
+            if not adapter.ask_yes_no(im, rule.get("question", "")):
+                return
         except Exception:                         # unreachable/loading VLM: skip silently
             return
         try:
             self._record({"rule": i, "kind": "vlm",
-                          "summary": f"{rule.get('question', '')} → {answer}"}, ts, preds, frame)
+                          "summary": f"{rule.get('question', '')} → yes"}, ts, preds, frame)
         except Exception:
             log.exception("stream %s: could not record VLM event", self.id)
 

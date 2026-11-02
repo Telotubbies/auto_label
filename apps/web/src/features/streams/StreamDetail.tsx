@@ -365,7 +365,7 @@ function RulesSection({ stream, ws, project }: { stream: StreamItem; ws: string;
 
           {kind === 'vlm' && (
             <>
-              <Field label="Question" hint="Asked on the sampled frame by the vision-language model.">
+              <Field label="Question" hint="A yes/no question about the sampled frame. Only a “yes” answer creates an event.">
                 <Input placeholder="Is anyone not wearing a helmet?" value={question} onChange={(e) => setQuestion(e.target.value)} />
               </Field>
               <Field label="Every (seconds)" hint="How often the question runs. VLM calls are not charged.">
