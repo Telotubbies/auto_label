@@ -259,7 +259,7 @@ function ViewToggle({ value, onChange, label }: { value: 'chart' | 'table'; onCh
  * Card frame every chart shares: title + description, chart/table toggle, export menu,
  * an sr-only summary, and a real <table> fallback supplied by the caller.
  */
-export function ChartCard({ title, description, summary, exportName, csvRows, jsonData, table, actions, className, children }: {
+export function ChartCard({ title, description, summary, exportName, csvRows, jsonData, table, actions, className, initialView = 'chart', chartView = true, children }: {
   title: string
   description?: ReactNode
   summary: string
@@ -269,9 +269,13 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
   table: ReactNode
   actions?: ReactNode
   className?: string
+  /** Widgets that are tables by definition open on the table; there is no chart to draw. */
+  initialView?: 'chart' | 'table'
+  /** False for table widgets: no chart toggle and no PNG of an empty axes canvas. */
+  chartView?: boolean
   children: ReactNode
 }) {
-  const [view, setView] = useState<'chart' | 'table'>('chart')
+  const [view, setView] = useState<'chart' | 'table'>(initialView)
   const slot = useRef<EChartsType | null>(null)
   const theme = useChartTheme()
 
@@ -297,7 +301,7 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
   }
 
   const items = [
-    ...(view === 'chart' ? [{ label: 'PNG image', onClick: () => download('png') }] : []),
+    ...(view === 'chart' && chartView ? [{ label: 'PNG image', onClick: () => download('png') }] : []),
     ...(csvRows?.length ? [{ label: 'CSV data', onClick: () => download('csv') }] : []),
     ...(jsonData !== undefined ? [{ label: 'JSON data', onClick: () => download('json') }] : []),
   ]
@@ -311,13 +315,13 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {actions}
-          <ViewToggle value={view} onChange={setView} label={`${title} view`} />
+          {chartView ? <ViewToggle value={view} onChange={setView} label={`${title} view`} /> : null}
           <Dropdown align="right" items={items}
             trigger={<Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Export ${title}`}><Download className="h-4 w-4" /></Button>} />
         </div>
       </div>
       <figure className="mt-3 min-w-0">
-        {view === 'chart'
+        {chartView && view === 'chart'
           ? <ChartSlot.Provider value={slot}>{children}</ChartSlot.Provider>
           : <div className="max-h-80 overflow-auto">{table}</div>}
         <figcaption className="sr-only">{summary}</figcaption>

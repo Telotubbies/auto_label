@@ -188,6 +188,29 @@ def test_hash_changes_on_relabel_and_class_rename(c):
     assert manifest(make_version(c, s))["version_hash"] != h1
 
 
+def test_manifest_records_the_annotation_source(c):
+    """Frozen versions keep each label's source so version widgets can filter by it."""
+    from app.models import Image
+
+    rng = np.random.default_rng(7)
+    arr = np.kron(
+        rng.integers(0, 255, (8, 8, 3), dtype=np.uint8), np.ones((8, 8, 1), dtype=np.uint8)
+    )
+    rel = _save("src_ann", arr).path
+    cid = _class_id()
+    with SessionLocal() as db:
+        db.add(Image(
+            id="srcann001", project_id=_project_id(), name="srcann001.png", sha256="s" * 64,
+            width=64, height=64, path=rel, thumb=rel, split="train", status="done",
+            annotations=[{"id": "a", "classId": cid, "source": "sam3",
+                          "shape": {"kind": "bbox", "x": .1, "y": .1, "w": .3, "h": .3}}],
+        ))
+        db.commit()
+    v = make_version(c, {"preprocessing": {}, "augmentation": {}})
+    items = [it for it in manifest(v)["items"] if it["source"] == "srcann001"]
+    assert items and items[0]["anns"][0]["source"] == "sam3"
+
+
 def test_cached_export_concurrent_builders(tmp_path, monkeypatch):
     import threading
     from app.services import exporters

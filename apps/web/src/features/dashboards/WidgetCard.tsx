@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import {
   ChartCard, ChartSkeleton, DataTable, EChart, chartBase, toRgb, useChartTheme,
 } from '@/features/insights/charts'
-import { buildWidgetOption, widgetCsv, type WidgetData, type WidgetSpec } from './widgetModel'
+import { buildWidgetOption, widgetCsv, widgetView, type WidgetData, type WidgetSpec } from './widgetModel'
 import { dimensionLabel, measureLabel, sourceLabel } from './labels'
 
 function description(spec: WidgetSpec): string {
@@ -17,12 +17,14 @@ function description(spec: WidgetSpec): string {
 }
 
 /** One saved widget: chart or table, its export menu, and the layout controls when the dashboard is editable. */
-export function WidgetCard({ spec, data, loading, error, editable, onEdit, onRemove, onMove }: {
+export function WidgetCard({ spec, data, loading, error, editable, classOrder = [], onEdit, onRemove, onMove }: {
   spec: WidgetSpec
   data?: WidgetData
   loading: boolean
   error?: string
   editable: boolean
+  /** Project class order, so one class keeps one colour across every widget. */
+  classOrder?: string[]
   onEdit: () => void
   onRemove: () => void
   onMove: (delta: number) => void
@@ -31,8 +33,8 @@ export function WidgetCard({ spec, data, loading, error, editable, onEdit, onRem
   const option = useMemo(() => {
     if (!data) return null
     const heat = Array.from({ length: 10 }, (_, i) => toRgb(viridis(i / 9)))
-    return chartBase(theme, buildWidgetOption(spec, data, theme, (i) => toRgb(classColor(i)), heat) as EChartsOption)
-  }, [spec, data, theme])
+    return chartBase(theme, buildWidgetOption(spec, data, theme, (i) => toRgb(classColor(i)), heat, classOrder) as EChartsOption)
+  }, [spec, data, theme, classOrder])
 
   const rows = data ? widgetCsv(spec, data) : []
   const head = rows[0] ?? []
@@ -92,6 +94,8 @@ export function WidgetCard({ spec, data, loading, error, editable, onEdit, onRem
       actions={controls}
       table={table}
       className={cn(spec.w >= 12 && 'min-h-[320px]')}
+      initialView={widgetView(spec.chart)}
+      chartView={spec.chart !== 'table'}
     >
       {loading ? <ChartSkeleton height={240} /> : error ? (
         <p role="alert" className="py-10 text-center text-sm text-destructive">{error}</p>

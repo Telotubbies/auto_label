@@ -226,10 +226,24 @@ def _dataset(
                 present = [c for c in present if c == filters["class"]]
             total += 1
             for key, _unit in _values(
-                query["dimension"], row, None, split_of, classes, batches, present, sources
+                query["dimension"],
+                row,
+                None,
+                split_of,
+                classes,
+                batches,
+                present,
+                sources,
             ):
                 for group, _g in _values(
-                    query["dimension2"], row, None, split_of, classes, batches, present, sources
+                    query["dimension2"],
+                    row,
+                    None,
+                    split_of,
+                    classes,
+                    batches,
+                    present,
+                    sources,
                 ):
                     counts[(key, group)] += 1
             continue
@@ -313,8 +327,7 @@ def _version_dataset(
     names = [str(n) for n in manifest.get("classes") or []]
     items = [i for i in manifest.get("items") or [] if isinstance(i, dict)]
     images = {
-        i.id: i
-        for i in db.scalars(select(Image).where(Image.project_id == project.id))
+        i.id: i for i in db.scalars(select(Image).where(Image.project_id == project.id))
     }
     batches = {
         b.id: b.name for b in db.query(Batch).filter(Batch.project_id == project.id)
@@ -428,7 +441,11 @@ def _version_values(
         return [(value, value)] if value else []
     if dim == "batch":
         image = record.get("image")
-        value = batches.get(image.batch_id) if image is not None and image.batch_id else None
+        value = (
+            batches.get(image.batch_id)
+            if image is not None and image.batch_id
+            else None
+        )
         return [(value or "No batch", value or "No batch")]
     if dim == "tag":
         image = record.get("image")
@@ -464,12 +481,18 @@ def _payload(query: dict, counts: Counter, total: float) -> dict:
 
 def _model(model, query: dict) -> dict:
     ev = (model.metrics or {}).get("eval") or {}
-    per_class = [
+    evaluated = [
         c for c in ev.get("per_class") or [] if isinstance(c, dict) and c.get("class")
     ]
+    # No evaluation is unknown AP, not 0.0; a real zero is a measurement the model page would show.
+    if not ev.get("coco") and not evaluated:
+        raise LookupError("model has no stored evaluation")
     wanted = query["filters"].get("class")
-    if wanted:
-        per_class = [c for c in per_class if c.get("class") == wanted]
+    per_class = (
+        [c for c in evaluated if c.get("class") == wanted] if wanted else evaluated
+    )
+    if wanted and not per_class:
+        raise LookupError(f"class '{wanted}' is not in the stored evaluation")
     counts: Counter = Counter()
     overall = float((ev.get("coco") or {}).get("AP") or 0.0)
     # A class filter narrows the KPI as well as the breakdown; overall AP only describes the whole eval.
@@ -529,7 +552,8 @@ def _stream_values(dim: str | None, row: dict) -> list[tuple]:
     if dim == "day":
         return [(row["day"], row["day"])]
     if dim == "hour":
-        return [(f"{row['hour']:02d}", row["hour"])]
+        # Zero-padded: the client orders groups lexically, so "9" would sort after "23".
+        return [(f"{row['hour']:02d}", f"{row['hour']:02d}")]
     if dim == "rule":
         return [(row["rule"], row["rule"])]
     if dim == "zone":

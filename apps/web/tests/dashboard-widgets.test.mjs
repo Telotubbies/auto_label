@@ -11,6 +11,7 @@ import {
   pivotRows,
   validateWidgetDraft,
   widgetCsv,
+  widgetView,
 } from '../src/features/dashboards/widgetModel.ts'
 
 const spec = (over = {}) => ({
@@ -63,6 +64,28 @@ test('pivotRows keeps day and hour keys in chronological order', () => {
 test('groupOrder uses train, valid, test for splits and alphabetical elsewhere', () => {
   assert.deepEqual(groupOrder(['test', 'train', 'valid']), ['train', 'valid', 'test'])
   assert.deepEqual(groupOrder(['yolo', 'sam3', 'human']), ['human', 'sam3', 'yolo'])
+})
+
+test('padded hour groups keep chronological order under localeCompare', () => {
+  assert.deepEqual(groupOrder(['23', '02', '10', '00']), ['00', '02', '10', '23'])
+})
+
+test('a class keeps its palette colour when other classes are filtered out', () => {
+  const classOrder = ['person', 'car', 'helmet']
+  const all = buildWidgetOption(
+    spec(), data([row('person', 5), row('car', 2), row('helmet', 1)]), theme, colorAt, undefined, classOrder,
+  )
+  const only = buildWidgetOption(
+    spec({ filters: { class: 'person' } }), data([row('person', 5)]), theme, colorAt, undefined, classOrder,
+  )
+  const colour = (option) => option.series[0].data[option.xAxis.data.indexOf('person')].itemStyle.color
+  assert.equal(colour(all), 'rgb(10, 20, 30)') // person is the first project class
+  assert.equal(colour(only), colour(all))
+})
+
+test('a table widget opens on the table view, not an empty chart', () => {
+  assert.equal(widgetView('table'), 'table')
+  assert.equal(widgetView('bar'), 'chart')
 })
 
 test('a bar widget yields one series per group with keys in pivot order', () => {

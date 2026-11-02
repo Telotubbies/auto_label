@@ -49,6 +49,12 @@ export function useWidgetQueries(ws: string, slug: string, widgets: WidgetSpec[]
   })
 }
 
+/** Project class order: one stable palette index shared by every widget, editors and shared views alike. */
+export function useClassOrder(ws: string, slug: string): string[] {
+  const classes = useQuery({ queryKey: ['classes', ws, slug], queryFn: () => api.classes(ws, slug) })
+  return useMemo(() => (classes.data ?? []).map((c) => c.name), [classes.data])
+}
+
 /** Everything the widget editor offers in its filter pickers; one shared cache per project. */
 export function useWidgetRefs(ws: string, slug: string, enabled = true): WidgetRefs {
   const versions = useQuery({ queryKey: ['versions', ws, slug], queryFn: () => api.versions(ws, slug), enabled })

@@ -267,7 +267,11 @@ def data(c):
                 "classes": ["person", "car"],
                 "version_hash": "abc123def456",
                 "items": [
-                    {"source": ids[k], "split": split, "anns": [{"cls": cls} for cls in anns]}
+                    {
+                        "source": ids[k],
+                        "split": split,
+                        "anns": [{"cls": cls} for cls in anns],
+                    }
                     for k, split, anns in (
                         ("i1", "train", (0, 0, 1)),
                         ("i2", "valid", (0,)),
@@ -448,7 +452,10 @@ def test_query_version_source_keeps_the_frozen_annotations(c, data):
             "car": 3,
         }
         by_source = query(
-            c, source="version", measure="images", dimension="split",
+            c,
+            source="version",
+            measure="images",
+            dimension="split",
             filters={"version": data["version"]},
         ).json()
         assert {row["key"]: row["value"] for row in by_source["rows"]} == {
@@ -529,6 +536,77 @@ def test_query_model_kpi_respects_the_class_filter(c, data):
     assert table["total"] == pytest.approx(0.5)
 
 
+def test_query_model_without_an_evaluation_is_not_a_zero_ap(c, data):
+    """A queued or failed model has unknown AP; a real-looking 0.0 is a different claim."""
+    with SessionLocal() as db:
+        ws_id = db.get(Project, data["pid"]).workspace_id
+        model = TrainedModel(
+            workspace_id=ws_id,
+            project_id=data["pid"],
+            version_id=data["version"],
+            name="unevaluated",
+            arch="yolo11n",
+            task="detect",
+            status="queued",
+            classes=["person"],
+            metrics={},
+        )
+        db.add(model)
+        db.commit()
+        model_id = model.id
+    try:
+        response = query(
+            c,
+            source="model",
+            measure="ap",
+            dimension="class",
+            filters={"model": model_id},
+        )
+        assert response.status_code == 404, response.text
+        assert "evaluation" in response.json()["detail"].lower()
+        unknown = query(
+            c,
+            source="model",
+            measure="ap",
+            dimension="class",
+            filters={"model": data["model"], "class": "bus"},
+        )
+        assert unknown.status_code == 404, unknown.text
+        assert "bus" in unknown.json()["detail"]
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(TrainedModel, model_id))
+            db.commit()
+
+
+def test_lineage_reports_missing_metrics_instead_of_zero(c, data):
+    """The model node must not present an unevaluated model as AP 0.0."""
+    with SessionLocal() as db:
+        ws_id = db.get(Project, data["pid"]).workspace_id
+        model = TrainedModel(
+            workspace_id=ws_id,
+            project_id=data["pid"],
+            version_id=data["version"],
+            name="unevaluated",
+            arch="yolo11n",
+            task="detect",
+            status="queued",
+            classes=["person"],
+            metrics={},
+        )
+        db.add(model)
+        db.commit()
+        model_id = model.id
+    try:
+        body = c.get(f"{INS}/lineage").json()
+        node = next(n for n in body["nodes"] if n["id"] == f"model:{model_id}")
+        assert node["metrics"] == {"AP": None, "AP50": None}
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(TrainedModel, model_id))
+            db.commit()
+
+
 def test_query_stream_source_buckets_events(c, data):
     per_rule = query(c, source="streams", measure="events", dimension="rule").json()
     assert {row["key"]: row["value"] for row in per_rule["rows"]}["Person at gate"] == 1
@@ -540,6 +618,39 @@ def test_query_stream_source_buckets_events(c, data):
         "Loading bay": 2,
         "Car park": 1,
     }
+
+
+def test_query_stream_hour_dimension_is_padded_and_chronological(c, data):
+    """Hour labels must sort lexically as time; the client orders groups with localeCompare."""
+    nine = datetime.now(timezone.utc).replace(hour=9, minute=0, second=0, microsecond=0)
+    with SessionLocal() as db:
+        event = StreamEvent(
+            stream_id=data["s2"],
+            ts=nine.timestamp(),
+            rule={"index": 0, "kind": "count", "label": "Nine o'clock"},
+            summary="nine",
+            classes="|car|",
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+    try:
+        hourly = query(c, source="streams", measure="events", dimension="hour").json()
+        keys = [row["key"] for row in hourly["rows"]]
+        assert keys, hourly
+        assert "09" in keys, keys
+        assert all(len(key) == 2 and key.isdigit() for key in keys), keys
+        assert keys == sorted(keys), keys
+        heat = query(
+            c, source="streams", measure="events", dimension="rule", dimension2="hour"
+        ).json()
+        groups = {row["group"] for row in heat["rows"]}
+        assert "09" in groups, groups
+        assert all(len(group) == 2 and group.isdigit() for group in groups), groups
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(StreamEvent, event_id))
+            db.commit()
 
 
 def test_query_rejects_measure_that_does_not_belong_to_the_source(c, data):
@@ -557,18 +668,41 @@ def test_query_rejects_measure_that_does_not_belong_to_the_source(c, data):
 
 def test_query_rejects_filters_the_source_would_ignore(c, data):
     rejected = [
-        {"source": "dataset", "measure": "annotations", "dimension": "class", "filters": {"stream": "camera-x"}},
-        {"source": "dataset", "measure": "annotations", "dimension": "class", "filters": {"days": 7}},
-        {"source": "streams", "measure": "events", "dimension": "rule", "filters": {"split": "test"}},
-        {"source": "model", "measure": "ap", "dimension": "none", "filters": {"model": data["model"], "split": "train"}},
+        {
+            "source": "dataset",
+            "measure": "annotations",
+            "dimension": "class",
+            "filters": {"stream": "camera-x"},
+        },
+        {
+            "source": "dataset",
+            "measure": "annotations",
+            "dimension": "class",
+            "filters": {"days": 7},
+        },
+        {
+            "source": "streams",
+            "measure": "events",
+            "dimension": "rule",
+            "filters": {"split": "test"},
+        },
+        {
+            "source": "model",
+            "measure": "ap",
+            "dimension": "none",
+            "filters": {"model": data["model"], "split": "train"},
+        },
     ]
     for body in rejected:
         response = query(c, **body)
         assert response.status_code == 400, (body, response.text)
     # the accepted filters still pass
-    assert query(
-        c, source="streams", measure="events", dimension="rule", filters={"days": 7}
-    ).status_code == 200
+    assert (
+        query(
+            c, source="streams", measure="events", dimension="rule", filters={"days": 7}
+        ).status_code
+        == 200
+    )
 
 
 # --- stream analytics --------------------------------------------------------
@@ -678,6 +812,48 @@ def test_stream_analytics_daily_total_counts_each_event_once(c, data):
         assert (
             sum(sum(series["values"]) for series in body["over_time"]["by_class"])
             > body["totals"]["events"]
+        )
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(StreamEvent, event_id))
+            db.commit()
+
+
+def test_stream_analytics_daily_series_covers_the_whole_window(c, data):
+    """Every event inside the rolling window needs a date bucket on the axis.
+
+    A viewer east of UTC has a 1-day window that starts on the previous local date; when the
+    axis was built as `days` dates ending today, that partial first day vanished from every
+    daily series even though the event stayed in the totals.
+    """
+    now_dt = datetime.now(timezone.utc)
+    offset = 12 * 60 - (
+        now_dt.hour * 60 + now_dt.minute
+    )  # local noon, so the edge is clear
+    ts = (
+        time.time() - DAY + 60
+    )  # one minute inside a 24 h window, on the previous local day
+    local_day = (
+        datetime.fromtimestamp(ts + offset * 60, timezone.utc).date().isoformat()
+    )
+    with SessionLocal() as db:
+        event = StreamEvent(
+            stream_id=data["s2"],
+            ts=ts,
+            rule={"index": 0, "kind": "count", "label": "Window edge"},
+            summary="window edge",
+            classes="|car|",
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+    try:
+        body = c.get(f"{INS}/streams?days=1&tz_offset={offset}").json()
+        assert local_day in body["over_time"]["dates"], body["over_time"]["dates"]
+        assert sum(body["over_time"]["total"]) == body["totals"]["events"]
+        assert (
+            sum(sum(series["values"]) for series in body["over_time"]["by_rule"])
+            == body["totals"]["events"]
         )
     finally:
         with SessionLocal() as db:

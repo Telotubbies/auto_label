@@ -39,7 +39,7 @@ function drawTable(ctx: CanvasRenderingContext2D, spec: WidgetSpec, data: Widget
 }
 
 /** Compose the whole dashboard into one PNG: title block, then every widget in display order. */
-export async function exportDashboardPng(name: string, items: { spec: WidgetSpec; data?: WidgetData }[], theme: ChartTheme): Promise<void> {
+export async function exportDashboardPng(name: string, items: { spec: WidgetSpec; data?: WidgetData }[], theme: ChartTheme, classOrder: string[] = []): Promise<void> {
   const drawable = items.filter((item): item is { spec: WidgetSpec; data: WidgetData } => !!item.data)
   if (!drawable.length) throw new Error('nothing to export yet')
 
@@ -83,7 +83,7 @@ export async function exportDashboardPng(name: string, items: { spec: WidgetSpec
       const chart = echarts.init(host, undefined, { renderer: 'canvas', width: chartWidth, height: CHART_H })
       try {
         const heat = Array.from({ length: 10 }, (_, i) => toRgb(viridis(i / 9)))
-        const option = buildWidgetOption(spec, data, theme, (i) => toRgb(classColor(i)), heat) as EChartsOption
+        const option = buildWidgetOption(spec, data, theme, (i) => toRgb(classColor(i)), heat, classOrder) as EChartsOption
         chart.setOption({ ...chartBase(theme, option), animation: false })
         const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: theme.card })
         const image = await loadImage(url)

@@ -133,20 +133,35 @@ function tooltip(theme: WidgetTheme, trigger: 'axis' | 'item') {
   }
 }
 
-/** ECharts option for a widget, excluding the frame theme that the card applies. */
+/** A table widget has no chart to draw, so its card opens and stays on the table view. */
+export function widgetView(chart: ChartKind): 'chart' | 'table' {
+  return chart === 'table' ? 'table' : 'chart'
+}
+
+/** ECharts option for a widget, excluding the frame theme that the card applies.
+ *
+ * `classOrder` is the project's class order: a class keeps one palette colour on every widget,
+ * even when a widget's own rows contain only a subset of the project's classes.
+ */
 export function buildWidgetOption(
   spec: WidgetSpec,
   data: WidgetData,
   theme: WidgetTheme,
   colorAt: (i: number) => string,
   heatColors?: string[],
+  classOrder: string[] = [],
 ): WidgetOption {
   const pivot = pivotRows(data, spec.dimension)
   const chart = spec.chart
   // A class breakdown keeps one colour per class, matching the class palette used elsewhere.
-  const classKeys = spec.dimension === 'class' ? [...pivot.keys].sort((a, b) => a.localeCompare(b)) : []
-  const colorForKey = (key: string, fallback: number) =>
-    spec.dimension === 'class' ? colorAt(Math.max(0, classKeys.indexOf(key))) : colorAt(fallback)
+  const classKeys = spec.dimension === 'class' && !classOrder.length
+    ? [...pivot.keys].sort((a, b) => a.localeCompare(b))
+    : []
+  const colorForKey = (key: string, fallback: number) => {
+    if (spec.dimension !== 'class') return colorAt(fallback)
+    const index = classOrder.length ? classOrder.indexOf(key) : classKeys.indexOf(key)
+    return colorAt(Math.max(0, index))
+  }
 
   if (chart === 'table' || chart === 'kpi') return { series: [] }
 

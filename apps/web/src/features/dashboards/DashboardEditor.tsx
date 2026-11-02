@@ -10,7 +10,7 @@ import { useProject } from '../project/ProjectLayout'
 import { WidgetCard } from './WidgetCard'
 import { WidgetEditor, type WidgetRefs } from './WidgetEditor'
 import { dashboardCsv, defaultWidget, moveWidget, type WidgetSpec } from './widgetModel'
-import { fetchWidget, useWidgetQueries, useWidgetRefs, widgetQueryKey } from './useWidgetData'
+import { fetchWidget, useClassOrder, useWidgetQueries, useWidgetRefs, widgetQueryKey } from './useWidgetData'
 import { exportDashboardPng } from './dashboardExport'
 
 const SPAN: Record<number, string> = { 3: 'lg:col-span-3', 4: 'lg:col-span-4', 6: 'lg:col-span-6', 12: 'lg:col-span-12' }
@@ -39,6 +39,7 @@ export default function DashboardEditor() {
   const qc = useQueryClient()
   const theme = useChartTheme()
   const refs: WidgetRefs = useWidgetRefs(ws, slug, !readOnly)
+  const classOrder = useClassOrder(ws, slug)
 
   const [local, setLocal] = useState<WidgetSpec[] | null>(null)
   const [nameDraft, setNameDraft] = useState<string | null>(null)
@@ -129,7 +130,7 @@ export default function DashboardEditor() {
     setBusy('png')
     try {
       const items = await gather()
-      await exportDashboardPng(name, items, theme)
+      await exportDashboardPng(name, items, theme, classOrder)
     } catch (e) {
       toast.err(e as Error)
     } finally {
@@ -241,6 +242,7 @@ export default function DashboardEditor() {
                   loading={queries[index]?.isLoading ?? false}
                   error={(queries[index]?.error as Error)?.message}
                   editable={!readOnly}
+                  classOrder={classOrder}
                   onEdit={() => setDraft(spec)}
                   onRemove={() => setLocal((prev) => (prev ?? saved).filter((w) => w.id !== spec.id))}
                   onMove={(delta) => setLocal((prev) => moveWidget(prev ?? saved, index, delta))}

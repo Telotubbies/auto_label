@@ -79,15 +79,36 @@ def _hour(ts: float, tz_offset: int = 0) -> int:
     return _local(ts, tz_offset).hour
 
 
+def _window(
+    days: int, tz_offset: int, now_ts: float | None = None
+) -> tuple[float, list[str]]:
+    """Rolling window start plus every local date it touches.
+
+    The date axis starts on the local date of `since`, not `days` dates before today: a viewer
+    east of UTC can have a window that begins on the previous local date, and dropping that
+    partial first day would remove its events from every daily series while the totals kept them.
+    """
+    now_ts = time.time() if now_ts is None else now_ts
+    since = now_ts - days * DAY
+    start = _local(since, tz_offset).date()
+    today = _local(now_ts, tz_offset).date()
+    dates = [
+        (start + timedelta(days=i)).isoformat() for i in range((today - start).days + 1)
+    ]
+    return since, dates
+
+
 def fetch(
     db: Session,
     project: Project,
     days: int = DEFAULT_DAYS,
     stream_id: str | None = None,
     tz_offset: int = 0,
+    since: float | None = None,
 ) -> tuple[list[dict], dict[str, Stream]]:
     """Project events in the window, flattened with their display labels (no credentials)."""
-    since = time.time() - days * DAY
+    if since is None:
+        since, _dates = _window(days, tz_offset)
     stmt = (
         select(StreamEvent, Stream)
         .join(Stream, Stream.id == StreamEvent.stream_id)
@@ -196,12 +217,8 @@ def analytics(
     db: Session, project: Project, days: int = DEFAULT_DAYS, tz_offset: int = 0
 ) -> dict:
     def compute() -> dict:
-        rows, streams = fetch(db, project, days, tz_offset=tz_offset)
-        since = time.time() - days * DAY
-        today = _local(time.time(), tz_offset).date()
-        dates = [
-            (today - timedelta(days=days - 1 - i)).isoformat() for i in range(days)
-        ]
+        since, dates = _window(days, tz_offset)
+        rows, streams = fetch(db, project, days, tz_offset=tz_offset, since=since)
         dwell = [r["seconds"] for r in rows if r["seconds"] is not None]
         buckets = []
         for label, lo, hi in DWELL_BUCKETS:
@@ -255,9 +272,7 @@ def analytics(
         }
 
     stamp = _stamp(db, project, days, tz_offset)
-    payload, _hit = cached(
-        f"streams:{project.id}:{days}:{tz_offset}", stamp, compute
-    )
+    payload, _hit = cached(f"streams:{project.id}:{days}:{tz_offset}", stamp, compute)
     return payload
 
 
@@ -275,10 +290,8 @@ def _stamp_query(project_id: str, since: float):
 
 
 def _stamp(db: Session, project: Project, days: int, tz_offset: int = 0) -> str:
-    since = time.time() - days * DAY
-    count, newest, reviewed = db.execute(
-        _stamp_query(project.id, since)
-    ).one()
+    since, _dates = _window(days, tz_offset)
+    count, newest, reviewed = db.execute(_stamp_query(project.id, since)).one()
     # Names, zones and rules shape the labels in the payload, so a rename or edit must bust the cache.
     config = db.execute(
         select(Stream.id, Stream.name, Stream.zones, Stream.rules).where(

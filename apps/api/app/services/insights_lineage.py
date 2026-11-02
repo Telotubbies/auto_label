@@ -64,6 +64,13 @@ def _version_edges(
     return {batch_of[s] for s in sources if s in batch_of}, images, anns
 
 
+def _ap(value) -> float | None:
+    """A model without a stored evaluation has unknown AP; 0.0 would read as a real score."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
 def build(db: Session, project: Project) -> dict:
     batches = _batches(db, project)
     batch_of, batch_counts = _image_nodes(db, project)
@@ -214,8 +221,8 @@ def build(db: Session, project: Project) -> dict:
                 "created": m.created,
                 "counts": {"classes": len(m.classes or [])},
                 "metrics": {
-                    "AP": float(coco.get("AP") or 0.0),
-                    "AP50": float(coco.get("AP50") or 0.0),
+                    "AP": _ap(coco.get("AP")),
+                    "AP50": _ap(coco.get("AP50")),
                 },
                 "detail": {
                     "classes": list(m.classes or []),
