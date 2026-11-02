@@ -14,7 +14,7 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Project, Stream, StreamEvent
@@ -66,12 +66,17 @@ def _zone(ev: StreamEvent, zones: dict[str, list[dict]]) -> str | None:
     return str((zone or {}).get("label") or zone_id)
 
 
-def _day(ts: float) -> str:
-    return datetime.fromtimestamp(ts, timezone.utc).date().isoformat()
+def _local(ts: float, tz_offset: int) -> datetime:
+    """Wall-clock time for a timestamp; tz_offset is minutes east of UTC (UTC+07:00 = 420)."""
+    return datetime.fromtimestamp(ts + tz_offset * 60, timezone.utc)
 
 
-def _hour(ts: float) -> int:
-    return datetime.fromtimestamp(ts, timezone.utc).hour
+def _day(ts: float, tz_offset: int = 0) -> str:
+    return _local(ts, tz_offset).date().isoformat()
+
+
+def _hour(ts: float, tz_offset: int = 0) -> int:
+    return _local(ts, tz_offset).hour
 
 
 def fetch(
@@ -79,6 +84,7 @@ def fetch(
     project: Project,
     days: int = DEFAULT_DAYS,
     stream_id: str | None = None,
+    tz_offset: int = 0,
 ) -> tuple[list[dict], dict[str, Stream]]:
     """Project events in the window, flattened with their display labels (no credentials)."""
     since = time.time() - days * DAY
@@ -108,8 +114,8 @@ def fetch(
                 "zone": _zone(ev, zones),
                 "classes": _class_tokens(ev),
                 "seconds": _seconds(ev),
-                "day": _day(ev.ts),
-                "hour": _hour(ev.ts),
+                "day": _day(ev.ts, tz_offset),
+                "hour": _hour(ev.ts, tz_offset),
             }
         )
     return out, streams
@@ -168,10 +174,10 @@ def _breakdown_from(rows: list[dict], read) -> list[dict]:
     ]
 
 
-def _hourly(rows: list[dict]) -> dict:
+def _hourly(rows: list[dict], tz_offset: int = 0) -> dict:
     cells: Counter = Counter()
     for row in rows:
-        weekday = datetime.fromtimestamp(row["ts"], timezone.utc).weekday()
+        weekday = _local(row["ts"], tz_offset).weekday()
         cells[(weekday, row["hour"])] += 1
     return {
         "days": list(WEEKDAYS),
@@ -180,11 +186,19 @@ def _hourly(rows: list[dict]) -> dict:
     }
 
 
-def analytics(db: Session, project: Project, days: int = DEFAULT_DAYS) -> dict:
+def _daily_total(rows: list[dict], dates: list[str]) -> list[int]:
+    """Events per day, counted once per event even when it carries several classes."""
+    counts = Counter(row["day"] for row in rows)
+    return [counts.get(day, 0) for day in dates]
+
+
+def analytics(
+    db: Session, project: Project, days: int = DEFAULT_DAYS, tz_offset: int = 0
+) -> dict:
     def compute() -> dict:
-        rows, streams = fetch(db, project, days)
+        rows, streams = fetch(db, project, days, tz_offset=tz_offset)
         since = time.time() - days * DAY
-        today = datetime.fromtimestamp(time.time(), timezone.utc).date()
+        today = _local(time.time(), tz_offset).date()
         dates = [
             (today - timedelta(days=days - 1 - i)).isoformat() for i in range(days)
         ]
@@ -208,7 +222,7 @@ def analytics(db: Session, project: Project, days: int = DEFAULT_DAYS) -> dict:
             for sid, n in cameras.most_common()
         ]
         return {
-            "window": {"days": days, "since": since},
+            "window": {"days": days, "since": since, "tz_offset": tz_offset},
             "totals": {
                 "events": len(rows),
                 "reviewed": sum(1 for r in rows if r["reviewed"]),
@@ -229,30 +243,41 @@ def analytics(db: Session, project: Project, days: int = DEFAULT_DAYS) -> dict:
                 "samples": len(dwell),
                 "max": max(dwell, default=0.0),
             },
-            "hourly": _hourly(rows),
+            "hourly": _hourly(rows, tz_offset),
             "over_time": {
                 "dates": dates,
+                # One increment per event, independent of class, so a daily total never double-counts.
+                "total": _daily_total(rows, dates),
                 "by_rule": _series(rows, dates, "rule"),
                 "by_zone": _series(rows, dates, "zone"),
                 "by_class": _series(rows, dates, "classes"),
             },
         }
 
-    stamp = _stamp(db, project, days)
-    payload, _hit = cached(f"streams:{project.id}:{days}", stamp, compute)
+    stamp = _stamp(db, project, days, tz_offset)
+    payload, _hit = cached(
+        f"streams:{project.id}:{days}:{tz_offset}", stamp, compute
+    )
     return payload
 
 
-def _stamp(db: Session, project: Project, days: int) -> str:
-    since = time.time() - days * DAY
-    count, newest, reviewed = db.execute(
+def _stamp_query(project_id: str, since: float):
+    """Event count, newest ts and reviewed count. `sum(boolean)` is not portable to PostgreSQL."""
+    return (
         select(
             func.count(StreamEvent.id),
             func.max(StreamEvent.ts),
-            func.sum(StreamEvent.reviewed),
+            func.sum(case((StreamEvent.reviewed.is_(True), 1), else_=0)),
         )
         .join(Stream, Stream.id == StreamEvent.stream_id)
-        .where(Stream.project_id == project.id, StreamEvent.ts >= since)
+        .where(Stream.project_id == project_id, StreamEvent.ts >= since)
+    )
+
+
+def _stamp(db: Session, project: Project, days: int, tz_offset: int = 0) -> str:
+    since = time.time() - days * DAY
+    count, newest, reviewed = db.execute(
+        _stamp_query(project.id, since)
     ).one()
     # Names, zones and rules shape the labels in the payload, so a rename or edit must bust the cache.
     config = db.execute(

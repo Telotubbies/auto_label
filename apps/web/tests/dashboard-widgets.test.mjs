@@ -38,7 +38,10 @@ const data = (rows, over = {}) => ({
   ...over,
 })
 
-const theme = { fg: 'rgb(1, 1, 1)', muted: 'rgb(2, 2, 2)', border: 'rgb(3, 3, 3)', primary: 'rgb(4, 4, 4)' }
+const theme = {
+  fg: 'rgb(1, 1, 1)', muted: 'rgb(2, 2, 2)', border: 'rgb(3, 3, 3)',
+  primary: 'rgb(4, 4, 4)', popover: 'rgb(9, 9, 9)',
+}
 const colorAt = (i) => `rgb(${10 + i}, 20, 30)`
 
 const row = (key, value, group = null) => ({ key, group, value })
@@ -106,6 +109,20 @@ test('a donut is a pie with an inner radius, and a line plots categories in orde
   assert.equal(line.series[0].type, 'line')
   assert.deepEqual(line.xAxis.data, ['2026-10-31', '2026-11-02'])
   assert.deepEqual(line.series[0].data, [4, 1])
+})
+
+test('widget tooltips pair the popover surface with foreground text', () => {
+  for (const chart of ['bar', 'pie', 'heatmap']) {
+    const data2 = chart === 'heatmap' ? { dimension2: 'split' } : {}
+    const option = buildWidgetOption(
+      spec({ chart, dimension2: chart === 'heatmap' ? 'split' : null }),
+      data([row('person', 3, chart === 'heatmap' ? 'train' : null)], data2),
+      theme,
+      colorAt,
+    )
+    assert.equal(option.tooltip.backgroundColor, theme.popover, chart)
+    assert.equal(option.tooltip.textStyle.color, theme.fg, chart)
+  }
 })
 
 test('widgetCsv always emits key, group, value rows in displayed order', () => {

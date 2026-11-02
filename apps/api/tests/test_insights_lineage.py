@@ -3,10 +3,9 @@
 import hashlib
 import json
 import os
-import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
@@ -14,6 +13,7 @@ os.environ["LD_SAM_ENABLED"] = "0"
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 from app.db import SessionLocal
 from app.main import app
@@ -32,7 +32,7 @@ from app.models import (
     now,
 )
 from app.security import issue_access
-from app.services import versioning
+from app.services import insights_stream, versioning
 
 WS = "labeldesk-demo"
 SLUG = "lineage-qa"
@@ -267,11 +267,11 @@ def data(c):
                 "classes": ["person", "car"],
                 "version_hash": "abc123def456",
                 "items": [
-                    {"source": ids[k], "split": split, "anns": [{}] * n}
-                    for k, split, n in (
-                        ("i1", "train", 3),
-                        ("i2", "valid", 1),
-                        ("i3", "test", 2),
+                    {"source": ids[k], "split": split, "anns": [{"cls": cls} for cls in anns]}
+                    for k, split, anns in (
+                        ("i1", "train", (0, 0, 1)),
+                        ("i2", "valid", (0,)),
+                        ("i3", "test", (1, 1)),
                     )
                 ],
             }
@@ -323,6 +323,26 @@ def test_lineage_nodes_carry_their_outputs(c, data):
     assert run["detail"]["status"] == "done"
 
 
+def test_lineage_keeps_frozen_edges_after_images_are_soft_deleted(c, data):
+    """Lineage is historical: a version's manifest still names an image after the dataset drops it."""
+    doomed = [data["ids"]["i3"], data["ids"]["i4"]]
+    with SessionLocal() as db:
+        for row in db.scalars(select(Image).where(Image.id.in_(doomed))).all():
+            row.deleted_at = now()
+        db.commit()
+    try:
+        body = c.get(f"{INS}/lineage").json()
+        assert f"batch:{data['batch2']}" in ids(body)
+        assert (f"batch:{data['batch2']}", f"version:{data['version']}") in edges(body)
+        node = next(n for n in body["nodes"] if n["id"] == f"batch:{data['batch2']}")
+        assert node["counts"]["images"] == 0
+    finally:
+        with SessionLocal() as db:
+            for row in db.scalars(select(Image).where(Image.id.in_(doomed))).all():
+                row.deleted_at = None
+            db.commit()
+
+
 def test_lineage_ignores_other_projects(c, data):
     with SessionLocal() as db:
         foreign = Version(project_id=data["other_id"], number=1, status="ready")
@@ -365,6 +385,33 @@ def test_query_dataset_filters_and_label_source(c, data):
     }
 
 
+def test_query_images_respects_the_label_source_filter(c, data):
+    by_class = query(
+        c,
+        source="dataset",
+        measure="images",
+        dimension="class",
+        filters={"source": "human"},
+    ).json()
+    assert {row["key"]: row["value"] for row in by_class["rows"]} == {
+        "person": 1,
+        "car": 1,
+    }
+    assert by_class["total"] == 2
+    # the source dimension uses the same filtered annotation set, not every source on the image
+    by_source = query(
+        c,
+        source="dataset",
+        measure="images",
+        dimension="source",
+        filters={"class": "car"},
+    ).json()
+    assert {row["key"]: row["value"] for row in by_source["rows"]} == {
+        "human": 1,
+        "sam3": 1,
+    }
+
+
 def test_query_version_source_uses_the_frozen_manifest(c, data):
     body = query(
         c,
@@ -378,6 +425,59 @@ def test_query_version_source_uses_the_frozen_manifest(c, data):
         "valid": 1,
         "test": 2,
     }
+
+
+def test_query_version_source_keeps_the_frozen_annotations(c, data):
+    """A later relabel must not rewrite a frozen version's class counts."""
+    with SessionLocal() as db:
+        row = db.get(Image, data["ids"]["i1"])
+        original = row.annotations
+        row.annotations = []
+        row.n_annotations = 0
+        db.commit()
+    try:
+        by_class = query(
+            c,
+            source="version",
+            measure="annotations",
+            dimension="class",
+            filters={"version": data["version"]},
+        ).json()
+        assert {row["key"]: row["value"] for row in by_class["rows"]} == {
+            "person": 3,
+            "car": 3,
+        }
+        by_source = query(
+            c, source="version", measure="images", dimension="split",
+            filters={"version": data["version"]},
+        ).json()
+        assert {row["key"]: row["value"] for row in by_source["rows"]} == {
+            "train": 1,
+            "valid": 1,
+            "test": 1,
+        }
+    finally:
+        with SessionLocal() as db:
+            row = db.get(Image, data["ids"]["i1"])
+            row.annotations = original
+            row.n_annotations = len(original)
+            db.commit()
+
+
+def test_query_version_without_a_manifest_does_not_fall_back_to_the_dataset(c, data):
+    with SessionLocal() as db:
+        version = Version(project_id=data["pid"], number=99, status="building")
+        db.add(version)
+        db.commit()
+        version_id = version.id
+    body = query(
+        c,
+        source="version",
+        measure="annotations",
+        dimension="split",
+        filters={"version": version_id},
+    )
+    assert body.status_code == 404, body.text
 
 
 def test_query_model_source_reads_stored_per_class_ap(c, data):
@@ -406,6 +506,29 @@ def test_query_model_source_reads_stored_per_class_ap(c, data):
     ]
 
 
+def test_query_model_kpi_respects_the_class_filter(c, data):
+    kpi = query(
+        c,
+        source="model",
+        measure="ap",
+        dimension="none",
+        filters={"model": data["model"], "class": "person"},
+    ).json()
+    assert kpi["total"] == pytest.approx(0.5)
+    assert [(row["key"], row["value"]) for row in kpi["rows"]] == [
+        ("Total", pytest.approx(0.5))
+    ]
+    table = query(
+        c,
+        source="model",
+        measure="ap",
+        dimension="class",
+        filters={"model": data["model"], "class": "person"},
+    ).json()
+    assert {row["key"]: row["value"] for row in table["rows"]} == {"person": 0.5}
+    assert table["total"] == pytest.approx(0.5)
+
+
 def test_query_stream_source_buckets_events(c, data):
     per_rule = query(c, source="streams", measure="events", dimension="rule").json()
     assert {row["key"]: row["value"] for row in per_rule["rows"]}["Person at gate"] == 1
@@ -430,6 +553,22 @@ def test_query_rejects_measure_that_does_not_belong_to_the_source(c, data):
     assert (
         query(c, source="model", measure="ap", dimension="class").status_code == 400
     )  # model filter missing
+
+
+def test_query_rejects_filters_the_source_would_ignore(c, data):
+    rejected = [
+        {"source": "dataset", "measure": "annotations", "dimension": "class", "filters": {"stream": "camera-x"}},
+        {"source": "dataset", "measure": "annotations", "dimension": "class", "filters": {"days": 7}},
+        {"source": "streams", "measure": "events", "dimension": "rule", "filters": {"split": "test"}},
+        {"source": "model", "measure": "ap", "dimension": "none", "filters": {"model": data["model"], "split": "train"}},
+    ]
+    for body in rejected:
+        response = query(c, **body)
+        assert response.status_code == 400, (body, response.text)
+    # the accepted filters still pass
+    assert query(
+        c, source="streams", measure="events", dimension="rule", filters={"days": 7}
+    ).status_code == 200
 
 
 # --- stream analytics --------------------------------------------------------
@@ -462,8 +601,88 @@ def test_stream_analytics_breakdowns_dwell_and_hourly_heatmap(c, data):
     assert buckets["30–60 s"] == 1
     assert len(body["hourly"]["days"]) == 7 and len(body["hourly"]["hours"]) == 24
     assert sum(point[2] for point in body["hourly"]["values"]) == 3
-    assert set(body["over_time"]) == {"dates", "by_rule", "by_zone", "by_class"}
+    assert set(body["over_time"]) == {
+        "dates",
+        "total",
+        "by_rule",
+        "by_zone",
+        "by_class",
+    }
     assert sum(sum(series["values"]) for series in body["over_time"]["by_rule"]) == 3
+
+
+def test_stream_stamp_aggregate_compiles_for_postgres(c, data):
+    """PostgreSQL has no sum(boolean); the cache stamp must use a portable aggregate."""
+    sql = str(
+        insights_stream._stamp_query(data["pid"], 0.0).compile(
+            dialect=postgresql.dialect()
+        )
+    ).lower()
+    assert "sum(stream_events.reviewed)" not in sql
+    assert "case" in sql
+
+
+def test_stream_analytics_buckets_events_in_the_requested_timezone(c, data):
+    offset = 420  # UTC+07:00: 20:30 UTC is 03:30 the next local day
+    utc_day = datetime.now(timezone.utc).date() - timedelta(days=1)
+    ts = datetime(
+        utc_day.year, utc_day.month, utc_day.day, 20, 30, tzinfo=timezone.utc
+    ).timestamp()
+    with SessionLocal() as db:
+        event = StreamEvent(
+            stream_id=data["s1"],
+            ts=ts,
+            rule={"index": 9, "kind": "count", "label": "TZ probe"},
+            summary="tz probe",
+            classes="|person|",
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+    try:
+        body = c.get(f"{INS}/streams?days=30&tz_offset={offset}").json()
+        assert body["window"]["tz_offset"] == offset
+        local = datetime.fromtimestamp(ts + offset * 60, timezone.utc)
+        assert local.date().isoformat() in body["over_time"]["dates"]
+        cell = next(
+            (
+                value
+                for value in body["hourly"]["values"]
+                if value[0] == local.weekday() and value[1] == local.hour
+            ),
+            None,
+        )
+        assert cell is not None and cell[2] >= 1
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(StreamEvent, event_id))
+            db.commit()
+
+
+def test_stream_analytics_daily_total_counts_each_event_once(c, data):
+    with SessionLocal() as db:
+        event = StreamEvent(
+            stream_id=data["s2"],
+            ts=now() - 120,
+            rule={"index": 0, "kind": "count", "label": "Two classes"},
+            summary="two classes",
+            classes="|person|car|",
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+    try:
+        body = c.get(f"{INS}/streams?days=30").json()
+        # per-class series count an event once per class; the daily total counts it once
+        assert sum(body["over_time"]["total"]) == body["totals"]["events"]
+        assert (
+            sum(sum(series["values"]) for series in body["over_time"]["by_class"])
+            > body["totals"]["events"]
+        )
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(StreamEvent, event_id))
+            db.commit()
 
 
 def test_stream_analytics_respects_the_window(c, data):

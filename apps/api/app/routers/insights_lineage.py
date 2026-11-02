@@ -25,10 +25,15 @@ def lineage(c: Ctx = Depends(project_ctx)):
 
 @router.get("/streams")
 def stream_analytics(
-    days: int = Query(30, ge=1, le=365), c: Ctx = Depends(project_ctx)
+    days: int = Query(30, ge=1, le=365),
+    tz_offset: int = Query(0, ge=-840, le=840),
+    c: Ctx = Depends(project_ctx),
 ):
-    """Event volume per rule/zone/class, dwell distribution, hourly heatmap and top cameras."""
-    return insights_stream.analytics(c.db, c.project, days)
+    """Event volume per rule/zone/class, dwell distribution, hourly heatmap and top cameras.
+
+    `tz_offset` is the viewer's offset east of UTC in minutes, so days and hours bucket in local time.
+    """
+    return insights_stream.analytics(c.db, c.project, days, tz_offset)
 
 
 @router.post("/query")

@@ -559,13 +559,20 @@ export interface Lineage { nodes: LineageNode[]; edges: LineageEdge[]; generated
 export interface BreakdownRow { key: string; value: number }
 export interface TimelineSeries { name: string; values: number[] }
 export interface StreamAnalytics {
-  window: { days: number; since: number }
+  window: { days: number; since: number; tz_offset: number }
   totals: { events: number; reviewed: number; cameras: number; dwell_seconds: number; last_event: number }
   top_cameras: { id: string; name: string; events: number; reviewed: number; last_event: number }[]
   breakdown: { rule: BreakdownRow[]; zone: BreakdownRow[]; class: BreakdownRow[]; stream: BreakdownRow[] }
   dwell: { buckets: string[]; counts: number[]; samples: number; max: number }
   hourly: { days: string[]; hours: string[]; values: [number, number, number][] }
-  over_time: { dates: string[]; by_rule: TimelineSeries[]; by_zone: TimelineSeries[]; by_class: TimelineSeries[] }
+  over_time: {
+    dates: string[]
+    /** One increment per event, independent of class, so the daily total never double-counts. */
+    total: number[]
+    by_rule: TimelineSeries[]
+    by_zone: TimelineSeries[]
+    by_class: TimelineSeries[]
+  }
 }
 
 export type WidgetSource = 'dataset' | 'version' | 'model' | 'streams'

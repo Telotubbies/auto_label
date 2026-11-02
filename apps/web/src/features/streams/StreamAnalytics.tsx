@@ -1,6 +1,6 @@
 // Stream analytics (Task 20c): event volume per rule/zone/class, dwell distribution,
 // hourly heatmap and top cameras for a project's streams.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -23,6 +23,18 @@ type Dim = (typeof DIMS)[number]['id']
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const fmtInt = (n: number) => Math.round(n).toLocaleString()
+
+/** UTC+07:00 / UTC−04:30 for axis and export labels. */
+function tzLabel(offset: number): string {
+  const sign = offset < 0 ? '−' : '+'
+  const abs = Math.abs(Math.round(offset))
+  return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+}
+
+/** Viewer offset east of UTC in minutes, so buckets land on local days and hours. */
+function localTzOffset(): number {
+  return -new Date().getTimezoneOffset()
+}
 
 /** 3m 12s / 1h 4m style dwell time. */
 function fmtDwell(seconds: number): string {
@@ -94,7 +106,7 @@ function dwellOption(buckets: string[], counts: number[], theme: ChartTheme): Ch
   })
 }
 
-function heatmapOption(grid: number[][], dayLabels: string[], hourLabels: string[], max: number, theme: ChartTheme): ChartOption {
+function heatmapOption(grid: number[][], dayLabels: string[], hourLabels: string[], max: number, theme: ChartTheme, tz = 'UTC'): ChartOption {
   const cells: [number, number, number][] = []
   grid.forEach((row, day) => row.forEach((count, hour) => { cells.push([hour, day, count]) }))
   const colors = Array.from({ length: 10 }, (_, i) => toRgb(viridis(i / 9)))
@@ -112,7 +124,7 @@ function heatmapOption(grid: number[][], dayLabels: string[], hourLabels: string
       },
     },
     xAxis: {
-      type: 'category', data: hourLabels, name: 'Hour', nameLocation: 'middle', nameGap: 26,
+      type: 'category', data: hourLabels, name: `Hour (${tz})`, nameLocation: 'middle', nameGap: 26,
       nameTextStyle: axisText(theme), axisLabel: { ...axisText(theme), interval: 1 },
       axisTick: { show: false }, axisLine: axisLine(theme), splitArea: { show: false },
     },
@@ -150,11 +162,13 @@ function StreamAnalyticsView({ data, dim, onDim, theme }: {
   const totals = data.totals
   const dates = data.over_time.dates
   const series = data.over_time[dim]
+  const tz = tzLabel(data.window.tz_offset ?? 0)
   const dimLabel = DIMS.find((d) => d.id === dim)?.label ?? 'Rule'
-  const dayTotal = (i: number) => series.reduce((n, s) => n + (s.values[i] ?? 0), 0)
+  // The API's per-day total counts each event once; summing the class series would double-count.
+  const dayTotal = (i: number) => data.over_time.total[i] ?? 0
   const grandTotal = dates.reduce((n, _, i) => n + dayTotal(i), 0)
   const overCsv: ExportRows = [
-    ['Date', ...series.map((s) => s.name), 'Total'],
+    [`Date (${tz})`, ...series.map((s) => s.name), 'Total'],
     ...dates.map((date, i) => [date, ...series.map((s) => s.values[i] ?? 0), dayTotal(i)]),
   ]
 
@@ -187,7 +201,7 @@ function StreamAnalyticsView({ data, dim, onDim, theme }: {
 
       <ChartCard
         title="Events over time"
-        description={`Daily events split by ${dimLabel.toLowerCase()}. ${series.length} series; the API folds the long tail into “Other”.`}
+        description={`Daily events split by ${dimLabel.toLowerCase()}, ${tz} local days. ${series.length} series; the API folds the long tail into “Other”.`}
         summary={`Daily events by ${dimLabel.toLowerCase()} over ${dates.length} days: ${fmtInt(grandTotal)} events across ${series.length} series.`}
         exportName={`stream-events-${dim}`}
         csvRows={overCsv}
@@ -199,8 +213,8 @@ function StreamAnalyticsView({ data, dim, onDim, theme }: {
           </Select>
         )}
         table={(
-          <DataTable caption={`Events per day by ${dimLabel.toLowerCase()}, with the daily total.`}
-            head={['Date', ...series.map((s) => s.name), 'Total']}
+          <DataTable caption={`Events per day by ${dimLabel.toLowerCase()} (${tz}), with the daily total; each event counts once.`}
+            head={[`Date (${tz})`, ...series.map((s) => s.name), 'Total']}
             rows={dates.map((date, i) => [date, ...series.map((s) => s.values[i] ?? 0), dayTotal(i)])} />
         )}
       >
@@ -256,16 +270,16 @@ function StreamAnalyticsView({ data, dim, onDim, theme }: {
 
       <ChartCard
         title="Hourly heatmap"
-        description={`Events per weekday and hour of day across the window. Busiest cell: ${fmtInt(heatMax)} events.`}
-        summary={`Heatmap of 7 weekdays by 24 hours; busiest cell has ${fmtInt(heatMax)} events. A table view lists all 168 cells.`}
+        description={`Events per weekday and hour of day in ${tz} local time across the window. Busiest cell: ${fmtInt(heatMax)} events.`}
+        summary={`Heatmap of 7 weekdays by 24 hours (${tz}); busiest cell has ${fmtInt(heatMax)} events. A table view lists all 168 cells.`}
         exportName="stream-hourly"
-        csvRows={[['Day', ...hourLabels], ...heatRows]}
-        jsonData={{ days: dayLabels, hours: hourLabels, values: data.hourly.values }}
-        table={<DataTable caption="Events per weekday and hour." head={['Day', ...hourLabels]} rows={heatRows} />}
+        csvRows={[[`Day (${tz})`, ...hourLabels], ...heatRows]}
+        jsonData={{ days: dayLabels, hours: hourLabels, tz_offset: data.window.tz_offset, values: data.hourly.values }}
+        table={<DataTable caption={`Events per weekday and hour (${tz}).`} head={[`Day (${tz})`, ...hourLabels]} rows={heatRows} />}
       >
         {data.hourly.values.length ? (
-          <EChart option={heatmapOption(grid, dayLabels, hourLabels, heatMax, theme)} height={300}
-            ariaLabel={`Heatmap of events by weekday and hour; the busiest cell has ${fmtInt(heatMax)} events. A table view lists all 168 cells.`} />
+          <EChart option={heatmapOption(grid, dayLabels, hourLabels, heatMax, theme, tz)} height={300}
+            ariaLabel={`Heatmap of events by weekday and hour in ${tz}; the busiest cell has ${fmtInt(heatMax)} events. A table view lists all 168 cells.`} />
         ) : <ChartEmpty title="No hourly activity" hint="Events in this window have no hourly timestamps." />}
       </ChartCard>
     </div>
@@ -277,9 +291,10 @@ export default function StreamAnalytics() {
   const [days, setDays] = useState(30)
   const [dim, setDim] = useState<Dim>('by_rule')
   const theme = useChartTheme()
+  const tzOffset = useMemo(localTzOffset, [])
   const q = useQuery({
-    queryKey: ['stream-analytics', ws, project.slug, days],
-    queryFn: () => api.streamAnalytics(ws, project.slug, days),
+    queryKey: ['stream-analytics', ws, project.slug, days, tzOffset],
+    queryFn: () => api.streamAnalytics(ws, project.slug, days, tzOffset),
   })
 
   return (

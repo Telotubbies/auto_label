@@ -35,7 +35,14 @@ export interface WidgetData {
   filters: WidgetFilters
 }
 
-export interface WidgetTheme { fg: string; muted: string; border: string; primary: string }
+export interface WidgetTheme {
+  fg: string
+  muted: string
+  border: string
+  primary: string
+  /** Tooltip surface; Material dynamic colour pairs surface text with the surface, not the brand. */
+  popover: string
+}
 
 export type WidgetOption = Record<string, unknown>
 
@@ -119,7 +126,7 @@ function tooltip(theme: WidgetTheme, trigger: 'axis' | 'item') {
   return {
     trigger,
     confine: true,
-    backgroundColor: theme.primary,
+    backgroundColor: theme.popover,
     borderColor: theme.border,
     borderWidth: 1,
     textStyle: { color: theme.fg, fontSize: 11 },

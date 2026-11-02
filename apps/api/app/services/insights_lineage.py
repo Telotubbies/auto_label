@@ -32,16 +32,20 @@ def _batches(db: Session, project: Project) -> dict[str, Batch]:
 
 
 def _image_nodes(db: Session, project: Project) -> tuple[dict, dict]:
-    """image id -> batch id, and batch id -> live image count."""
+    """image id -> batch id (history, deleted rows included), and batch id -> live image count.
+
+    A manifest keeps naming an image after the dataset soft-deletes it, so the batch mapping must
+    stay historical or a normal edit would rewrite the version's frozen lineage.
+    """
     rows = db.execute(
-        select(Image.id, Image.batch_id).where(
-            Image.project_id == project.id, Image.deleted_at.is_(None)
+        select(Image.id, Image.batch_id, Image.deleted_at).where(
+            Image.project_id == project.id
         )
     ).all()
-    batch_of = {iid: bid for iid, bid in rows if bid}
+    batch_of = {iid: bid for iid, bid, _deleted in rows if bid}
     counts: dict = {}
-    for _iid, bid in rows:
-        if bid:
+    for _iid, bid, deleted in rows:
+        if bid and deleted is None:
             counts[bid] = counts.get(bid, 0) + 1
     return batch_of, counts
 
@@ -95,20 +99,29 @@ def build(db: Session, project: Project) -> dict:
     nodes: list[dict] = []
     edges: list[dict] = []
 
+    version_edges = {v.id: _version_edges(db, v, batch_of) for v in versions}
+    referenced_batches = (
+        set().union(*(reached for reached, _i, _a in version_edges.values()))
+        if version_edges
+        else set()
+    )
+
     for bid in sorted(
-        batch_counts, key=lambda k: batches[k].created if k in batches else 0
+        set(batch_counts) | referenced_batches,
+        key=lambda k: batches[k].created if k in batches else 0,
     ):
         b = batches.get(bid)
         if b is None:
             continue  # batch row deleted, image already re-pointed by SET NULL in practice
+        count = batch_counts.get(bid, 0)
         nodes.append(
             {
                 "id": f"batch:{b.id}",
                 "kind": "batch",
                 "label": b.name,
-                "sub": f"{batch_counts[bid]} images",
+                "sub": f"{count} images",
                 "created": b.created,
-                "counts": {"images": batch_counts[bid]},
+                "counts": {"images": count},
                 "metrics": {},
                 "detail": {"source": b.source, "created_by": b.created_by},
                 "artifacts": [],
@@ -116,10 +129,8 @@ def build(db: Session, project: Project) -> dict:
             }
         )
 
-    version_batches: dict[str, set] = {}
     for v in versions:
-        reached, images, anns = _version_edges(db, v, batch_of)
-        version_batches[v.id] = reached
+        reached, images, anns = version_edges[v.id]
         stats = v.stats or {}
         nodes.append(
             {

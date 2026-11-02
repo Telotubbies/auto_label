@@ -197,8 +197,8 @@ export const api = {
 
   // --- Insights Studio (Task 20c): lineage, stream analytics, dashboard builder ---
   lineage: (ws: string, p: string) => get<Lineage>(`${P(ws, p)}/insights/lineage`),
-  streamAnalytics: (ws: string, p: string, days = 30) =>
-    get<StreamAnalytics>(`${P(ws, p)}/insights/streams?days=${days}`),
+  streamAnalytics: (ws: string, p: string, days = 30, tzOffset = 0) =>
+    get<StreamAnalytics>(`${P(ws, p)}/insights/streams?days=${days}&tz_offset=${tzOffset}`),
   widgetQuery: (ws: string, p: string,
     body: { source: string; measure: string; dimension: string; dimension2?: string | null; filters?: Record<string, string | number | undefined> }) =>
     post<WidgetData>(`${P(ws, p)}/insights/query`, body),

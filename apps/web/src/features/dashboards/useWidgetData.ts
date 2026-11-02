@@ -2,7 +2,19 @@ import { useMemo } from 'react'
 import { useQueries, useQuery, type QueryKey } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { WidgetRefs } from './WidgetEditor'
-import { cleanFilters, type WidgetData, type WidgetSpec } from './widgetModel'
+import { cleanFilters, type WidgetData, type WidgetFilters, type WidgetSpec } from './widgetModel'
+
+/** Viewer offset east of UTC in minutes; stream widgets bucket days and hours in local time. */
+export function browserTzOffset(): number {
+  return -new Date().getTimezoneOffset()
+}
+
+/** Request filters: saved filters plus the viewer-local stream offset (never persisted in the spec). */
+export function widgetFilters(spec: WidgetSpec): WidgetFilters {
+  const filters = cleanFilters(spec.filters)
+  if (spec.source === 'streams') filters.tz_offset = browserTzOffset()
+  return filters
+}
 
 /** Query identity: everything that changes the numbers, including the cleaned filters. */
 export function widgetQueryKey(ws: string, slug: string, spec: WidgetSpec): QueryKey {
@@ -11,7 +23,7 @@ export function widgetQueryKey(ws: string, slug: string, spec: WidgetSpec): Quer
     measure: spec.measure,
     dimension: spec.dimension,
     dimension2: spec.dimension2,
-    filters: cleanFilters(spec.filters),
+    filters: widgetFilters(spec),
   })]
 }
 
@@ -21,7 +33,7 @@ export function fetchWidget(ws: string, slug: string, spec: WidgetSpec): Promise
     measure: spec.measure,
     dimension: spec.dimension,
     dimension2: spec.dimension2,
-    filters: cleanFilters(spec.filters),
+    filters: widgetFilters(spec),
   })
 }
 
