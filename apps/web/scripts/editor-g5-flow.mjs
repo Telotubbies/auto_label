@@ -136,10 +136,28 @@ try {
   assert.deepEqual(await idsByZ(page), afterMove, 'relabelling must not reorder the stack')
   check('relabel keeps the order', true)
 
-  // Keyboard navigation survives virtualization; hide and lock still work.
-  await page.locator('[data-testid="object-row"][data-z="3"] [data-testid="object-select"]').focus()
-  await page.keyboard.press('ArrowDown')
-  assert.equal(await page.locator('[data-testid="object-row"][data-z="2"] [data-testid="object-select"]').getAttribute('aria-current'), 'true')
+  // Keyboard navigation survives virtualization: each Arrow moves one row from the current
+  // selection, and Home/End keep focus on the list instead of stranding it on <body>.
+  const objectList = page.getByTestId('object-list')
+  const selectedZ = () => page.evaluate(() =>
+    document.querySelector('[data-testid="object-row"] [aria-current="true"]')?.closest('[data-testid="object-row"]')?.dataset.z ?? null)
+  const focusOnList = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'object-list')
+  /** React commits the selection after the key event; read it after a short settle instead of racing it. */
+  const press = async (key) => { await page.keyboard.press(key); await page.waitForTimeout(80) }
+  await objectList.focus()
+  await press('Home')
+  assert.equal(await selectedZ(), '3', 'Home selects the front-most row')
+  assert.equal(await focusOnList(), true, 'Home keeps focus on the list')
+  await press('ArrowDown')
+  assert.equal(await selectedZ(), '2')
+  await press('ArrowDown')
+  assert.equal(await selectedZ(), '1')
+  await press('End')
+  assert.equal(await selectedZ(), '1')
+  assert.equal(await focusOnList(), true, 'End keeps focus on the list')
+  await press('ArrowUp')
+  assert.equal(await selectedZ(), '2')
+  assert.equal(await focusOnList(), true, 'ArrowUp keeps focus on the list')
 
   // The Transformer lives in the preview layer while its node sits in the shapes layer; dragging
   // the bottom-right anchor must resize the selected object (box B spans 0.45..0.60 on both axes).
@@ -203,6 +221,49 @@ try {
   assert.ok(renderedRows > 0 && renderedRows < 60, `the list must be virtualized, got ${renderedRows} rows`)
   const layerCount = await page.getByTestId('canvas-area').locator('canvas').count()
   assert.equal(layerCount, 3, `the canvas must have three Konva layers, got ${layerCount}`)
+
+  // Pan must win over the annotation layer: start the drag on a box (fixture i=500 covers
+  // x .50–.52, y .48–.51) with 1,000 shapes under the pointer.
+  const areaB = await page.getByTestId('canvas-area').boundingBox()
+  const zoomB = Number((await page.getByTestId('zoom-level').innerText()).replace('%', '')) / 100
+  const panFromX = areaB.x + (areaB.width - 1000 * zoomB) / 2 + 0.51 * 1000 * zoomB
+  const panFromY = areaB.y + (areaB.height - 750 * zoomB) / 2 + 0.49 * 750 * zoomB
+  const stagePosB = () => page.getByTestId('stage-filter').evaluate((el) => [Number(el.dataset.stageX), Number(el.dataset.stageY)])
+  const stageBeforePan = await stagePosB()
+  await page.getByTestId('tool-pan').click()
+  await page.mouse.move(panFromX, panFromY)
+  await page.mouse.down()
+  await page.mouse.move(panFromX + 120, panFromY + 40, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForTimeout(250)
+  const stageAfterPan = await stagePosB()
+  assert.ok(stageAfterPan[0] - stageBeforePan[0] > 80,
+    `panning over an annotation must move the stage: ${JSON.stringify([stageBeforePan, stageAfterPan])}`)
+  await page.getByTestId('tool-bbox').click()
+  check('pan over annotations', { before: stageBeforePan, after: stageAfterPan })
+
+  // Walk several rows on the 1,000-object list; focus stays on the list and End→ArrowUp moves back.
+  const listB = page.getByTestId('object-list')
+  const selectedZB = () => page.evaluate(() =>
+    document.querySelector('[data-testid="object-row"] [aria-current="true"]')?.closest('[data-testid="object-row"]')?.dataset.z ?? null)
+  const focusOnListB = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'object-list')
+  const pressB = async (key) => { await page.keyboard.press(key); await page.waitForTimeout(80) }
+  await listB.focus()
+  await pressB('Home')
+  const walk = [await selectedZB()]
+  await pressB('ArrowDown')
+  walk.push(await selectedZB())
+  await pressB('ArrowDown')
+  walk.push(await selectedZB())
+  assert.deepEqual(walk, ['1000', '999', '998'], `each ArrowDown must move one row, got ${JSON.stringify(walk)}`)
+  assert.equal(await focusOnListB(), true, 'arrow navigation must keep focus on the list')
+  await pressB('End')
+  assert.equal(await selectedZB(), '1', 'End must select the back-most row')
+  assert.equal(await focusOnListB(), true, 'End must keep focus on the list')
+  await pressB('ArrowUp')
+  assert.equal(await selectedZB(), '2', 'ArrowUp after End must move back one row')
+  assert.equal(await focusOnListB(), true, 'ArrowUp must keep focus on the list')
+  check('keyboard walk keeps focus', walk)
 
   /** Select a row and measure click -> two paints, in the page's own clock. */
   const measureSelect = (z) => page.evaluate(async (position) => {

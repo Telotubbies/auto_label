@@ -976,7 +976,8 @@ export default function Editor() {
               onContextMenu={(e) => e.evt.preventDefault()}
               onWheel={(e) => { e.evt.preventDefault(); setZoom((z) => Math.min(8, Math.max(0.05, z * (e.evt.deltaY > 0 ? 0.9 : 1.1)))) }}>
               <Layer listening={false}>{htmlImg && <KImage image={htmlImg} width={W} height={H} />}</Layer>
-              <Layer>
+              {/* The pan tool owns the pointer: shapes must not cancel the Stage drag with their own mousedown. */}
+              <Layer listening={tool !== 'pan'}>
                 {rendered.map((a) => {
                   const color = cls(a.classId).color
                   if (a.shape.kind === 'bbox') {
@@ -1041,7 +1042,7 @@ export default function Editor() {
                   return null
                 })}
               </Layer>
-              <Layer>
+              <Layer listening={tool !== 'pan'}>
                 {drawing && <Rect x={drawing.x} y={drawing.y} width={drawing.w} height={drawing.h} stroke={cls(selClass).color} strokeWidth={2 / zoom} dash={[6 / zoom, 4 / zoom]} listening={false} />}
                 {polyPts.length > 0 && <Line points={polyPts} stroke={cls(selClass).color} strokeWidth={2 / zoom} listening={false} />}
                 {polyPts.map((v, i) => i % 2 === 0 && <Circle key={i} x={v} y={polyPts[i + 1]} radius={4 / zoom} fill={cls(selClass).color} listening={false} />)}
