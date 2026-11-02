@@ -61,6 +61,7 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
     canCreateProject: can('admin'),
     canUpload: projectPerms.includes('project.upload'),
     canTrain: projectPerms.includes('project.train'),
+    canAnnotate: projectPerms.includes('project.annotate'),
     firstProject: projects[0]?.slug ?? null,
   } satisfies OnboardingFacts), [home.data, members.data, projects, ws, can, projectPerms])
 

@@ -18,6 +18,7 @@ export interface OnboardingFacts {
   canCreateProject: boolean
   canUpload: boolean
   canTrain: boolean
+  canAnnotate: boolean
   firstProject: string | null
 }
 
@@ -39,7 +40,7 @@ export function onboardingSteps(f: OnboardingFacts): OnboardingStep[] {
     { key: 'images', title: 'Upload images', hint: 'JPG, PNG, WebP, TIFF or a ZIP — annotations import too.',
       done: f.images > 0, to: f.canUpload ? project('upload') : null, action: null },
     { key: 'labels', title: 'Label your first images', hint: 'Annotate on the board or let auto-label pre-fill boxes.',
-      done: f.annotations > 0, to: project('annotate'), action: null },
+      done: f.annotations > 0, to: f.canAnnotate ? project('annotate') : null, action: null },
     { key: 'model', title: 'Train a model', hint: 'Pick a dataset version and a model family.',
       done: f.models > 0, to: f.canTrain ? project('train') : null, action: null },
     { key: 'deploy', title: 'Deploy a model', hint: 'Ready models are served by the hosted API.',
