@@ -9,6 +9,7 @@ import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
 import { AppLayout } from '@/components/shell'
 import { Spinner } from '@/components/ui'
+import { LEGACY_PROJECT_PATHS, workspaceIndexPath } from '@/lib/nav'
 import { Login, Signup, AcceptInvite, Forgot, Reset, VerifyEmail, MfaGate } from '@/features/auth/Auth'
 const Landing = lazy(() => import('@/features/landing/Landing'))
 const LandingPreview = lazy(() => import('@/features/landing/Landing').then((m) => ({ default: m.LandingPreview })))
@@ -22,7 +23,6 @@ import Upload from '@/features/project/Upload'
 import AnnotateBoard from '@/features/project/AnnotateBoard'
 import Dataset from '@/features/project/Dataset'
 const Versions = lazy(() => import('@/features/project/Versions'))
-const Analytics = lazy(() => import('@/features/project/Analytics'))
 const Insights = lazy(() => import('@/features/project/Insights'))
 const ModelInsights = lazy(() => import('@/features/insights/Insights'))
 const QA = lazy(() => import('@/features/project/QA'))
@@ -75,6 +75,14 @@ function Home0() {
   if (me.isLoading) return <Loading />
   const first = me.data?.workspaces[0]
   return first ? <Navigate to={`/${first.slug}`} replace /> : <Settings firstRun />
+}
+
+/** Billing has no Projects entry in the IA; its workspace index is the usage page, not the grid. */
+function WorkspaceHome() {
+  const role = useApp((s) => s.role)
+  const { ws = '' } = useParams()
+  const target = workspaceIndexPath(role)
+  return target ? <Navigate to={`/${ws}/${target}`} replace /> : <Home />
 }
 
 function Gate({ min, children }: { min: Role; children: React.ReactNode }) {
@@ -135,7 +143,7 @@ export default function App() {
       <Route path="/:ws" element={<WorkspaceGate />}>
         <Route path=":project/images/:imageId" element={<Editor />} />
         <Route element={<AppLayout />}>
-          <Route index element={<Home />} />
+          <Route index element={<WorkspaceHome />} />
           <Route path="models" element={<WorkspaceModels />} />
           <Route path="deployments" element={<Deployments />} />
           <Route path="activity" element={<Activity />} />
@@ -152,16 +160,20 @@ export default function App() {
             <Route path="browse" element={<Dataset />} />
             <Route path="videos" element={<PermGate perm="project.annotate"><VideoTimeline /></PermGate>} />
             <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />
-            <Route path="analytics" element={<PermGate perm="project.review"><Analytics /></PermGate>} />
             <Route path="insights" element={<PermGate perm="project.review"><Insights /></PermGate>} />
             <Route path="model-insights" element={<PermGate perm="project.review"><ModelInsights /></PermGate>} />
             <Route path="classes" element={<PermGate perm="project.classes"><Classes /></PermGate>} />
             <Route path="train" element={<PermGate perm="project.train"><Train /></PermGate>} />
             <Route path="models" element={<PermGate perm="project.models"><Models /></PermGate>} />
             <Route path="deploy" element={<PermGate perm="project.models"><Deploy /></PermGate>} />
-            <Route path="settings" element={<ProjectSettings />} />
-            <Route path="access" element={<ProjectSettings initialTab="access" />} />
+            <Route path="streams" element={<PermGate perm="project.read"><Streams /></PermGate>} />
+            <Route path="streams/:sid" element={<PermGate perm="project.read"><StreamDetail /></PermGate>} />
             <Route path="qa" element={<PermGate perm="project.review"><QA /></PermGate>} />
+            <Route path="settings" element={<ProjectSettings />} />
+            {/* Nav v2 folds Access into Project settings; old deep links keep their tab. */}
+            {Object.entries(LEGACY_PROJECT_PATHS).map(([from, to]) => (
+              <Route key={from} path={from} element={<Navigate to={`../${to}`} replace />} />
+            ))}
           </Route>
         </Route>
       </Route>

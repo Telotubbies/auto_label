@@ -1,10 +1,12 @@
 import { useState, type KeyboardEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Job } from '@/lib/types'
 import { Card, PageHeader, Select } from '@/components/ui'
 import { useProject } from './ProjectLayout'
+import { DatasetHealth } from './DatasetHealth'
 import { ChartSkeleton, PanelError } from './insights/Chart'
 import { Overview } from './insights/Overview'
 import { DataQuality } from './insights/DataQuality'
@@ -12,15 +14,18 @@ import { Leakage } from './insights/Leakage'
 import { Embeddings } from './insights/Embeddings'
 import { VersionsOps } from './insights/VersionsOps'
 
-type TabId = 'overview' | 'quality' | 'leakage' | 'embeddings' | 'versions'
+type TabId = 'overview' | 'health' | 'quality' | 'leakage' | 'embeddings' | 'versions'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'health', label: 'Dataset health' },
   { id: 'quality', label: 'Data quality' },
   { id: 'leakage', label: 'Leakage' },
   { id: 'embeddings', label: 'Embeddings' },
   { id: 'versions', label: 'Versions & ops' },
 ]
+
+const isTabId = (value: string | null): value is TabId => TABS.some((t) => t.id === value)
 
 const ACTIVE = new Set<Job['status']>(['queued', 'running'])
 const poll = (job?: Job | null) => (job && ACTIVE.has(job.status) ? 3000 : false)
@@ -46,7 +51,11 @@ function PageSkeleton() {
 export default function Insights() {
   const { project, ws } = useProject()
   const slug = project.slug
-  const [tab, setTab] = useState<TabId>('overview')
+  // The URL owns the tab so legacy /analytics can deep-link to ?tab=health and refresh keeps it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requested = searchParams.get('tab')
+  const tab: TabId = isTabId(requested) ? requested : 'overview'
+  const setTab = (id: TabId) => setSearchParams(id === 'overview' ? {} : { tab: id }, { replace: true })
   const [versionId, setVersionId] = useState('')
   const [diffBase, setDiffBase] = useState('')
   const [diffTarget, setDiffTarget] = useState('')
@@ -59,6 +68,7 @@ export default function Insights() {
   const summary = useQuery({
     queryKey: ['insights', 'summary', ws, slug, versionId],
     queryFn: () => api.insights.summary(ws, slug, versionId || undefined),
+    enabled: tab !== 'health',
   })
   const distribution = useQuery({
     queryKey: ['insights', 'distribution', ws, slug, versionId],
@@ -113,6 +123,7 @@ export default function Insights() {
   }
 
   const body = () => {
+    if (tab === 'health') return <DatasetHealth />
     if (summary.isLoading) return <PageSkeleton />
     if (summary.error) return <PanelError error={summary.error} />
 
@@ -158,7 +169,7 @@ export default function Insights() {
     <div className="anim-page">
       <PageHeader
         title="Insights Studio"
-        desc="Class balance, label geometry, split leakage, embeddings and pipeline health — without leaving LabelDesk."
+        desc="Dataset health, class balance, label geometry, split leakage and embeddings — without leaving LabelDesk."
         actions={(
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Version

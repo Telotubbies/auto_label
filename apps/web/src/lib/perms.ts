@@ -19,6 +19,8 @@ export function useProjectPermissions(ws: string, project: string) {
     permissions,
     ready: q.isSuccess,
     isManager: q.data?.project_role === 'manager',
+    /** Effective project role (explicit row or inherited); null until /permissions resolves. */
+    role: q.data?.project_role ?? null,
     can: (perm: string) => permissions.includes(perm),
   }
 }
