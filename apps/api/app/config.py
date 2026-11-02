@@ -17,6 +17,7 @@ PUBLIC_URL = _env("LD_PUBLIC_URL", "http://localhost:5173").rstrip("/")
 CORS_ORIGINS = [o for o in _env("LD_CORS_ORIGINS", "*").split(",") if o]
 SIGNUP_ENABLED = _env("LD_SIGNUP_ENABLED", "1") == "1"
 ENVIRONMENT = _env("LD_ENV", "development")                  # compose sets production
+MULTI_TENANT = _env("LD_MULTI_TENANT", "1") == "1"           # hosted: reject custom SDK endpoints (I12)
 EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside the api process
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers

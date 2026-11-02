@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 
+from ..config import MULTI_TENANT
 from ..db import SessionLocal
 from ..deps import Ctx, plan
 from ..models import CONNECTOR_KINDS, Connector, Image, Project, Workspace, now
@@ -69,6 +70,16 @@ def _config(conn) -> dict:
     return cfg
 
 
+def _azure_standard_host(cfg: dict) -> bool:
+    """True for the public Azure Blob host we can reach without a user-supplied endpoint."""
+    parts = urlsplit(_azure_account_url(cfg))
+    host = (parts.hostname or "").lower()
+    if not host.endswith(".blob.core.windows.net") or parts.port or parts.username or parts.password:
+        return False
+    account = str(cfg.get("account_name") or "").strip().lower()
+    return not account or host == f"{account}.blob.core.windows.net"
+
+
 def validate(kind: str, config: dict) -> None:
     """Raise ValueError with a readable message when the connector config is unusable."""
     cfg = config if isinstance(config, dict) else {}
@@ -79,6 +90,11 @@ def validate(kind: str, config: dict) -> None:
             raise ValueError(f"{kind} connector requires a bucket")
         if kind == "s3" and str(cfg.get("endpoint_url") or "").strip():
             _ensure_public(str(cfg["endpoint_url"]).strip(), "endpoint_url")
+            if MULTI_TENANT:
+                # The SDK resolves the endpoint again; a pinned host is the only safe form and boto3
+                # offers no supported hook for one. Hosted deployments use the AWS endpoint (I12).
+                raise ValueError("custom endpoint_url is disabled in multi-tenant mode "
+                                 "(set LD_MULTI_TENANT=0 only for a self-hosted deployment)")
     elif kind == "azure":
         if not str(cfg.get("container") or "").strip():
             raise ValueError("azure connector requires a container")
@@ -90,6 +106,9 @@ def validate(kind: str, config: dict) -> None:
         # check the URL we will actually call, whichever form the config used: a crafted
         # account_name (e.g. "169.254.169.254#") must not slip past the SSRF guard
         _ensure_public(_azure_account_url(cfg), "account_url")
+        if MULTI_TENANT and not _azure_standard_host(cfg):
+            raise ValueError("custom account_url is disabled in multi-tenant mode "
+                             "(set LD_MULTI_TENANT=0 only for a self-hosted deployment)")
         sas = str(cfg.get("sas_token") or "").lstrip("?")
         if sas:
             from urllib.parse import parse_qs

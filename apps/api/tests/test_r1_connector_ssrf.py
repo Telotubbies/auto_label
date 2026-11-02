@@ -68,6 +68,7 @@ def _s3_conn(endpoint: str = "https://s3.example"):
 
 def test_list_objects_rechecks_the_public_endpoint(monkeypatch):
     """The SDK resolves the endpoint a second time: re-check it right before the SDK call."""
+    monkeypatch.setattr(connectors, "MULTI_TENANT", False, raising=False)   # custom endpoint opt-in
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda *a, **kw: _FakeS3()))
     monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)   # no DNS in tests
     seen = []
@@ -79,6 +80,7 @@ def test_list_objects_rechecks_the_public_endpoint(monkeypatch):
 
 
 def test_signed_url_rechecks_the_public_endpoint(monkeypatch):
+    monkeypatch.setattr(connectors, "MULTI_TENANT", False, raising=False)
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda *a, **kw: _FakeS3()))
     monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)
     seen = []
@@ -94,3 +96,26 @@ def test_recheck_public_rejects_a_private_endpoint():
     with pytest.raises(HTTPException) as exc:
         connectors._recheck_public({"endpoint_url": "http://127.0.0.1:9000"})
     assert exc.value.status_code == 400
+
+
+def test_custom_s3_endpoint_is_rejected_in_multi_tenant_mode(monkeypatch):
+    """I12: the SDK resolves again, so a hosted deployment cannot pin a custom endpoint."""
+    monkeypatch.setattr(connectors, "MULTI_TENANT", True, raising=False)
+    monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)
+    with pytest.raises(ValueError, match="multi-tenant"):
+        connectors.validate("s3", {"bucket": "b", "endpoint_url": "https://s3.example"})
+
+
+def test_custom_s3_endpoint_is_allowed_on_a_self_hosted_deployment(monkeypatch):
+    monkeypatch.setattr(connectors, "MULTI_TENANT", False, raising=False)
+    monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)
+    connectors.validate("s3", {"bucket": "b", "endpoint_url": "https://s3.example"})
+
+
+def test_custom_azure_account_url_is_rejected_in_multi_tenant_mode(monkeypatch):
+    monkeypatch.setattr(connectors, "MULTI_TENANT", True, raising=False)
+    monkeypatch.setattr(connectors, "_ensure_public", lambda url, field: None)
+    with pytest.raises(ValueError, match="multi-tenant"):
+        connectors.validate("azure", {"container": "c", "account_url": "https://minio.example"})
+    # the standard Azure host needs no custom endpoint and stays usable
+    connectors.validate("azure", {"container": "c", "account_url": "https://acct.blob.core.windows.net"})
