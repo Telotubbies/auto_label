@@ -540,3 +540,52 @@ export interface StreamCreateBody {
 }
 export type StreamPatchBody = Partial<StreamCreateBody>
 export interface StreamVideoUpload { source: string }
+
+// --- Insights Studio (Task 20c): lineage, widget queries, dashboards -----------
+
+export type LineageKind = 'batch' | 'version' | 'run' | 'model' | 'stream'
+
+export interface LineageNode {
+  id: string; kind: LineageKind; label: string; sub: string; created: number
+  counts: Record<string, number>
+  metrics: Record<string, number | null>
+  detail: Record<string, unknown>
+  artifacts: { label: string }[]
+  log: string
+}
+export interface LineageEdge { source: string; target: string; kind: 'images' | 'training' | 'deployment' }
+export interface Lineage { nodes: LineageNode[]; edges: LineageEdge[]; generated: number }
+
+export interface BreakdownRow { key: string; value: number }
+export interface TimelineSeries { name: string; values: number[] }
+export interface StreamAnalytics {
+  window: { days: number; since: number }
+  totals: { events: number; reviewed: number; cameras: number; dwell_seconds: number; last_event: number }
+  top_cameras: { id: string; name: string; events: number; reviewed: number; last_event: number }[]
+  breakdown: { rule: BreakdownRow[]; zone: BreakdownRow[]; class: BreakdownRow[]; stream: BreakdownRow[] }
+  dwell: { buckets: string[]; counts: number[]; samples: number; max: number }
+  hourly: { days: string[]; hours: string[]; values: [number, number, number][] }
+  over_time: { dates: string[]; by_rule: TimelineSeries[]; by_zone: TimelineSeries[]; by_class: TimelineSeries[] }
+}
+
+export type WidgetSource = 'dataset' | 'version' | 'model' | 'streams'
+export type ChartKind = 'bar' | 'line' | 'scatter' | 'heatmap' | 'pie' | 'donut' | 'table' | 'kpi'
+export type WidgetWidth = 3 | 4 | 6 | 12
+
+export interface WidgetFilters { [key: string]: string | number | undefined }
+
+export interface DashboardWidget {
+  id: string; title: string; source: WidgetSource; measure: string; dimension: string
+  dimension2: string | null; chart: ChartKind; filters: WidgetFilters; w: WidgetWidth
+}
+
+export interface WidgetRow { key: string; group: string | null; value: number }
+export interface WidgetData {
+  source: WidgetSource; measure: string; dimension: string; dimension2: string | null
+  unit: string; rows: WidgetRow[]; total: number; filters: WidgetFilters
+}
+
+export interface DashboardSummary {
+  id: string; name: string; widgets: DashboardWidget[]; share_token: string
+  created_by: string | null; created: number; updated: number
+}

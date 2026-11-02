@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactEChartsCore from 'echarts-for-react/lib/core'
 import * as echarts from 'echarts/core'
-import { BarChart, LineChart, ScatterChart } from 'echarts/charts'
+import { BarChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts'
 import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsType } from 'echarts'
@@ -14,7 +14,7 @@ import { classColor, useThemePrefs, viridis } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 echarts.use([
-  LineChart, BarChart, ScatterChart,
+  LineChart, BarChart, ScatterChart, HeatmapChart, PieChart,
   GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, DataZoomComponent, VisualMapComponent,
   CanvasRenderer,
 ])
@@ -305,11 +305,11 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
   return (
     <Card className={cn('min-w-0 p-4', className)}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 basis-full sm:flex-1">
           <h3 className="text-sm font-semibold">{title}</h3>
           {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {actions}
           <ViewToggle value={view} onChange={setView} label={`${title} view`} />
           <Dropdown align="right" items={items}

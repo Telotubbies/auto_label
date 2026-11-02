@@ -3,9 +3,9 @@ import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-r
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3, Bell, Boxes, BrainCircuit, Cctv, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu,
-  Database, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Monitor, Moon, Plus,
-  Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User, X,
-  Zap, Wrench,
+  Database, FlaskConical, FolderGit2, GitBranch, KeyRound, Layers, LayoutDashboard, LineChart, LogOut, Monitor, Moon,
+  Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User, X,
+  Zap, Wrench, Activity,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -145,6 +145,11 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
     { to: 'train', label: 'Train', icon: BrainCircuit, perm: 'project.train' },
     { to: 'models', label: 'Models', icon: Boxes, perm: 'project.models' },
     { to: 'model-insights', label: 'Model insights', icon: BarChart3, perm: 'project.review' },
+  ]},
+  { group: 'STUDIO', items: [
+    { to: 'lineage', label: 'Lineage', icon: GitBranch, perm: 'project.review' },
+    { to: 'dashboards', label: 'Dashboards', icon: LayoutDashboard, perm: 'project.review' },
+    { to: 'stream-analytics', label: 'Stream analytics', icon: Activity, perm: 'project.review' },
   ]},
   { group: 'DEPLOY', items: [
     { to: 'deploy', label: 'Deploy & Test', icon: Rocket, perm: 'project.models' },
