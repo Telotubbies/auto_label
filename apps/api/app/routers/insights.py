@@ -93,6 +93,7 @@ def scan_embedding(c: Ctx = Depends(project_ctx)):
 
 @router.get("/version-diff")
 def version_diff(base: str = Query(...), target: str = Query(...), c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")
     base_version = _required_version(c, base)
     target_version = _required_version(c, target)
     try:
