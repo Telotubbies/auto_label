@@ -168,6 +168,9 @@ export interface Member { id: string; name: string; email: string; role: Role; o
 
 export type LabelIssueKind = 'tiny' | 'out_of_bounds' | 'zero_area' | 'duplicate'
 
+/** Stored per image at upload: divergence from a clean, well-exposed photo. */
+export type QualityClass = 'blurry' | 'dark' | 'ok' | 'unknown'
+
 /** Row data for the Health check cards. Pixel thresholds are COCO at `imgsz`. */
 export interface HealthChecks {
   imgsz: number
@@ -176,6 +179,8 @@ export interface HealthChecks {
   /** `box` is normalized [x, y, w, h]. */
   missing_boxes: { image_id: string; box: [number, number, number, number]; class: string }[]
   leakage_pairs: number
+  /** Ingest-time scores, read from the image rows; `samples` holds a capped id list per flagged class. */
+  quality: { counts: Record<QualityClass, number>; samples: { blurry: string[]; dark: string[] } }
 }
 
 export interface HealthRecommendation { key: string; message: string; suggest: Record<string, unknown> }

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertTriangle, ArrowUpRight, Frame, Lightbulb, Link2, Loader2, RotateCw, ScanSearch, ShieldAlert, ShieldCheck } from 'lucide-react'
-import type { HealthChecks, HealthRecommendation, Job, LabelIssueKind } from '@/lib/types'
+import { AlertTriangle, ArrowUpRight, Focus, Frame, Lightbulb, Link2, Loader2, RotateCw, ScanSearch, ShieldAlert, ShieldCheck } from 'lucide-react'
+import type { HealthChecks, HealthRecommendation, Job, LabelIssueKind, QualityClass } from '@/lib/types'
 import { Badge, Button, Card, Progress, Spinner, fmtAgo } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +19,20 @@ const SIZE_META = [
   { key: 'medium', label: 'Medium', tone: 'bg-info' },
   { key: 'large', label: 'Large', tone: 'bg-success' },
 ] as const
+
+/** Thresholds mirror services/quality.py; shown so the card explains its own verdicts. */
+const QUALITY_META = [
+  { kind: 'blurry', label: 'Blurry', tone: 'bg-warning' },
+  { kind: 'dark', label: 'Too dark', tone: 'bg-destructive' },
+  { kind: 'ok', label: 'Good', tone: 'bg-success' },
+] as const
+
+const QUALITY_ACTION: Record<QualityClass, string> = {
+  blurry: 'View blurry images',
+  dark: 'View dark images',
+  ok: 'View good images',
+  unknown: 'View unscored images',
+}
 
 const fmt = (n: number) => n.toLocaleString()
 const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0)
@@ -78,6 +92,26 @@ function LinkButton({ to, children, className }: { to: string; children: ReactNo
   )
 }
 
+/** One quality bucket; a real button so the whole bar is a click-through to the filtered grid. */
+function QualityRow({ label, count, share, tone, onSelect }: {
+  label: string; count: number; share: number; tone: string; onSelect: () => void
+}) {
+  return (
+    <li>
+      <button type="button" onClick={onSelect} aria-label={`Show ${fmt(count)} ${label.toLowerCase()} images in the dataset grid`}
+        title={`Show ${label.toLowerCase()} images in the dataset`}
+        className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm transition-colors hover:bg-accent focus-visible:bg-accent">
+        <span className="w-20 shrink-0 truncate text-muted-foreground group-hover:text-foreground">{label}</span>
+        <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <span className={cn('block h-full rounded-full', tone)} style={{ width: `${Math.max(count ? 2 : 0, Math.min(100, share))}%` }} />
+        </span>
+        <span className="w-12 shrink-0 text-right font-medium tabular-nums">{fmt(count)}</span>
+        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
+      </button>
+    </li>
+  )
+}
+
 export function HealthCheck({ ws, slug, models, checks, job, stale, recommendations, onRun, runPending, hasImages }: {
   ws: string
   slug: string
@@ -112,9 +146,16 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
     el.focus({ preventScroll: true })
   }
 
+  const browseQuality = (kind: QualityClass) =>
+    nav(`/${ws}/${slug}/browse?${new URLSearchParams({ status: 'all', quality: kind }).toString()}`)
+
   /** One-click follow-up per recommendation; values stay suggestions, never auto-applied. */
   const recAction = (r: HealthRecommendation): { label: string; onClick: () => void } | null => {
     const s = r.suggest ?? {}
+    if (typeof s.quality === 'string' && s.quality in QUALITY_ACTION) {
+      const kind = s.quality as QualityClass
+      return { label: QUALITY_ACTION[kind], onClick: () => browseQuality(kind) }
+    }
     if (typeof s.imgsz === 'number') return { label: `Train at ${s.imgsz}px`, onClick: () => nav(`/${ws}/${slug}/train?imgsz=${s.imgsz}`) }
     if (s.filter === 'label_quality') return { label: 'Review flagged labels', onClick: () => focusHealth('health-label-quality') }
     if (s.filter === 'missing_boxes') return { label: 'Review missing boxes', onClick: () => focusHealth('health-missing') }
@@ -136,6 +177,13 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
   const missingList = checks.missing_boxes
   const visibleIssues = showAllIssues ? issueList : issueList.slice(0, 8)
   const visibleMissing = showAllMissing ? missingList : missingList.slice(0, 8)
+
+  const quality = checks.quality
+  const qualityTotal = Object.values(quality.counts).reduce((s, n) => s + n, 0)
+  const qualityRows = QUALITY_META.map((m) => ({
+    ...m, count: quality.counts[m.kind], share: qualityTotal ? (quality.counts[m.kind] / qualityTotal) * 100 : 0,
+  }))
+  const flaggedQuality = quality.counts.blurry + quality.counts.dark
 
   return (
     <>
@@ -192,7 +240,27 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
                 {smallShare}% of objects are small at {checks.imgsz}px — a larger training size or tiling would help.
               </p>
             )}
-            <p className="mt-3 text-xs text-muted-foreground">COCO buckets: &lt;32² px small, &lt;96² px medium</p>
+            <p className="mt-3 text-xs text-muted-foreground">COCO buckets: &lt;32² px small, &lt;96² px medium. Measured per annotation, so these bars cannot filter the image grid.</p>
+          </HealthCard>
+
+          <HealthCard id="health-image-quality">
+            <HealthCardHead icon={<Focus className="h-4 w-4" />} title="Image quality"
+              desc="Sharpness and brightness measured once, when each image was uploaded."
+              aside={<Badge className={cn('tabular-nums', flaggedQuality ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success')}>{fmt(flaggedQuality)}</Badge>} />
+            <ul className="mt-2 space-y-0.5" aria-label="Images by quality">
+              {qualityRows.map((r) => (
+                <QualityRow key={r.kind} label={r.label} count={r.count} share={r.share} tone={r.tone}
+                  onSelect={() => browseQuality(r.kind)} />
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Blurry under the 0.005 sharpness floor · too dark under 10% mean brightness. Click a row to open those images.
+            </p>
+            {quality.counts.unknown > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {fmt(quality.counts.unknown)} {quality.counts.unknown === 1 ? 'image has' : 'images have'} no score (uploaded before scoring) — they are not counted as good.
+              </p>
+            )}
           </HealthCard>
 
           <HealthCard id="health-label-quality">
@@ -344,7 +412,7 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
           <ul className="mt-2 space-y-2">
             {recommendations.map((r) => {
               const action = recAction(r)
-              const values = Object.entries(r.suggest ?? {}).filter(([k]) => k !== 'filter' && k !== 'fix')
+              const values = Object.entries(r.suggest ?? {}).filter(([k]) => k !== 'filter' && k !== 'fix' && k !== 'quality')
               return (
                 <li key={r.key}
                   className="flex flex-col gap-2 rounded-lg border border-border border-l-4 border-l-warning bg-card p-3 text-card-foreground sm:flex-row sm:items-center sm:justify-between">

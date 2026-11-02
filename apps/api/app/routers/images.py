@@ -24,6 +24,7 @@ from ..models import (SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Label
 from ..ratelimit import limit
 from ..security import sign_path
 from ..services import faceblur, imaging, importers, insights, metering, ml, segment
+from ..services.quality import analyze as analyze_quality, sql_filter as quality_filter
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -114,8 +115,11 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
             continue
         if source == "stream" and p.face_blur:      # PDPA: face blur before stream frames reach a dataset
             im, _ = faceblur.blur_faces(im)
+        # one cheap measurement while the pixels are already decoded; stored for the grid and health
+        sharpness, luminance = analyze_quality(im)
         img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, name=safe_name(path), sha256=h, width=im.width,
-                    height=im.height, size=len(data), path="", thumb="", tags=list(tags))
+                    height=im.height, size=len(data), path="", thumb="", tags=list(tags),
+                    sharpness=sharpness, luminance=luminance)
         img.path, img.thumb = imaging.store(f"projects/{p.id}/images", img.id, im)
         anns = []
         if p.type == "classification":
@@ -167,10 +171,10 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
 
 @router.get(P + "/images")
 def list_images(q: str = "", split: str = "", status: str = "", class_id: str = "", tag: str = "", batch_id: str = "",
-                ids: str = "", selection: str = "", annotated: str = "", assignee: str = "", min_mp: float | None = None,
-                max_mp: float | None = None, min_ar: float | None = None, max_ar: float | None = None,
-                min_ann: int | None = None, max_ann: int | None = None, sort: str = "newest",
-                offset: int = 0, limit: int = 100, c: Ctx = Depends(project_ctx)):
+                ids: str = "", selection: str = "", annotated: str = "", assignee: str = "", quality: str = "",
+                min_mp: float | None = None, max_mp: float | None = None, min_ar: float | None = None,
+                max_ar: float | None = None, min_ann: int | None = None, max_ann: int | None = None,
+                sort: str = "newest", offset: int = 0, limit: int = 100, c: Ctx = Depends(project_ctx)):
     s = _visible(select(Image).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
     if ids:  # chart click-throughs / insights lasso: an explicit id set
         s = s.where(Image.id.in_([x for x in ids.split(",") if x][:5000]))
@@ -193,6 +197,12 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         s = s.where(Image.n_annotations > 0)
     elif annotated == "no":
         s = s.where(Image.n_annotations == 0)
+    if quality:
+        # health-card click-through: same rule as services.quality.classify, run in SQL
+        try:
+            s = s.where(quality_filter(quality))
+        except ValueError:
+            raise HTTPException(400, "bad quality") from None
     if class_id:
         s = s.where(exists().where(ImageClass.image_id == Image.id, ImageClass.class_id == class_id))
     if tag:
