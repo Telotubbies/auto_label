@@ -87,9 +87,15 @@ def _role_or_404(c: Ctx, rid: str) -> CustomRole:
     return role
 
 
+def _role_admin(c: Ctx) -> None:
+    """Only the base owner/admin may mint or assign bundles, never a delegate holding workspace.members."""
+    if c.ws_role not in ("owner", "admin"):
+        raise HTTPException(403, "requires workspace admin")
+
+
 @router.post("/roles")
 def create_role(body: RoleIn, c: Ctx = Depends(ws_ctx)):
-    c.perm("workspace.members")
+    _role_admin(c)
     role = CustomRole(workspace_id=c.ws.id, name=_clean_name(body.name), level=body.level,
                       permissions=_validated(body.level, body.permissions))
     c.db.add(role)
@@ -104,7 +110,7 @@ def create_role(body: RoleIn, c: Ctx = Depends(ws_ctx)):
 
 @router.patch("/roles/{rid}")
 def update_role(rid: str, body: RolePatch, c: Ctx = Depends(ws_ctx)):
-    c.perm("workspace.members")
+    _role_admin(c)
     role = _role_or_404(c, rid)
     if body.name is not None:
         role.name = _clean_name(body.name)
@@ -121,7 +127,7 @@ def update_role(rid: str, body: RolePatch, c: Ctx = Depends(ws_ctx)):
 
 @router.delete("/roles/{rid}")
 def delete_role(rid: str, c: Ctx = Depends(ws_ctx)):
-    c.perm("workspace.members")
+    _role_admin(c)
     role = _role_or_404(c, rid)
     # Assignments must not dangle: clear every bundle at both levels before removing the role.
     c.db.execute(update(Member).where(Member.workspace_id == c.ws.id, Member.custom_role_id == rid)
@@ -181,7 +187,7 @@ class WorkspaceCustomRoleIn(BaseModel):
 @router.patch("/members/{uid}/custom-role")
 def set_workspace_custom_role(uid: str, body: WorkspaceCustomRoleIn, c: Ctx = Depends(ws_ctx)):
     """Grant a workspace-level custom bundle on top of a member's base role (grant-only)."""
-    c.perm("workspace.members")
+    _role_admin(c)
     m = c.db.get(Member, (c.ws.id, uid))
     if not m:
         raise HTTPException(404, "member not found")

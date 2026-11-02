@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, CheckCheck, Inbox, PencilLine, Send, Sparkles, UserPlus } from 'lucide-react'
 import { api, post } from '@/lib/api'
+import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { BoardCard, Status } from '@/lib/types'
 import { Button, Card, Dropdown, EmptyState, Input, Modal, PageHeader, Progress, Select, StatusPill, fmtAgo, toast } from '@/components/ui'
 import { AutoLabelDialog } from './AutoLabelDialog'
+import { autolabelLabel } from './autolabelLabel'
 import { useProject } from './ProjectLayout'
 
 const COLS: { id: Status; title: string; hint: string }[] = [
@@ -20,7 +22,9 @@ export default function AnnotateBoard() {
   const { project, ws } = useProject()
   const nav = useNavigate()
   const qc = useQueryClient()
-  const can = useApp((s) => s.can)
+  const { can } = useProjectPermissions(ws, project.slug)
+  // Review/manage actions follow the effective project role, not the workspace rank (I10).
+  const canManage = can('project.review')
   const me = useApp((s) => s.me)
   const board = useQuery({ queryKey: ['board', ws, project.slug], queryFn: () => api.board(ws, project.slug) })
   const jobs = useQuery({ queryKey: ['jobs', ws, project.slug, 'autolabel'], queryFn: () => api.jobs(ws, project.slug, 'autolabel'),
@@ -50,12 +54,12 @@ export default function AnnotateBoard() {
       <PageHeader title="Annotate" desc="Move batches from upload to an approved dataset."
         actions={<>
           <Input className="w-56" placeholder="Filter batches" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {can('reviewer') && <Button variant="outline" onClick={() => setAuto({ batchId: null })}><Sparkles className="h-4 w-4" /> Auto Label</Button>}
-          {can('reviewer') && <Button onClick={() => nav('../upload')}>Upload More</Button>}
+          {canManage && <Button variant="outline" onClick={() => setAuto({ batchId: null })}><Sparkles className="h-4 w-4" /> Auto Label</Button>}
+          {canManage && <Button onClick={() => nav('../upload')}>Upload More</Button>}
         </>} />
       {running.map((j) => (
         <div key={j.id} className="mx-8 mb-3 flex items-center gap-3 rounded-lg border bg-accent/30 px-4 py-2 text-sm">
-          <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({j.params.model_ref ?? (j.params.method === 'sam' ? 'SAM 3.1' : 'model')}) <StatusPill status={j.status} />
+          <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({autolabelLabel(j.params)}) <StatusPill status={j.status} />
           <Progress className="w-48" value={j.progress} /> <span className="text-xs text-muted-foreground">{Math.round(j.progress)}%</span>
         </div>
       ))}
@@ -80,7 +84,7 @@ export default function AnnotateBoard() {
                         <div className="truncate text-sm font-semibold">{c.batchName}</div>
                         <div className="text-[11px] text-muted-foreground">{c.created ? fmtAgo(c.created) : ''}{c.assignee ? ` · ${c.assignee}` : ''}</div>
                       </div>
-                      {col.id === 'unassigned' && can('reviewer') && (
+                      {col.id === 'unassigned' && canManage && (
                         <Dropdown align="right" trigger={<button className="cursor-pointer px-1 text-muted-foreground">⋮</button>} items={[
                           { label: 'Auto Label batch', onClick: () => setAuto({ batchId: c.batchId }) },
                           { label: 'Add straight to Dataset', onClick: () => move(c, 'unassigned', 'done', { only_annotated: true }) },
@@ -91,13 +95,13 @@ export default function AnnotateBoard() {
                       <Progress value={(c.annotated / c.images) * 100} /> <span className="whitespace-nowrap">{c.annotated}/{c.images}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {col.id === 'unassigned' && can('reviewer') && <Button size="sm" onClick={() => { setAssign(c); setAssignee(me?.id ?? '') }}><UserPlus className="h-3.5 w-3.5" /> Assign</Button>}
+                      {col.id === 'unassigned' && canManage && <Button size="sm" onClick={() => { setAssign(c); setAssignee(me?.id ?? '') }}><UserPlus className="h-3.5 w-3.5" /> Assign</Button>}
                       {col.id === 'unassigned' && <Button size="sm" variant="outline" onClick={() => open(c, 'unassigned')}><PencilLine className="h-3.5 w-3.5" /> Label</Button>}
                       {col.id === 'annotating' && <Button size="sm" variant="outline" onClick={() => open(c, 'annotating')}><PencilLine className="h-3.5 w-3.5" /> Annotate</Button>}
                       {col.id === 'annotating' && c.annotated > 0 && <Button size="sm" onClick={() => move(c, 'annotating', 'review', { only_annotated: true })}><Send className="h-3.5 w-3.5" /> Submit</Button>}
-                      {col.id === 'review' && can('reviewer') && <Button size="sm" variant="outline" onClick={() => open(c, 'review', true)}>Review</Button>}
-                      {col.id === 'review' && can('reviewer') && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => move(c, 'review', 'done')}><CheckCheck className="h-3.5 w-3.5" /> Approve all</Button>}
-                      {col.id === 'review' && can('reviewer') && <Button size="sm" variant="ghost" onClick={() => move(c, 'review', 'annotating')}>Reject all</Button>}
+                      {col.id === 'review' && canManage && <Button size="sm" variant="outline" onClick={() => open(c, 'review', true)}>Review</Button>}
+                      {col.id === 'review' && canManage && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => move(c, 'review', 'done')}><CheckCheck className="h-3.5 w-3.5" /> Approve all</Button>}
+                      {col.id === 'review' && canManage && <Button size="sm" variant="ghost" onClick={() => move(c, 'review', 'annotating')}>Reject all</Button>}
                       {col.id === 'done' && <Button size="sm" variant="outline" onClick={() => nav(`../browse?batch=${c.batchId ?? ''}`)}>View</Button>}
                     </div>
                   </Card>

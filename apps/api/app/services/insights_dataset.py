@@ -5,8 +5,8 @@ needs: no DB access, no file IO. `insights` owns caching and the router stays th
 """
 
 import math
+import time
 from collections import Counter
-from datetime import datetime, timezone
 
 from . import imaging, labeler_stats
 
@@ -211,7 +211,8 @@ def geometry(rows: list, classes: list, imgsz: int = 640, split_of: dict | None 
 
 
 def _date(ts: float) -> str:
-    return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+    # Same local-day bucket as labeler_stats.throughput, so one dashboard cannot split a day.
+    return time.strftime("%Y-%m-%d", time.localtime(float(ts)))
 
 
 def labeling(rows: list, audits: list, users: dict, events: list) -> dict:

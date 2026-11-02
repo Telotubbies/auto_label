@@ -8,8 +8,9 @@ import re
 import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import Float, String, and_, case, cast, exists, func, select
+from sqlalchemy import Float, Text, and_, case, cast, exists, func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ from ..models import (SPLITS, STATUSES, Batch, Comment, Honeypot, Image, ImageCl
                       TrainedModel, User, new_id, now, set_annotations)
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import faceblur, imaging, importers, insights, labeling, labeling_ops, metering, ml, segment
+from ..services import erasure, faceblur, imaging, importers, insights, labeling, labeling_ops, metering, ml, segment
 from ..services.quality import analyze as analyze_quality, sql_filter as quality_filter
 from .projects import classes_out, ensure_class
 
@@ -84,6 +85,9 @@ def check(body: HashesIn, c: Ctx = Depends(project_ctx)):
 def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str, split: str, tags: list[str],
            source: str = "upload", to_dataset: bool = True, user_id: str | None = None) -> dict:
     p = c.project
+    if p.face_blur and not faceblur.available():
+        # PDPA: a project that promises anonymisation must not store raw faces when the detector is missing.
+        raise HTTPException(503, "face blur is enabled but the face detector is unavailable")
     try:
         bundle = importers.collect(files)
     except importers.ImportError_ as e:
@@ -103,7 +107,10 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     out, dups, annotated, failed = [], 0, 0, []
 
     def class_for(name: str) -> LabelClass:
-        lc = ensure_class(db, p, name)
+        try:
+            lc = ensure_class(db, p, name)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         sk = bundle.skeletons.get(name)
         if sk and not lc.skeleton:
             lc.skeleton = sk
@@ -119,7 +126,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
         except Exception:
             failed.append({"name": safe_name(path), "reason": "unreadable image"})
             continue
-        if source == "stream" and p.face_blur:      # PDPA: face blur before stream frames reach a dataset
+        if p.face_blur:                             # PDPA: blur every source before the bytes reach a dataset
             im, _ = faceblur.blur_faces(im)
         # one cheap measurement while the pixels are already decoded; stored for the grid and health
         sharpness, luminance = analyze_quality(im)
@@ -175,6 +182,12 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
 
 # --- browse -----------------------------------------------------------------------------------
 
+def _tag_filter(tag: str):
+    """Match one JSON-list element; ``cast`` must be TEXT so Postgres accepts json -> text."""
+    pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return cast(Image.tags, Text).like(f"%{pat}%", escape="\\")
+
+
 @router.get(P + "/images")
 def list_images(q: str = "", split: str = "", status: str = "", class_id: str = "", tag: str = "", batch_id: str = "",
                 ids: str = "", selection: str = "", annotated: str = "", assignee: str = "", quality: str = "",
@@ -221,8 +234,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
             s = s.where(Image.id.not_in(honeypot_ids))     # the class index would name the answer key
     if tag:
         # tags is a JSON list; match the quoted element in its text form (portable sqlite/postgres)
-        pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
-        s = s.where(cast(Image.tags, String).like(f"%{pat}%", escape="\\"))
+        s = s.where(_tag_filter(tag))
     # chart click-throughs: the same bucket boundaries as analytics (megapixels, aspect ratio, count)
     if min_mp is not None:
         s = s.where(Image.width * Image.height >= min_mp * 1e6)
@@ -298,6 +310,8 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, "bad status")
     if body.action == "assign" and v and not c.db.get(Member, (c.ws.id, v)):
         raise HTTPException(400, "assignee is not a workspace member")
+    deleted: list[str] = []
+    survived: list[str] = []
     for r in rows:
         if body.action == "split":
             r.split = v
@@ -307,7 +321,12 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
             r.tags = [t for t in r.tags or [] if t != v]
         elif body.action == "delete":
             if r.deleted_at is None:              # a second delete must not credit storage twice
+                _, gone = erasure.delete_image_files(r.path, r.thumb)
+                if not gone:                      # keep the row and its meter entry; retry below
+                    survived.append(r.id)
+                    continue
                 metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
+                deleted.append(r.id)
             r.deleted_at = now()
             c.db.execute(sa_delete(ImageClass).where(ImageClass.image_id == r.id))   # deleted images drop out of counts
         elif body.action == "status":
@@ -319,6 +338,15 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         elif body.action == "clear_annotations":
             set_annotations(c.db, r, [])
         r.updated = now()
+    if survived:
+        # Rows whose bytes are already gone must be committed: rolling them back would hide the
+        # erased file behind a visible row and keep its bytes on the storage meter. Only the rows
+        # that still have their file are named in the 409, so a retry finishes exactly those.
+        if deleted:
+            audit(c.db, c.ws.id, c.user.id, f"image.bulk.{body.action}", c.project.name, count=len(deleted), value=v)
+        c.db.commit()
+        return JSONResponse(status_code=409, content={"detail": "some files could not be deleted; retry",
+                                                      "deleted": deleted, "survived": survived})
     audit(c.db, c.ws.id, c.user.id, f"image.bulk.{body.action}", c.project.name, count=len(rows), value=v)
     c.db.commit()
     return {"updated": len(rows)}
@@ -482,6 +510,17 @@ def _check_ann(a: dict) -> dict:
     return out
 
 
+def _check_class_ids(c: Ctx, anns: list[dict]) -> None:
+    """Every annotation must reference a class of *this* project (I6)."""
+    ids = {a.get("classId") for a in anns if isinstance(a, dict) and a.get("classId")}
+    if not ids:
+        return
+    known = set(c.db.scalars(select(LabelClass.id).where(LabelClass.project_id == c.project.id,
+                                                        LabelClass.id.in_(ids))))
+    if ids - known:
+        raise HTTPException(400, "annotation class does not belong to this project")
+
+
 @router.put("/api/images/{image_id}/annotations")
 def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     if len(body.annotations) > 5000:
@@ -495,6 +534,7 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
         # this draft is already part of the image's consensus total; keep that total bounded too
         labeling_ops.check_image_cap(db, assignment.job_id, img.id, u.id, len(body.annotations))
     checked = [_check_ann(a) for a in body.annotations]
+    _check_class_ids(c, checked)
     if assignment is not None:
         # consensus mode: autosave keeps the draft private and does NOT submit it; the Image row is
         # only written when the job is merged.
@@ -554,6 +594,9 @@ def delete_image(image_id: str, u: User = Depends(current_user), db: Session = D
     c, img = _assigned(*image_ctx(db, u, image_id))
     c.need("reviewer")
     if img.deleted_at is None:                    # release the bytes the storage meter counted at upload
+        _, gone = erasure.delete_image_files(img.path, img.thumb)
+        if not gone:                              # a locked file keeps its row and its meter entry
+            raise HTTPException(409, "some files could not be deleted; retry")
         metering.adjust(db, c.ws, "storage_bytes", -float(img.size or 0), project_id=img.project_id)
     img.deleted_at = now()
     db.execute(sa_delete(ImageClass).where(ImageClass.image_id == img.id))

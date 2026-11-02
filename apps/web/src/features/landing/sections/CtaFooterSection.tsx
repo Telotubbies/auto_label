@@ -132,6 +132,7 @@ export function FooterSection() {
 
         <div className="mt-10 flex flex-col gap-4 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">© 2026 LabelDesk</p>
+          <a href="/licenses.txt" className={footerLink}>Licenses</a>
         </div>
       </div>
     </footer>

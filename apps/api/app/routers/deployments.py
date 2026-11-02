@@ -18,7 +18,9 @@ def workspace_deployments(c: Ctx = Depends(ws_ctx)):
 
 @router.get(P)
 def project_deployments(c: Ctx = Depends(project_ctx)):
-    return svc.state(c.db, c.project)
+    # Any member may read the aliases, but the ready-model metrics carry the held-out eval report:
+    # readers without project.models get the lean model (I1).
+    return svc.state(c.db, c.project, lean=not c.can("project.models"))
 
 
 class SwitchIn(BaseModel):

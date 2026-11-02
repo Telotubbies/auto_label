@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 from ..adapters import ADAPTERS, engine_ref, resolve
 from ..adapters.refine import label_image, sam_available
 from ..apikeys import resolve_key
-from ..config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
+from ..config import CREDIT_COST, LOCAL_JOB_KINDS, runs_locally
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
-from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
+from ..errors import safe_error, safe_reason
+from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace
 from ..security import sign_path
 from ..services import active_learning, deployments, drift, imaging, metering, ml, safefetch
 from .projects import job_out
@@ -95,6 +96,18 @@ def model_out(m: TrainedModel) -> dict:
             "created": m.created, "weightsUrl": weights_url}
 
 
+def visible_model(c: Ctx, m: TrainedModel) -> dict:
+    """A model for a workspace reader: weights, runtime artefacts and the eval report need
+    project.models (I1). Headline scalars stay so the workspace list can still show a score."""
+    out = model_out(m)
+    if c.can("project.models"):
+        return out
+    metrics = _lean_metrics(m.metrics)
+    metrics.pop("eval", None)
+    metrics.pop("eval_error", None)
+    return {**out, "metrics": metrics, "weightsUrl": None, "runtimeRefs": {}}
+
+
 def _files_in(obj) -> list[str]:
     """Collect image file names from an eval detail (worst rows, confusion cells, detections)."""
     if isinstance(obj, str):
@@ -125,6 +138,10 @@ def _eval_images(m: TrainedModel) -> dict:
 
 @router.get(P + "/models")
 def models(c: Ctx = Depends(project_ctx)):
+    # Labelers need the ready-model list for label assist; weights and eval payloads stay
+    # behind project.models (I14/I15).
+    c.perm("project.infer")
+    show_models = c.can("project.models")
     rows = c.db.scalars(select(TrainedModel).where(TrainedModel.project_id == c.project.id)
                         .order_by(TrainedModel.created.desc())).all()
     out = []
@@ -134,7 +151,9 @@ def models(c: Ctx = Depends(project_ctx)):
         v = c.db.get(Version, m.version_id)
         d["version"] = v.number if v else None
         j = c.db.get(Job, m.job_id) if m.job_id else None
-        d["job"] = job_out(j) if j else None
+        d["job"] = job_out(j, lean=not show_models) if j else None
+        if not show_models:                 # AI-assist list: no weights, eval or runtime artefacts
+            d["weightsUrl"], d["metrics"], d["runtimeRefs"] = None, {}, {}
         out.append(d)
     return out
 
@@ -142,6 +161,7 @@ def models(c: Ctx = Depends(project_ctx)):
 @router.get(P + "/leaderboard")
 def leaderboard(c: Ctx = Depends(project_ctx)):
     """Every model of the project, best eval COCO AP first; comparable = same dataset version as the winner."""
+    c.perm("project.models")
     rows = c.db.scalars(select(TrainedModel).where(TrainedModel.project_id == c.project.id)).all()
     out = []
     for m in rows:
@@ -182,7 +202,7 @@ def train_options(c: Ctx = Depends(project_ctx)):
             ok, reason = False, "detection projects only"
         sfx = "" if f["detect_only"] else suffix
         fams.append({"family": f["family"], "label": f["label"], "adapter": f["adapter"], "license": f["license"],
-                     "available": ok, "reason": reason,
+                     "available": ok, "reason": safe_reason(reason),
                      "variants": [{"id": v["id"], "label": v["label"], "weights": v.get("weights", v["id"] + sfx + ".pt")}
                                   for v in f["variants"]]})
     return {"supported": True, "task": task, "families": fams}
@@ -227,7 +247,7 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, f"{fam['label']} trains detection projects only")
     if not fam["detect_only"]:
         variant = base + _SUFFIX[task]
-    if "train" not in LOCAL_JOB_KINDS:      # remote pip worker: v1 cli only understands YOLO + size
+    if not runs_locally("train"):           # remote pip worker: v1 cli only understands YOLO + size
         if variant not in {v + _SUFFIX[task] for v in _YOLO26} \
                 or body.max_minutes is not None or body.resume_from:
             raise HTTPException(400, _REMOTE_UNSUPPORTED)
@@ -269,26 +289,31 @@ def _model(c: Ctx, mid: str) -> TrainedModel:
 
 @router.get(P + "/models/{mid}")
 def get_model(mid: str, c: Ctx = Depends(project_ctx)):
+    c.perm("project.models")
     m = _model(c, mid)
-    return {**model_out(m), "evalImages": _eval_images(m)}
+    v = c.db.get(Version, m.version_id)
+    j = c.db.get(Job, m.job_id) if m.job_id else None
+    return {**model_out(m), "version": v.number if v else None, "job": job_out(j) if j else None,
+            "evalImages": _eval_images(m)}
 
 
 @router.delete(P + "/models/{mid}")
 def delete_model(mid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     m = _model(c, mid)
+    from ..services.erasure import delete_model_files
+    _, ok = delete_model_files(m)                           # weights survive the row otherwise (I3)
+    if not ok:
+        raise HTTPException(409, "some files could not be deleted; retry")
     audit(c.db, c.ws.id, c.user.id, "model.delete", m.name)
-    engine = engine_ref(m)
     c.db.delete(m); c.db.commit()
-    for rel in {engine, f"engines/{mid}.engine"}:          # the engine cache outlives the row otherwise
-        if rel:
-            (DATA_DIR / rel).unlink(missing_ok=True)
     return {"ok": True}
 
 
 @router.post(P + "/models/{mid}/predict")
 async def test_predict(mid: str, file: UploadFile = File(...), confidence: float | None = Form(None),
                        overlap: float = Form(0.5), c: Ctx = Depends(project_ctx)):
+    c.perm("project.infer")
     m = _model(c, mid)
     if m.status != "ready":
         raise HTTPException(409, "model is not ready")
@@ -321,7 +346,7 @@ def export_model(mid: str, body: ExportModelIn, c: Ctx = Depends(project_ctx)):
     if trt is None or not trt.probe().ok:
         raise HTTPException(503, "TensorRT is not available on this worker")
     if "export_engine" not in LOCAL_JOB_KINDS:
-        raise HTTPException(503, "no local GPU worker builds TensorRT engines")
+        raise HTTPException(503, "no worker claims TensorRT engine builds")
     active = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "export_engine",
                                           Job.status.in_(("queued", "running")))).all()
     existing = next((j for j in active if j.params.get("model_id") == m.id), None)
@@ -374,7 +399,7 @@ def _autolabel_target(c: Ctx, body: AutoLabelIn):
     if r.adapter.family in ("sam3", "vlm") and not c.db.scalar(
             select(LabelClass.id).where(LabelClass.project_id == c.project.id)):
         raise HTTPException(400, "add classes first — auto-label attaches results to a project class")
-    if "autolabel" not in LOCAL_JOB_KINDS:
+    if not runs_locally("autolabel"):
         # the pip worker only knows trained ultralytics weights and SAM text prompts (Phase 7 ports adapters)
         remote_ok = not (body.prompt or "").strip() and not body.vlm_verify and (
             r.adapter.family == "sam3"
@@ -433,7 +458,7 @@ def autolabel_preview(body: AutoLabelPreviewIn, c: Ctx = Depends(project_ctx)):
             anns = label_image(imaging.load(img.path), project_type=c.project.type, params=body.model_dump(),
                                classes=classes, db=c.db, workspace_id=c.ws.id, sam_ok=sam_ok)
         except RuntimeError as e:      # model runtime down (vLLM / SAM): a readable 503, not a 500
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, safe_error(e, "autolabel"))
         except ValueError as e:        # our own adapter validation, e.g. YOLO-World without classes
             raise HTTPException(400, str(e))
         for a in anns:

@@ -234,13 +234,13 @@ def test_sync_job_uploads_images_skips_non_images_and_counts_failures(admin, mon
     install_fake_boto3(monkeypatch, fake)
     fetched = []
 
-    def fake_stream(method, url, **kwargs):
+    def fake_fetch(url, max_bytes, timeout):
         fetched.append(url)
         if "broken.png" in url:
             raise RuntimeError("connection reset")
-        return FakeStream(jpeg())
+        return jpeg()
 
-    monkeypatch.setattr(connectors.httpx, "stream", fake_stream)
+    monkeypatch.setattr(connectors.safefetch, "fetch_bytes", fake_fetch)
 
     result = connectors.sync_job(sync_job(cid, pid, uid, prefix="shots/", split="train",
                                           batch_name="cloud import", limit=50))
@@ -294,11 +294,13 @@ def test_public_config_masks_credentials_in_urls():
 
 def test_fetch_bytes_does_not_follow_redirects(monkeypatch):
     install_fake_boto3(monkeypatch, FakeS3([]))
+    seen = {}
 
-    def fake_stream(method, url, **kwargs):
-        assert kwargs["follow_redirects"] is False
-        return FakeStream(b"", status_code=302, location="http://10.0.0.5/internal")
+    def fake_get(url, max_bytes, timeout, max_redirects):
+        seen["redirects"] = max_redirects
+        raise connectors.safefetch.BlockedURL("URL returned HTTP 302")
 
-    monkeypatch.setattr(connectors.httpx, "stream", fake_stream)
-    with pytest.raises(RuntimeError, match="redirect"):
+    monkeypatch.setattr(connectors.safefetch, "_get", fake_get)
+    with pytest.raises(RuntimeError, match="HTTP 302"):
         connectors.fetch_bytes(s3_conn(), "photos/a.jpg")
+    assert seen["redirects"] == 0

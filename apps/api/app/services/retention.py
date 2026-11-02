@@ -1,7 +1,9 @@
-"""PDPA retention: per-project automatic deletion of frames, snapshots and stream events.
+"""PDPA retention: per-project automatic deletion of frames, snapshots, drift samples and stream events.
 
 "Frames" are ``Image`` rows (plus their stored JPEG and thumbnail), "snapshots" are files under the
-project's snapshots directory (and StreamEvent.snapshot_path), "events" are ``StreamEvent`` rows.
+project's snapshots directory (and StreamEvent.snapshot_path), "events" are ``StreamEvent`` rows and
+"drift" samples are the production frames stored under ``workspaces/<ws>/drift/<project>/`` — often
+faces, so their rows and files expire on the same cutoff as the frames.
 Snapshots are only ever swept from directories that are attributable to the project: the project
 directory and the project-keyed subfolder of the shared snapshots root (Task 10b must write footage
 under ``snapshots/<project id>/``). Flat files directly under the shared root carry no attribution
@@ -27,7 +29,7 @@ from .. import models
 from ..config import DATA_DIR
 from ..db import SessionLocal
 from ..deps import audit
-from ..models import Comment, Image, ImageClass, Job, Project, Version, now
+from ..models import Comment, DriftSample, Image, ImageClass, Job, Project, Version, now
 
 log = logging.getLogger(__name__)
 DAY = 86400.0
@@ -94,12 +96,21 @@ def _older_than(path: Path, cutoff: float) -> bool:
         return False
 
 
-def _sweep(directory: Path, cutoff: float) -> tuple[int, int]:
-    """Delete files older than the cutoff under one directory; returns (files, bytes)."""
+def _sweep(directory: Path, cutoff: float, keep: set[Path] | None = None) -> tuple[int, int]:
+    """Delete files older than the cutoff under one directory; returns (files, bytes).
+
+    ``keep`` holds resolved paths still owned by a database row: mtime alone must never orphan them.
+    """
     if not directory.is_dir():
         return 0, 0
     files = freed = 0
     for path in directory.rglob("*"):
+        if keep:
+            try:
+                if path.resolve() in keep:
+                    continue
+            except OSError:                  # vanished mid-sweep: leave it for the next run
+                continue
         if _older_than(path, cutoff):
             size = _unlink(path)
             if size is not None:
@@ -180,8 +191,8 @@ def _invalidate_exports(db: Session, project_id: str) -> tuple[int, int]:
 
 
 def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
-    """Delete one project's expired frames, events and snapshot files; caller commits."""
-    stats = {"images": 0, "events": 0, "snapshots": 0, "exports": 0, "bytes": 0, "failed": 0}
+    """Delete one project's expired frames, events, drift samples and snapshot files; caller commits."""
+    stats = {"images": 0, "events": 0, "snapshots": 0, "drift": 0, "exports": 0, "bytes": 0, "failed": 0}
     for image in db.scalars(select(Image).where(Image.project_id == project.id, Image.created < cutoff)):
         path_ok, path_bytes = _delete_stored(image.path)
         thumb_ok, thumb_bytes = _delete_stored(image.thumb)
@@ -204,6 +215,30 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
         db.delete(event)
         stats["events"] += 1
 
+    # Drift rows are decided by `created`; their files carry customer footage and expire with them.
+    for sample in db.scalars(
+        select(DriftSample).where(DriftSample.project_id == project.id, DriftSample.created < cutoff)
+    ):
+        ok, freed = _delete_stored(sample.path)
+        stats["bytes"] += freed
+        if not ok:
+            stats["failed"] += 1             # row survives, so the next run retries the file
+            continue
+        db.delete(sample)
+        stats["drift"] += 1
+
+    # A directory sweep then picks up orphans. Files still owned by a surviving row (fresh, or an
+    # old one whose unlink failed) are passed as `keep` so mtime alone never removes them.
+    drift_dir = DATA_DIR / "workspaces" / project.workspace_id / "drift" / project.id
+    kept = {
+        (DATA_DIR / rel).resolve()
+        for rel in db.scalars(select(DriftSample.path).where(DriftSample.project_id == project.id))
+        if rel
+    }
+    files, freed = _sweep(drift_dir, cutoff, kept)
+    stats["drift"] += files
+    stats["bytes"] += freed
+
     # Only project-attributable snapshot folders: the flat shared root has no owner, so it stays.
     for directory in (DATA_DIR / "projects" / project.id / "snapshots", DATA_DIR / "snapshots" / project.id):
         files, freed = _sweep(directory, cutoff)
@@ -222,7 +257,7 @@ def run_retention(job) -> dict:
     """
     params = getattr(job, "params", None) or {}
     result = {"projects": 0, "images_deleted": 0, "events_deleted": 0, "snapshots_deleted": 0,
-              "exports_deleted": 0, "bytes_freed": 0, "failed": 0}
+              "drift_deleted": 0, "exports_deleted": 0, "bytes_freed": 0, "failed": 0}
     with SessionLocal() as db:
         project_id = params.get("project_id")
         if project_id:
@@ -246,6 +281,7 @@ def run_retention(job) -> dict:
                 images=stats["images"],
                 events=stats["events"],
                 snapshots=stats["snapshots"],
+                drift=stats["drift"],
                 exports=stats["exports"],
                 bytes=stats["bytes"],
                 failed=stats["failed"],
@@ -255,6 +291,7 @@ def run_retention(job) -> dict:
             result["images_deleted"] += stats["images"]
             result["events_deleted"] += stats["events"]
             result["snapshots_deleted"] += stats["snapshots"]
+            result["drift_deleted"] += stats["drift"]
             result["exports_deleted"] += stats["exports"]
             result["bytes_freed"] += stats["bytes"]
             result["failed"] += stats["failed"]

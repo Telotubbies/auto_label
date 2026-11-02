@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Boxes, CheckCircle2, CircleAlert, CircleDashed, Rocket, Send, Undo2 } from 'lucide-react'
 import { api, get } from '@/lib/api'
+import { useProjectPermissions } from '@/lib/perms'
 import type { DeploymentAlias, DeploymentProject, Job, ModelItem } from '@/lib/types'
 import { Button, Card, EmptyState, PageHeader, Progress, Select, StatusPill, fmtAgo, fmtDate, toast } from '@/components/ui'
 import { headline } from '@/features/project/Models'
@@ -69,6 +70,8 @@ function AliasCard({ ws, project, aliasName, alias }: {
   ws: string; project: DeploymentProject; aliasName: AliasName; alias?: DeploymentAlias
 }) {
   const qc = useQueryClient()
+  // Promote and roll back follow the project's effective permissions, not the workspace rank (I10).
+  const { isManager } = useProjectPermissions(ws, project.slug)
   // model_status is null when the alias points at a deleted model, so that id is not offerable.
   const currentId = alias?.model_status ? alias.model_id : null
   const [modelId, setModelId] = useState(currentId ?? project.ready_models[0]?.id ?? '')
@@ -116,22 +119,22 @@ function AliasCard({ ws, project, aliasName, alias }: {
         ) : alias?.model_id ? 'No deployment time recorded.' : 'Promote a ready model to start serving this alias.'}
       </p>
 
-      <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (modelId && !pending) deploy.mutate(modelId) }}>
+      <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (modelId && !pending && isManager) deploy.mutate(modelId) }}>
         <label className="min-w-0 flex-1" htmlFor={selectId}>
           <span className="mb-1 block text-xs text-muted-foreground">Model for {aliasName}</span>
-          <Select id={selectId} className="w-full" value={modelId} disabled={!options.length || pending}
+          <Select id={selectId} className="w-full" value={modelId} disabled={!options.length || pending || !isManager}
             onChange={(e) => setModelId(e.target.value)}>
             <option value="" disabled>Choose a model</option>
             {options.map((m) => <option key={m.id} value={m.id}>{m.name}{m.arch ? ` · ${m.arch}` : ''}</option>)}
           </Select>
         </label>
-        <Button type="submit" size="sm" disabled={!modelId || !options.length || pending} aria-busy={deploy.isPending}>
+        <Button type="submit" size="sm" disabled={!modelId || !options.length || pending || !isManager} aria-busy={deploy.isPending}>
           {deploy.isPending ? 'Deploying…' : 'Deploy'}
         </Button>
       </form>
       {!options.length && <p className="mt-1.5 text-xs text-muted-foreground">Train a model in this project to deploy it.</p>}
 
-      {alias?.previous_model_id && (
+      {alias?.previous_model_id && isManager && (
         <Button variant="outline" size="sm" className="mt-2 max-w-full" disabled={pending} aria-busy={rollback.isPending}
           title={`Roll ${aliasName} back to ${alias.previous_model_name ?? 'the previous model'}`}
           onClick={() => rollback.mutate()}>
@@ -145,6 +148,8 @@ function AliasCard({ ws, project, aliasName, alias }: {
 
 function DriftStrip({ ws, project }: { ws: string; project: DeploymentProject }) {
   const qc = useQueryClient()
+  const { can } = useProjectPermissions(ws, project.slug)
+  const canSend = can('project.review')
   const drift = project.drift
   const send = useMutation({
     mutationFn: (runId: string) => api.sendDriftToLabeling(ws, project.slug, runId),
@@ -233,7 +238,7 @@ function DriftStrip({ ws, project }: { ws: string; project: DeploymentProject })
         <span className="font-medium">Data drift detected</span>
         <span className="text-muted-foreground"> · p = {fmtPValue(drift.p_value)}{checked}{source}</span>
       </p>
-      <Button variant="outline" size="sm" className="bg-card" disabled={send.isPending} aria-busy={send.isPending}
+      <Button variant="outline" size="sm" className="bg-card" disabled={send.isPending || !canSend} aria-busy={send.isPending}
         onClick={() => send.mutate(drift.run_id)}>
         <Send className="h-3.5 w-3.5" aria-hidden />
         {send.isPending ? 'Sending…' : 'Send samples to labeling'}

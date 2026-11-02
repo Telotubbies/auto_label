@@ -2,19 +2,66 @@
 import logging
 import os
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import inspect, select, update
+from sqlalchemy import exists, func, inspect, select, update
+from sqlalchemy.exc import OperationalError
 
-from .config import REPO_ROOT, SEED_DEMO
+from .config import DATA_DIR, ENVIRONMENT, REPO_ROOT, SEED_DEMO
 from .db import Base, SessionLocal, engine
-from .models import User
+from .models import Image, ImageClass, Project, UsageEvent, User, Workspace
 
 log = logging.getLogger("labeldesk")
 DEMO_EMAIL, DEMO_PW = "demo@labeldesk.dev", "demo1234"
+_LOCK_ID = 0x1ABE1DE5                 # one advisory-lock number for the whole schema upgrade
+
+
+@contextmanager
+def _schema_lock():
+    """Run the upgrade once across processes: advisory lock on Postgres, file lock on SQLite."""
+    if engine.dialect.name == "postgresql":
+        cn = engine.connect()
+        try:
+            cn.exec_driver_sql(f"SELECT pg_advisory_lock({_LOCK_ID})")
+            yield
+        finally:
+            cn.exec_driver_sql(f"SELECT pg_advisory_unlock({_LOCK_ID})")
+            cn.close()
+        return
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    f = open(DATA_DIR / ".schema.lock", "a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            while True:                            # LK_LOCK gives up after ~10 s; keep waiting
+                try:
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+    finally:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
 
 
 def init_db():
+    with _schema_lock():
+        _init_db()
+
+
+def _init_db():
     Base.metadata.create_all(engine)
     ensure_columns(engine, "trained_models", {
         "family": "VARCHAR(32) DEFAULT 'ultralytics'", "variant": "VARCHAR(64) DEFAULT ''",
@@ -41,6 +88,7 @@ def init_db():
         "created": "FLOAT DEFAULT 0", "last_seen": "FLOAT DEFAULT 0",
         "ip": "VARCHAR(64) DEFAULT ''", "user_agent": "VARCHAR(255) DEFAULT ''"})
     _widen_totp_secret()
+    _widen_text_columns()
     _backfill_sessions()
     from .services.secretbox import migrate as _encrypt_secrets
     # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
@@ -54,10 +102,16 @@ def init_db():
         cn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_stream_events_stream_ts ON stream_events (stream_id, ts)")
     _backfill_event_fields()
     _backfill_image_classes()
-    if SEED_DEMO:
+    _backfill_storage()
+    if _should_seed():
         seed()
         from .seed_v2 import seed_demo_v2
         seed_demo_v2()
+
+
+def _should_seed() -> bool:
+    """M7: never ship the known demo credentials into production or a live installation."""
+    return SEED_DEMO and ENVIRONMENT != "production"
 
 
 def _backfill_sessions():
@@ -85,6 +139,18 @@ def _widen_totp_secret():
             cn.exec_driver_sql("ALTER TABLE users ALTER COLUMN totp_secret TYPE VARCHAR(255)")
 
 
+def _widen_text_columns():
+    """C4: encrypted webhook secrets and long audit targets outgrow their old columns.
+
+    SQLite has no length enforcement; Postgres truncates or rejects. ``ALTER ... TYPE TEXT``
+    is idempotent, so an already-widened database is safe.
+    """
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as cn:
+            cn.exec_driver_sql("ALTER TABLE webhooks ALTER COLUMN secret TYPE TEXT")
+            cn.exec_driver_sql("ALTER TABLE audit ALTER COLUMN target TYPE TEXT")
+
+
 def _backfill_event_fields() -> None:
     """Events recorded before the SQL-filter fix carry these fields only inside their JSON snapshots."""
     from .models import StreamEvent
@@ -103,8 +169,14 @@ def ensure_columns(eng, table: str, cols: dict[str, str]) -> None:
     have = {c["name"] for c in inspect(eng).get_columns(table)}
     with eng.begin() as cn:
         for name, ddl in cols.items():
-            if name not in have:
+            if name in have:
+                continue
+            try:
                 cn.exec_driver_sql(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}')
+            except OperationalError as e:      # a concurrent process won the race after our inspect
+                msg = str(e).lower()
+                if "duplicate column" not in msg and "already exists" not in msg:
+                    raise
 
 
 def seed():
@@ -115,6 +187,8 @@ def seed():
     from .security import hash_password
 
     with SessionLocal() as db:
+        # Seed only a pristine database. A demo user check let a restart add known credentials to a
+        # live installation that already had real accounts (M7).
         if db.scalar(select(User.id).limit(1)):
             return
         admin = User(email=DEMO_EMAIL, name="Demo Admin", pw_hash=hash_password(DEMO_PW), email_verified=time.time())
@@ -149,14 +223,58 @@ def seed():
 
 
 def _backfill_image_classes():
-    """DBs created before the image_classes index existed: build it once."""
-    from .models import Image, ImageClass, set_annotations
+    """Repair a missing or partial image_classes index; safe to run on every boot (I2).
+
+    Requesting rows ahead of a cursor guarantees progress. A legacy row can hold annotations
+    that can never produce an ``ImageClass`` row (``[null]`` or a v1 dict); selecting it again
+    by the same predicate would loop forever while holding the schema lock (C1).
+    """
+    from .models import set_annotations
+    cursor = ""
+    done = 0
     with SessionLocal() as db:
-        if db.scalar(select(ImageClass.image_id).limit(1)) or not db.scalar(select(Image.id).where(Image.n_annotations > 0).limit(1)):
-            return
-        for img in db.scalars(select(Image).where(Image.n_annotations > 0, Image.deleted_at.is_(None))):
-            updated = img.updated
-            set_annotations(db, img, img.annotations or [])
-            img.updated = updated
+        while True:
+            rows = db.scalars(select(Image).where(
+                Image.n_annotations > 0,
+                Image.deleted_at.is_(None),
+                Image.id > cursor,
+                ~exists(select(ImageClass.image_id).where(ImageClass.image_id == Image.id)),
+            ).order_by(Image.id).limit(500)).all()
+            if not rows:
+                break
+            cursor = rows[-1].id
+            for img in rows:
+                updated = img.updated
+                set_annotations(db, img, img.annotations or [])
+                img.updated = updated
+                if any(isinstance(a, dict) and a.get("classId") for a in (img.annotations or [])):
+                    done += 1
+                else:
+                    log.warning("image %s has no annotation with a classId; image_classes stays empty", img.id)
+            try:
+                db.commit()
+            except Exception:                   # another process inserted the same rows first
+                db.rollback()
+    if done:
+        log.info("backfilled image_classes index for %s images", done)
+
+
+def _backfill_storage():
+    """Give every workspace a storage meter from its live images when it has none (I20)."""
+    with SessionLocal() as db:
+        sums = dict(db.execute(select(Image.project_id, func.sum(Image.size))
+                               .where(Image.deleted_at.is_(None)).group_by(Image.project_id)).all())
+        projects = db.execute(select(Project.id, Project.workspace_id)).all()
+        totals: dict[str, float] = {}
+        for pid, ws_id in projects:
+            totals[ws_id] = totals.get(ws_id, 0.0) + float(sums.get(pid) or 0)
+        for ws in db.scalars(select(Workspace)):
+            total = totals.get(ws.id, 0.0)
+            if total <= 0:
+                continue
+            has = db.scalar(select(UsageEvent.id).where(UsageEvent.workspace_id == ws.id,
+                                                        UsageEvent.metric == "storage_bytes").limit(1))
+            if not has:
+                db.add(UsageEvent(workspace_id=ws.id, metric="storage_bytes", quantity=total,
+                                  meta={"backfill": True}))
         db.commit()
-        log.info("backfilled image_classes index")

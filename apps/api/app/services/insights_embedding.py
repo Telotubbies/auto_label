@@ -8,11 +8,13 @@ and always calls `release_clip()` after the scan so the card is never held outsi
 import math
 import threading
 from collections import Counter
+from collections.abc import Callable
 
 import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..adapters.base import Cancelled
 from ..config import DATA_DIR
 from ..models import Image, LabelClass, Project
 from . import imaging, insights
@@ -236,11 +238,19 @@ def _cv_features(rows: list) -> list[tuple[Image, np.ndarray]]:
     return out
 
 
-def _embedding_features(rows: list, backend: str, state: tuple | None) -> tuple[list[Image], list[np.ndarray]]:
+def _stop(should_stop: Callable[[], bool] | None) -> None:
+    """Raise ``Cancelled`` when the job's cancellation predicate has flipped."""
+    if should_stop is not None and should_stop():
+        raise Cancelled("job cancelled")
+
+
+def _embedding_features(rows: list, backend: str, state: tuple | None,
+                        should_stop: Callable[[], bool] | None = None) -> tuple[list[Image], list[np.ndarray]]:
     """Resolve features batch-wise, reading the per-sha cache first and writing it after computing."""
     kept: list[Image] = []
     vectors: list[np.ndarray] = []
     for start in range(0, len(rows), EMBED_BATCH):
+        _stop(should_stop)
         batch = rows[start:start + EMBED_BATCH]
         resolved: dict[int, np.ndarray] = {}
         pending: list[Image] = []
@@ -293,8 +303,9 @@ def _projection(features: list[np.ndarray]) -> tuple[list[tuple[float, float]], 
     return [(round(float(x), 6), round(float(y), 6)) for x, y in coords], projection
 
 
-def scan_embedding(db: Session, project: Project) -> dict:
+def scan_embedding(db: Session, project: Project, should_stop: Callable[[], bool] | None = None) -> dict:
     """CLIP (or cheap CV fallback) image features projected to 2-D for the embedding scatter."""
+    _stop(should_stop)
     signature = list(insights.signature(db, project))
     classes = {c.id: c.name for c in db.scalars(select(LabelClass).where(LabelClass.project_id == project.id))}
     all_rows = insights.live_images(db, project)
@@ -302,10 +313,11 @@ def scan_embedding(db: Session, project: Project) -> dict:
     rows = _sample_images(all_rows, EMBED_MAX)
     state = _clip_backend()
     backend = "clip" if state else "cv"
-    kept, features = _embedding_features(rows, backend, state)
+    kept, features = _embedding_features(rows, backend, state, should_stop)
     coords, projection = _projection(features)
     points = []
     for row, (x, y) in zip(kept, coords, strict=True):
+        _stop(should_stop)
         anns = [a for a in (row.annotations or []) if isinstance(a, dict)]
         counts = Counter(
             classes[a["classId"]] for a in anns if isinstance(a.get("classId"), str) and a["classId"] in classes

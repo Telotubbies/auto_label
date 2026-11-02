@@ -105,7 +105,20 @@ export default function Deploy() {
   "image": { "width": 1280, "height": 720 },
   "time": 0.042
 }`}</pre>
-            <p className="mt-2 text-muted-foreground">Boxes are centre-based pixels. Segmentation models add <code>points</code>. Self-host the weights with <code>ultralytics</code> using the download on the Models page.</p>
+            <p className="mt-2 text-muted-foreground">
+              Boxes are centre-based pixels. Segmentation models add <code>points</code>. Weights from the Ultralytics
+              families (YOLO, RT-DETR, YOLO-World) are licensed under{' '}
+              <a href="https://github.com/ultralytics/ultralytics" className="text-primary hover:underline">
+                AGPL-3.0
+              </a>
+              , so self-hosting them carries that licence&apos;s obligations. Download the weights on the Models page,
+              keep the{' '}
+              <a href="https://github.com/ultralytics/ultralytics" className="text-primary hover:underline">
+                Corresponding Source
+              </a>{' '}
+              with your deployment, and ship the notices in{' '}
+              <a href="/licenses.txt" className="text-primary hover:underline">licenses.txt</a>.
+            </p>
           </Card>
           <Card className="p-4 text-sm">
             <h3 className="mb-1 font-semibold">Upload API</h3>

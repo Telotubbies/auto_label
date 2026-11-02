@@ -198,7 +198,9 @@ def _run(job: Job) -> dict:
         ).all()
         resolved = resolve(f"trained:{model.id}", db, workspace_id=job.workspace_id)
         candidates: list[dict] = []
+        from .. import jobs
         for img in rows:
+            jobs.check(job)
             try:
                 score, feats = _score_image(resolved, img, model.classes or [])
             except Exception:  # noqa: BLE001 - one unreadable image must not stop the run
@@ -212,6 +214,7 @@ def _run(job: Job) -> dict:
         with _PICK_LOCK:
             project.updated = now()
             db.flush()  # per-project mutex: concurrent offers serialise here
+            jobs.check(job)
             left = remaining(db, project)
             ids = ids[:left]
             if not ids:

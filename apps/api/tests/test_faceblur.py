@@ -1,4 +1,4 @@
-"""Face anonymisation: pixel-level guarantees, no-cv2 resilience and the stream ingest hook."""
+"""Face anonymisation: pixel-level guarantees, no-cv2 resilience and the ingest hook."""
 
 import io
 import os
@@ -114,7 +114,8 @@ def test_missing_cv2_never_raises(monkeypatch):
     assert n == 0 and out is im
 
 
-def test_stream_ingest_blurs_but_upload_does_not(client, demo_ctx, monkeypatch):
+def test_ingest_blurs_every_source(client, demo_ctx, monkeypatch):
+    """I16: stream frames and ordinary uploads both go through blur_faces when face_blur is on."""
     db, c = demo_ctx
     calls = []
 
@@ -138,7 +139,7 @@ def test_stream_ingest_blurs_but_upload_does_not(client, demo_ctx, monkeypatch):
     )
     assert r.status_code == 200, r.text
     try:
-        assert calls == [], "ordinary uploads keep their pixels"
+        assert calls, "ordinary uploads must be blurred too"
     finally:
         _drop(db, r.json())
 

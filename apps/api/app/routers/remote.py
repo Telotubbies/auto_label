@@ -5,22 +5,29 @@ serve a cloud deployment. Auth: header `X-Worker-Token: $LD_WORKER_TOKEN`.
 """
 import hmac
 import json
+import logging
 import shutil
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..adapters import model_conf
 from ..config import CREDIT_COST, DATA_DIR, WORKER_TOKEN, REMOTE_JOB_KINDS
-from ..db import get_db
+from ..db import SessionLocal, get_db
 from ..deps import charge
+from ..errors import safe_error, safe_text
+from ..gpu import scheduler
 from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
 from ..security import sign_path
-from ..services import exporters, ml, versioning
+from ..services import exporters, metering, ml, versioning
+from ..services import finalize
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
+log = logging.getLogger("labeldesk.remote")
+
+TERMINAL = ("done", "failed", "cancelled")     # a job that already reported its outcome to the worker
 
 
 def worker_auth(x_worker_token: str = Header("")):
@@ -86,7 +93,7 @@ def claim(body: ClaimIn, db: Session = Depends(get_db)):
             try:
                 payload = _payload(db, j)
             except Exception as e:
-                j.status, j.error, j.finished = "failed", f"{type(e).__name__}: {e}", now()
+                j.status, j.error, j.finished = "failed", safe_error(e, j.kind), now()
                 db.commit(); continue
             db.commit()
             return {"job": {"id": j.id, "kind": j.kind, "payload": payload}}
@@ -124,6 +131,11 @@ def annotations(jid: str, body: AnnIn, db: Session = Depends(get_db)):
     if not j or not img or img.project_id != j.project_id:
         raise HTTPException(404, "not found")
     if body.annotations:
+        ids = {a.get("classId") for a in body.annotations if isinstance(a, dict) and a.get("classId")}
+        known = set(db.scalars(select(LabelClass.id).where(LabelClass.project_id == j.project_id,
+                                                          LabelClass.id.in_(ids)))) if ids else set()
+        if ids - known:
+            raise HTTPException(400, "annotation class does not belong to this project")
         P = j.params
         src = P.get("model_ref") or (f"trained:{P['model_id']}" if P.get("model_id") else "sam3")
         set_annotations(db, img, (img.annotations or []) + [{**a, "source": a.get("source") or src}
@@ -133,17 +145,61 @@ def annotations(jid: str, body: AnnIn, db: Session = Depends(get_db)):
         img.updated = now()
         # remote runs charge per labeled image as the work lands (the embedded worker charges at the end)
         charge(db, db.get(Workspace, j.workspace_id), CREDIT_COST["autolabel_image"])
+    # every processed image called the model, even when it produced no annotation
+    mid = j.params.get("model_id")
+    metering.record(db, j.workspace_id, "ai_calls", 1, project_id=j.project_id,
+                    model_id=mid, kind="autolabel")
     db.commit()
     return {"ok": True}
 
 
+def _keep_model_id(db: Session, j: Job) -> None:
+    """Keep the trained model id on a job that already reached a terminal status."""
+    if j.kind != "train":
+        return
+    model_id = (j.params or {}).get("model_id")
+    if not model_id:
+        return
+    tm = db.get(TrainedModel, model_id)
+    if tm and (j.result or {}).get("model_id") != tm.id:
+        j.result = {**(j.result or {}), "model_id": tm.id}
+        db.commit()
+
+
+def _finalize_remote_model(model_id: str) -> None:
+    """Evaluate and announce a remote model after the complete response.
+
+    Runs in Starlette's threadpool with a fresh session (the request session is closed by then)
+    and a training lease, because ``resolve()`` may load the model onto the card. A broken lease
+    or eval records ``eval_error``; the ready weights were committed by the request handler.
+    """
+    with SessionLocal() as db:
+        tm = db.get(TrainedModel, model_id)
+        if tm is None:
+            return
+        try:
+            with scheduler.training_scope():
+                finalize.evaluate_and_announce(db, tm)
+        except Exception as e:
+            log.exception("remote finalisation failed for model %s", model_id)
+            tm.metrics = {**ml.final_metrics(tm.history, tm.task), "eval_error": safe_error(e, "train")}
+        db.commit()
+
+
 @router.post("/jobs/{jid}/complete", dependencies=[Depends(worker_auth)])
-async def complete(jid: str, result: str = Form("{}"), weights: UploadFile | None = File(None),
-                   db: Session = Depends(get_db)):
+async def complete(jid: str, background_tasks: BackgroundTasks, result: str = Form("{}"),
+                   weights: UploadFile | None = File(None), db: Session = Depends(get_db)):
     j = db.get(Job, jid)
     if not j:
         raise HTTPException(404, "job not found")
+    if j.status in TERMINAL:        # a retried complete must not re-meter, re-evaluate or re-announce
+        _keep_model_id(db, j)
+        return {"ok": True}
     res = json.loads(result or "{}")
+    # Every kind that reaches the remote worker held the GPU; meter it before any kind-specific work.
+    elapsed = max(0.0, now() - (j.started or now()))
+    metering.record(db, j.workspace_id, "gpu_seconds", round(elapsed, 2),
+                    project_id=j.project_id, job_id=j.id)
     if j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         if not weights:
@@ -154,11 +210,14 @@ async def complete(jid: str, result: str = Form("{}"), weights: UploadFile | Non
             shutil.copyfileobj(weights.file, f)
         tm.weights = dst.relative_to(DATA_DIR).as_posix()
         tm.history = res.get("history", tm.history)
-        tm.metrics = ml.final_metrics(tm.history, tm.task)
-        tm.status = "ready"
-        res = {"model_id": tm.id, **tm.metrics}
+        tm.status = "ready"         # resolve() only accepts ready models
+        res = {"model_id": tm.id}
+        # Eval resolves (loads) the model and runs pycocotools on the test split: never inline here,
+        # where it would stall the single uvicorn loop and skip the GPU lease.
+        background_tasks.add_task(_finalize_remote_model, tm.id)
     j.status = "cancelled" if j.status == "cancelling" else "done"
     j.progress, j.result, j.finished = 100.0, {**(j.result or {}), **res}, now()
+    finalize.job_done(db, j, j.status)
     db.commit()
     return {"ok": True}
 
@@ -172,10 +231,17 @@ def fail(jid: str, body: FailIn, db: Session = Depends(get_db)):
     j = db.get(Job, jid)
     if not j:
         raise HTTPException(404, "job not found")
-    j.status, j.error, j.finished = "failed", body.error[:4000], now()
+    if j.status in TERMINAL:        # complete already landed: a late timeout must not undo it
+        _keep_model_id(db, j)
+        return {"ok": True}
+    j.status, j.error, j.finished = "failed", safe_text(body.error, j.kind), now()
     if j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         if tm:
             tm.status = "failed"
+    elapsed = max(0.0, now() - (j.started or now()))
+    metering.record(db, j.workspace_id, "gpu_seconds", round(elapsed, 2),
+                    project_id=j.project_id, job_id=j.id)       # a failed run still held the card
+    finalize.job_done(db, j, "failed", j.error)
     db.commit()
     return {"ok": True}

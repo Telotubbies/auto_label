@@ -77,8 +77,8 @@ function AutoLabelCard() {
       <article className={cn(CARD, 'w-full min-w-0')}>
         <TagPill className="self-start" icon={<Sparkles className="size-4" aria-hidden />}>Auto-label</TagPill>
         <CardHeading
-          title="SAM 3.1 proposes. A VLM checks."
-          body="Masks arrive with a class and a confidence, marked AI until a person touches them."
+          title="Optional SAM 3.1 and VLM checks."
+          body="Connect SAM 3.1 and a vision model to the worker and masks arrive with a class and a confidence, marked AI until a person touches them."
         />
         <MockPanel tone="bg-accent text-accent-foreground">
           <div className="mb-2 flex items-baseline justify-between gap-2 text-[10px] font-medium">
@@ -136,6 +136,7 @@ const FAMILIES = [
   { name: 'YOLO-World', licence: 'AGPL-3.0' },
   { name: 'RF-DETR', licence: 'Apache-2.0' },
   { name: 'D-FINE', licence: 'Apache-2.0' },
+  { name: 'RT-DETRv2', licence: 'Apache-2.0' },
 ]
 
 function TrainingCard() {
@@ -144,8 +145,8 @@ function TrainingCard() {
       <article className={cn(CARD, 'w-full min-w-0')}>
         <TagPill className="self-start" icon={<Boxes className="size-4" aria-hidden />}>Training</TagPill>
         <CardHeading
-          title="Five families, one trainer."
-          body="Pick by speed, licence or accuracy — the recipe stays the same."
+          title="One trainer, six families."
+          body="Which families the trainer can run depends on the connected worker — pick by speed, licence or accuracy, the recipe stays the same."
         />
         <MockPanel tone="bg-secondary text-secondary-foreground">
           <ul className="flex flex-wrap gap-1.5">
@@ -160,7 +161,7 @@ function TrainingCard() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[10px] text-muted-foreground">Licences as reported by each project</p>
+          <p className="mt-2 text-[10px] text-muted-foreground">Licences as reported by the model catalog</p>
         </MockPanel>
       </article>
     </Reveal>

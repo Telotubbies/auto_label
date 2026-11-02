@@ -7,6 +7,7 @@ endpoints only read that row, so no request decodes pixels. The embedding map li
 
 import math
 from collections import Counter, defaultdict
+from collections.abc import Callable
 
 import cv2
 import imagehash
@@ -15,6 +16,7 @@ from PIL import Image as PImage
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..adapters.base import Cancelled
 from ..config import DATA_DIR
 from ..models import Image, Project
 from . import imaging, insights, versioning
@@ -24,6 +26,12 @@ THUMB = 256
 RESOLUTION_MAX = 2000
 GALLERY_MAX = 200
 BLUR_BUCKETS = ("0–10", "10–30", "30–100", "100–300", "300–1000", "≥1000")
+
+
+def _stop(should_stop: Callable[[], bool] | None) -> None:
+    """Raise ``Cancelled`` when the job's cancellation predicate has flipped."""
+    if should_stop is not None and should_stop():
+        raise Cancelled("job cancelled")
 
 def _live(db: Session, project: Project) -> list[Image]:
     return db.scalars(
@@ -45,14 +53,16 @@ def _blur_bucket(variance: float) -> str:
     return BLUR_BUCKETS[-1]
 
 
-def scan_images(db: Session, project: Project) -> dict:
+def scan_images(db: Session, project: Project, should_stop: Callable[[], bool] | None = None) -> dict:
     """Brightness/blur distributions and the resolution scatter for every readable thumbnail."""
+    _stop(should_stop)
     signature = list(insights.signature(db, project))
     brightness: Counter = Counter()
     blur: Counter = Counter()
     resolution: list[dict] = []
     scanned = 0
     for row in _live(db, project):
+        _stop(should_stop)                     # a long scan must honour a cancel between images
         try:
             image = imaging.load(row.thumb or row.path)
             gray = image.convert("L")
@@ -91,12 +101,14 @@ def _ref(row: Image, split: str) -> dict:
     }
 
 
-def scan_leakage(db: Session, project: Project, version_id: str | None = None) -> dict:
+def scan_leakage(db: Session, project: Project, version_id: str | None = None,
+                 should_stop: Callable[[], bool] | None = None) -> dict:
     """Cross-split near-duplicate pairs from versioning's pHash union-find.
 
     With a version, only that version's frozen images are considered and its manifest splits decide
     what counts as a cross-split pair; a version still writing its manifest falls back to live splits.
     """
+    _stop(should_stop)
     version, split_of = insights.version_scope(db, project, version_id)
     signature = list(insights.signature(db, project, version))
     rows = _live(db, project)
@@ -116,10 +128,12 @@ def scan_leakage(db: Session, project: Project, version_id: str | None = None) -
     split_counts: Counter = Counter()
     total = 0
     for group in members.values():
+        _stop(should_stop)
         if len(group) < 2:  # only multi-member groups need an exact distance
             continue
         hashes = {}
         for row in group:
+            _stop(should_stop)
             try:
                 hashes[row.id] = _phash(row)
             except Exception:

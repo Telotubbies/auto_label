@@ -11,7 +11,7 @@ from ..db import get_db
 from ..deps import Ctx, current_user, image_ctx, project_ctx
 from ..models import Image, Job, User, Video, new_id, set_annotations
 from ..security import sign_path
-from ..services import video as video_svc
+from ..services import metering, video as video_svc
 from ..services.video import MAX_INTERPOLATION_SPAN
 from .images import _assigned, _visible
 from .projects import job_out
@@ -58,6 +58,7 @@ async def upload_video(file: UploadFile = File(...), batch_name: str = Form(""),
         raise HTTPException(400, "empty file")
     if len(data) > budget:
         raise HTTPException(413, f"video larger than {MAX_UPLOAD_MB} MB")
+    metering.check(c.db, c.ws, "storage_bytes", len(data))    # I17: videos count toward storage
 
     v = Video(id=new_id(), project_id=c.project.id, workspace_id=c.ws.id, name=batch_name.strip() or name,
               path="", status="queued",
@@ -69,6 +70,7 @@ async def upload_video(file: UploadFile = File(...), batch_name: str = Form(""),
     v.path = dest.relative_to(DATA_DIR).as_posix()
     c.db.add(v)
     c.db.flush()
+    metering.record(c.db, c.ws.id, "storage_bytes", len(data), project_id=c.project.id, video_id=v.id)
     j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="extract_frames", created_by=c.user.id,
             params={"video_id": v.id, "mode": mode, "target_fps": target_fps, "every_s": every_s,
                     "scene_threshold": scene_threshold, "created_by": c.user.id})

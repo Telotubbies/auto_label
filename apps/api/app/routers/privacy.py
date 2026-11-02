@@ -221,15 +221,18 @@ removed only when the Controller deletes that version.
 
 ## 6. Sub-processors
 
-Model inference (LLM and vision) runs on the Controller's own GPU host. No third-party transfer or
-sub-processor is used by default; any future sub-processor requires the Controller's prior consent.
+Model inference (LLM and vision) runs on the Controller's own GPU host. The Controller may connect a
+remote GPU worker (for example a cloud notebook); that worker is a sub-processor whose location the
+Controller records before connecting it. No other third-party transfer is used by default, and adding
+a new sub-processor requires the Controller's prior consent.
 
 ## 7. Security measures
 
 - Encryption at rest for credentials and secrets (camera URLs, API keys, TOTP seeds).
 - Role-based access control at workspace and project level, least privilege by default.
-- An audit log records administrative actions and every view of stream footage.
-- Face blur is on by default before stream frames enter a dataset.
+- An audit log records administrative actions and every view of stream footage served by the stream manager.
+- Face blur is on by default: faces in uploaded images and in video frames are blurred before they
+  enter a dataset. Stream-frame coverage follows the stream manager's ingest path.
 - Multi-factor authentication is available and can be enforced per workspace.
 
 ## 8. Data subject rights and assistance
@@ -244,8 +247,9 @@ of a personal-data breach, with the known facts, affected data and containment m
 
 ## 10. Cross-border transfer
 
-Data is declared in the **{_label(c.ws.data_region)}** region. Moving it to another region requires
-the Controller's instruction and a lawful transfer basis under PDPA s.28–29.
+Data is declared in the **{_label(c.ws.data_region)}** region. A remote GPU worker must be in the
+same region, or the Controller records a lawful transfer basis under PDPA s.28–29 before sending data
+to it. Moving data to another region requires the Controller's instruction and that basis.
 
 ## 11. Deletion and return on termination
 

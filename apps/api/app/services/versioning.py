@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..adapters.base import Cancelled
 from ..config import DATA_DIR
 from ..models import Image, LabelClass, Project, Version
 from . import exporters, imaging
@@ -91,7 +92,9 @@ def phash_groups(rows: list, max_dist: int = 6) -> dict:
     return out
 
 
-def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
+def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None) -> dict:
+    """Write the version files. ``should_stop`` is polled per image and before the manifest so a
+    cancelled job leaves no ready version (I22)."""
     p = db.get(Project, v.project_id)
     cfg = v.settings or {}
     classes = db.scalars(select(LabelClass).where(LabelClass.project_id == p.id).order_by(LabelClass.created)).all()
@@ -137,6 +140,9 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
     items, per_split, per_class = [], Counter(), Counter()
 
     for n, r in enumerate(rows):
+        if should_stop and should_stop():
+            shutil.rmtree(out, ignore_errors=True)
+            raise Cancelled("version build cancelled")
         im = imaging.load(r.path)
         anns = [a for a in (r.annotations or []) if a.get("classId") in cls_idx]
         im, anns = imaging.preprocess(im, anns, pre)
@@ -160,6 +166,9 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
                 per_class[classes[cls_idx[a["classId"]]].name] += 1
         progress((n + 1) / len(rows))
 
+    if should_stop and should_stop():
+        shutil.rmtree(out, ignore_errors=True)
+        raise Cancelled("version build cancelled")
     sources = [{"id": r.id, "sha256": r.sha256} for r in rows]
     canon = {"config": cfg, "classes": [c.name for c in classes],
              "images": sorted([r.id, r.sha256, [a for a in (r.annotations or []) if a.get("classId") in cls_idx],

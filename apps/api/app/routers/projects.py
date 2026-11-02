@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..deps import Ctx, audit, plan, project_ctx, ws_ctx
 from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, TrainedModel, Version, now,
                       set_annotations)
+from ..naming import clean_class_name
 from ..security import sign_path
 from ..services import health
 
@@ -21,9 +22,27 @@ PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#1
 RESERVED = {"models", "deployments", "activity", "settings", "qa"}
 
 
-def job_out(j: Job) -> dict:
-    return {"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress, "params": j.params,
-            "result": j.result, "error": j.error, "created": j.created, "started": j.started, "finished": j.finished}
+LEAN_JOB_KEYS = ("id", "kind", "status", "progress", "error", "created", "finished")
+# The Annotate board's running-autolabel banner reads these two for every labeler; every other
+# option (dataset paths, hyper-parameters) still needs project.models.
+LEAN_JOB_PARAMS = ("method", "model_ref")
+
+
+def job_out(j: Job, lean: bool = False) -> dict:
+    out = {"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress, "params": j.params,
+           "result": j.result, "error": j.error, "created": j.created, "started": j.started, "finished": j.finished}
+    if lean:
+        # label-assist needs the stage stepper only; training options and the eval report stay
+        # behind project.models (I15).
+        out = {k: out[k] for k in LEAN_JOB_KEYS}
+        out["params"] = {k: v for k, v in (j.params or {}).items() if k in LEAN_JOB_PARAMS}
+        out["result"] = {"stages": (j.result or {}).get("stages")}
+    return out
+
+
+def visible_job(c: Ctx, j: Job) -> dict:
+    """A job for a project reader: the eval report and training options need project.models (I1)."""
+    return job_out(j, lean=not c.can("project.models"))
 
 
 def _counts(db: Session, pids: list[str]) -> tuple[dict, dict, dict]:
@@ -109,7 +128,11 @@ def create_project(body: ProjectIn, c: Ctx = Depends(ws_ctx)):
                 license=body.license, annotation_group=body.annotation_group or "objects", multilabel=body.multilabel,
                 folder_id=body.folder_id, settings={})
     c.db.add(p); c.db.flush()
-    for k, name in enumerate(dict.fromkeys(n.strip() for n in body.classes if n.strip())):
+    try:
+        names = dict.fromkeys(clean_class_name(n) for n in body.classes if n.strip())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    for k, name in enumerate(names):
         c.db.add(LabelClass(project_id=p.id, name=name, color=PALETTE[k % len(PALETTE)]))
     audit(c.db, c.ws.id, c.user.id, "project.create", p.name, type=p.type)
     c.db.commit()
@@ -218,6 +241,7 @@ def _skeleton_or_400(raw: dict | None) -> dict | None:
 
 
 def ensure_class(db: Session, p: Project, name: str) -> LabelClass:
+    name = clean_class_name(name)
     lc = db.scalar(select(LabelClass).where(LabelClass.project_id == p.id, LabelClass.name == name))
     if not lc:
         n = db.scalar(select(func.count(LabelClass.id)).where(LabelClass.project_id == p.id))
@@ -229,7 +253,10 @@ def ensure_class(db: Session, p: Project, name: str) -> LabelClass:
 @router.post("/{project}/classes")
 def add_class(body: ClassIn, c: Ctx = Depends(project_ctx)):
     c.perm("project.classes")   # Roboflow lets labelers add classes while annotating
-    name = body.name.strip()
+    try:
+        name = clean_class_name(body.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     if c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id, LabelClass.name == name)):
         raise HTTPException(409, "class already exists")
     lc = ensure_class(c.db, c.project, name)
@@ -246,7 +273,10 @@ def edit_class(cid: str, body: ClassIn, c: Ctx = Depends(project_ctx)):
     lc = c.db.get(LabelClass, cid)
     if not lc or lc.project_id != c.project.id:
         raise HTTPException(404, "class not found")
-    name = body.name.strip()
+    try:
+        name = clean_class_name(body.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     other = c.db.scalar(select(LabelClass).where(LabelClass.project_id == c.project.id, LabelClass.name == name,
                                                  LabelClass.id != cid))
     if other:
@@ -269,7 +299,12 @@ class MergeIn(BaseModel):
 @router.post("/{project}/classes/merge")
 def merge_classes(body: MergeIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
+    target = c.db.get(LabelClass, body.target_id)
+    if not target or target.project_id != c.project.id:
+        raise HTTPException(404, "target class not found")
     src = set(body.source_ids) - {body.target_id}
+    src &= set(c.db.scalars(select(LabelClass.id).where(LabelClass.project_id == c.project.id,
+                                                        LabelClass.id.in_(src))))
     n = 0
     hit = select(ImageClass.image_id).where(ImageClass.class_id.in_(src))
     for img in c.db.scalars(select(Image).where(Image.project_id == c.project.id, Image.id.in_(hit))):
@@ -429,7 +464,7 @@ def project_jobs(kind: str | None = None, c: Ctx = Depends(project_ctx)):
     q = select(Job).where(Job.project_id == c.project.id)
     if kind:
         q = q.where(Job.kind == kind)
-    return [job_out(j) for j in c.db.scalars(q.order_by(Job.created.desc()).limit(100))]
+    return [visible_job(c, j) for j in c.db.scalars(q.order_by(Job.created.desc()).limit(100))]
 
 
 @router.get("/{project}/jobs/{jid}")
@@ -437,7 +472,7 @@ def get_job(jid: str, c: Ctx = Depends(project_ctx)):
     j = c.db.get(Job, jid)
     if not j or j.project_id != c.project.id:
         raise HTTPException(404, "job not found")
-    return job_out(j)
+    return visible_job(c, j)
 
 
 @router.post("/{project}/jobs/{jid}/cancel")

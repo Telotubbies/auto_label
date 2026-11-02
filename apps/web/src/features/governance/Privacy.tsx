@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { FileText, Lock, ScanFace, ShieldCheck, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { ProjectPrivacy, WorkspacePrivacyProject } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Select, Spinner, Switch, toast } from '@/components/ui'
@@ -83,8 +84,12 @@ function LegalBasis({ value, disabled, onChange }: { value: string; disabled: bo
 }
 
 /** One project row in the workspace privacy table. Fetches its own detail for counts and legal basis. */
-function PrivacyRow({ ws, project, canEdit }: { ws: string; project: WorkspacePrivacyProject; canEdit: boolean }) {
+function PrivacyRow({ ws, project }: { ws: string; project: WorkspacePrivacyProject }) {
   const qc = useQueryClient()
+  const { can } = useProjectPermissions(ws, project.slug)
+  // The API checks project.privacy on every row save; a project manager who is a workspace
+  // member may edit, while a workspace billing/viewer user sees the row read-only.
+  const canEdit = can('project.privacy')
   const detail = useQuery({ queryKey: ['project-privacy', ws, project.slug], queryFn: () => api.projectPrivacy(ws, project.slug) })
   const [draft, setDraft] = useState<Pick<ProjectPrivacy, 'retention_days' | 'face_blur' | 'biometrics' | 'legal_basis'> | null>(null)
   const [saving, setSaving] = useState(false)
@@ -133,7 +138,7 @@ function PrivacyRow({ ws, project, canEdit }: { ws: string; project: WorkspacePr
       <td className="min-w-56 px-4 py-3">
         <fieldset disabled={!canEdit} className={`m-0 min-w-0 border-0 p-0 ${canEdit ? '' : 'opacity-60'}`}>
           <div className="flex items-center gap-2">
-            <Switch label={`Blur faces in ${project.name}`} checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
+            <Switch label={`Blur faces in uploaded images and video frames of ${project.name}`} checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
             <span className="text-xs text-muted-foreground">Blur faces {v.face_blur ? 'on' : 'off'}</span>
           </div>
           <div className="mt-2 flex items-center gap-2">
@@ -167,6 +172,7 @@ export default function PrivacyWorkspace() {
   const { ws = '' } = useParams()
   const qc = useQueryClient()
   const can = useApp((s) => s.can)
+  // Residency is a workspace setting (workspace.update); per-project rows use their own role.
   const canEdit = can('admin')
   const q = useQuery({ queryKey: ['privacy', ws], queryFn: () => api.privacy(ws), enabled: !!ws })
   const [region, setRegion] = useState<string | null>(null)
@@ -253,13 +259,10 @@ export default function PrivacyWorkspace() {
                 </tr>
               </thead>
               <tbody>
-                {(q.data?.projects ?? []).map((p) => <PrivacyRow key={p.slug} ws={ws} project={p} canEdit={canEdit} />)}
+                {(q.data?.projects ?? []).map((p) => <PrivacyRow key={p.slug} ws={ws} project={p} />)}
               </tbody>
             </table>
           </div>
-        )}
-        {!canEdit && q.isSuccess && (
-          <p className="border-t px-4 py-3 text-xs text-muted-foreground">Read only — workspace admins change project retention here; project managers can edit their own project under Project Settings → Privacy &amp; retention.</p>
         )}
       </Card>
 
@@ -340,10 +343,10 @@ export function ProjectPrivacySection({ ws, project, canEdit }: { ws: string; pr
         <fieldset disabled={!canEdit} className={`m-0 min-w-0 space-y-4 border-0 p-0 ${canEdit ? '' : 'opacity-60'}`}>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">Blur faces before stream frames enter a dataset</div>
-              <p className="text-xs text-muted-foreground">Faces are blurred as stream frames are saved into datasets, so training data never contains identifiable faces. On by default.</p>
+              <div className="text-sm font-medium">Blur faces in uploaded images and video frames</div>
+              <p className="text-xs text-muted-foreground">Faces are blurred as uploaded images, connector imports and video frames are saved into datasets, so training data never contains identifiable faces. On by default.</p>
             </div>
-            <Switch label="Blur faces before stream frames enter a dataset" checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
+            <Switch label="Blur faces in uploaded images and video frames" checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
           </div>
           <div className="flex items-start justify-between gap-4">
             <div>

@@ -16,14 +16,15 @@ from pathlib import Path
 
 import cv2
 from PIL import Image as PImage
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from .adapters import ADAPTERS, Cancelled
 from .adapters.refine import label_image, sam_available
 from .adapters.ultralytics_ad import _start_weights
 from .config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
-from .deps import charge
+from .deps import charge, plan
+from .errors import safe_error, safe_text
 from .gpu import scheduler
 from .models import (Batch, Image, Job, LabelClass, Project, TrainedModel, Version, Video, Workspace, new_id, now,
                      set_annotations)
@@ -32,6 +33,7 @@ from .services import (
     connectors,
     drift,
     exporters,
+    faceblur,
     health,
     imaging,
     insights_embedding,
@@ -165,12 +167,17 @@ def _cancelled(jid: str) -> bool:
 # --- handlers ---------------------------------------------------------------------
 
 def run_version(job: Job):
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
         v = db.get(Version, job.params["version_id"])
         v.status = "generating"; db.commit()
         try:
-            stats = versioning.generate(db, v, lambda f: _set(job.id, progress=round(f * 100, 1)))
+            stats = versioning.generate(db, v, lambda f: _set(job.id, progress=round(f * 100, 1)),
+                                        should_stop=lambda: _cancelled(job.id))
             v.status, v.stats = "ready", stats
+        except Cancelled:
+            v.status = "cancelled"; db.commit(); raise      # I22: no ready version after a cancel
         except Exception:
             v.status = "failed"; db.commit(); raise
         db.commit()
@@ -178,18 +185,26 @@ def run_version(job: Job):
 
 
 def run_export(job: Job):
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
         v = db.get(Version, job.params["version_id"])
         fmt = job.params["format"]
         out = DATA_DIR / "exports" / v.id / fmt
-        z = exporters.export(fmt, versioning.version_dir(v), out)
-        import shutil
+        try:
+            z = exporters.export(fmt, versioning.version_dir(v), out,
+                                 should_stop=lambda: _cancelled(job.id))
+        except Cancelled:
+            shutil.rmtree(out, ignore_errors=True)
+            raise
         shutil.rmtree(out, ignore_errors=True)
         return {"version_id": v.id, "format": fmt, "file": z.relative_to(DATA_DIR).as_posix(), "bytes": z.stat().st_size}
 
 
 def run_export_engine(job: Job):
     """Build a TensorRT engine for a ready model, cache it under engines/, and register the runtime."""
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
         tm = db.get(TrainedModel, job.params["model_id"])
         if tm is None or tm.status != "ready" or not tm.weights:
@@ -206,6 +221,9 @@ def run_export_engine(job: Job):
     _set(job.id, progress=10.0)
     with scheduler.exclusive(f"engine export {variant}"):         # the build owns the whole card
         out = build(str(src), "engine", half=True, dest=dest)
+    if _cancelled(job.id):                                        # I22: never register a cancelled build
+        Path(dest).unlink(missing_ok=True)
+        raise Cancelled("engine build cancelled")
     rel = out.relative_to(DATA_DIR).as_posix()
     with SessionLocal() as db:                                    # fresh row: the build ran for minutes
         tm = db.get(TrainedModel, mid)
@@ -358,7 +376,7 @@ def run_train(job: Job):
                     mark("evaluate")
                 except Exception as e:                            # a broken eval must not discard good weights
                     log.exception("evaluation failed for model %s", tm.id)
-                    tm.metrics = {**base, "eval_error": f"{type(e).__name__}: {e}"}
+                    tm.metrics = {**base, "eval_error": safe_error(e, "train")}
                     mark("evaluate", "failed", note="model kept ready without evaluation")
                 tm.history = history
                 mark("register", "running")
@@ -441,9 +459,11 @@ def run_autolabel(job: Job):
 
 def run_health(job: Job):
     """Leakage + missing-box scan (needs the model): cached on the job row for the analytics page."""
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
         p = db.get(Project, job.project_id)
-        return health.scan_health(db, p)
+        return health.scan_health(db, p, should_stop=lambda: jobs.is_cancelled(job.id))
 
 
 def run_extract_frames(job: Job):
@@ -454,7 +474,14 @@ def run_extract_frames(job: Job):
         if v is None or v.deleted_at:
             raise RuntimeError("video not found")
         p = db.get(Project, v.project_id)
-        db.get(Workspace, v.workspace_id)
+        ws = db.get(Workspace, v.workspace_id)
+        image_limit = int(plan(ws)["images"])
+        have = int(db.scalar(select(func.count(Image.id)).join(Project)
+                             .where(Project.workspace_id == ws.id, Image.deleted_at.is_(None))) or 0)
+        if p.face_blur and not faceblur.available():
+            v.status, v.error = "failed", "face blur is enabled but the face detector is unavailable"
+            db.commit()
+            raise RuntimeError("face blur is enabled but the face detector is unavailable")
         v.status, v.error = "extracting", ""
         db.commit()
 
@@ -509,9 +536,16 @@ def run_extract_frames(job: Job):
                     keep = index % step == 0           # container did not report a frame count
                 if not keep or kept >= 2000:
                     continue
+                if have + kept + 1 > image_limit:
+                    raise QuotaExhausted(f"image limit reached on the {plan(ws)['label']} plan — "
+                                         f"{image_limit - have} frame slots left")
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 im = PImage.fromarray(rgb)
+                if p.face_blur and not faceblur.available():
+                    raise RuntimeError("face blur is enabled but the face detector is unavailable")
+                if p.face_blur:                          # PDPA: blur before the bytes are stored
+                    im, _ = faceblur.blur_faces(im)
                 buf = io.BytesIO()
                 im.save(buf, "JPEG", quality=92)
                 data = buf.getvalue()
@@ -530,6 +564,7 @@ def run_extract_frames(job: Job):
                 img.path, img.thumb = imaging.store(f"projects/{p.id}/images", img.id, im)
                 db.add(img)
                 set_annotations(db, img, [])
+                metering.record(db, ws.id, "storage_bytes", len(data), project_id=p.id, image_id=img.id)
                 kept += 1
                 if mode == "scene" and fps > 0:
                     last_kept_time = index / fps
@@ -549,7 +584,7 @@ def run_extract_frames(job: Job):
             return {"video_id": v.id, "frames": kept, "batch_id": batch.id}
         except Exception as exc:
             if v.status != "failed":
-                v.status, v.error = "failed", f"{type(exc).__name__}: {exc}"[:500]
+                v.status, v.error = "failed", safe_error(exc, "extract_frames")[:500]
                 db.commit()
             raise
         finally:
@@ -577,12 +612,16 @@ def run_track_forward(job: Job):
             Image.deleted_at.is_(None)).order_by(Image.frame_index.asc()).limit(120)).all()[:limit]
         pairs = []
         for target in targets:
+            if _cancelled(job.id):
+                break
             try:
                 pairs.append((target, imaging.load(target.path)))
             except Exception as e:                      # a missing file must not stop the whole track
                 log.warning("track-forward skipped unreadable frame %s: %s", target.id, e)
         adapter = ADAPTERS.get("sam3")
         sam_box = adapter.segment_box if adapter is not None else None
+        from . import jobs
+        jobs.check(job)                                 # I22: no writes after the user cancelled
         shapes = track.track_forward([im for _, im in pairs], ann.get("shape") or {}, sam_box=sam_box,
                                      project_type=p.type)
         track_id = ann.get("trackId") or f"t{new_id()}"
@@ -604,34 +643,42 @@ def run_track_forward(job: Job):
         return {"image_id": src.id, "tracked": written, "track_id": track_id}
 
 
-HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
-            "train": run_train, "autolabel": run_autolabel, "health": run_health,
-            "connector_sync": connectors.sync_job, "extract_frames": run_extract_frames,
-            "track_forward": run_track_forward}
-
-
 def run_insights_images(job: Job):
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
-        return insights_jobs.scan_images(db, db.get(Project, job.project_id))
+        return insights_jobs.scan_images(db, db.get(Project, job.project_id),
+                                         should_stop=lambda: jobs.is_cancelled(job.id))
 
 
 def run_insights_leakage(job: Job):
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
         version = (job.params or {}).get("version") or None
-        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id), version)
+        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id), version,
+                                         should_stop=lambda: jobs.is_cancelled(job.id))
 
 
 def run_insights_embedding(job: Job):
+    from . import jobs
+    jobs.check(job)
     with SessionLocal() as db:
         project = db.get(Project, job.project_id)
+
+        def should_stop() -> bool:
+            return jobs.is_cancelled(job.id)
+
         needs_card = insights_embedding.clip_available()     # false: CV features never touch the GPU
         try:
             if needs_card:
                 with scheduler.exclusive("insights embedding"):
-                    return insights_jobs.scan_embedding(db, project)
-            return insights_jobs.scan_embedding(db, project)
+                    return insights_jobs.scan_embedding(db, project, should_stop=should_stop)
+            return insights_jobs.scan_embedding(db, project, should_stop=should_stop)
         finally:
             insights_embedding.release_clip()                # CLIP never outlives the scan
+
+
 def run_retention(job: Job):
     """PDPA cleanup. Imported lazily so the worker starts even on a build without the privacy extra."""
     from .services.retention import run_retention as cleanup
@@ -645,6 +692,18 @@ HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_e
             "drift": drift.run_job, "active_learning": active_learning.run_job,
             "insights_images": run_insights_images, "insights_leakage": run_insights_leakage,
             "insights_embedding": run_insights_embedding}
+
+
+def missing_handlers() -> set[str]:
+    """CPU handlers that no local process claims (a job that would queue forever)."""
+    from .config import REMOTE_JOB_KINDS
+    return set(HANDLERS) - set(REMOTE_JOB_KINDS) - set(LOCAL_JOB_KINDS)
+
+
+def assert_handlers_claimed() -> None:
+    missing = missing_handlers()
+    if missing:
+        raise RuntimeError(f"no local executor claims job kinds {sorted(missing)}; add them to LD_LOCAL_JOBS")
 
 
 def _notify(job: Job, status: str, error: str = ""):
@@ -663,23 +722,32 @@ def run_one(jid: str):
     with SessionLocal() as db:
         job = db.get(Job, jid)
         db.expunge(job)
+    if _cancelled(jid):                       # I22: never start work the user already cancelled
+        _set(jid, status="cancelled", finished=now())
+        return
     try:
         result = HANDLERS[job.kind](job)
-        final = "cancelled" if _cancelled(jid) else "done"
-        _set(jid, status=final, progress=100.0 if final == "done" else job.progress, result=result, finished=now())
-        _notify(job, final)
+        failed = isinstance(result, dict) and result.get("status") == "failed"
+        final = "cancelled" if _cancelled(jid) else "failed" if failed else "done"
+        err = safe_text(result.get("error"), job.kind) if failed else ""
+        _set(jid, status=final, progress=100.0 if final == "done" else job.progress, error=err,
+             result=result, finished=now())
+        _notify(job, final, err)
     except Cancelled:
         _set(jid, status="cancelled", finished=now())     # stopped on purpose before anything was produced
     except Exception as e:
         log.error("job %s (%s) failed\n%s", jid, job.kind, traceback.format_exc())
-        _set(jid, status="failed", error=f"{type(e).__name__}: {e}", finished=now())
-        _notify(job, "failed", f"{type(e).__name__}: {e}")
+        err = safe_error(e, job.kind)
+        _set(jid, status="failed", error=err, finished=now())
+        _notify(job, "failed", err)
 
 
 def recover():
-    """Jobs left 'running' by a crashed process go back to the queue."""
+    """Jobs left 'running' by a crashed process go back to the queue; a cancelled one stays cancelled."""
     with SessionLocal() as db:
-        db.execute(update(Job).where(Job.status.in_(("running", "cancelling")), Job.kind.in_(LOCAL_JOB_KINDS))
+        db.execute(update(Job).where(Job.status == "cancelling", Job.kind.in_(LOCAL_JOB_KINDS))
+                   .values(status="cancelled", finished=now()))
+        db.execute(update(Job).where(Job.status == "running", Job.kind.in_(LOCAL_JOB_KINDS))
                    .values(status="queued"))
         db.commit()
 
@@ -704,6 +772,7 @@ def _schedule_ops() -> None:
 def loop(stop: threading.Event | None = None):
     from .config import RETENTION_CHECK_S
     from .services import heartbeat, retention
+    assert_handlers_claimed()          # fail fast instead of leaving a kind queued forever
     recover()
     heartbeat.beat(LOCAL_JOB_KINDS)
     next_cleanup = 0.0

@@ -1,6 +1,4 @@
 """Dataset versions + exports."""
-import shutil
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -9,7 +7,7 @@ from ..config import CREDIT_COST, DATA_DIR
 from ..deps import Ctx, audit, charge, project_ctx
 from ..models import Job, Version
 from ..security import sign_path
-from ..services import exporters, versioning
+from ..services import erasure, exporters
 from .projects import job_out
 
 router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/versions", tags=["versions"])
@@ -19,10 +17,16 @@ def version_out(c: Ctx, v: Version) -> dict:
     jobs = c.db.scalars(select(Job).where(Job.project_id == v.project_id, Job.kind.in_(("version", "export")))
                         .order_by(Job.created.desc())).all()
     gen = next((j for j in jobs if j.kind == "version" and j.params.get("version_id") == v.id), None)
+    # I14: a signed URL is a download grant, so only project.export roles get one; every reader keeps
+    # the export metadata (job id/status/progress) the UI needs to show what exists.
+    can_export = c.can("project.export")
     exports = {}
     for j in jobs:
         if j.kind == "export" and j.params.get("version_id") == v.id and j.params["format"] not in exports:
-            exports[j.params["format"]] = {**job_out(j), "url": sign_path(j.result["file"]) if j.status == "done" else None}
+            item = job_out(j)
+            if can_export:
+                item["url"] = sign_path(j.result["file"]) if j.status == "done" else None
+            exports[j.params["format"]] = item
     return {"id": v.id, "number": v.number, "name": v.name or f"v{v.number}", "settings": v.settings, "status": v.status,
             "stats": v.stats, "created": v.created, "job": job_out(gen) if gen else None, "exports": exports}
 
@@ -84,10 +88,11 @@ def rename_version(vid: str, body: RenameIn, c: Ctx = Depends(project_ctx)):
 def delete_version(vid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     v = _get(c, vid)
+    _, ok = erasure.delete_version_data(c.db, v)     # bytes first: a failed delete never loses the row
+    if not ok:
+        raise HTTPException(409, "some files could not be deleted; retry")
     audit(c.db, c.ws.id, c.user.id, "version.delete", f"{c.project.name} v{v.number}")
     c.db.delete(v); c.db.commit()
-    shutil.rmtree(versioning.version_dir(v), ignore_errors=True)
-    shutil.rmtree(DATA_DIR / "exports" / v.id, ignore_errors=True)
     return {"ok": True}
 
 
@@ -97,6 +102,7 @@ class ExportIn(BaseModel):
 
 @router.post("/{vid}/export")
 def export(vid: str, body: ExportIn, c: Ctx = Depends(project_ctx)):
+    c.perm("project.export")
     v = _get(c, vid)
     if v.status != "ready":
         raise HTTPException(409, "version is still generating")

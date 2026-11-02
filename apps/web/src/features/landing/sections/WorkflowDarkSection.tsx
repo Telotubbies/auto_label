@@ -8,7 +8,7 @@ import { CornerMarks, DotGrid, Reveal, TagPill } from '../primitives'
 // ---------- data ---------------------------------------------------------------
 
 const STEPS = [
-  { n: '01', title: 'Label', body: 'Upload a folder, let SAM 3.1 draft masks, and review only what the VLM marks uncertain.' },
+  { n: '01', title: 'Label', body: 'Upload a folder, let SAM 3.1 draft masks when you connect it, and review only what the VLM marks uncertain.' },
   { n: '02', title: 'Train', body: 'Freeze a version, pick a family, and watch loss and mAP without leaving the page.' },
   { n: '03', title: 'Deploy', body: 'Attach the model to a stream, draw zones, and read events as they land.' },
 ]
@@ -137,6 +137,10 @@ export default function WorkflowDarkSection() {
                     )
                   })}
                 </ol>
+                <p className="mt-4 text-xs leading-relaxed text-background/70 dark:text-foreground/70">
+                  SAM 3.1 and the VLM are optional add-ons: connect them to the worker and step 01 drafts and checks
+                  masks for you. Without them, labeling stays manual.
+                </p>
               </div>
 
               {/* orbit */}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, FolderGit2, Plus, Trash2 } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
-import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import type { Version } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Progress, Select, StatusPill, Switch, fmtDate, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -118,7 +118,7 @@ function VersionDetail({ v }: { v: Version }) {
   const { project, ws } = useProject()
   const qc = useQueryClient()
   const nav = useNavigate()
-  const can = useApp((s) => s.can)
+  const { can, isManager } = useProjectPermissions(ws, project.slug)
   const formats = useQuery({ queryKey: ['formats', ws, project.slug], queryFn: () => api.formats(ws, project.slug) })
   const [fmt, setFmt] = useState('')
   useEffect(() => { if (!fmt && formats.data?.[0]) setFmt(formats.data[0].id) }, [formats.data, fmt])
@@ -131,14 +131,14 @@ function VersionDetail({ v }: { v: Version }) {
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold">{v.name}</h2><p className="text-sm text-muted-foreground">Generated {fmtDate(v.created)}</p></div>
         <div className="flex gap-2">
-          {v.status === 'ready' && can('admin') && <Button onClick={() => nav(`../train?version=${v.id}`)}>Train a model</Button>}
-          {can('admin') && <Button variant="ghost" size="icon" onClick={() => confirm('Delete this version?') && del(`${api.P(ws, project.slug)}/versions/${v.id}`).then(() => qc.invalidateQueries({ queryKey: ['versions', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
+          {v.status === 'ready' && can('project.train') && <Button onClick={() => nav(`../train?version=${v.id}`)}>Train a model</Button>}
+          {isManager && <Button variant="ghost" size="icon" onClick={() => confirm('Delete this version?') && del(`${api.P(ws, project.slug)}/versions/${v.id}`).then(() => qc.invalidateQueries({ queryKey: ['versions', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
         </div>
       </div>
       {v.status !== 'ready' && (
         <Card className="p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm"><StatusPill status={v.status} /> {v.job?.status === 'failed' ? v.job.error : 'Processing images…'}</div>
-          {v.status !== 'failed' && <Progress value={v.job?.progress ?? 0} />}
+          <div className="mb-2 flex items-center gap-2 text-sm"><StatusPill status={v.status} /> {v.job?.status === 'failed' ? v.job.error : v.status === 'cancelled' ? 'Build cancelled' : 'Processing images…'}</div>
+          {v.status !== 'failed' && v.status !== 'cancelled' && <Progress value={v.job?.progress ?? 0} />}
         </Card>
       )}
       {v.status === 'ready' && (
@@ -162,7 +162,7 @@ function VersionDetail({ v }: { v: Version }) {
               {exp?.status === 'done' && exp.url
                 ? <a href={fileUrl(exp.url)}><Button><Download className="h-4 w-4" /> Download zip ({((exp.result.bytes ?? 0) / 1e6).toFixed(1)} MB)</Button></a>
                 : exp && ['queued', 'running'].includes(exp.status) ? <div className="flex w-56 items-center gap-2 text-sm"><Progress value={exp.progress || 10} /> Exporting…</div>
-                  : <Button onClick={doExport}>Export</Button>}
+                  : can('project.export') ? <Button onClick={doExport}>Export</Button> : null}
               {exp?.status === 'failed' && <span className="text-sm text-destructive">{exp.error}</span>}
             </div>
             <pre className="mt-3 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{`# Python — after export, download straight from the signed link
