@@ -271,6 +271,7 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, "bad status")
     if body.action == "assign" and v and not c.db.get(Member, (c.ws.id, v)):
         raise HTTPException(400, "assignee is not a workspace member")
+    failed = False
     for r in rows:
         if body.action == "split":
             r.split = v
@@ -281,8 +282,10 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         elif body.action == "delete":
             if r.deleted_at is None:              # a second delete must not credit storage twice
                 _, gone = erasure.delete_image_files(r.path, r.thumb)
-                if gone:                          # a locked file keeps its bytes and its meter entry
-                    metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
+                if not gone:                      # keep the row and its meter entry; abort the batch below
+                    failed = True
+                    continue
+                metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
             r.deleted_at = now()
             c.db.execute(sa_delete(ImageClass).where(ImageClass.image_id == r.id))   # deleted images drop out of counts
         elif body.action == "status":
@@ -294,6 +297,9 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         elif body.action == "clear_annotations":
             set_annotations(c.db, r, [])
         r.updated = now()
+    if failed:
+        c.db.rollback()                           # no row is hidden while any byte in the batch survives
+        raise HTTPException(409, "some files could not be deleted; retry")
     audit(c.db, c.ws.id, c.user.id, f"image.bulk.{body.action}", c.project.name, count=len(rows), value=v)
     c.db.commit()
     return {"updated": len(rows)}
@@ -487,8 +493,9 @@ def delete_image(image_id: str, u: User = Depends(current_user), db: Session = D
     c.need("reviewer")
     if img.deleted_at is None:                    # release the bytes the storage meter counted at upload
         _, gone = erasure.delete_image_files(img.path, img.thumb)
-        if gone:                                  # a locked file keeps its bytes and its meter entry
-            metering.adjust(db, c.ws, "storage_bytes", -float(img.size or 0), project_id=img.project_id)
+        if not gone:                              # a locked file keeps its row and its meter entry
+            raise HTTPException(409, "some files could not be deleted; retry")
+        metering.adjust(db, c.ws, "storage_bytes", -float(img.size or 0), project_id=img.project_id)
     img.deleted_at = now()
     db.execute(sa_delete(ImageClass).where(ImageClass.image_id == img.id))
     db.commit()

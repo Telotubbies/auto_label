@@ -229,6 +229,79 @@ def test_model_delete_route_keeps_the_row_when_a_weight_is_locked():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
+def test_image_delete_route_keeps_the_row_when_a_file_is_locked():
+    """A locked JPEG must 409 and keep the row, so a retry can finish the erase and credit the meter."""
+    from app.services import metering
+    email, ws_slug, ws_id, p_id, slug = _route_project()
+    suffix = uuid.uuid4().hex[:8]
+    rel = f"projects/{p_id}/images/locked-{suffix}.jpg"
+    with SessionLocal() as db:
+        img = Image(id=f"il{suffix}", project_id=p_id, name="locked.jpg", sha256=f"lk{suffix}",
+                    width=2, height=2, size=100, path=rel, thumb="", annotations=[], n_annotations=0)
+        db.add(img)
+        metering.record(db, ws_id, "storage_bytes", 100, project_id=p_id)
+        db.commit()
+        iid = img.id
+    _touch(rel)
+    path = DATA_DIR / rel
+
+    with _login(email) as c:
+        with open(path, "rb") as locked:
+            r = c.delete(f"/api/images/{iid}")
+            assert r.status_code == 409, r.text
+            assert locked.read() == b"x"                 # the locked byte is still on disk
+        with SessionLocal() as db:
+            row = db.get(Image, iid)
+            assert row is not None and row.deleted_at is None      # no row without the bytes
+            assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 100
+        r = c.delete(f"/api/images/{iid}")
+        assert r.status_code == 200, r.text
+    assert not path.exists()
+    with SessionLocal() as db:
+        assert db.get(Image, iid).deleted_at is not None
+        assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
+def test_bulk_delete_route_aborts_the_batch_when_a_file_is_locked():
+    """One locked file aborts the whole batch commit; a retry erases everything and credits once."""
+    from app.services import metering
+    email, ws_slug, ws_id, p_id, slug = _route_project()
+    suffix = uuid.uuid4().hex[:8]
+    rels = [f"projects/{p_id}/images/bulk-lock-{suffix}-{i}.jpg" for i in range(2)]
+    paths = []
+    with SessionLocal() as db:
+        ids = []
+        for i, rel in enumerate(rels):
+            _touch(rel)
+            paths.append(DATA_DIR / rel)
+            img = Image(id=f"ibl{suffix}{i}", project_id=p_id, name=f"{i}.jpg", sha256=f"bl{suffix}{i}",
+                        width=2, height=2, size=100, path=rel, thumb="", annotations=[], n_annotations=0)
+            db.add(img)
+            ids.append(img.id)
+        metering.record(db, ws_id, "storage_bytes", 200, project_id=p_id)
+        db.commit()
+
+    url = f"/api/ws/{ws_slug}/projects/{slug}/images/bulk"
+    with _login(email) as c:
+        with open(paths[1], "rb"):
+            r = c.post(url, json={"ids": ids, "action": "delete"})
+            assert r.status_code == 409, r.text
+        with SessionLocal() as db:
+            for iid in ids:
+                assert db.get(Image, iid).deleted_at is None      # the whole batch aborts
+            assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 200
+        assert paths[1].exists()
+        r = c.post(url, json={"ids": ids, "action": "delete"})
+        assert r.status_code == 200, r.text
+    assert not paths[0].exists() and not paths[1].exists()
+    with SessionLocal() as db:
+        for iid in ids:
+            assert db.get(Image, iid).deleted_at is not None
+        assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
 def test_delete_model_files_reports_a_surviving_locked_weight():
     """Unit contract: (freed, ok) is false while a locked weight survives, true after the retry."""
     from app.services.erasure import delete_model_files
