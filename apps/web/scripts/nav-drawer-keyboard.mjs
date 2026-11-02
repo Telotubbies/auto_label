@@ -64,6 +64,37 @@ const signedIn = async (viewport, theme = 'light') => {
     assert.ok(inside, `Tab ${i + 1} escaped the open drawer`)
   }
 
+  // Boundary checks: the Tab ring is the *visible* stops only. The desktop collapse button lives in
+  // the drawer's DOM but is display:none at 375 px; counting it let Tab leave the modal under the scrim.
+  const stops = () => page.evaluate(() => {
+    const sel = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const root = document.querySelector('#app-sidebar')
+    return [...root.querySelectorAll(sel)].filter((n) => n.getClientRects().length > 0)
+      .map((n) => n.getAttribute('aria-label') ?? n.textContent?.trim() ?? '')
+  })
+  const visible = await stops()
+  assert.ok(visible.length > 1, 'the drawer must expose focusable stops')
+  assert.ok(!visible.includes('Toggle sidebar'), 'the hidden desktop toggle must not be in the Tab ring')
+
+  await page.evaluate(() => {
+    const sel = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const root = document.querySelector('#app-sidebar')
+    const list = [...root.querySelectorAll(sel)].filter((n) => n.getClientRects().length > 0)
+    list[list.length - 1].focus()
+  })
+  await page.keyboard.press('Tab')
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Close navigation',
+    'Tab from the last visible stop must wrap to the first')
+
+  await drawer.getByRole('button', { name: 'Close navigation' }).focus()
+  await page.keyboard.press('Shift+Tab')
+  assert.ok(await page.evaluate(() => {
+    const sel = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const root = document.querySelector('#app-sidebar')
+    const list = [...root.querySelectorAll(sel)].filter((n) => n.getClientRects().length > 0)
+    return list[list.length - 1] === document.activeElement
+  }), 'Shift+Tab from the first stop must wrap to the last visible stop')
+
   await page.screenshot({ path: join(out, 'nav-375-drawer-light.png') })
   await page.keyboard.press('Escape')
   await drawer.waitFor({ state: 'hidden' })

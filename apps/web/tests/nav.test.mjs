@@ -194,6 +194,13 @@ test('the mobile drawer contract survives the nav rewrite', () => {
   assert.match(shellSrc, /<TopBar onMenu=/, 'the mobile menu button must open the drawer')
 })
 
+// Fix round 3 (I2): the job tray's separator was re-encoded through the wrong code page, so every
+// row read "Training ยท Project" instead of using U+00B7.
+test('the job tray separates the project name with a middle dot', () => {
+  assert.ok(shellSrc.includes('` · ${j.project_name}`'), 'the job row must use U+00B7 as its separator')
+  assert.ok(!shellSrc.includes('ยท'), 'the job row must not contain the corrupted Thai bytes')
+})
+
 test('the mobile drawer moves, traps and restores keyboard focus', () => {
   assert.match(shellSrc, /aria-expanded=\{menuOpen\}/, 'the menu button must expose its expanded state')
   assert.match(shellSrc, /aria-controls="app-sidebar"/, 'the menu button must point at the drawer')

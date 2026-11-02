@@ -95,7 +95,10 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   useEffect(() => { if (mobileOpen) closeRef.current?.focus() }, [mobileOpen])
   const trapFocus = (e: KeyboardEvent<HTMLElement>) => {
     if (!mobileOpen || e.key !== 'Tab') return
-    const nodes = e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)
+    // Only stops the browser would actually tab to: the desktop collapse button is in this DOM but
+    // display:none on a phone, so counting it sent Tab out from under the scrim.
+    const nodes = [...e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)]
+      .filter((n) => n.getClientRects().length > 0)
     if (!nodes.length) return
     const first = nodes[0]
     const last = nodes[nodes.length - 1]
@@ -341,7 +344,7 @@ export function JobTray() {
         return (
           <div key={j.id} className="text-sm">
             <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate font-medium">{JOB_LABEL[j.kind]}{j.project_name ? ` ยท ${j.project_name}` : ''}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{JOB_LABEL[j.kind]}{j.project_name ? ` · ${j.project_name}` : ''}</span>
               <span className={cn('text-xs tabular-nums', j.status === 'failed' ? 'text-destructive' : 'text-muted-foreground')}>{live ? `${Math.round(j.progress)}%` : j.status}</span>
               {!live && <button type="button" aria-label="Dismiss" onClick={() => setDismissed((d) => new Set(d).add(j.id))} className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full hover:bg-accent"><X className="h-3.5 w-3.5" /></button>}
             </div>
