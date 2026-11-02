@@ -17,6 +17,7 @@ from ..db import SessionLocal
 from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, Workspace
 from ..security import sign_path
+from ..streams.event_fields import class_key
 from ..streams.manager import check_source, display_source, manager
 from .images import ingest, safe_name
 
@@ -260,7 +261,9 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
     zones = check_zones(body.zones) if body.zones is not None else list(s.zones or [])
     rules = check_rules(body.rules, {z["id"] for z in zones}) if body.rules is not None else None
     if body.zones is not None:
-        check_rules(s.rules or [], {z["id"] for z in zones})   # no dangling zone_id after an edit
+        if body.rules is None:
+            # An atomic edit supplies both fields: new rules were already validated against the new zones.
+            check_rules(s.rules or [], {z["id"] for z in zones})   # no dangling zone_id after an edit
         s.zones = zones
     if rules is not None:
         s.rules = rules
@@ -395,6 +398,11 @@ def mjpeg(ws: str, project: str, sid: str, token: str = ""):
 
 # --- events -------------------------------------------------------------------
 
+def _like(term: str) -> str:
+    """Escape LIKE wildcards so a rule label or class name is matched literally."""
+    return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
 @router.get("/{sid}/events")
 def list_events(sid: str, rule: str = "", klass: str = Query("", alias="class"), reviewed: str = "",
                 kind: str = "", offset: int = 0, limit: int = 100, c: Ctx = Depends(project_ctx)):
@@ -402,34 +410,30 @@ def list_events(sid: str, rule: str = "", klass: str = Query("", alias="class"),
     limit = max(1, min(limit, 500))
     if reviewed.lower() not in ("", "yes", "no", "true", "false", "1", "0"):
         raise HTTPException(400, "reviewed must be yes, no or omitted")
-    rows = c.db.scalars(select(StreamEvent).where(StreamEvent.stream_id == sid)
-                        .order_by(StreamEvent.ts.desc(), StreamEvent.id)).all()
-    want_reviewed = reviewed.lower() in ("1", "true", "yes")
-    out = []
-    for ev in rows:
-        r = ev.rule or {}
-        if kind and r.get("kind") != kind:
-            continue
-        if rule:
-            try:                                     # "#2" selects rule 2; text matches the label
-                index = int(rule.lstrip("#"))
-            except ValueError:
-                index = None
-            if index is not None:
-                if r.get("index") != index:
-                    continue
-            elif rule.lower() not in str(r.get("label") or r.get("kind") or "").lower():
-                continue
-        if klass:
-            classes = {p.get("class") for p in ev.predictions or []}
-            classes.add(r.get("class"))
-            if klass not in classes:
-                continue
-        if reviewed and bool(ev.reviewed) != want_reviewed:
-            continue
-        out.append(event_out(ev))
-    start = max(0, offset)
-    return {"total": len(out), "items": out[start:start + limit]}
+    # Filter and page in SQL: a long-running stream accumulates thousands of rows, each with up to
+    # 50 predictions, and the timeline polls every 3 s. `rule_index/kind/label/classes` are the
+    # denormalised columns the manager writes next to the JSON snapshot.
+    where = [StreamEvent.stream_id == sid]
+    if kind:
+        where.append(StreamEvent.rule_kind == kind)
+    if rule:
+        try:                                         # "#2" selects rule 2; text matches the label
+            index = int(rule.lstrip("#"))
+        except ValueError:
+            index = None
+        if index is not None:
+            where.append(StreamEvent.rule_index == index)
+        else:
+            where.append(StreamEvent.rule_label.ilike(_like(rule), escape="\\"))
+    if klass:
+        where.append(StreamEvent.classes.like(_like(class_key({klass})), escape="\\"))
+    if reviewed:
+        where.append(StreamEvent.reviewed == (reviewed.lower() in ("1", "true", "yes")))
+    total = c.db.scalar(select(func.count()).select_from(StreamEvent).where(*where)) or 0
+    rows = c.db.scalars(select(StreamEvent).where(*where)
+                        .order_by(StreamEvent.ts.desc(), StreamEvent.id)
+                        .offset(max(0, offset)).limit(limit)).all()
+    return {"total": total, "items": [event_out(ev) for ev in rows]}
 
 
 class ReviewIn(BaseModel):

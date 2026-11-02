@@ -154,6 +154,22 @@ def test_deleted_video_reports_error(c):
     assert "definitely-missing.mp4" in j["lastError"]
 
 
+def test_unreadable_video_reports_error_instead_of_reconnecting_forever(c):
+    """Finding M4: a corrupt upload is a fatal file error, not an endless 'reconnecting'."""
+    (DATA_DIR / "videos").mkdir(parents=True, exist_ok=True)
+    bad = DATA_DIR / "videos" / f"corrupt-{uuid.uuid4().hex[:8]}.mp4"
+    bad.write_bytes(b"this is not an mp4 container" * 64)
+    try:
+        sid = create_stream(c, source=f"file:videos/{bad.name}")
+        assert c.post(f"{BASE}/{sid}/start").status_code == 200
+        j = _poll(_status_is(c, sid, "error"), timeout=20)
+        assert bad.name in j["lastError"]
+        time.sleep(1.5)
+        assert c.get(f"{BASE}/{sid}").json()["status"] == "error"
+    finally:
+        _unlink(bad)
+
+
 def test_rejects_sam_as_stream_model(c):
     for ref in ("sam3:sam3.1", "vlm:qwen2.5-vl-7b"):
         r = c.post(BASE, json={"name": "Bad", "source": "file:videos/none.mp4", "model_ref": ref})
@@ -190,7 +206,9 @@ def fake_event(c):
     with SessionLocal() as db:
         db.add(StreamEvent(id=eid, stream_id=sid, ts=time.time(),
                            rule={"index": 0, "kind": "zone", "class": "person", "label": "person in z1"},
-                           summary="person in zone z1", snapshot_path=f"streams/{sid}/{eid}.jpg", predictions=[]))
+                           summary="person in zone z1", snapshot_path=f"streams/{sid}/{eid}.jpg",
+                           predictions=[], rule_index=0, rule_kind="zone", rule_label="person in z1",
+                           classes="|person|"))
         db.commit()
     yield {"sid": sid, "eid": eid}
     c.delete(f"{BASE}/{sid}")
@@ -232,6 +250,61 @@ def test_events_total_and_offset(c, fake_event):
     page = c.get(base, params={"offset": 1, "limit": 1}).json()
     assert page["total"] == 3 and len(page["items"]) == 1
     assert c.get(base, params={"limit": 2}).json()["total"] == 3
+
+
+def _sql_spy():
+    """Collect SELECT statements issued against stream_events (Finding I4 is about SQL, not Python)."""
+    from sqlalchemy import event
+
+    from app.db import engine
+    seen: list[str] = []
+
+    def spy(_conn, _cursor, statement, _params, _context, _many):
+        seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", spy)
+    return seen, lambda: event.remove(engine, "before_cursor_execute", spy)
+
+
+def test_events_page_query_uses_sql_limit_and_offset(c, fake_event):
+    base = f"{BASE}/{fake_event['sid']}/events"
+    seen, stop = _sql_spy()
+    try:
+        assert c.get(base, params={"limit": 10, "offset": 5}).status_code == 200
+    finally:
+        stop()
+    pages = [s for s in seen if "stream_events" in s and "ORDER BY" in s.upper()]
+    assert pages, seen
+    assert all("LIMIT" in s.upper() and "OFFSET" in s.upper() for s in pages), pages
+
+
+def test_events_paginate_without_gaps_or_duplicates(c, fake_event):
+    from app.db import SessionLocal
+    from app.models import StreamEvent
+    sid = fake_event["sid"]
+    now = time.time()
+    with SessionLocal() as db:
+        for n in range(24):
+            db.add(StreamEvent(stream_id=sid, ts=now - n, rule={"index": 0, "kind": "zone", "class": "person"},
+                               summary=f"e{n}", predictions=[]))
+        db.commit()
+    base = f"{BASE}/{sid}/events"
+    first = c.get(base, params={"limit": 10}).json()
+    second = c.get(base, params={"limit": 10, "offset": 10}).json()
+    third = c.get(base, params={"limit": 10, "offset": 20}).json()
+    assert first["total"] == second["total"] == third["total"] == 25
+    ids = [e["id"] for e in first["items"] + second["items"] + third["items"]]
+    assert len(ids) == 25 and len(set(ids)) == 25
+    stamps = [e["ts"] for e in first["items"]]
+    assert stamps == sorted(stamps, reverse=True)
+
+
+def test_stream_events_index_covers_stream_and_ts():
+    from sqlalchemy import inspect as sa_inspect
+
+    from app.db import engine
+    indexes = [tuple(i["column_names"]) for i in sa_inspect(engine).get_indexes("stream_events")]
+    assert ("stream_id", "ts") in indexes, indexes
 
 
 def test_event_to_dataset_creates_image(c, fake_event):
@@ -277,6 +350,10 @@ def test_stream_end_to_end_line_crossing(c, monkeypatch, video):
         assert row.clean_path != row.snapshot_path
     # the status panel must show the demo video at its real rate (the window needs a couple of seconds)
     _poll(lambda: (j if (j := c.get(f"{BASE}/{sid}").json())["fps"] >= 5 else None), timeout=10)
+    # events recorded by the real pipeline are filterable in SQL (rule index, kind, label, classes)
+    for params in ({"kind": "line"}, {"class": "person"}, {"rule": 0}, {"rule": "line"}):
+        page = c.get(f"{BASE}/{sid}/events", params=params).json()
+        assert any(e["id"] == ev["id"] for e in page["items"]), (params, page)
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
     assert c.get(f"{BASE}/{sid}").json()["status"] == "stopped"
 
@@ -345,12 +422,102 @@ def test_model_unavailable_stays_error(c, monkeypatch, video):
     assert c.post(f"{BASE}/{sid}/stop").json()["status"] == "stopped"
 
 
+class _WorldModel:
+    """Mirrors ultralytics_ad: open-vocabulary models refuse to run without a vocabulary."""
+
+    variant = "yolov8s-worldv2"
+
+    def __init__(self):
+        self.calls = 0
+        self.vocab: list[list[str] | None] = []
+
+    def predict(self, im, **kw):
+        self.calls += 1
+        self.vocab.append(kw.get("classes"))
+        if not kw.get("classes"):
+            raise ValueError("YOLO-World needs classes")
+        return {"predictions": [], "image": {"width": im.width, "height": im.height}, "time": 0.0}
+
+
+def test_world_stream_without_class_rules_fails_fast(c, monkeypatch, video):
+    """Finding I2: a live-but-blind World stream must report a clear error, not zero detections."""
+    fake = _WorldModel()
+    monkeypatch.setattr("app.streams.manager.resolve", lambda *a, **k: fake)
+    sid = create_stream(c, source=video, model_ref="ultralytics:yolov8s-worldv2", rules=[])
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    j = _poll(_status_is(c, sid, "error"), timeout=10)
+    assert j["lastError"] == "YOLO-World needs at least one rule with a class"
+    assert fake.calls == 0                          # it must not spin on a predictable ValueError
+    time.sleep(0.5)
+    assert c.get(f"{BASE}/{sid}").json()["status"] == "error"
+
+
+def test_world_stream_passes_the_rule_vocabulary(c, monkeypatch, video):
+    fake = _WorldModel()
+    monkeypatch.setattr("app.streams.manager.resolve", lambda *a, **k: fake)
+    sid = create_stream(c, source=video, model_ref="ultralytics:yolov8s-worldv2", sample_fps=10, rules=[LINE_RULE])
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=10)
+    _poll(lambda: fake.vocab or None, timeout=10)
+    assert fake.vocab[0] == ["person"]
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
+def test_internal_exception_text_never_reaches_last_error(c, monkeypatch, video):
+    """Finding I3: only our own ValueError text is user-facing; everything else is logged."""
+    def broken(*_a, **_k):
+        raise RuntimeError(r"CUDA error at C:\secret\weights.pt")
+    monkeypatch.setattr("app.streams.manager.resolve", broken)
+    sid = create_stream(c, source=video, sample_fps=10)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    j = _poll(_status_is(c, sid, "error"), timeout=10)
+    assert j["lastError"] == "model unavailable"
+
+
+def test_inference_failure_is_a_fixed_user_message(c, monkeypatch, video):
+    class _Boom(_FakeModel):
+        def predict(self, im, **kw):
+            raise RuntimeError("socket closed by 10.1.2.3 /opt/weights/x.pt")
+    monkeypatch.setattr("app.streams.manager.resolve", lambda *a, **k: _Boom())
+    sid = create_stream(c, source=video, sample_fps=10)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    j = _poll(lambda: (j if (j := c.get(f"{BASE}/{sid}").json())["lastError"] else None), timeout=10)
+    assert j["lastError"] == "inference failed"
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
+def test_set_ignores_live_after_a_fatal_error():
+    """Finding M3: a grabber 'live' write must not land after the processor marked the worker fatal."""
+    from app.models import Stream
+    from app.streams.manager import _Worker
+    row = Stream(id="race", workspace_id="w", project_id="p", name="race",
+                 source="file:videos/race.mp4", model_ref="ultralytics:yolo11n")
+    w = _Worker(row)
+    w.fatal = True
+    w._set("live", "")
+    assert w.status != "live"
+
+
 def test_patch_zones_cannot_orphan_rules(c):
     zones = [{"id": "z1", "points": [0, 0, .5, 0, .5, .5, 0, .5]}]
     sid = create_stream(c, zones=zones, rules=[{"kind": "zone", "class": "person", "zone_id": "z1"}])
     r = c.patch(f"{BASE}/{sid}", json={"zones": [{"id": "z2", "points": [0, 0, .4, 0, .4, .4]}]})
     assert r.status_code == 400 and "z1" in r.json()["detail"]
     assert c.get(f"{BASE}/{sid}").json()["zones"][0]["id"] == "z1"
+
+
+def test_patch_moves_a_zone_rule_to_a_new_zone_atomically(c):
+    """Finding I1: zones and rules in one PATCH are one atomic edit, not old-rules-against-new-zones."""
+    zones = [{"id": "z1", "points": [0, 0, .5, 0, .5, .5, 0, .5]}]
+    sid = create_stream(c, zones=zones, rules=[{"kind": "zone", "class": "person", "zone_id": "z1"}])
+    r = c.patch(f"{BASE}/{sid}", json={
+        "zones": [{"id": "z2", "points": [0, 0, .4, 0, .4, .4]}],
+        "rules": [{"kind": "zone", "class": "person", "zone_id": "z2"}],
+    })
+    assert r.status_code == 200, r.text
+    body = c.get(f"{BASE}/{sid}").json()
+    assert body["zones"][0]["id"] == "z2"
+    assert body["rules"][0]["zone_id"] == "z2"
 
 
 def test_zone_ids_must_be_unique(c):
@@ -366,6 +533,10 @@ def test_rtsp_credentials_are_masked(c):
     assert "s3cret" not in body["source"] and "***@" in body["source"]
     from app.streams.manager import display_source
     assert display_source("rtsp://alice:s3cret@cam.local/live") == "rtsp://***@cam.local/live"
+    # Finding M1: a raw @ inside the password must not survive the mask either
+    assert display_source("rtsp://user:p@ss@host/live") == "rtsp://***@host/live"
+    assert "ss@" not in c.post(BASE, json={"name": "At sign", "source": "rtsp://user:p@ss@host/live",
+                                           "model_ref": "ultralytics:yolo11n"}).json()["source"]
 
 
 def test_file_source_cannot_escape_data_dir(c):
