@@ -76,6 +76,22 @@ class Entry:
     seconds: float
 
 
+def _encodable(text: str) -> str:
+    """Degrade *text* to the console code page so a legacy Windows terminal cannot abort the run.
+
+    A default Windows console uses cp874/cp1252/cp437, none of which encode arrows or dashes.
+    Replacing only the unsupported characters keeps the rest of the line readable.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(encoding)
+        return text
+    except LookupError:
+        return text.encode("ascii", "replace").decode("ascii")
+    except UnicodeEncodeError:
+        return text.encode(encoding, "replace").decode(encoding)
+
+
 class Report:
     """Collects and prints the run: one PASS/FAIL line per step, then a timing summary."""
 
@@ -83,12 +99,19 @@ class Report:
         self._out = out
         self.entries: list[Entry] = []
 
+    def _emit(self, text: str) -> None:
+        # The reporting path must never take the run down: a cp874 console raises before writing.
+        try:
+            self._out(text)
+        except UnicodeEncodeError:
+            self._out(_encodable(text))
+
     def header(self, cfg: Config) -> None:
-        self._out(f"LabelDesk demo smoke — api={cfg.api_url} vllm={cfg.vlm_url} project={cfg.ws}/{cfg.project}")
+        self._emit(f"LabelDesk demo smoke - api={cfg.api_url} vllm={cfg.vlm_url} project={cfg.ws}/{cfg.project}")
 
     def record(self, name: str, ok: bool, detail: str = "", seconds: float = 0.0) -> None:
         self.entries.append(Entry(bool(ok), name, detail, float(seconds)))
-        self._out(self.lines()[-1])
+        self._emit(self.lines()[-1])
 
     def lines(self) -> list[str]:
         return [
@@ -101,10 +124,10 @@ class Report:
 
     def print_summary(self, total_seconds: float) -> None:
         passed = sum(1 for e in self.entries if e.ok)
-        self._out("--- timings ---")
+        self._emit("--- timings ---")
         for e in self.entries:
-            self._out(f"  {e.seconds:7.1f} s  {e.name}")
-        self._out(f"{passed}/{len(self.entries)} checks passed in {total_seconds:.1f} s")
+            self._emit(f"  {e.seconds:7.1f} s  {e.name}")
+        self._emit(f"{passed}/{len(self.entries)} checks passed in {total_seconds:.1f} s")
 
 
 # --- pure decisions ----------------------------------------------------------
@@ -592,7 +615,7 @@ def run(
         gpu.start()
     try:
         _record(report, "vLLM /v1/models", lambda: step_models(vllm), clock)
-        _record(report, "VLM→SAM ground (5 seed images)", lambda: step_ground(api), clock)
+        _record(report, "VLM->SAM ground (5 seed images)", lambda: step_ground(api), clock)
         _record(
             report,
             "SAM text auto-label",
@@ -601,13 +624,13 @@ def run(
         )
         _record(
             report,
-            "sleep → train yolo26s → wake",
+            "sleep -> train yolo26s -> wake",
             lambda: step_sleep_train_wake(cfg, api, vllm, clock, sleep),
             clock,
         )
         _record(
             report,
-            f"stream ≥ {MIN_FPS:g} FPS for {cfg.stream_seconds} s",
+            f"stream >= {MIN_FPS:g} FPS for {cfg.stream_seconds} s",
             lambda: step_stream(cfg, api, clock, sleep),
             clock,
         )

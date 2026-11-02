@@ -141,9 +141,9 @@ def test_all_six_steps_pass_in_order_with_sleep_and_wake_times(capsys):
     assert len(passes) == 6, passes
     order = [
         "vLLM /v1/models",
-        "VLM→SAM",
+        "VLM->SAM",
         "SAM text",
-        "sleep →",
+        "sleep ->",
         "stream",
         "GPU memory peak",
     ]
@@ -213,3 +213,41 @@ def test_vram_and_fps_decisions_are_pure():
     assert demo_smoke.vram_ok(11_499, 11_500)
     assert not demo_smoke.vram_ok(11_500, 11_500)
     assert not demo_smoke.vram_ok(None, 11_500)
+
+
+def test_every_report_line_is_ascii_so_any_windows_code_page_can_print_it(capsys):
+    code, _, _ = _run({"models": [{"id": "qwen"}], "sleeping": False})
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert out.isascii(), [line for line in out.splitlines() if not line.isascii()]
+
+
+class LegacyConsole:
+    """A Windows console whose code page (cp874 here) cannot encode arrows or dashes.
+
+    ``TextIOWrapper.write`` raises ``UnicodeEncodeError`` before writing anything, so the
+    fake raises from ``write`` in the same way a real console does.
+    """
+
+    encoding = "cp874"
+
+    def __init__(self) -> None:
+        self.written = ""
+
+    def write(self, text: str) -> int:
+        text.encode(self.encoding)
+        self.written += text
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+
+def test_report_survives_a_non_utf8_console_and_a_unicode_detail(monkeypatch):
+    console = LegacyConsole()
+    monkeypatch.setattr(sys, "stdout", console)
+
+    demo_smoke.Report().record("VLM→SAM ground", True, "sleep ≥ 1 s")
+
+    assert "PASS  VLM?SAM ground (sleep ? 1 s)" in console.written
