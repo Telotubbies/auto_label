@@ -61,6 +61,10 @@ class _Watchdog:
         self.stalled = False
 
     def start(self) -> "_Watchdog":
+        # The first-epoch grace runs from the first epoch, not from construction: dataset export
+        # and weight resolution happen in between and must not eat the training budget.
+        with self._lock:
+            self.last = self.last_epoch = time.monotonic()
         self._thread.start()
         return self
 

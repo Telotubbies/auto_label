@@ -3,9 +3,7 @@
 `rfdetr` is not installed here, so the package, the training child and the Lightning CSV are faked.
 """
 import os
-import tempfile
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

@@ -3,10 +3,8 @@ import importlib.util
 import io
 import os
 import sys
-import tempfile
 from pathlib import Path
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-sdk-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

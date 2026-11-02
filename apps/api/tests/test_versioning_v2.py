@@ -1,11 +1,9 @@
 """Versioning v2: stratified split, pHash grouping, recipe.json, version_hash, export cache."""
 import json
 import os
-import tempfile
 import time
 from types import SimpleNamespace
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"

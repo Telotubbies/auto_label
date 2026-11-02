@@ -1,10 +1,8 @@
 """Attack-style tests for the hardening: each one tries the exploit and expects it to fail."""
 import io
 import os
-import tempfile
 import zipfile
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-sec-"))
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ["LD_SAM_ENABLED"] = "0"
 

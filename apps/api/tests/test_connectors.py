@@ -7,10 +7,8 @@ import io
 import json
 import os
 import sys
-import tempfile
 import types
 
-os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-conn-"))
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 os.environ["LD_EMBEDDED_WORKER"] = "0"
