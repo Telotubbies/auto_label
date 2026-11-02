@@ -223,6 +223,16 @@ export interface PlaygroundPrediction {
 export interface PlaygroundResult {
   ref: string; prediction: PlaygroundPrediction | null; latency_ms: number; error: string | null
 }
+export type PlaygroundRuntimeState = 'ready' | 'cold' | 'loading' | 'sleeping' | 'gpu_busy' | 'unavailable'
+/** One selected model's runtime state, explained by the server preflight (G1 / gap M1). */
+export interface PlaygroundRuntime {
+  ref: string; state: PlaygroundRuntimeState; message: string; retry: boolean
+}
+/** A recent annotated image of this workspace, offered as a Playground starting point. */
+export interface PlaygroundSample {
+  id: string; name: string; thumbnail: string; url: string
+  project: { slug: string; name: string }
+}
 
 // --- Insights Studio (Task 20a) ---------------------------------------------
 // Shapes mirror the read-only /insights/* endpoints; every field stays snake_case on the wire.

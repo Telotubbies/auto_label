@@ -6,7 +6,7 @@ import type {
   DeploymentAlias, DeploymentOverview, DpaDoc, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry,
   InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff,
   Job, LabelClass, LeaderboardRow, Me, Member, ModelDetections, ModelInsights,
-  ModelItem, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
+  ModelItem, Permissions, PlaygroundResult, PlaygroundRuntime, PlaygroundSample, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
   ProjectRole, RegistryItem, RoleLevel, TrainingInsights, Version, VideoFrame, VideoItem,
   WorkerRow, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
@@ -186,6 +186,9 @@ export const api = {
   autolabelPreview: (ws: string, p: string, body: AutoLabelInput & { sample?: number }) =>
     post<AutoLabelPreview>(`${P(ws, p)}/autolabel/preview`, body),
   playgroundPredict: (ws: string, form: FormData) => post<{ results: PlaygroundResult[] }>(`/ws/${ws}/playground/predict`, form),
+  playgroundPreflight: (ws: string, refs: string[]) =>
+    post<{ models: PlaygroundRuntime[] }>(`/ws/${ws}/playground/preflight`, { model_refs: refs }),
+  playgroundSamples: (ws: string, limit = 6) => get<{ samples: PlaygroundSample[] }>(`/ws/${ws}/playground/samples?limit=${limit}`),
   insights: {
     summary: (ws: string, p: string, version?: string) =>
       get<InsightSummary>(`${P(ws, p)}/insights/summary${version ? `?version=${encodeURIComponent(version)}` : ''}`),

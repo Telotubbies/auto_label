@@ -69,6 +69,11 @@ def _stop_child(proc) -> None:
         proc.join(timeout=5)
 
 
+def lease_key(variant: str, weights: str | None) -> str:
+    """The scheduler key _load() charges; a trained checkpoint is keyed by its absolute path."""
+    return f"rfdetr|{str(DATA_DIR / weights) if weights else variant}"
+
+
 def _load(variant: str, weights: str | None):
     """Cached model for (variant, weights); weights is an absolute checkpoint or None for the default."""
     from ..gpu import scheduler                  # lazy: keeps app.gpu importable before the adapters package
@@ -186,6 +191,9 @@ class RFDetrAdapter:
 
     def capabilities(self, variant: str) -> set[str]:
         return {"detect"}
+
+    def runtime_key(self, variant: str, weights: str | None) -> str:
+        return lease_key(variant, weights)
 
     def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
         """weights is a DATA_DIR-relative checkpoint for trained models; None uses the pretrained variant.

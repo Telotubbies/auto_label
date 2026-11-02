@@ -226,8 +226,8 @@ export function GpuBadge() {
 }
 
 const pageLabels: Record<string, string> = {
-  models: 'Models', deployments: 'Deployments', activity: 'Activity', audit: 'Audit log', admin: 'Admin console',
-  settings: 'Settings', legal: 'Legal',
+  playground: 'Playground', models: 'Models', deployments: 'Deployments', activity: 'Activity', audit: 'Audit log',
+  admin: 'Admin console', settings: 'Settings', legal: 'Legal',
 }
 
 export function TopBar({ onMenu }: { onMenu?: () => void }) {
@@ -278,7 +278,7 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
   )
 }
 
-const RESERVED = new Set(['models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal'])
+const RESERVED = new Set(['playground', 'models', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal'])
 const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
   train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
   insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',

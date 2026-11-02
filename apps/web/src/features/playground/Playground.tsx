@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Image as KImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva'
-import { ImageUp, Play, Sparkles, TriangleAlert } from 'lucide-react'
-import { api } from '@/lib/api'
-import type { PlaygroundPrediction, PlaygroundResult, RegistryItem } from '@/lib/types'
+import { Camera, ImageUp, Play, Sparkles, TriangleAlert } from 'lucide-react'
+import { api, fileUrl } from '@/lib/api'
+import type { PlaygroundPrediction, PlaygroundResult, PlaygroundSample, RegistryItem } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Spinner, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { RuntimeStates } from './RuntimeStates'
+import { SampleStrip } from './SampleStrip'
+import { useCamera } from './useCamera'
 
 const MAX_MODELS = 3
 const COLORS = ['#8b5cf6', '#22c55e', '#3b82f6', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#ef4444']
@@ -150,9 +153,11 @@ function ModelPicker({ items, selected, onToggle }: {
 
 export default function Playground() {
   const { ws = '' } = useParams()
+  const qc = useQueryClient()
   const registry = useQuery({ queryKey: ['registry', ws], queryFn: () => api.registry(ws) })
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState('')
+  const [sampleId, setSampleId] = useState<string | null>(null)
   const [refs, setRefs] = useState<string[]>([])
   const [classes, setClasses] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -163,9 +168,33 @@ export default function Playground() {
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
 
-  const pick = (f: File) => { setPreview(URL.createObjectURL(f)); setFile(f); setResults(null) }
+  const pick = (f: File, sample: string | null = null) => {
+    setPreview(URL.createObjectURL(f))
+    setFile(f)
+    setSampleId(sample)
+    setResults(null)
+  }
+  const camera = useCamera((f) => pick(f))
   const toggle = (ref: string) =>
     setRefs((r) => r.includes(ref) ? r.filter((x) => x !== ref) : r.length < MAX_MODELS ? [...r, ref] : r)
+
+  const runtime = useQuery({
+    queryKey: ['playground-runtime', ws, refs],
+    queryFn: () => api.playgroundPreflight(ws, refs),
+    enabled: refs.length > 0,
+    staleTime: 5_000,
+  })
+
+  const pickSample = async (s: PlaygroundSample) => {
+    try {
+      const r = await fetch(fileUrl(s.url))
+      if (!r.ok) throw new Error('Could not load that sample image.')
+      const blob = await r.blob()
+      pick(new File([blob], s.name || 'sample.jpg', { type: blob.type || 'image/jpeg' }), s.id)
+    } catch (e) {
+      toast.err(e as Error)
+    }
+  }
 
   const run = async () => {
     if (!file || !refs.length || busy) return
@@ -176,31 +205,68 @@ export default function Playground() {
     if (classes.trim()) fd.append('classes', classes.trim())
     if (prompt.trim()) fd.append('prompt', prompt.trim())
     setBusy(true)
-    try { setResults((await api.playgroundPredict(ws, fd)).results) } catch (e) { toast.err(e as Error) } finally { setBusy(false) }
+    try { setResults((await api.playgroundPredict(ws, fd)).results) } catch (e) { toast.err(e as Error) } finally {
+      setBusy(false)
+      qc.invalidateQueries({ queryKey: ['playground-runtime', ws] })
+    }
   }
 
   const nameOf = (ref: string) => registry.data?.find((m) => m.ref === ref)?.name ?? ref
   const picked = refs.map((r) => registry.data?.find((m) => m.ref === r))
   const classesHint = picked.some((m) => m && (m.variant.includes('world') || m.family === 'vlm'))
+  const states = (runtime.data?.models ?? []).map((s) => ({ ...s, name: nameOf(s.ref) }))
+  const blocked = states.some((s) => s.state === 'unavailable')
 
   return (
     <div className="anim-page">
       <PageHeader title="Playground" desc="Run up to three models on the same image and compare them. No credits are charged." />
-      <div className="grid items-start gap-6 px-8 pb-10 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 px-4 pb-10 sm:px-8 xl:grid-cols-[320px_minmax(0,1fr)]">
         <Card className="space-y-4 p-4">
           <label
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) pick(f) }}
-            className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-muted/50 px-3 py-4 text-center hover:border-ring">
-            <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f) }} />
-            {preview ? <img src={preview} alt="selected" className="max-h-32 rounded" />
+            className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-muted/50 px-3 py-4 text-center hover:border-ring focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+            <input type="file" accept="image/*" aria-label="Choose an image" className="sr-only"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f) }} />
+            {preview ? <img src={preview} alt="Selected image preview" className="max-h-32 rounded" />
               : <><ImageUp className="h-5 w-5 text-muted-foreground" /><span className="text-sm">Drop an image or click to choose</span>
                 <span className="text-xs text-muted-foreground">PNG, JPEG or WebP up to 20 MB</span></>}
           </label>
 
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" aria-pressed={camera.active}
+                onClick={() => camera.active ? camera.stop() : camera.start()}>
+                <Camera className="h-4 w-4" aria-hidden="true" /> {camera.active ? 'Stop camera' : 'Use camera'}
+              </Button>
+              {camera.active && (
+                <Button type="button" size="sm" onClick={camera.capture}>
+                  <Camera className="h-4 w-4" aria-hidden="true" /> Capture frame
+                </Button>
+              )}
+            </div>
+            <video ref={camera.videoRef} muted playsInline aria-label="Camera preview"
+              className={cn('w-full rounded-md border bg-muted', camera.active ? 'block max-h-48 object-cover' : 'hidden')} />
+            {camera.error && <p role="alert" className="text-xs text-destructive">{camera.message}</p>}
+          </div>
+
+          <SampleStrip ws={ws} selectedId={sampleId} onPick={pickSample} />
+
           {registry.isLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Loading models…</p>}
           {registry.isError && <p className="text-sm text-destructive">Could not load the registry.</p>}
           <ModelPicker items={registry.data ?? []} selected={refs} onToggle={toggle} />
+
+          {refs.length > 0 && (
+            <div className="rounded-md border bg-muted/30 p-2">
+              {runtime.isLoading ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner /> Checking model status…</p>
+              ) : runtime.isError ? (
+                <p className="text-xs text-muted-foreground">Could not check model status. You can still run.</p>
+              ) : (
+                <RuntimeStates states={states} />
+              )}
+            </div>
+          )}
 
           <Field label="Classes" hint={classesHint
             ? 'Required by open-vocabulary models (YOLO-World, VLM grounding). Use the VLM question box instead to ask a question.'
@@ -214,12 +280,12 @@ export default function Playground() {
             <input type="range" min={1} max={99} value={Math.round(confidence * 100)}
               onChange={(e) => setConfidence(+e.target.value / 100)} className="w-full accent-primary" aria-label="Confidence threshold" />
           </Field>
-          <Button className="w-full" disabled={!file || !refs.length || busy} onClick={run}>
+          <Button className="w-full" disabled={!file || !refs.length || busy || blocked} onClick={run}>
             {busy ? <><Spinner /> Running…</> : <><Play className="h-4 w-4" /> Run {refs.length || ''} model{refs.length === 1 ? '' : 's'}</>}
           </Button>
         </Card>
 
-        <div>
+        <div className="min-w-0">
           {!results && (
             <Card className="flex min-h-72 items-center justify-center">
               <EmptyState icon={<ImageUp className="h-6 w-6 text-muted-foreground" />} title="Pick an image and up to three models."

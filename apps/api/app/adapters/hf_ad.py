@@ -35,13 +35,22 @@ def _device(model):
 
 # --- inference ------------------------------------------------------------------
 
+def _source(variant: str, weights: str | None) -> str:
+    """The Hub id or local model dir _load() reads; also the scheduler key's identity."""
+    return str(DATA_DIR / weights) if weights else variant
+
+
+def lease_key(variant: str, weights: str | None) -> str:
+    return f"hf|{_source(variant, weights)}"
+
+
 def _load(variant: str, weights: str | None):
     """(processor, model) for a variant id or a DATA_DIR-relative trained model dir.
 
     Leases through the GPU scheduler so its VRAM ledger can evict the LRU model."""
     from ..gpu import scheduler
 
-    source = str(DATA_DIR / weights) if weights else variant
+    source = _source(variant, weights)
 
     def _make():
         import torch
@@ -245,6 +254,9 @@ class HfAdapter:
 
     def capabilities(self, variant: str) -> set[str]:
         return {"detect"}
+
+    def runtime_key(self, variant: str, weights: str | None) -> str:
+        return lease_key(variant, weights)
 
     def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
         """weights is a DATA_DIR-relative trained model dir; None loads the Hub variant.

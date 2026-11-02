@@ -25,7 +25,8 @@ class TrainResult:
 
 class Adapter(Protocol):
     """Optional members: train(variant, dataset_dir: Path, task, opts, on_epoch, should_stop) -> TrainResult,
-    export(weights: str, fmt: str) -> Path."""
+    export(weights: str, fmt: str) -> Path, runtime_key(variant, weights) -> str | None (the GPU
+    scheduler lease key for this variant, or None for a remote family like vLLM)."""
     family: str
 
     def probe(self) -> Availability: ...
