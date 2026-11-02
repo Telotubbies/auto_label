@@ -39,7 +39,7 @@ export type Shape =
   | { kind: 'keypoints'; points: number[] }
 export interface Annotation {
   id: string; classId: string; shape: Shape; attributes?: Record<string, boolean>; confidence?: number
-  /** 'human' | 'sam3' | 'vlm+sam3' | 'trained:<id>' | '<family>:<variant>' */
+  /** 'human' | 'sam3' | 'vlm+sam3' | 'trained:<id>' | '<family>:<variant>' | 'interpolated' (derived between video keyframes) */
   source?: string
   /** Video timeline: this annotation is a keyframe; in-between frames are interpolated. */
   keyframe?: boolean

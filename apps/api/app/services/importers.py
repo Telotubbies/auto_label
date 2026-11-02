@@ -102,7 +102,19 @@ def collect(files: list[tuple[str, bytes]]) -> Bundle:
                 continue
             if not _cvat(b, data):
                 b.voc[PurePosixPath(name).stem] = data.decode(errors="ignore")
+    if not b.task:
+        b.task = _infer_obb_task(b.yolo)
     return b
+
+
+def _infer_obb_task(yolo: dict[str, str]) -> str:
+    """Task-less YOLO sets whose labels are all eight-value lines are OBB (ultralytics DOTA layout).
+
+    Polygon segmentation labels are six or more values; a mixed set stays a polygon dataset.
+    """
+    lengths = {len(line.split()) - 1 for text in yolo.values() for line in text.splitlines()
+               if len(line.split()) >= 5}
+    return "obb" if lengths == {8} else ""
 
 
 def _coco(b: Bundle, data: bytes) -> bool:

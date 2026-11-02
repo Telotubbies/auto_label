@@ -456,7 +456,8 @@ def run_extract_frames(job: Job):
                 out_w, out_h = out_w or im.width, out_h or im.height
                 img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, video_id=v.id, frame_index=index,
                             name=f"{stem}_f{index:06d}.jpg", sha256=digest, width=im.width, height=im.height,
-                            size=len(data), path="", thumb="", split="train", status="unassigned", tags=[])
+                            size=len(data), path="", thumb="", split="train", status="unassigned", tags=[],
+                            assignee_id=P.get("created_by"))
                 img.path, img.thumb = imaging.store(f"projects/{p.id}/images", img.id, im)
                 db.add(img)
                 set_annotations(db, img, [])
@@ -516,6 +517,11 @@ def run_track_forward(job: Job):
         shapes = track.track_forward([im for _, im in pairs], ann.get("shape") or {}, sam_box=sam_box,
                                      project_type=p.type)
         track_id = ann.get("trackId") or f"t{new_id()}"
+        # The seed joins its own track as a keyframe, so a later "Set start" is a real interpolation start.
+        seed_anns = [{**a, "trackId": track_id, "keyframe": True} if a.get("id") == ann.get("id") else a
+                     for a in src.annotations or []]
+        set_annotations(db, src, seed_anns)
+        db.commit()
         written = 0
         for (target, _im), shape in zip(pairs, shapes):
             anns, keep = track.merge_track(target.annotations or [], {

@@ -13,13 +13,13 @@ import numpy as np
 import pytest
 from PIL import Image as PImage
 
-from app import worker
+from app import bootstrap, worker
 from app.config import DATA_DIR
-from app.db import Base, SessionLocal, engine
-from app.models import Image, Job, Project, User, Video, Workspace, new_id
+from app.db import SessionLocal
+from app.models import Image, Job, Project, User, Video, Workspace, new_id, set_annotations
 from app.services import track
 from app.services.video import (DEFAULT_SCENE_THRESHOLD, MAX_INTERPOLATION_SPAN, EXTRACT_MODES, interpolate_shape,
-                                interpolate_tracks, is_scene_change, plan_frames)
+                                interpolate_tracks, is_scene_change, merge_interpolated, pair_tracks, plan_frames)
 
 
 # --- plan_frames ---------------------------------------------------------------------------
@@ -157,6 +157,49 @@ def test_interpolate_tracks_requires_both_endpoints_and_same_class():
     assert interpolate_tracks(frames, 0, 2) == {}
 
 
+def test_pair_tracks_assigns_one_id_per_drawn_keyframe_pair():
+    a = {"id": "a1", "classId": "c1", "shape": {"kind": "bbox", "x": 0.0, "y": 0.0, "w": 0.2, "h": 0.2}}
+    b = {"id": "a2", "classId": "c1", "shape": {"kind": "bbox", "x": 0.4, "y": 0.0, "w": 0.2, "h": 0.2}}
+
+    pairs = pair_tracks([a], [b])
+
+    assert len(pairs) == 1
+    assert pairs[0][0] is a and pairs[0][1] is b
+    assert pairs[0][2]
+
+
+def test_pair_tracks_refuses_ambiguous_groups():
+    a = [{"id": "a1", "classId": "c1", "shape": {"kind": "bbox", "x": 0.0, "y": 0.0, "w": 0.1, "h": 0.1}},
+         {"id": "a2", "classId": "c1", "shape": {"kind": "bbox", "x": 0.4, "y": 0.0, "w": 0.1, "h": 0.1}}]
+    b = [{"id": "b1", "classId": "c1", "shape": {"kind": "bbox", "x": 0.0, "y": 0.4, "w": 0.1, "h": 0.1}}]
+
+    assert pair_tracks(a, b) == []
+
+
+def test_merge_interpolated_treats_a_human_edit_as_a_barrier():
+    human = {"id": "a1", "classId": "c1", "trackId": "t1", "keyframe": False, "source": "human",
+             "shape": {"kind": "bbox", "x": 0.5, "y": 0.1, "w": 0.2, "h": 0.2}}
+    new = {"id": "a9", "classId": "c1", "trackId": "t1", "keyframe": False, "source": "interpolated",
+           "shape": {"kind": "bbox", "x": 0.2, "y": 0.1, "w": 0.2, "h": 0.2}}
+
+    anns, written = merge_interpolated([human], [new])
+
+    assert written == 0
+    assert anns == [human]
+
+
+def test_merge_interpolated_replaces_stale_ai_rows():
+    stale = {"id": "a1", "classId": "c1", "trackId": "t1", "keyframe": False, "source": "sam3",
+             "shape": {"kind": "bbox", "x": 0.5, "y": 0.1, "w": 0.2, "h": 0.2}}
+    new = {"id": "a9", "classId": "c1", "trackId": "t1", "keyframe": False, "source": "interpolated",
+           "shape": {"kind": "bbox", "x": 0.2, "y": 0.1, "w": 0.2, "h": 0.2}}
+
+    anns, written = merge_interpolated([stale], [new])
+
+    assert written == 1
+    assert anns == [new]
+
+
 def test_video_constants():
     assert DEFAULT_SCENE_THRESHOLD == 0.35
     assert MAX_INTERPOLATION_SPAN == 240
@@ -227,7 +270,9 @@ def test_track_forward_segmentation_returns_polygons():
 
 @pytest.fixture(scope="module")
 def db_ready():
-    Base.metadata.create_all(engine)
+    # init_db(), not create_all(): the shared session DB must run the demo seed before this module
+    # inserts users, or later login-based modules find no demo@labeldesk.dev (review I6).
+    bootstrap.init_db()
     yield
 
 
@@ -283,18 +328,87 @@ def test_run_extract_frames_creates_images(db_ready):
         rows = db.query(Image).filter(Image.video_id == vid).order_by(Image.frame_index).all()
         assert [i.frame_index for i in rows] == [0, 10]
         assert all(i.batch_id == result["batch_id"] and i.project_id == v.project_id for i in rows)
+        assert all(i.assignee_id == u.id for i in rows)      # extracted frames belong to the uploader
+
+
+def test_demo_login_still_works_after_this_module_inserted_users(db_ready):
+    from fastapi.testclient import TestClient
+
+    from app.main import app as api_app
+
+    with TestClient(api_app) as client:
+        r = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"})
+        assert r.status_code == 200, r.text
+        assert r.json()["token"]
+
+
+def test_run_track_forward_stamps_the_seed_and_tracks_the_next_frame(db_ready):
+    d = DATA_DIR / "projects" / f"track-{new_id()}"
+    d.mkdir(parents=True, exist_ok=True)
+    for name in ("f0.jpg", "f1.jpg"):
+        PImage.new("RGB", (80, 60), (10, 20, 30)).save(d / name, "JPEG")
+    rel = d.relative_to(DATA_DIR).as_posix()
+
+    with SessionLocal() as db:
+        u = User(id=new_id(), email=f"{new_id()}@track.test", name="Track Tester")
+        db.add(u)
+        db.flush()
+        ws = Workspace(id=new_id(), slug=f"t{new_id()}", name="Track WS", owner_id=u.id)
+        db.add(ws)
+        db.flush()
+        p = Project(id=new_id(), workspace_id=ws.id, slug=f"t{new_id()}", name="Track Project")
+        db.add(p)
+        db.flush()
+        v = Video(project_id=p.id, workspace_id=ws.id, name="clip.avi", path="", status="ready")
+        db.add(v)
+        db.flush()
+        seed = Image(project_id=p.id, video_id=v.id, frame_index=0, name="f0.jpg", sha256="0" * 64, width=80,
+                     height=60, path=f"{rel}/f0.jpg", thumb=f"{rel}/f0.jpg", split="train", status="unassigned")
+        nxt = Image(project_id=p.id, video_id=v.id, frame_index=1, name="f1.jpg", sha256="1" * 64, width=80,
+                    height=60, path=f"{rel}/f1.jpg", thumb=f"{rel}/f1.jpg", split="train", status="unassigned")
+        db.add_all([seed, nxt])
+        db.flush()
+        set_annotations(db, seed, [{"id": "seed", "classId": "c1", "source": "human",
+                                    "shape": {"kind": "bbox", "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}}])
+        set_annotations(db, nxt, [])
+        j = Job(workspace_id=ws.id, project_id=p.id, kind="track_forward",
+                params={"image_id": seed.id, "annotation_id": "seed", "frames": 1, "created_by": u.id})
+        db.add(j)
+        db.commit()
+        jid, seed_id, nxt_id = j.id, seed.id, nxt.id
+
+    with SessionLocal() as db:
+        job = db.get(Job, jid)
+        db.expunge(job)
+    result = worker.run_track_forward(job)
+
+    assert result["tracked"] == 1
+    with SessionLocal() as db:
+        seed = db.get(Image, seed_id)
+        assert seed.annotations[0]["trackId"] == result["track_id"]     # the seed joins its own track
+        assert seed.annotations[0]["keyframe"] is True
+        target = db.get(Image, nxt_id)
+        assert [a["trackId"] for a in target.annotations] == [result["track_id"]]
 
 
 # --- tracked-annotation merge -------------------------------------------------------------
 
 def test_merge_track_replaces_interpolated_but_never_a_keyframe():
-    interpolated = {"id": "a1", "trackId": "t1", "keyframe": False}
-    other = {"id": "a2", "trackId": "t2", "keyframe": False}
+    interpolated = {"id": "a1", "trackId": "t1", "keyframe": False, "source": "interpolated"}
+    other = {"id": "a2", "trackId": "t2", "keyframe": False, "source": "sam3"}
     anns, written = track.merge_track([interpolated, other], {"id": "a3", "trackId": "t1"}, "t1")
 
     assert written is True
     assert [a["id"] for a in anns] == ["a2", "a3"]          # stale interpolation replaced, other tracked kept
 
-    keyframe = {"id": "a4", "trackId": "t1", "keyframe": True}
+    keyframe = {"id": "a4", "trackId": "t1", "keyframe": True, "source": "sam3"}
     anns, written = track.merge_track([keyframe], {"id": "a5", "trackId": "t1"}, "t1")
     assert written is False and anns == [keyframe]           # a human keyframe is never overwritten
+
+
+def test_merge_track_never_overwrites_a_human_edit_on_a_tracked_frame():
+    human = {"id": "a1", "trackId": "t1", "keyframe": False, "source": "human"}
+    anns, written = track.merge_track([human], {"id": "a2", "trackId": "t1"}, "t1")
+
+    assert written is False
+    assert anns == [human]

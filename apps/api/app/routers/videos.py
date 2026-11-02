@@ -13,6 +13,7 @@ from ..models import Image, Job, User, Video, new_id, set_annotations
 from ..security import sign_path
 from ..services import video as video_svc
 from ..services.video import MAX_INTERPOLATION_SPAN
+from .images import _assigned, _visible
 from .projects import job_out
 
 router = APIRouter(tags=["videos"])
@@ -92,7 +93,8 @@ def get_video(vid: str, c: Ctx = Depends(project_ctx)):
 def timeline(vid: str, from_index: int = Query(0, alias="from"), limit: int = Query(120, ge=1, le=500),
              c: Ctx = Depends(project_ctx)):
     v = _get_video(c, vid)
-    q = select(Image).where(Image.project_id == c.project.id, Image.video_id == v.id, Image.deleted_at.is_(None))
+    q = _visible(select(Image).where(Image.project_id == c.project.id, Image.video_id == v.id,
+                                     Image.deleted_at.is_(None)), c)
     total = c.db.scalar(select(func.count()).select_from(q.subquery()))
     rows = c.db.scalars(q.order_by(Image.frame_index.asc(), Image.id).offset(max(0, from_index))
                         .limit(limit)).all()
@@ -111,6 +113,7 @@ class InterpolateIn(BaseModel):
 
 @router.post(P + "/videos/{vid}/interpolate")
 def interpolate(vid: str, body: InterpolateIn, c: Ctx = Depends(project_ctx)):
+    c.need("reviewer")
     v = _get_video(c, vid)
     ids = [body.from_image_id, body.to_image_id]
     picked = {i.id: i for i in c.db.scalars(select(Image).where(
@@ -133,12 +136,34 @@ def interpolate(vid: str, body: InterpolateIn, c: Ctx = Depends(project_ctx)):
         Image.project_id == c.project.id, Image.video_id == v.id, Image.deleted_at.is_(None),
         Image.frame_index > a.frame_index, Image.frame_index < b.frame_index)
         .order_by(Image.frame_index.asc())).all()
-    tracks = ({x.get("trackId") for x in a.annotations or []}
-              & {x.get("trackId") for x in b.annotations or []}) - {None}
-    frames = [(a.frame_index, a.annotations or [])]
+    a_anns = list(a.annotations or [])
+    b_anns = list(b.annotations or [])
+    tracks = ({x.get("trackId") for x in a_anns} & {x.get("trackId") for x in b_anns}) - {None}
+    pairs = [] if tracks else video_svc.pair_tracks(a_anns, b_anns)
+    if not tracks and not pairs:
+        raise HTTPException(409, "no shared track between these frames — track an annotation first, "
+                                 "or put the same track id on both keyframes")
+    paired = {id(ann): track_id for start_ann, end_ann, track_id in pairs for ann in (start_ann, end_ann)}
+    tracks |= set(paired.values())
+
+    def keyframed(anns: list[dict]) -> list[dict]:
+        out = []
+        for x in anns:
+            y = dict(x)
+            if id(x) in paired:
+                y.update(trackId=paired[id(x)], keyframe=True)
+            elif y.get("trackId") in tracks:
+                y["keyframe"] = True
+            out.append(y)
+        return out
+
+    a_anns, b_anns = keyframed(a_anns), keyframed(b_anns)
+    frames = [(a.frame_index, a_anns)]
     frames += [(i.frame_index, i.annotations or []) for i in middle]
-    frames.append((b.frame_index, b.annotations or []))
+    frames.append((b.frame_index, b_anns))
     writes = video_svc.interpolate_tracks(frames, a.frame_index, b.frame_index)
+    if tracks and not writes and middle:
+        raise HTTPException(409, "no matching track between these frames")
 
     by_index = {i.frame_index: i for i in middle}
     written = 0
@@ -146,19 +171,11 @@ def interpolate(vid: str, body: InterpolateIn, c: Ctx = Depends(project_ctx)):
         img = by_index.get(index)
         if img is None:
             continue
-        current = list(img.annotations or [])
-        for new in new_anns:
-            slot = next((k for k, x in enumerate(current)
-                         if x.get("trackId") == new["trackId"] and not x.get("keyframe")), None)
-            if slot is None:
-                current.append(new)
-            else:
-                current[slot] = new
+        current, added = video_svc.merge_interpolated(img.annotations or [], new_anns)
         set_annotations(c.db, img, current)
-        written += len(new_anns)
+        written += added
 
-    for endpoint in (a, b):                       # the two edited frames are the keyframes
-        anns = [{**x, "keyframe": True} if x.get("trackId") in tracks else x for x in endpoint.annotations or []]
+    for endpoint, anns in ((a, a_anns), (b, b_anns)):     # the two edited frames are the keyframes
         set_annotations(c.db, endpoint, anns)
     c.db.commit()
     return {"frames": len(middle), "annotations": written}
@@ -171,7 +188,7 @@ class TrackIn(BaseModel):
 
 @router.post("/api/images/{image_id}/track-forward")
 def track_forward(image_id: str, body: TrackIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
-    c, img = image_ctx(db, u, image_id)
+    c, img = _assigned(*image_ctx(db, u, image_id))
     if not img.video_id:
         raise HTTPException(400, "this image is not part of a video")
     if not any(a.get("id") == body.annotation_id for a in img.annotations or []):

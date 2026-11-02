@@ -483,7 +483,9 @@ export default function Editor() {
   }
   const editShape = (id: string, shape: Shape) => {
     if (locked.has(id)) return lockedMsg()
-    push(anns.map((a) => (a.id === id ? { ...a, shape, source: 'human' } : a)), 'Edit annotation')
+    // A hand edit to a tracked box becomes a keyframe: interpolation/tracking never overwrites it.
+    push(anns.map((a) => (a.id === id ? { ...a, shape, source: 'human', ...(a.trackId ? { keyframe: true } : {}) } : a)),
+      'Edit annotation')
   }
   /** Click-only alternative to two-click drawing (WCAG 2.5.7). */
   const addCentredBox = () => {

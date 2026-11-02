@@ -191,7 +191,12 @@ export default function VideoTimeline() {
     if (!videoId || !mark.start || !mark.end) return
     setInterpolating(true)
     api.interpolate(ws, project.slug, videoId, mark.start, mark.end)
-      .then((r) => { toast.ok(`${r.frames} frames · ${r.annotations} annotations`); setMark({}); invalidate() })
+      .then((r) => {
+        toast.ok(r.annotations ? `${r.frames} frames · ${r.annotations} annotations`
+          : 'Nothing written — those frames already hold human edits')
+        setMark({})
+        invalidate()
+      })
       .catch((e) => toast.err(e as Error))
       .finally(() => setInterpolating(false))
   }

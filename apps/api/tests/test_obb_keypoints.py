@@ -60,6 +60,72 @@ def test_bbox_of_handles_obb_and_keypoints():
     assert imaging.bbox_of(kps) == pytest.approx((0.1, 0.2, 0.4, 0.4))
 
 
+class _FirstRng:
+    """Deterministic rng for augment(): the first random() draws decide each op, uniform returns its low end."""
+
+    def __init__(self, *vals):
+        self.vals = list(vals)
+
+    def random(self):
+        return self.vals.pop(0) if self.vals else 0.0
+
+    def uniform(self, a, b):
+        return a
+
+
+def test_obb_survives_letterbox_fit_on_a_non_square_image():
+    im = PImage.new("RGB", (500, 1000))
+    ann = _ann({"kind": "obb", "cx": 0.5, "cy": 0.5, "w": 0.4, "h": 0.2, "angle": 0.0})
+
+    out, anns = imaging.preprocess(im, [ann], {"resize": {"width": 640, "height": 640, "mode": "fit"}})
+
+    s = anns[0]["shape"]
+    assert out.size == (640, 640)
+    assert s["cx"] == pytest.approx(0.5) and s["cy"] == pytest.approx(0.5)
+    assert s["w"] == pytest.approx(0.2)          # 200 px wide * 0.64 scale / 640
+    assert s["h"] == pytest.approx(0.2)          # 200 px tall * 0.64 scale / 640
+    assert s["angle"] == pytest.approx(0.0)
+
+
+def test_obb_angle_mirrors_with_flip_h():
+    im = PImage.new("RGB", (200, 100))
+    ann = _ann({"kind": "obb", "cx": 0.5, "cy": 0.5, "w": 0.4, "h": 0.2, "angle": math.radians(30)})
+
+    _, anns = imaging.augment(im, [ann], {"flip_h": True}, _FirstRng(0.0))
+
+    s = anns[0]["shape"]
+    assert s["cx"] == pytest.approx(0.5) and s["cy"] == pytest.approx(0.5)
+    assert s["w"] == pytest.approx(0.4) and s["h"] == pytest.approx(0.2)
+    assert _angle_diff(s["angle"], math.pi - math.radians(30)) < TOL
+
+
+def test_obb_axes_swap_with_rotate90():
+    im = PImage.new("RGB", (200, 100))
+    ann = _ann({"kind": "obb", "cx": 0.5, "cy": 0.5, "w": 0.4, "h": 0.2, "angle": 0.0})
+
+    out, anns = imaging.augment(im, [ann], {"rotate90": True}, _FirstRng(0.0, 0.0))   # clockwise
+
+    s = anns[0]["shape"]
+    assert out.size == (100, 200)
+    assert s["cx"] == pytest.approx(0.5) and s["cy"] == pytest.approx(0.5)
+    assert s["w"] == pytest.approx(0.8)          # 80 px long edge on the new 100 px width
+    assert s["h"] == pytest.approx(0.1)          # 20 px short edge on the new 200 px height
+    assert _angle_diff(s["angle"], math.pi / 2) < TOL
+
+
+def test_obb_corners_are_clipped_to_the_canvas():
+    im = PImage.new("RGB", (200, 200))
+    ann = _ann({"kind": "obb", "cx": 0.9, "cy": 0.5, "w": 0.4, "h": 0.2, "angle": 0.0})
+
+    _, anns = imaging.augment(im, [ann], {"brightness": 1}, _FirstRng())
+
+    s = anns[0]["shape"]
+    assert s["cx"] == pytest.approx(0.85)        # 60 px box hugging the right edge
+    assert s["w"] == pytest.approx(0.3)
+    for x, y in imaging.obb_corners(s, 200, 200):
+        assert -TOL <= x <= 200 + TOL and -TOL <= y <= 200 + TOL
+
+
 # --- shape validation -------------------------------------------------------------------------
 
 def test_check_ann_accepts_obb_and_keypoints_with_tracking():
@@ -124,6 +190,34 @@ def test_new_formats_registered():
     assert "keypoint-detection" in exporters.FORMATS["coco_keypoints"]["tasks"]
     assert exporters.EXPORTERS["yolo_obb"] is exporters.export_yolo_obb
     assert exporters.EXPORTERS["coco_keypoints"] is exporters.export_coco_keypoints
+
+
+def test_yolo_obb_import_infers_the_task_from_eight_value_lines():
+    files = [("data.yaml", b"names: ['car']\n"),
+             ("images/a.jpg", b"x"),
+             ("labels/a.txt", b"0 0.6 0.3 0.7 0.3 0.7 0.5 0.6 0.5\n")]
+
+    bundle = importers.collect(files)
+
+    assert bundle.task == "obb"
+    got = importers.annotations_for(bundle, "images/a.jpg", 200, 100)
+    assert [name for name, _ in got] == ["car"]
+    shape = got[0][1]
+    assert shape["kind"] == "obb"
+    assert shape["cx"] == pytest.approx(0.65, abs=TOL)
+    assert shape["w"] == pytest.approx(0.1, abs=TOL)
+    assert abs(math.sin(shape["angle"])) < TOL            # horizontal top edge
+
+
+def test_yolo_polygon_import_keeps_an_explicit_task():
+    files = [("data.yaml", b"task: segment\nnames: ['car']\n"),
+             ("images/a.jpg", b"x"),
+             ("labels/a.txt", b"0 0.6 0.3 0.7 0.3 0.7 0.5 0.6 0.5\n")]
+
+    bundle = importers.collect(files)
+
+    assert bundle.task == "segment"
+    assert importers.annotations_for(bundle, "images/a.jpg", 200, 100)[0][1]["kind"] == "polygon"
 
 
 def test_yolo_obb_roundtrip(tmp_path):

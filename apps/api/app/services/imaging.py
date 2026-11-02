@@ -55,8 +55,32 @@ def obb_corners(s: dict, W: float = 1.0, H: float = 1.0) -> list[tuple[float, fl
             for dx, dy in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))]
 
 
-def _map_points(ann: dict, fn) -> dict:
-    """Apply fn(x, y) -> (x, y) to an annotation's geometry; bbox re-fit from corners."""
+def _wrap_angle(angle: float) -> float:
+    """Wrap into [-pi, pi), the convention interpolation uses."""
+    return (angle + math.pi) % (2 * math.pi) - math.pi
+
+
+def _obb_from_corners(pts: list[tuple[float, float]], W: float = 1.0, H: float = 1.0) -> dict | None:
+    """Rebuild a normalized obb from four pixel-space corners (clockwise from the long-edge start)."""
+    if len(pts) != 4 or W <= 0 or H <= 0:
+        return None
+    cx = sum(p[0] for p in pts) / 4
+    cy = sum(p[1] for p in pts) / 4
+    w = math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
+    h = math.hypot(pts[2][0] - pts[1][0], pts[2][1] - pts[1][1])
+    if w <= 1e-9 or h <= 1e-9:
+        return None
+    angle = math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])
+    return {"kind": "obb", "cx": cx / W, "cy": cy / H, "w": w / W, "h": h / H, "angle": _wrap_angle(angle)}
+
+
+def _map_points(ann: dict, fn, W: float = 1.0, H: float = 1.0, NW: float = 1.0, NH: float = 1.0) -> dict:
+    """Apply fn(x, y) -> (x, y) in normalized coordinates to an annotation's geometry.
+
+    An OBB is rebuilt from its four pixel-space corners, so letterbox scaling, flips and 90°
+    transposes keep its size and angle correct on non-square images (W/H is the source image,
+    NW/NH the destination).
+    """
     a = copy.deepcopy(ann)
     s = a["shape"]
     if s["kind"] == "bbox":
@@ -69,8 +93,12 @@ def _map_points(ann: dict, fn) -> dict:
         for i in range(0, len(pts) - 1, 2):
             out.extend(fn(pts[i], pts[i + 1]))
         s["points"] = out
-    elif s["kind"] == "obb":                       # centre follows the transform; shape and angle stay
-        s["cx"], s["cy"] = fn(s["cx"], s["cy"])
+    elif s["kind"] == "obb":
+        corners = [(x / W, y / H) for x, y in obb_corners(s, W, H)]
+        mapped = [fn(x, y) for x, y in corners]
+        rebuilt = _obb_from_corners([(x * NW, y * NH) for x, y in mapped], NW, NH)
+        if rebuilt is not None:
+            s.update({k: rebuilt[k] for k in ("cx", "cy", "w", "h", "angle")})
     elif s["kind"] == "keypoints":
         pts = s["points"]
         out = []
@@ -81,7 +109,7 @@ def _map_points(ann: dict, fn) -> dict:
     return a
 
 
-def _clip(ann: dict) -> dict | None:
+def _clip(ann: dict, W: float = 1.0, H: float = 1.0) -> dict | None:
     s = ann["shape"]
     if s["kind"] == "bbox":
         x1, y1 = max(0.0, s["x"]), max(0.0, s["y"])
@@ -94,7 +122,11 @@ def _clip(ann: dict) -> dict | None:
     elif s["kind"] == "obb":
         if s["w"] <= 0 or s["h"] <= 0:
             return None
-        s["cx"], s["cy"] = min(1.0, max(0.0, s["cx"])), min(1.0, max(0.0, s["cy"]))
+        corners = [(min(W, max(0.0, x)), min(H, max(0.0, y))) for x, y in obb_corners(s, W, H)]
+        rebuilt = _obb_from_corners(corners, W, H)
+        if rebuilt is None:
+            return None
+        s.update({k: rebuilt[k] for k in ("cx", "cy", "w", "h", "angle")})
     elif s["kind"] == "keypoints":
         pts = s["points"]
         for i in range(0, len(pts) - 2, 3):
@@ -134,13 +166,14 @@ def preprocess(im: PImage.Image, anns: list[dict], cfg: dict) -> tuple[PImage.Im
         W, H = int(rs["width"]), int(rs["height"])
         mode = rs.get("mode", "stretch")
         if mode == "fit":                      # letterbox: keep aspect, pad black
+            src_w, src_h = im.size
             scale = min(W / im.width, H / im.height)
             nw, nh = round(im.width * scale), round(im.height * scale)
             canvas = PImage.new("RGB", (W, H))
             ox, oy = (W - nw) // 2, (H - nh) // 2
             canvas.paste(im.resize((nw, nh)), (ox, oy))
             fx, fy, bx, by = nw / W, nh / H, ox / W, oy / H
-            anns = [_map_points(a, lambda x, y: (bx + x * fx, by + y * fy)) for a in anns]
+            anns = [_map_points(a, lambda x, y: (bx + x * fx, by + y * fy), src_w, src_h, W, H) for a in anns]
             im = canvas
         else:                                   # stretch: normalized coords unchanged
             im = im.resize((W, H))
@@ -155,18 +188,21 @@ def preprocess(im: PImage.Image, anns: list[dict], cfg: dict) -> tuple[PImage.Im
 
 def augment(im: PImage.Image, anns: list[dict], cfg: dict, rng: random.Random) -> tuple[PImage.Image, list[dict]]:
     if cfg.get("flip_h") and rng.random() < 0.5:
+        W, H = im.size
         im = ImageOps.mirror(im)
-        anns = [_map_points(a, lambda x, y: (1 - x, y)) for a in anns]
+        anns = [_map_points(a, lambda x, y: (1 - x, y), W, H, W, H) for a in anns]
     if cfg.get("flip_v") and rng.random() < 0.5:
+        W, H = im.size
         im = ImageOps.flip(im)
-        anns = [_map_points(a, lambda x, y: (x, 1 - y)) for a in anns]
+        anns = [_map_points(a, lambda x, y: (x, 1 - y), W, H, W, H) for a in anns]
     if cfg.get("rotate90") and rng.random() < 0.5:
+        W, H = im.size
         if rng.random() < 0.5:              # 90° clockwise
             im = im.transpose(PImage.Transpose.ROTATE_270)
-            anns = [_map_points(a, lambda x, y: (1 - y, x)) for a in anns]
+            anns = [_map_points(a, lambda x, y: (1 - y, x), W, H, H, W) for a in anns]
         else:                               # 90° counter-clockwise
             im = im.transpose(PImage.Transpose.ROTATE_90)
-            anns = [_map_points(a, lambda x, y: (y, 1 - x)) for a in anns]
+            anns = [_map_points(a, lambda x, y: (y, 1 - x), W, H, H, W) for a in anns]
     deg = float(cfg.get("rotation") or 0)
     if deg:
         d = rng.uniform(-deg, deg)
@@ -178,7 +214,7 @@ def augment(im: PImage.Image, anns: list[dict], cfg: dict, rng: random.Random) -
         def rot(x, y):
             px, py = x * W - W / 2, y * H - H / 2
             return ((px * c + py * s_) + W / 2) / W, ((-px * s_ + py * c) + H / 2) / H
-        anns = [_map_points(a, rot) for a in anns]
+        anns = [_map_points(a, rot, W, H, W, H) for a in anns]
     b = float(cfg.get("brightness") or 0)
     if b:
         im = ImageEnhance.Brightness(im).enhance(1 + rng.uniform(-b, b) / 100)
@@ -201,7 +237,7 @@ def augment(im: PImage.Image, anns: list[dict], cfg: dict, rng: random.Random) -
         mask = np.random.default_rng(rng.randint(0, 2**31)).random(arr.shape[:2]) < (n / 100)
         arr[mask] = np.random.default_rng(rng.randint(0, 2**31)).integers(0, 256, (int(mask.sum()), 3))
         im = PImage.fromarray(arr.clip(0, 255).astype("uint8"))
-    return im, [c for c in (_clip(a) for a in anns) if c]
+    return im, [c for c in (_clip(a, im.width, im.height) for a in anns) if c]
 
 
 def ext_ok(name: str) -> bool:

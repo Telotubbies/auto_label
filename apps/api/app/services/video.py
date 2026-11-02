@@ -157,6 +157,51 @@ def _new_ann_id() -> str:
     return "a" + new_id()
 
 
+def pair_tracks(start: list[dict], end: list[dict]) -> list[tuple[dict, dict, str]]:
+    """Pair untracked annotations drawn on two keyframes, one per class and shape kind.
+
+    Returns [(start_ann, end_ann, track_id)]. Ambiguous groups (two boxes of the same class on
+    either endpoint) are left alone: guessing the wrong object is worse than asking for a track.
+    """
+    def groups(anns: list[dict]) -> dict[tuple, list[dict]]:
+        out: dict[tuple, list[dict]] = {}
+        for a in anns or []:
+            if a.get("trackId"):
+                continue
+            key = (a.get("classId"), (a.get("shape") or {}).get("kind"))
+            out.setdefault(key, []).append(a)
+        return out
+
+    a_groups, b_groups = groups(start), groups(end)
+    pairs: list[tuple[dict, dict, str]] = []
+    for key in a_groups.keys() & b_groups.keys():
+        if len(a_groups[key]) == 1 and len(b_groups[key]) == 1:
+            pairs.append((a_groups[key][0], b_groups[key][0], "t" + _new_ann_id()[1:]))
+    return pairs
+
+
+def merge_interpolated(annotations: list[dict], new_anns: list[dict]) -> tuple[list[dict], int]:
+    """Write interpolated rows, replacing stale AI rows for the same track.
+
+    A keyframe or a human edit already on the frame is a barrier: the frame keeps the user's work.
+    Returns (annotations, number written).
+    """
+    current = list(annotations or [])
+    written = 0
+    for new in new_anns:
+        track_id = new.get("trackId")
+        if any(a.get("trackId") == track_id and (a.get("keyframe") or a.get("source") not in ("interpolated", "sam3"))
+               for a in current):
+            continue
+        slot = next((k for k, x in enumerate(current) if x.get("trackId") == track_id and not x.get("keyframe")), None)
+        if slot is None:
+            current.append(new)
+        else:
+            current[slot] = new
+        written += 1
+    return current, written
+
+
 def interpolate_tracks(frames: list[tuple[int, list[dict]]], from_index: int, to_index: int,
                        interpolate=interpolate_shape) -> dict[int, list[dict]]:
     """Interpolated annotations for the frames strictly between two keyframes.

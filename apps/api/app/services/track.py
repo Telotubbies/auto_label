@@ -89,12 +89,13 @@ def _polygon_box(points: list[float]) -> tuple[float, float, float, float] | Non
 
 
 def merge_track(annotations: list[dict], new_ann: dict, track_id: str) -> tuple[list[dict], bool]:
-    """Add one tracked annotation, replacing an interpolated one on that frame.
+    """Add one tracked annotation, replacing an interpolated/SAM row on that frame.
 
-    A keyframe the user edited wins: the frame is left untouched. Returns (annotations, written).
+    A keyframe or a human edit wins: the frame is left untouched. Returns (annotations, written).
     """
     anns = list(annotations or [])
-    if any(a.get("trackId") == track_id and a.get("keyframe") for a in anns):
+    if any(a.get("trackId") == track_id and (a.get("keyframe") or a.get("source") not in ("interpolated", "sam3"))
+           for a in anns):
         return anns, False
     anns = [a for a in anns if not (a.get("trackId") == track_id and not a.get("keyframe"))]
     anns.append(new_ann)
