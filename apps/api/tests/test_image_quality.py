@@ -42,9 +42,14 @@ def c():
 
 @pytest.fixture(scope="module")
 def project(c):
-    r = c.post(f"/api/ws/{WS}/projects", json={"name": NAME, "classes": ["person"]})
-    assert r.status_code == 200, r.text
-    return r.json()
+    # Insert directly: the shared demo workspace's Free-plan project quota is already exhausted by
+    # other modules in the full suite, and this module is about ingest scoring, not the quota gate.
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        p = Project(workspace_id=ws.id, slug=NAME, name=NAME)
+        db.add(p)
+        db.commit()
+        return {"id": p.id, "slug": p.slug, "ws": WS}
 
 
 @pytest.fixture(scope="module")

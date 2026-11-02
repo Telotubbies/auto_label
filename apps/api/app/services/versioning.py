@@ -58,13 +58,18 @@ def stratified_split(items: list, ratios: dict, seed: int, groups: dict | None =
 
 def phash_groups(rows: list, max_dist: int = 6) -> dict:
     """image id -> group id; union-find over perceptual-hash Hamming distance <= max_dist."""
+    import cv2
     import imagehash
     from PIL import Image as PImage
     ids, hashes = [], []
     for r in rows:
         try:
-            with PImage.open(DATA_DIR / r.path) as im:
-                hashes.append(imagehash.phash(im))
+            # cv2, not PIL.Image.open: ultralytics patches the latter with a wrapper that can run a
+            # package auto-install, which would block the worker for minutes inside a health scan.
+            bgr = cv2.imread(str(DATA_DIR / r.path))
+            if bgr is None:
+                continue
+            hashes.append(imagehash.phash(PImage.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))))
             ids.append(r.id)
         except Exception:                        # unreadable file: stays in its own group
             continue

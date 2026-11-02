@@ -105,6 +105,8 @@ def _init_db():
     _backfill_storage()
     if _should_seed():
         seed()
+        from .seed_v2 import seed_demo_v2
+        seed_demo_v2()
 
 
 def _should_seed() -> bool:
