@@ -71,8 +71,7 @@ function AliasCard({ ws, project, aliasName, alias }: {
 }) {
   const qc = useQueryClient()
   // Promote and roll back follow the project's effective permissions, not the workspace rank (I10).
-  const { can } = useProjectPermissions(ws, project.slug)
-  const canManage = can('project.models')
+  const { isManager } = useProjectPermissions(ws, project.slug)
   // model_status is null when the alias points at a deleted model, so that id is not offerable.
   const currentId = alias?.model_status ? alias.model_id : null
   const [modelId, setModelId] = useState(currentId ?? project.ready_models[0]?.id ?? '')
@@ -120,22 +119,22 @@ function AliasCard({ ws, project, aliasName, alias }: {
         ) : alias?.model_id ? 'No deployment time recorded.' : 'Promote a ready model to start serving this alias.'}
       </p>
 
-      <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (modelId && !pending && canManage) deploy.mutate(modelId) }}>
+      <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (modelId && !pending && isManager) deploy.mutate(modelId) }}>
         <label className="min-w-0 flex-1" htmlFor={selectId}>
           <span className="mb-1 block text-xs text-muted-foreground">Model for {aliasName}</span>
-          <Select id={selectId} className="w-full" value={modelId} disabled={!options.length || pending || !canManage}
+          <Select id={selectId} className="w-full" value={modelId} disabled={!options.length || pending || !isManager}
             onChange={(e) => setModelId(e.target.value)}>
             <option value="" disabled>Choose a model</option>
             {options.map((m) => <option key={m.id} value={m.id}>{m.name}{m.arch ? ` · ${m.arch}` : ''}</option>)}
           </Select>
         </label>
-        <Button type="submit" size="sm" disabled={!modelId || !options.length || pending || !canManage} aria-busy={deploy.isPending}>
+        <Button type="submit" size="sm" disabled={!modelId || !options.length || pending || !isManager} aria-busy={deploy.isPending}>
           {deploy.isPending ? 'Deploying…' : 'Deploy'}
         </Button>
       </form>
       {!options.length && <p className="mt-1.5 text-xs text-muted-foreground">Train a model in this project to deploy it.</p>}
 
-      {alias?.previous_model_id && canManage && (
+      {alias?.previous_model_id && isManager && (
         <Button variant="outline" size="sm" className="mt-2 max-w-full" disabled={pending} aria-busy={rollback.isPending}
           title={`Roll ${aliasName} back to ${alias.previous_model_name ?? 'the previous model'}`}
           onClick={() => rollback.mutate()}>

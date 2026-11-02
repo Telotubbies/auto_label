@@ -141,8 +141,7 @@ export default function Models() {
   const [sp, setSp] = useSearchParams()
   const nav = useNavigate()
   const qc = useQueryClient()
-  const { can } = useProjectPermissions(ws, project.slug)
-  const canManage = can('project.models')
+  const { can, isManager } = useProjectPermissions(ws, project.slug)
   const [tab, setTab] = useState('evaluation')
 
   const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug),
@@ -206,10 +205,10 @@ export default function Models() {
           <Button variant="outline" disabled={!sel} onClick={() => nav(sel ? `../model-insights?model=${sel.id}` : '../model-insights')}>
             <ChartLine className="h-4 w-4" /> Open Insights
           </Button>
-          {canManage && <Button onClick={() => nav('../train')}>Train new model</Button>}
+          {can('project.train') && <Button onClick={() => nav('../train')}>Train new model</Button>}
         </div>
       } />
-      {models.isSuccess && !list.length ? <EmptyState icon={<Boxes className="h-8 w-8 text-muted-foreground/50" />} title="No models yet." action={canManage && <Button size="sm" onClick={() => nav('../train')}>Train your first model</Button>} /> : (
+      {models.isSuccess && !list.length ? <EmptyState icon={<Boxes className="h-8 w-8 text-muted-foreground/50" />} title="No models yet." action={can('project.train') && <Button size="sm" onClick={() => nav('../train')}>Train your first model</Button>} /> : (
         <div className="flex flex-col gap-6 px-4 pb-10 md:flex-row md:px-8">
           <div className="w-full space-y-1.5 md:w-64 md:shrink-0 md:max-h-[calc(100vh_-_10rem)] md:overflow-y-auto">
             {list.map((x) => (
@@ -237,13 +236,13 @@ export default function Models() {
                     </span>
                   )}
                   {engine && <Badge className="gap-1 border border-primary/30 bg-primary/10 text-primary"><Zap className="h-3 w-3" /> TensorRT engine</Badge>}
-                  {canManage && m.status === 'ready' && (
+                  {isManager && m.status === 'ready' && (
                     <Button variant="outline" disabled={buildingEngine} onClick={exportEngine}>
                       <Zap className="h-4 w-4" /> {buildingEngine ? `Building engine… ${Math.round(engineJob?.progress ?? 0)}%` : engine ? 'Rebuild engine' : 'Export TensorRT'}
                     </Button>
                   )}
-                  {['queued', 'training'].includes(m.status) && m.jobId && canManage && <Button variant="outline" onClick={() => post(`${api.P(ws, project.slug)}/jobs/${m.jobId}/cancel`).then(() => toast.ok('Stopping after this epoch')).catch(toast.err)}><X className="h-4 w-4" /> Stop</Button>}
-                  {canManage && <Button variant="ghost" size="icon" aria-label="Delete model" onClick={() => confirm('Delete this model?') && del(`${api.P(ws, project.slug)}/models/${m.id}`).then(() => qc.invalidateQueries({ queryKey: ['models', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
+                  {['queued', 'training'].includes(m.status) && m.jobId && can('project.review') && <Button variant="outline" onClick={() => post(`${api.P(ws, project.slug)}/jobs/${m.jobId}/cancel`).then(() => toast.ok('Stopping after this epoch')).catch(toast.err)}><X className="h-4 w-4" /> Stop</Button>}
+                  {isManager && <Button variant="ghost" size="icon" aria-label="Delete model" onClick={() => confirm('Delete this model?') && del(`${api.P(ws, project.slug)}/models/${m.id}`).then(() => qc.invalidateQueries({ queryKey: ['models', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
                 </div>
               </div>
 
