@@ -138,7 +138,7 @@ function PrivacyRow({ ws, project }: { ws: string; project: WorkspacePrivacyProj
       <td className="min-w-56 px-4 py-3">
         <fieldset disabled={!canEdit} className={`m-0 min-w-0 border-0 p-0 ${canEdit ? '' : 'opacity-60'}`}>
           <div className="flex items-center gap-2">
-            <Switch label={`Blur faces in ${project.name}`} checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
+            <Switch label={`Blur faces in uploaded images and video frames of ${project.name}`} checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
             <span className="text-xs text-muted-foreground">Blur faces {v.face_blur ? 'on' : 'off'}</span>
           </div>
           <div className="mt-2 flex items-center gap-2">
@@ -343,10 +343,10 @@ export function ProjectPrivacySection({ ws, project, canEdit }: { ws: string; pr
         <fieldset disabled={!canEdit} className={`m-0 min-w-0 space-y-4 border-0 p-0 ${canEdit ? '' : 'opacity-60'}`}>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">Blur faces before stream frames enter a dataset</div>
-              <p className="text-xs text-muted-foreground">Faces are blurred as stream frames are saved into datasets, so training data never contains identifiable faces. On by default.</p>
+              <div className="text-sm font-medium">Blur faces in uploaded images and video frames</div>
+              <p className="text-xs text-muted-foreground">Faces are blurred as uploaded images, connector imports and video frames are saved into datasets, so training data never contains identifiable faces. On by default.</p>
             </div>
-            <Switch label="Blur faces before stream frames enter a dataset" checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
+            <Switch label="Blur faces in uploaded images and video frames" checked={v.face_blur} onChange={(face_blur) => setDraft({ ...v, face_blur })} />
           </div>
           <div className="flex items-start justify-between gap-4">
             <div>

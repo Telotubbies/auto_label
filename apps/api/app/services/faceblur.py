@@ -1,8 +1,9 @@
-"""Face anonymisation for CCTV frames before they enter a dataset (PDPA: faces are personal data).
+"""Face anonymisation for images and video frames before they enter a dataset (PDPA: faces are personal data).
 
 CPU only: an OpenCV Haar cascade detects frontal faces; PIL blurs a padded square around each face.
 The detector is injectable so tests never need the cascade file. Unavailable OpenCV or a missing
-cascade degrades to "no faces found" and is logged once — a broken blur must never stop an upload.
+cascade degrades to "no faces found" here; callers that promise anonymisation check ``available()``
+first and fail closed (upload/connector ingest and video frame extraction).
 """
 
 import logging
@@ -30,7 +31,7 @@ def _cascade():
             raise RuntimeError("cascade file could not be loaded")
         return classifier
     except Exception:  # no cv2, no cv2.data, corrupt install — degrade, never raise
-        log.warning("face detection unavailable; stream frames will not be blurred")
+        log.warning("face detection unavailable; callers that promise anonymisation must fail closed")
         return None
 
 

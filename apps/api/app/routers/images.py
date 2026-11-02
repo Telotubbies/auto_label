@@ -77,6 +77,9 @@ def check(body: HashesIn, c: Ctx = Depends(project_ctx)):
 def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str, split: str, tags: list[str],
            source: str = "upload", to_dataset: bool = True, user_id: str | None = None) -> dict:
     p = c.project
+    if p.face_blur and not faceblur.available():
+        # PDPA: a project that promises anonymisation must not store raw faces when the detector is missing.
+        raise HTTPException(503, "face blur is enabled but the face detector is unavailable")
     try:
         bundle = importers.collect(files)
     except importers.ImportError_ as e:
@@ -115,7 +118,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
         except Exception:
             failed.append({"name": safe_name(path), "reason": "unreadable image"})
             continue
-        if source == "stream" and p.face_blur:      # PDPA: face blur before stream frames reach a dataset
+        if p.face_blur:                             # PDPA: blur every source before the bytes reach a dataset
             im, _ = faceblur.blur_faces(im)
         img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, name=safe_name(path), sha256=h, width=im.width,
                     height=im.height, size=len(data), path="", thumb="", tags=list(tags))
