@@ -137,8 +137,8 @@ function VersionDetail({ v }: { v: Version }) {
       </div>
       {v.status !== 'ready' && (
         <Card className="p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm"><StatusPill status={v.status} /> {v.job?.status === 'failed' ? v.job.error : 'Processing images…'}</div>
-          {v.status !== 'failed' && <Progress value={v.job?.progress ?? 0} />}
+          <div className="mb-2 flex items-center gap-2 text-sm"><StatusPill status={v.status} /> {v.job?.status === 'failed' ? v.job.error : v.status === 'cancelled' ? 'Build cancelled' : 'Processing images…'}</div>
+          {v.status !== 'failed' && v.status !== 'cancelled' && <Progress value={v.job?.progress ?? 0} />}
         </Card>
       )}
       {v.status === 'ready' && (

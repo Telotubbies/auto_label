@@ -172,8 +172,11 @@ def run_version(job: Job):
         v = db.get(Version, job.params["version_id"])
         v.status = "generating"; db.commit()
         try:
-            stats = versioning.generate(db, v, lambda f: _set(job.id, progress=round(f * 100, 1)))
+            stats = versioning.generate(db, v, lambda f: _set(job.id, progress=round(f * 100, 1)),
+                                        should_stop=lambda: _cancelled(job.id))
             v.status, v.stats = "ready", stats
+        except Cancelled:
+            v.status = "cancelled"; db.commit(); raise      # I22: no ready version after a cancel
         except Exception:
             v.status = "failed"; db.commit(); raise
         db.commit()
@@ -187,8 +190,12 @@ def run_export(job: Job):
         v = db.get(Version, job.params["version_id"])
         fmt = job.params["format"]
         out = DATA_DIR / "exports" / v.id / fmt
-        z = exporters.export(fmt, versioning.version_dir(v), out)
-        import shutil
+        try:
+            z = exporters.export(fmt, versioning.version_dir(v), out,
+                                 should_stop=lambda: _cancelled(job.id))
+        except Cancelled:
+            shutil.rmtree(out, ignore_errors=True)
+            raise
         shutil.rmtree(out, ignore_errors=True)
         return {"version_id": v.id, "format": fmt, "file": z.relative_to(DATA_DIR).as_posix(), "bytes": z.stat().st_size}
 
@@ -213,6 +220,9 @@ def run_export_engine(job: Job):
     _set(job.id, progress=10.0)
     with scheduler.exclusive(f"engine export {variant}"):         # the build owns the whole card
         out = build(str(src), "engine", half=True, dest=dest)
+    if _cancelled(job.id):                                        # I22: never register a cancelled build
+        Path(dest).unlink(missing_ok=True)
+        raise Cancelled("engine build cancelled")
     rel = out.relative_to(DATA_DIR).as_posix()
     with SessionLocal() as db:                                    # fresh row: the build ran for minutes
         tm = db.get(TrainedModel, mid)

@@ -91,7 +91,7 @@ export interface Job {
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
 export interface Version {
-  id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed'
+  id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled'
   stats: { images?: number; source_images?: number; splits?: Record<string, number>; classes?: Record<string, number>; class_names?: string[] }
   created: number; job: Job | null; exports: Record<string, Job & { url: string | null }>
 }

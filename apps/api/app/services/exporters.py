@@ -13,8 +13,9 @@ import uuid
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from .imaging import bbox_of, obb_corners
+from ..adapters.base import Cancelled
 from ..naming import path_segment
+from .imaging import bbox_of, obb_corners
 
 FORMATS = {
     "coco":            {"label": "COCO JSON",             "tasks": ["object-detection", "instance-segmentation"]},
@@ -27,6 +28,12 @@ FORMATS = {
     "folder":          {"label": "Folder Structure",       "tasks": ["classification"]},
     "multiclass_csv":  {"label": "Multi-Label Classification CSV", "tasks": ["classification"]},
 }
+
+
+def _check_stop(should_stop) -> None:
+    """Stop between items; the caller cleans the partial directory (I22)."""
+    if should_stop and should_stop():
+        raise Cancelled("export cancelled")
 
 
 def _copy(src_root: Path, out: Path, item: dict, sub: str = "images") -> Path:
@@ -71,7 +78,7 @@ def _yolo_yaml(m: dict, out: Path, task: str = ""):
     (out / "data.yaml").write_text("\n".join(yaml) + "\n")
 
 
-def export_coco(m: dict, src: Path, out: Path):
+def export_coco(m: dict, src: Path, out: Path, should_stop=None):
     cats = [{"id": i, "name": n, "supercategory": "none"} for i, n in enumerate(m["classes"])]
     for split in ("train", "valid", "test"):
         items = [it for it in m["items"] if it["split"] == split]
@@ -79,6 +86,7 @@ def export_coco(m: dict, src: Path, out: Path):
             continue
         imgs, anns, aid = [], [], 0
         for iid, it in enumerate(items):
+            _check_stop(should_stop)
             _copy(src, out, it, sub="")
             W, H = it["width"], it["height"]
             imgs.append({"id": iid, "file_name": Path(it["file"]).name, "width": W, "height": H})
@@ -96,9 +104,10 @@ def export_coco(m: dict, src: Path, out: Path):
             {"info": {"description": "LabelDesk export"}, "images": imgs, "annotations": anns, "categories": cats}))
 
 
-def export_yolo(m: dict, src: Path, out: Path):
+def export_yolo(m: dict, src: Path, out: Path, should_stop=None):
     seg = m["type"] == "instance-segmentation"
     for it in m["items"]:
+        _check_stop(should_stop)
         img = _copy(src, out, it)
         lines = []
         for a in it["anns"]:
@@ -116,8 +125,9 @@ def export_yolo(m: dict, src: Path, out: Path):
     _yolo_yaml(m, out)
 
 
-def export_yolo_obb(m: dict, src: Path, out: Path):
+def export_yolo_obb(m: dict, src: Path, out: Path, should_stop=None):
     for it in m["items"]:
+        _check_stop(should_stop)
         img = _copy(src, out, it)
         W, H = it["width"], it["height"]
         lines = []
@@ -133,7 +143,7 @@ def export_yolo_obb(m: dict, src: Path, out: Path):
     _yolo_yaml(m, out, task="obb")
 
 
-def export_coco_keypoints(m: dict, src: Path, out: Path):
+def export_coco_keypoints(m: dict, src: Path, out: Path, should_stop=None):
     skeletons = m.get("skeletons") or []
     cats = []
     for i, name in enumerate(m["classes"]):
@@ -150,6 +160,7 @@ def export_coco_keypoints(m: dict, src: Path, out: Path):
             continue
         imgs, anns, aid = [], [], 0
         for iid, it in enumerate(items):
+            _check_stop(should_stop)
             _copy(src, out, it, sub="")
             W, H = it["width"], it["height"]
             imgs.append({"id": iid, "file_name": Path(it["file"]).name, "width": W, "height": H})
@@ -174,8 +185,9 @@ def export_coco_keypoints(m: dict, src: Path, out: Path):
             {"info": {"description": "LabelDesk export"}, "images": imgs, "annotations": anns, "categories": cats}))
 
 
-def export_voc(m: dict, src: Path, out: Path):
+def export_voc(m: dict, src: Path, out: Path, should_stop=None):
     for it in m["items"]:
+        _check_stop(should_stop)
         img = _copy(src, out, it, sub="")
         W, H = it["width"], it["height"]
         objs = []
@@ -192,10 +204,11 @@ def export_voc(m: dict, src: Path, out: Path):
             f"<height>{H}</height><depth>3</depth></size>{''.join(objs)}</annotation>")
 
 
-def export_createml(m: dict, src: Path, out: Path):
+def export_createml(m: dict, src: Path, out: Path, should_stop=None):
     for split in ("train", "valid", "test"):
         rows = []
         for it in (i for i in m["items"] if i["split"] == split):
+            _check_stop(should_stop)
             img = _copy(src, out, it, sub="")
             W, H = it["width"], it["height"]
             labels = []
@@ -210,7 +223,7 @@ def export_createml(m: dict, src: Path, out: Path):
             (out / split / "_annotations.createml.json").write_text(json.dumps(rows))
 
 
-def export_tf_csv(m: dict, src: Path, out: Path):
+def export_tf_csv(m: dict, src: Path, out: Path, should_stop=None):
     for split in ("train", "valid", "test"):
         items = [i for i in m["items"] if i["split"] == split]
         if not items:
@@ -220,6 +233,7 @@ def export_tf_csv(m: dict, src: Path, out: Path):
             w = csv.writer(f)
             w.writerow(["filename", "width", "height", "class", "xmin", "ymin", "xmax", "ymax"])
             for it in items:
+                _check_stop(should_stop)
                 img = _copy(src, out, it, sub="")
                 for a in it["anns"]:
                     box = _abs_box(a, it["width"], it["height"])
@@ -229,9 +243,10 @@ def export_tf_csv(m: dict, src: Path, out: Path):
                                     round(x), round(y), round(x + bw), round(y + bh)])
 
 
-def export_folder(m: dict, src: Path, out: Path):
+def export_folder(m: dict, src: Path, out: Path, should_stop=None):
     root = out.resolve()
     for it in m["items"]:
+        _check_stop(should_stop)
         for a in it["anns"][:1] or [None]:
             cls = path_segment(m["classes"][a["cls"]]) if a else "_unlabeled"
             dst = out / it["split"] / cls / Path(it["file"]).name
@@ -241,7 +256,7 @@ def export_folder(m: dict, src: Path, out: Path):
             shutil.copyfile(src / it["file"], dst)
 
 
-def export_multiclass_csv(m: dict, src: Path, out: Path):
+def export_multiclass_csv(m: dict, src: Path, out: Path, should_stop=None):
     for split in ("train", "valid", "test"):
         items = [i for i in m["items"] if i["split"] == split]
         if not items:
@@ -251,6 +266,7 @@ def export_multiclass_csv(m: dict, src: Path, out: Path):
             w = csv.writer(f)
             w.writerow(["filename", *m["classes"]])
             for it in items:
+                _check_stop(should_stop)
                 img = _copy(src, out, it, sub="")
                 on = {a["cls"] for a in it["anns"]}
                 w.writerow([img.name, *[1 if i in on else 0 for i in range(len(m["classes"]))]])
@@ -263,22 +279,23 @@ EXPORTERS = {
 }
 
 
-def build_dir(fmt: str, version_dir: Path, out: Path) -> Path:
+def build_dir(fmt: str, version_dir: Path, out: Path, should_stop=None) -> Path:
     """Lay version_dir/manifest.json out in `fmt` under a fresh `out` directory."""
     m = json.loads((version_dir / "manifest.json").read_text())
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    EXPORTERS[fmt](m, version_dir, out)
+    EXPORTERS[fmt](m, version_dir, out, should_stop=should_stop)
+    _check_stop(should_stop)
     (out / "README.labeldesk.txt").write_text(
         f"Exported from LabelDesk\nformat: {FORMATS[fmt]['label']}\nclasses: {', '.join(m['classes'])}\n"
         f"images: {len(m['items'])}\n")
     return out
 
 
-def export(fmt: str, version_dir: Path, out: Path) -> Path:
+def export(fmt: str, version_dir: Path, out: Path, should_stop=None) -> Path:
     """Export version_dir/manifest.json into `out` and return the zip path."""
-    build_dir(fmt, version_dir, out)
+    build_dir(fmt, version_dir, out, should_stop=should_stop)
     return Path(shutil.make_archive(str(out), "zip", out))
 
 
@@ -286,7 +303,7 @@ _LOCKS: dict = {}
 _LOCKS_GUARD = threading.Lock()
 
 
-def cached_export(version_dir: Path, fmt: str) -> Path:
+def cached_export(version_dir: Path, fmt: str, should_stop=None) -> Path:
     """versions/<id>/exports/<fmt>/, built once under a per-(version, fmt) lock into a unique temp dir."""
     dst = version_dir / "exports" / fmt
     with _LOCKS_GUARD:
@@ -296,7 +313,10 @@ def cached_export(version_dir: Path, fmt: str) -> Path:
             return dst
         tmp = version_dir / "exports" / f".{fmt}.{uuid.uuid4().hex}.tmp"
         try:
-            build_dir(fmt, version_dir, tmp)
+            if should_stop is None:
+                build_dir(fmt, version_dir, tmp)
+            else:
+                build_dir(fmt, version_dir, tmp, should_stop=should_stop)
             tmp.rename(dst)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
