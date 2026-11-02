@@ -14,6 +14,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from .imaging import bbox_of, obb_corners
+from ..naming import path_segment
 
 FORMATS = {
     "coco":            {"label": "COCO JSON",             "tasks": ["object-detection", "instance-segmentation"]},
@@ -229,10 +230,13 @@ def export_tf_csv(m: dict, src: Path, out: Path):
 
 
 def export_folder(m: dict, src: Path, out: Path):
+    root = out.resolve()
     for it in m["items"]:
         for a in it["anns"][:1] or [None]:
-            cls = m["classes"][a["cls"]] if a else "_unlabeled"
+            cls = path_segment(m["classes"][a["cls"]]) if a else "_unlabeled"
             dst = out / it["split"] / cls / Path(it["file"]).name
+            if not dst.resolve().is_relative_to(root):
+                raise ValueError(f"class name is not a safe path segment: {cls!r}")
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src / it["file"], dst)
 

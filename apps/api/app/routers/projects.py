@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..deps import Ctx, audit, plan, project_ctx, ws_ctx
 from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, TrainedModel, Version, now,
                       set_annotations)
+from ..naming import clean_class_name
 from ..security import sign_path
 from ..services import health
 
@@ -109,7 +110,11 @@ def create_project(body: ProjectIn, c: Ctx = Depends(ws_ctx)):
                 license=body.license, annotation_group=body.annotation_group or "objects", multilabel=body.multilabel,
                 folder_id=body.folder_id, settings={})
     c.db.add(p); c.db.flush()
-    for k, name in enumerate(dict.fromkeys(n.strip() for n in body.classes if n.strip())):
+    try:
+        names = dict.fromkeys(clean_class_name(n) for n in body.classes if n.strip())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    for k, name in enumerate(names):
         c.db.add(LabelClass(project_id=p.id, name=name, color=PALETTE[k % len(PALETTE)]))
     audit(c.db, c.ws.id, c.user.id, "project.create", p.name, type=p.type)
     c.db.commit()
@@ -218,6 +223,7 @@ def _skeleton_or_400(raw: dict | None) -> dict | None:
 
 
 def ensure_class(db: Session, p: Project, name: str) -> LabelClass:
+    name = clean_class_name(name)
     lc = db.scalar(select(LabelClass).where(LabelClass.project_id == p.id, LabelClass.name == name))
     if not lc:
         n = db.scalar(select(func.count(LabelClass.id)).where(LabelClass.project_id == p.id))
@@ -229,7 +235,10 @@ def ensure_class(db: Session, p: Project, name: str) -> LabelClass:
 @router.post("/{project}/classes")
 def add_class(body: ClassIn, c: Ctx = Depends(project_ctx)):
     c.perm("project.classes")   # Roboflow lets labelers add classes while annotating
-    name = body.name.strip()
+    try:
+        name = clean_class_name(body.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     if c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id, LabelClass.name == name)):
         raise HTTPException(409, "class already exists")
     lc = ensure_class(c.db, c.project, name)
@@ -246,7 +255,10 @@ def edit_class(cid: str, body: ClassIn, c: Ctx = Depends(project_ctx)):
     lc = c.db.get(LabelClass, cid)
     if not lc or lc.project_id != c.project.id:
         raise HTTPException(404, "class not found")
-    name = body.name.strip()
+    try:
+        name = clean_class_name(body.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     other = c.db.scalar(select(LabelClass).where(LabelClass.project_id == c.project.id, LabelClass.name == name,
                                                  LabelClass.id != cid))
     if other:
@@ -269,7 +281,12 @@ class MergeIn(BaseModel):
 @router.post("/{project}/classes/merge")
 def merge_classes(body: MergeIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
+    target = c.db.get(LabelClass, body.target_id)
+    if not target or target.project_id != c.project.id:
+        raise HTTPException(404, "target class not found")
     src = set(body.source_ids) - {body.target_id}
+    src &= set(c.db.scalars(select(LabelClass.id).where(LabelClass.project_id == c.project.id,
+                                                        LabelClass.id.in_(src))))
     n = 0
     hit = select(ImageClass.image_id).where(ImageClass.class_id.in_(src))
     for img in c.db.scalars(select(Image).where(Image.project_id == c.project.id, Image.id.in_(hit))):

@@ -9,7 +9,7 @@ import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import Float, String, case, cast, exists, func, select
+from sqlalchemy import Float, Text, case, cast, exists, func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
@@ -96,7 +96,10 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     out, dups, annotated, failed = [], 0, 0, []
 
     def class_for(name: str) -> LabelClass:
-        lc = ensure_class(db, p, name)
+        try:
+            lc = ensure_class(db, p, name)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         sk = bundle.skeletons.get(name)
         if sk and not lc.skeleton:
             lc.skeleton = sk
@@ -165,6 +168,12 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
 
 # --- browse -----------------------------------------------------------------------------------
 
+def _tag_filter(tag: str):
+    """Match one JSON-list element; ``cast`` must be TEXT so Postgres accepts json -> text."""
+    pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return cast(Image.tags, Text).like(f"%{pat}%", escape="\\")
+
+
 @router.get(P + "/images")
 def list_images(q: str = "", split: str = "", status: str = "", class_id: str = "", tag: str = "", batch_id: str = "",
                 ids: str = "", selection: str = "", annotated: str = "", assignee: str = "", min_mp: float | None = None,
@@ -197,8 +206,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         s = s.where(exists().where(ImageClass.image_id == Image.id, ImageClass.class_id == class_id))
     if tag:
         # tags is a JSON list; match the quoted element in its text form (portable sqlite/postgres)
-        pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
-        s = s.where(cast(Image.tags, String).like(f"%{pat}%", escape="\\"))
+        s = s.where(_tag_filter(tag))
     # chart click-throughs: the same bucket boundaries as analytics (megapixels, aspect ratio, count)
     if min_mp is not None:
         s = s.where(Image.width * Image.height >= min_mp * 1e6)
@@ -415,12 +423,25 @@ def _check_ann(a: dict) -> dict:
     return out
 
 
+def _check_class_ids(c: Ctx, anns: list[dict]) -> None:
+    """Every annotation must reference a class of *this* project (I6)."""
+    ids = {a.get("classId") for a in anns if isinstance(a, dict) and a.get("classId")}
+    if not ids:
+        return
+    known = set(c.db.scalars(select(LabelClass.id).where(LabelClass.project_id == c.project.id,
+                                                        LabelClass.id.in_(ids))))
+    if ids - known:
+        raise HTTPException(400, "annotation class does not belong to this project")
+
+
 @router.put("/api/images/{image_id}/annotations")
 def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     if len(body.annotations) > 5000:
         raise HTTPException(413, "too many annotations on one image (max 5000)")
     c, img = _assigned(*image_ctx(db, u, image_id))
-    set_annotations(db, img, [_check_ann(a) for a in body.annotations])
+    anns = [_check_ann(a) for a in body.annotations]
+    _check_class_ids(c, anns)
+    set_annotations(db, img, anns)
     if img.status == "unassigned" and img.n_annotations:
         img.status, img.assignee_id = "annotating", img.assignee_id or u.id
     img.updated = now()
@@ -464,6 +485,8 @@ def delete_image(image_id: str, u: User = Depends(current_user), db: Session = D
     img.deleted_at = now()
     db.execute(sa_delete(ImageClass).where(ImageClass.image_id == img.id))
     db.commit()
+    from ..services.erasure import delete_image_files
+    delete_image_files(img.path, img.thumb)     # the row is gone; the JPEG must be too (I3)
     return {"ok": True}
 
 
