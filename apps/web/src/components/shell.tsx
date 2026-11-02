@@ -9,10 +9,10 @@ import {
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
-import type { Job, Project } from '@/lib/types'
+import type { Job, Project, ProjectRole } from '@/lib/types'
 import { useProjectPermissions } from '@/lib/perms'
 import {
-  canSeeProjectItem, isWorkspaceNavActive, visibleProjectNav, visibleWorkspaceNav, type NavIcon,
+  isWorkspaceNavActive, visibleProjectNav, visibleWorkspaceNav, type NavIcon,
 } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 import { Glass } from './glass'
@@ -179,11 +179,19 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   )
 }
 
-/** Icon-carrying shape ProjectLayout and TopBar already consume. */
-export const projNav = visibleProjectNav(() => true).map((g) => ({
-  group: g.label ?? '',
-  items: g.items.map((i) => ({ ...i, icon: ICONS[i.icon] })),
-}))
+/**
+ * Icon-carrying project nav for every renderer. The desktop panel and the compact strip both call
+ * this with the same permission check and project role, so a role never sees a different IA by width.
+ */
+export function projectNavGroups(can: (perm: string) => boolean, role?: ProjectRole | null) {
+  return visibleProjectNav(can, role).map((g) => ({
+    group: g.label ?? '',
+    items: g.items.map((i) => ({ ...i, icon: ICONS[i.icon] })),
+  }))
+}
+
+/** Unfiltered shape used for breadcrumb label lookup. */
+export const projNav = projectNavGroups(() => true)
 
 export const typeLabel = (t: string) =>
   ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection' } as Record<string, string>)[t] ?? t
@@ -195,6 +203,7 @@ export function ProjectPanel({ project }: { project: Project }) {
   // account). Until the fetch lands, workspace admins keep seeing the full nav.
   const { can: canProject, ready, role: projectRole } = useProjectPermissions(ws, project.slug)
   const visible = (perm: string) => (ready ? canProject(perm) : can('admin'))
+  const groups = projectNavGroups(visible, projectRole)
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">
@@ -207,23 +216,20 @@ export function ProjectPanel({ project }: { project: Project }) {
         </div>
       </div>
       <nav aria-label="Project sections" className="flex-1 px-2 pb-4">
-        {projNav.map((g) => {
-          const items = g.items.filter((i) => canSeeProjectItem(i, visible, projectRole))
-          return items.length ? (
-            <div key={g.group} role="group" aria-labelledby={`proj-nav-${g.group}`} className="mb-3">
-              <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
-              {items.map(({ to, label, icon: Icon, count }) => (
-                <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
-                  className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
-                    isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span className="flex-1">{label}</span>
-                  {count && <span className="text-[11px] text-muted-foreground">{project.images}</span>}
-                </NavLink>
-              ))}
-            </div>
-          ) : null
-        })}
+        {groups.map((g) => (
+          <div key={g.group} role="group" aria-labelledby={`proj-nav-${g.group}`} className="mb-3">
+            <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
+            {g.items.map(({ to, label, icon: Icon, count }) => (
+              <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
+                className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+                  isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">{label}</span>
+                {count && <span className="text-[11px] text-muted-foreground">{project.images}</span>}
+              </NavLink>
+            ))}
+          </div>
+        ))}
       </nav>
     </Glass>
   )

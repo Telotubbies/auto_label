@@ -13,6 +13,7 @@ const appSrc = source('../src/App.tsx')
 const shellSrc = source('../src/components/shell.tsx')
 const settingsSrc = source('../src/features/settings/Settings.tsx')
 const insightsSrc = source('../src/features/project/Insights.tsx')
+const projectLayoutSrc = source('../src/features/project/ProjectLayout.tsx')
 
 const groupLabels = (groups) => groups.map((g) => [g.label ?? null, g.items.map((i) => i.label)])
 const itemLabels = (groups, id) => groups.find((g) => g.id === id)?.items.map((i) => i.label) ?? []
@@ -254,4 +255,19 @@ test('a plain settings tab keeps Settings active', () => {
 test('the workspace root is active only at the root', () => {
   assert.equal(active('Projects', '/acme'), true)
   assert.equal(active('Projects', '/acme/models'), false)
+})
+
+// Fix round 2 (I1): the compact strip used to filter on permission alone, so a project labeler saw
+// Classes & Tags at 375 px while the desktop panel hid it. Both renderers must use one role-aware list.
+test('the compact project strip and the project panel derive from one role-filtered list', () => {
+  assert.ok(shellSrc.includes('export function projectNavGroups('),
+    'shell.tsx must expose the shared, role-aware project nav builder')
+  assert.ok(shellSrc.includes('projectNavGroups(visible, projectRole)'),
+    'the desktop panel must render the shared builder')
+  assert.ok(projectLayoutSrc.includes('projectNavGroups(canProject, projectRole)'),
+    'the compact strip must render the same builder, with the resolved project role')
+  assert.ok(!projectLayoutSrc.includes('filter((i) => canProject(i.perm))'),
+    'the strip must not filter on permission alone: project.classes is granted to labelers')
+  assert.ok(projectLayoutSrc.includes('const items = projectNavGroups(canProject, projectRole)'),
+    'the strip must reuse its single items list instead of recomputing it')
 })
