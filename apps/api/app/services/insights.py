@@ -43,21 +43,26 @@ def classes(db: Session, project: Project) -> list[LabelClass]:
 
 
 def signature(db: Session, project: Project, version: Version | None = None) -> tuple:
-    """Cheap fingerprint: any image/class/version change invalidates every cached aggregate."""
+    """Cheap fingerprint: any image/class/version change invalidates every cached aggregate.
+
+    Classes are fingerprinted by (id, name, colour): a rename or recolour is a dataset change the
+    analyst sees immediately, so the count/max-created pair alone is not enough.
+    """
     count, updated, deleted = db.execute(
         select(func.count(Image.id), func.max(Image.updated), func.count(Image.deleted_at)).where(
             Image.project_id == project.id
         )
     ).one()
-    class_count, class_created = db.execute(
-        select(func.count(LabelClass.id), func.max(LabelClass.created)).where(LabelClass.project_id == project.id)
-    ).one()
+    class_rows = db.execute(
+        select(LabelClass.id, LabelClass.name, LabelClass.color)
+        .where(LabelClass.project_id == project.id)
+        .order_by(LabelClass.id)
+    ).all()
     base = (
         int(count or 0),
         float(updated or 0.0),
         int(deleted or 0),
-        int(class_count or 0),
-        float(class_created or 0.0),
+        json.dumps([(cid, name, color) for cid, name, color in class_rows], default=str),
     )
     scope = ""
     if version is not None:
@@ -115,6 +120,21 @@ def source_splits(manifest: dict) -> dict:
         if source and split and source not in out:
             out[source] = split
     return out
+
+
+def version_scope(db: Session, project: Project, version_id: str | None) -> tuple[Version | None, dict | None]:
+    """(version, frozen split_of) for a version of this project; (None, None) when it is not ours.
+
+    A version whose manifest is still being written keeps the version for the signature but has no
+    frozen split map yet, so callers fall back to the images' current splits exactly like `_scoped`.
+    """
+    if not version_id:
+        return None, None
+    version = db.get(Version, version_id)
+    if not version or version.project_id != project.id:
+        return None, None
+    manifest = _manifest(version)
+    return version, (source_splits(manifest) if manifest else None)
 
 
 def version_meta(version: Version) -> dict:
@@ -236,7 +256,14 @@ def _same_sig(stored, current) -> bool:
     return list(stored or []) == list(current)
 
 
-def _read_or_enqueue(db: Session, project: Project, kind: str, sig: tuple, auto: bool):
+def _read_or_enqueue(
+    db: Session,
+    project: Project,
+    kind: str,
+    sig: tuple,
+    auto: bool,
+    version: Version | None = None,
+):
     jobs = _jobs(db, project, kind)
     done_match = next(
         (j for j in jobs if j.status == "done" and _same_sig((j.result or {}).get("signature"), sig)),
@@ -251,15 +278,20 @@ def _read_or_enqueue(db: Session, project: Project, kind: str, sig: tuple, auto:
         j.status in ("queued", "running", "failed") and _same_sig((j.params or {}).get("signature"), sig) for j in jobs
     )
     if auto and done_match is None and not blocked:
-        job = enqueue_scan(db, project, kind)
+        job = enqueue_scan(db, project, kind, version)
         jobs = [job, *jobs]
     return payload, job_out(jobs[0] if jobs else None), stale
 
 
-def enqueue_scan(db: Session, project: Project, kind: str) -> Job:
-    """Queue one scan; an explicit click while one is running returns that job instead of piling up."""
+def enqueue_scan(db: Session, project: Project, kind: str, version: Version | None = None) -> Job:
+    """Queue one scan; an explicit click while one is running returns that job instead of piling up.
+
+    `version` freezes the scope: a version-scoped scan never coalesces with a dataset-level one, and
+    the version id rides along so the handler can use the manifest's splits.
+    """
     if kind not in JOB_KINDS:
         raise ValueError(f"unknown insights scan kind: {kind}")
+    version_id = version.id if version else ""
     with _ENQ_LOCK:
         active = db.scalar(
             select(Job)
@@ -271,13 +303,17 @@ def enqueue_scan(db: Session, project: Project, kind: str) -> Job:
             .order_by(Job.created.desc())
             .limit(1)
         )
-        if active:
+        if active and (active.params or {}).get("version", "") == version_id:
             return active
         job = Job(
             workspace_id=project.workspace_id,
             project_id=project.id,
             kind=kind,
-            params={"imgsz": IMGSZ, "signature": list(signature(db, project))},
+            params={
+                "imgsz": IMGSZ,
+                "signature": list(signature(db, project, version)),
+                "version": version_id,
+            },
         )
         db.add(job)
         db.commit()
@@ -315,7 +351,9 @@ def _leakage_moved(db: Session, project: Project, version: Version | None) -> in
 
 
 def leakage(db: Session, project: Project, version: Version | None = None, *, auto: bool = True) -> dict:
-    payload, job, stale = _read_or_enqueue(db, project, "insights_leakage", signature(db, project), auto)
+    payload, job, stale = _read_or_enqueue(
+        db, project, "insights_leakage", signature(db, project, version), auto, version
+    )
     return {
         "pairs": [
             {

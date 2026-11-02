@@ -210,6 +210,7 @@ export function Embeddings({ ws, slug, summary, embedding }: {
               ? 'Similar images cluster together — positions come from CLIP ViT-B/32 image embeddings. Lasso a cluster to open exactly those images in the dataset.'
               : 'CLIP is unavailable; this map uses colour and coarse layout features. Lasso a cluster to open exactly those images in the dataset.'
             : 'No map has been built yet. A scan places images by CLIP embeddings when the server has CLIP, otherwise by colour and coarse layout.'}
+          {' '}The map always covers every image in the dataset, whatever version is selected above.
         </p>
       </div>
       <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3">

@@ -16,6 +16,7 @@ os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
@@ -322,7 +323,9 @@ def test_leakage_scan_finds_cross_split_duplicate_and_signs_gallery(c, data):
     assert body["leakage_moved"] is None
 
 
-def test_embedding_scan_returns_finite_projection(c, data):
+def test_embedding_scan_returns_finite_projection(c, data, monkeypatch):
+    # Force the CV path: the scan must never download CLIP or touch a GPU from a test.
+    monkeypatch.setattr(insights_embedding, "_CLIP", False)
     r = c.post(f"{INS}/embedding/scan")
     assert r.status_code == 200, r.text
     wait_job(c, r.json()["id"])
@@ -346,6 +349,31 @@ def test_embedding_scan_returns_finite_projection(c, data):
     assert body["used"] == len(body["points"])
     assert body["sampled"] is (body["total"] > body["used"])
     assert body["stale"] is False
+
+
+def test_embedding_clip_branch_uses_mocked_vectors(c, data, monkeypatch, tmp_path):
+    """The CLIP branch (batching, per-row cache) runs on fake vectors: no network, no GPU, no download."""
+    calls: list[int] = []
+
+    def fake_vectors(_state, rows):
+        calls.append(len(rows))
+        out = []
+        for row in rows:
+            vec = np.asarray([float(len(row.name)), float(sum(row.name.encode()) % 97), 1.0], dtype=np.float32)
+            out.append((row, vec / np.linalg.norm(vec)))
+        return out
+
+    monkeypatch.setattr(insights_embedding, "_clip_backend", lambda: (None, None, None, "cpu"))
+    monkeypatch.setattr(insights_embedding, "_clip_vectors", fake_vectors)
+    monkeypatch.setattr(insights_embedding, "FEATURE_DIR", tmp_path / "features")
+    with SessionLocal() as db:
+        body = insights_embedding.scan_embedding(db, db.get(Project, data["project"]["id"]))
+
+    assert body["features"] == "clip"
+    assert body["used"] == len(body["points"]) == len(data["ids"])
+    assert calls and all(1 <= size <= insights_embedding.EMBED_BATCH for size in calls)
+    assert {p["image_id"] for p in body["points"]} == set(data["ids"].values())
+    assert all(np.isfinite([p["x"], p["y"]]).all() for p in body["points"])
 
 
 def _make_version(
@@ -445,6 +473,41 @@ def test_version_diff_added_removed_moves_and_class_delta(c, data):
         empty_id = empty.id
     r = c.get(f"{INS}/version-diff", params={"base": base, "target": empty_id})
     assert r.status_code == 400 and "manifest" in r.json()["detail"]
+
+
+def test_leakage_scan_uses_the_versions_frozen_splits(c, data):
+    """Selecting a version means its manifest splits decide what counts as cross-split leakage."""
+    pid = data["project"]["id"]
+    ids = data["ids"]
+    dups = {ids["dup_train"]: "train", ids["dup_valid"]: "train"}
+    same = _make_version(pid, 91, "leak-same", dups, {"person": 2}, list(dups))
+    split = _make_version(pid, 92, "leak-split", {**dups, ids["dup_valid"]: "valid"}, {"person": 2}, list(dups))
+
+    body = c.get(f"{INS}/leakage", params={"version": same}).json()
+    assert body["job"]["params"]["version"] == same
+    wait_job(c, body["job"]["id"])
+    body = c.get(f"{INS}/leakage", params={"version": same}).json()
+    assert body["stale"] is False
+    # both copies are train in this version, so the pair is not leakage
+    assert body["total_pairs"] == 0 and body["pairs"] == []
+
+    body = c.get(f"{INS}/leakage", params={"version": split}).json()
+    wait_job(c, body["job"]["id"])
+    body = c.get(f"{INS}/leakage", params={"version": split}).json()
+    assert body["stale"] is False
+    pair = next(
+        p
+        for p in body["pairs"]
+        if {p["a"]["image_id"], p["b"]["image_id"]} == {ids["dup_train"], ids["dup_valid"]}
+    )
+    # the gallery reports the frozen splits, not the images' current split column
+    assert {pair["a"]["split"], pair["b"]["split"]} == {"train", "valid"}
+    assert any({x["a"], x["b"]} == {"train", "valid"} and x["count"] == 1 for x in body["split_pairs"])
+
+    r = c.post(f"{INS}/leakage/scan", params={"version": split})
+    assert r.status_code == 200, r.text
+    assert r.json()["params"]["version"] == split
+    wait_job(c, r.json()["id"])
 
 
 def test_labeling_throughput_review_and_ai_acceptance(c, data):
@@ -551,6 +614,30 @@ def test_summary_cache_reuses_payload_and_invalidates_on_new_image(c, data):
     third = c.get(f"{INS}/summary").json()
     assert third["images"] == first["images"] + 1
     assert insights._CACHE[key][0] != sig
+
+
+def test_class_rename_and_recolour_invalidates_cached_aggregates(c, data):
+    """A class edit is a dataset change: cached class names/colours must not survive it."""
+    cid = data["classes"]["person"]
+    before = c.get(f"{INS}/summary").json()
+    assert "person" in {x["name"] for x in before["classes"]}
+    try:
+        with SessionLocal() as db:
+            cls = db.get(LabelClass, cid)
+            cls.name, cls.color = "pedestrian", "#123456"
+            db.commit()
+        after = c.get(f"{INS}/summary").json()
+        classes = {x["name"]: x for x in after["classes"]}
+        assert "person" not in classes
+        assert classes["pedestrian"]["color"] == "#123456"
+        assert classes["pedestrian"]["count"] == 4
+    finally:
+        with SessionLocal() as db:
+            cls = db.get(LabelClass, cid)
+            cls.name, cls.color = "person", "#8b5cf6"
+            db.commit()
+    restored = c.get(f"{INS}/summary").json()
+    assert restored["classes"] == before["classes"]
 
 
 def test_image_list_ids_filter(c, data):
@@ -703,6 +790,7 @@ def test_embedding_job_runs_under_the_gpu_lease(c, data, monkeypatch):
     from app.gpu import GpuScheduler
 
     seen = {}
+    released = []
 
     def fake_scan(_db, _project):
         seen["holder"] = worker.scheduler.holder
@@ -711,6 +799,38 @@ def test_embedding_job_runs_under_the_gpu_lease(c, data, monkeypatch):
     sched = GpuScheduler(4500, None)
     monkeypatch.setattr(worker, "scheduler", sched)
     monkeypatch.setattr(worker.insights_jobs, "scan_embedding", fake_scan)
+    monkeypatch.setattr(worker.insights_embedding, "clip_available", lambda: True)
+    monkeypatch.setattr(worker.insights_embedding, "release_clip", lambda: released.append(True))
     worker.run_insights_embedding(SimpleNamespace(id="job-test", project_id=data["project"]["id"]))
     assert seen["holder"] == "insights embedding"
+    assert released == [True]          # CLIP never outlives the scan's lease
+    assert sched.state()["holder"] is None
+
+
+def test_embedding_job_stays_off_the_gpu_when_clip_cannot_run(c, data, monkeypatch):
+    """A CPU-only build must not pause streams or sleep vLLM for a scan that never touches the card."""
+    from app import worker
+    from app.gpu import GpuScheduler
+
+    vlm_calls: list[str] = []
+    seen = {}
+
+    class FakeVlm:
+        def sleep(self, level=1):
+            vlm_calls.append("sleep")
+
+        def wake(self):
+            vlm_calls.append("wake")
+
+    def fake_scan(_db, _project):
+        seen["holder"] = worker.scheduler.holder
+        return {"signature": [], "points": [], "projection": "pca"}
+
+    sched = GpuScheduler(4500, FakeVlm())
+    monkeypatch.setattr(worker, "scheduler", sched)
+    monkeypatch.setattr(worker.insights_jobs, "scan_embedding", fake_scan)
+    monkeypatch.setattr(worker.insights_embedding, "clip_available", lambda: False)
+    worker.run_insights_embedding(SimpleNamespace(id="job-test", project_id=data["project"]["id"]))
+    assert seen["holder"] is None
+    assert vlm_calls == []
     assert sched.state()["holder"] is None

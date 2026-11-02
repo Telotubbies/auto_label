@@ -1,7 +1,8 @@
 """Embedding-map job: CLIP ViT-B/32 when available, cheap CV features otherwise.
 
 Features are cached per image sha256 on disk; the 2-D projection uses UMAP when installed and a
-deterministic numpy PCA otherwise. Runs under the GPU scheduler lease in the worker.
+deterministic numpy PCA otherwise. The worker takes the GPU lease only when CLIP will run on CUDA
+and always calls `release_clip()` after the scan so the card is never held outside the ledger.
 """
 
 import math
@@ -21,7 +22,8 @@ EMBED_BATCH = 16
 CLIP_MODEL_ID = "openai/clip-vit-base-patch32"
 FEATURE_DIR = DATA_DIR / "insights" / "features"
 SPLIT_ORDER = ("train", "valid", "test")
-_CLIP = None                 # None = untried, False = unavailable, else (torch, model, processor, device)
+# None = untried, False = unavailable, else (torch, model, processor, device). Never outlives a scan.
+_CLIP: tuple | bool | None = None
 _CLIP_LOCK = threading.Lock()
 def _stride(items: list, count: int) -> list:
     if count <= 0:
@@ -121,6 +123,43 @@ def _clip_backend():
             return None
         _CLIP = (torch, model, processor, device)
         return _CLIP
+
+
+def clip_available() -> bool:
+    """True when the next scan will load CLIP *and* place it on CUDA (cheap: no model load).
+
+    The worker uses this before taking the GPU: a missing `transformers` (the default install) or a
+    CPU-only box means the scan computes cheap CV features and must not pause streams or sleep vLLM.
+    """
+    if isinstance(_CLIP, tuple):
+        return _CLIP[3] == "cuda"
+    if _CLIP is False:
+        return False
+    try:
+        import torch
+        from transformers import CLIPModel, CLIPProcessor  # noqa: F401  importable is enough to decide
+    except Exception:
+        return False
+    return bool(torch.cuda.is_available())
+
+
+def release_clip() -> None:
+    """Drop the loaded CLIP model so it stops holding VRAM/RAM outside the scheduler's ledger.
+
+    A cached "unavailable" verdict (False) is kept: retrying an offline download on every scan would
+    only slow the job down. Called from the worker's `finally` after the scan, exceptions included.
+    """
+    global _CLIP
+    if not isinstance(_CLIP, tuple):
+        return
+    _CLIP = None
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:            # torch missing: nothing was placed on a card
+        return
 
 
 def _feature_path(backend: str, sha: str):

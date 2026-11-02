@@ -21,7 +21,18 @@ from .db import SessionLocal
 from .deps import charge
 from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
-from .services import connectors, exporters, health, imaging, insights_jobs, ml, segment, versioning, webhooks
+from .services import (
+    connectors,
+    exporters,
+    health,
+    imaging,
+    insights_embedding,
+    insights_jobs,
+    ml,
+    segment,
+    versioning,
+    webhooks,
+)
 from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
@@ -361,14 +372,21 @@ def run_insights_images(job: Job):
 
 def run_insights_leakage(job: Job):
     with SessionLocal() as db:
-        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id))
+        version = (job.params or {}).get("version") or None
+        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id), version)
 
 
 def run_insights_embedding(job: Job):
     with SessionLocal() as db:
         project = db.get(Project, job.project_id)
-        with scheduler.exclusive("insights embedding"):     # CLIP may use the GPU; cv simply runs inside
+        needs_card = insights_embedding.clip_available()     # false: CV features never touch the GPU
+        try:
+            if needs_card:
+                with scheduler.exclusive("insights embedding"):
+                    return insights_jobs.scan_embedding(db, project)
             return insights_jobs.scan_embedding(db, project)
+        finally:
+            insights_embedding.release_clip()                # CLIP never outlives the scan
 
 
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,

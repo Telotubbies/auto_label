@@ -23,18 +23,19 @@ function SplitBadge({ split }: { split: string }) {
   )
 }
 
-export function Leakage({ ws, slug, leakage, versionLabel }: {
+export function Leakage({ ws, slug, leakage, versionLabel, version }: {
   ws: string
   slug: string
   leakage: InsightLeakage
   versionLabel?: string
+  version?: string
 }) {
   const t = useChartTheme()
   const qc = useQueryClient()
   const job = leakage.job
   const running = !!job && (job.status === 'queued' || job.status === 'running')
   const run = useMutation({
-    mutationFn: () => api.insights.scanLeakage(ws, slug),
+    mutationFn: () => api.insights.scanLeakage(ws, slug, version || undefined),
     onSuccess: () => { toast.ok('Leakage scan queued'); qc.invalidateQueries({ queryKey: ['insights'] }) },
     onError: (e) => toast.err(e as Error),
   })
@@ -61,7 +62,12 @@ export function Leakage({ ws, slug, leakage, versionLabel }: {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Split leakage</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">Near-identical images that could make evaluation look better than the model really is.</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Near-identical images that could make evaluation look better than the model really is.
+          {versionLabel
+            ? ` Pairs use the splits frozen in ${versionLabel}, not each image's current split.`
+            : ' Pairs use the split currently set on each image.'}
+        </p>
       </div>
       <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3">
         <div className="min-w-0 flex-1">

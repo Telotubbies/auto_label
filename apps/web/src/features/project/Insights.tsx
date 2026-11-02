@@ -134,7 +134,7 @@ export default function Insights() {
     if (tab === 'leakage') {
       if (leakage.isLoading) return <PageSkeleton />
       if (leakage.error) return <PanelError error={leakage.error} />
-      return leakage.data ? <Leakage ws={ws} slug={slug} leakage={leakage.data} versionLabel={versionName} /> : null
+      return leakage.data ? <Leakage ws={ws} slug={slug} leakage={leakage.data} versionLabel={versionName} version={versionId || undefined} /> : null
     }
 
     if (tab === 'embeddings') {
@@ -163,7 +163,8 @@ export default function Insights() {
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Version
             <Select value={versionId} onChange={(e) => setVersionId(e.target.value)}
-              aria-label="Limit insights to a dataset version" title="Applies to Overview, Data quality and Leakage"
+              aria-label="Limit insights to a dataset version"
+              title="Applies to Overview, Data quality (geometry) and Leakage; image statistics and embeddings always cover the whole dataset"
               className="w-40 sm:w-52">
               <option value="">All images</option>
               {versions.data?.map((v) => <option key={v.id} value={v.id}>v{v.number} · {v.name}</option>)}

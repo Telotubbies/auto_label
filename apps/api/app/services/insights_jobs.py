@@ -80,21 +80,32 @@ def _phash(row: Image):
         return imagehash.phash(image)
 
 
-def _ref(row: Image) -> dict:
+def _ref(row: Image, split: str) -> dict:
     return {
         "image_id": row.id,
         "name": row.name,
-        "split": row.split,
+        "split": split,
         "thumb": row.thumb or None,
         "width": int(row.width or 0),
         "height": int(row.height or 0),
     }
 
 
-def scan_leakage(db: Session, project: Project) -> dict:
-    """Cross-split near-duplicate pairs from versioning's pHash union-find."""
-    signature = list(insights.signature(db, project))
+def scan_leakage(db: Session, project: Project, version_id: str | None = None) -> dict:
+    """Cross-split near-duplicate pairs from versioning's pHash union-find.
+
+    With a version, only that version's frozen images are considered and its manifest splits decide
+    what counts as a cross-split pair; a version still writing its manifest falls back to live splits.
+    """
+    version, split_of = insights.version_scope(db, project, version_id)
+    signature = list(insights.signature(db, project, version))
     rows = _live(db, project)
+    if split_of is not None:
+        rows = [row for row in rows if row.id in split_of]
+
+    def split_of_row(row: Image) -> str:
+        return (split_of or {}).get(row.id, row.split)
+
     by_id = {r.id: r for r in rows}
     members: dict = defaultdict(list)
     group_of = versioning.phash_groups(rows)
@@ -117,10 +128,10 @@ def scan_leakage(db: Session, project: Project) -> dict:
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
                 a, b = ids[i], ids[j]
-                if by_id[a].split == by_id[b].split:
+                if split_of_row(by_id[a]) == split_of_row(by_id[b]):
                     continue
                 total += 1
-                split_counts[tuple(sorted((by_id[a].split, by_id[b].split)))] += 1
+                split_counts[tuple(sorted((split_of_row(by_id[a]), split_of_row(by_id[b]))))] += 1
                 pairs.append((int(hashes[a] - hashes[b]), a, b))
     pairs.sort()
     order = {split: i for i, split in enumerate(("train", "valid", "test"))}
@@ -134,7 +145,12 @@ def scan_leakage(db: Session, project: Project) -> dict:
     return {
         "signature": signature,
         "pairs": [
-            {"a": _ref(by_id[a]), "b": _ref(by_id[b]), "distance": distance} for distance, a, b in pairs[:GALLERY_MAX]
+            {
+                "a": _ref(by_id[a], split_of_row(by_id[a])),
+                "b": _ref(by_id[b], split_of_row(by_id[b])),
+                "distance": distance,
+            }
+            for distance, a, b in pairs[:GALLERY_MAX]
         ],
         "split_pairs": split_pairs,
         "total_pairs": total,

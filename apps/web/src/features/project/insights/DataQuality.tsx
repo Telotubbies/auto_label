@@ -141,6 +141,7 @@ export function DataQuality({ ws, slug, summary, geometry, stats }: {
           <p className="text-sm font-medium">Image statistics</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {stats.scanned ? `${fmt(stats.scanned)} images scanned at ${geometry.imgsz}px training size.` : 'No image scan yet — resolution, brightness and blur are unmeasured.'}
+            {' '}Covers every image in the dataset; the version selector does not apply to this scan.
           </p>
         </div>
         <Badge>{fmt(stats.scanned)} scanned</Badge>

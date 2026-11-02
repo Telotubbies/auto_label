@@ -35,9 +35,9 @@ def _auto(c: Ctx) -> bool:
     return c.role != "annotator"
 
 
-def _scan(c: Ctx, kind: str) -> dict:
+def _scan(c: Ctx, kind: str, version: Version | None = None) -> dict:
     c.need("reviewer")
-    job = insights.enqueue_scan(c.db, c.project, kind)
+    job = insights.enqueue_scan(c.db, c.project, kind, version)
     audit(c.db, c.ws.id, c.user.id, "insights.scan", c.project.name, kind=kind)
     c.db.commit()
     return insights.job_out(job)
@@ -74,8 +74,8 @@ def leakage(version: str = "", c: Ctx = Depends(project_ctx)):
 
 
 @router.post("/leakage/scan")
-def scan_leakage(c: Ctx = Depends(project_ctx)):
-    return _scan(c, "insights_leakage")
+def scan_leakage(version: str = "", c: Ctx = Depends(project_ctx)):
+    return _scan(c, "insights_leakage", _version(c, version))
 
 
 @router.get("/embedding")
