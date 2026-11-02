@@ -17,9 +17,18 @@ import { Glass } from '@/components/glass'
 import { cn } from '@/lib/utils'
 import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, SourceChip, type EditorComment, type LogEntry } from './Panels'
 import { ShortcutModal } from './ShortcutModal'
+import { classListQuery, classResultText, hotkeyClass, isClassListVisible, visibleClasses } from './classFilter'
+import {
+  keyLabel, loadShortcuts, resolveShortcut,
+  type ShortcutId, type ShortcutMap,
+} from './shortcuts'
 
 const W = 1000                      // canvas width in stage units; height follows the image aspect
 const SMART = '#7c3aed'             // canvas stroke only — CSS tokens cannot resolve inside Konva
+const EPS_MIN = 0.0005              // matches segment.EPS_MIN / EPS_MAX in the API
+const EPS_MAX = 0.02
+const EPS_DEFAULT = 0.004
+const SIMPLIFY_DEBOUNCE_MS = 220
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 // Canvas tool hints stay inside the stage at 375 px and wrap instead of squeezing into a column.
 const HINT = 'pointer-events-none absolute left-1/2 top-3 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-full border bg-card px-3 py-1.5 text-center text-xs shadow'
@@ -281,6 +290,11 @@ export default function Editor() {
   const [smartSource, setSmartSource] = useState('')
   const [smartBusy, setSmartBusy] = useState(false)
   const [smartErr, setSmartErr] = useState('')
+  const [epsilon, setEpsilon] = useState(EPS_DEFAULT)
+  const [classQuery, setClassQuery] = useState('')
+  const [shortcutKeys, setShortcutKeys] = useState<ShortcutMap>(
+    () => loadShortcuts(typeof window === 'undefined' ? null : window.localStorage),
+  )
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [locked, setLocked] = useState<Set<string>>(new Set())
   const [displayOpen, setDisplayOpen] = useState(false)
@@ -300,15 +314,22 @@ export default function Editor() {
   const [panelsOpen, setPanelsOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768)
   const [newClass, setNewClass] = useState('')
   const [tagInput, setTagInput] = useState('')
+  const classCountId = useId()
   const stageRef = useRef<any>(null)
   const trRef = useRef<any>(null)
   const smartReq = useRef(0)
   const suggestReq = useRef(0)
+  const classSearchRef = useRef<HTMLInputElement>(null)
+  const simplifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastGoodEps = useRef(EPS_DEFAULT)
   const resetSmart = useCallback(() => {
     smartReq.current++
+    if (simplifyTimer.current) { clearTimeout(simplifyTimer.current); simplifyTimer.current = null }
     setSmartPts([]); setSmartNeg([]); setSmartPoly(null); setSmartSource(''); setSmartFresh(false)
-    setSmartErr(''); setSmartBusy(false)
+    setSmartErr(''); setSmartBusy(false); setEpsilon(EPS_DEFAULT)
+    lastGoodEps.current = EPS_DEFAULT
   }, [])
+  useEffect(() => () => { if (simplifyTimer.current) clearTimeout(simplifyTimer.current) }, [])
   useEffect(() => { setBoxAnchor(null); setDrawing(null); if (tool !== 'smart') resetSmart() }, [tool, resetSmart])
 
   // load annotations when the image changes
@@ -375,13 +396,41 @@ export default function Editor() {
     for (let i = 0; i < pts.length; i += 2) out.push([clamp01(pts[i] / W), clamp01(pts[i + 1] / H)])
     return out
   }
-  const runSmart = (pts: number[], neg: number[]) => {
+  const runSmart = (pts: number[], neg: number[], eps = epsilon) => {
     const req = ++smartReq.current
     setSmartBusy(true); setSmartErr(''); setSmartFresh(false)
-    post<{ polygon: number[]; source: string }>(`/images/${imageId}/smart-polygon`, { points: smartPairs(pts), negatives: smartPairs(neg) })
-      .then((r) => { if (req === smartReq.current) { setSmartPoly(r.polygon); setSmartSource(r.source); setSmartFresh(true) } })
+    post<{ polygon: number[]; source: string; epsilon: number }>(`/images/${imageId}/smart-polygon`, { points: smartPairs(pts), negatives: smartPairs(neg), epsilon: eps })
+      .then((r) => {
+        if (req !== smartReq.current) return
+        setSmartPoly(r.polygon); setSmartSource(r.source); setSmartFresh(true)
+        setEpsilon(r.epsilon); lastGoodEps.current = r.epsilon
+      })
       .catch((e) => { if (req === smartReq.current) setSmartErr((e as Error).message) })
       .finally(() => { if (req === smartReq.current) setSmartBusy(false) })
+  }
+  /** Slider moves re-simplify the same clicks: debounced, and the API reuses its cached mask (no SAM). */
+  const simplify = (next: number) => {
+    setEpsilon(next)
+    if (simplifyTimer.current) clearTimeout(simplifyTimer.current)
+    simplifyTimer.current = setTimeout(() => {
+      simplifyTimer.current = null
+      if (!smartPts.length) return
+      const req = ++smartReq.current
+      setSmartBusy(true); setSmartErr('')
+      post<{ polygon: number[]; source: string; epsilon: number }>(`/images/${imageId}/smart-polygon`,
+        { points: smartPairs(smartPts), negatives: smartPairs(smartNeg), epsilon: next })
+        .then((r) => {
+          if (req !== smartReq.current) return
+          setSmartPoly(r.polygon); setSmartSource(r.source); setSmartFresh(true)
+          setEpsilon(r.epsilon); lastGoodEps.current = r.epsilon
+        })
+        .catch((e) => {
+          if (req !== smartReq.current) return
+          setSmartErr(`Could not simplify that far — ${(e as Error).message}`)
+          setEpsilon(lastGoodEps.current)     // keep the shape that is on screen valid
+        })
+        .finally(() => { if (req === smartReq.current) setSmartBusy(false) })
+    }, SIMPLIFY_DEBOUNCE_MS)
   }
   const addSmartPoint = (x: number, y: number, forceNegative: boolean) => {
     if (smartBusy) return              // a prompt is in flight; the preview is not current yet
@@ -602,12 +651,20 @@ export default function Editor() {
     try { await post(`/images/${imageId}/comments`, { text }); qc.invalidateQueries({ queryKey: ['comments', imageId] }) } catch (e) { toast.err(e as Error) }
   }
 
+  const classRowsVisible = isClassListVisible({ rail, tab, panelsOpen })
+  const classSearch = classListQuery(classQuery, classRowsVisible)
+  const classHotkeys = useMemo(() => visibleClasses(classes, classSearch), [classes, classSearch])
+  const focusClassSearch = () => {
+    setRail('labels'); setTab('classes'); setPanelsOpen(true)
+    requestAnimationFrame(() => classSearchRef.current?.focus())
+  }
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); focusClassSearch(); return }
       if (e.key === 'ArrowRight') go(1)
       if (e.key === 'ArrowLeft') go(-1)
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selId) remove(selId)
       if (e.key === 'Escape') { setPolyPts([]); setBoxAnchor(null); setDrawing(null); resetSmart(); setSelId(null); setDisplayOpen(false) }
       if (e.key === 'Enter') {
         if (smartPts.length && smartPoly && smartFresh && !smartBusy) commitSmart()
@@ -615,29 +672,43 @@ export default function Editor() {
       }
       if (e.key === '?') setShortcuts((o) => !o)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo() }
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save() }
-      const t = { v: 'pan', b: 'bbox', p: 'polygon', s: 'smart', o: 'obb', k: 'keypoints' } as Record<string, string>
-      const nextTool = t[e.key]
-      const available = nextTool === 'polygon' ? projectType === 'instance-segmentation'
-        : nextTool === 'obb' ? obbEnabled
-        : nextTool === 'keypoints' ? keypointsEnabled
-        : true
-      if (!e.ctrlKey && !e.metaKey && nextTool && available && !isCls) setTool(nextTool)
-      const n = Number(e.key)
-      if (n >= 1 && n <= 9 && classes[n - 1]) { if (isCls) toggleClassLabel(classes[n - 1].id); else if (selId) relabel(selId, classes[n - 1].id); else setSelClass(classes[n - 1].id) }
+      const action = resolveShortcut(e, shortcutKeys)
+      if (action === 'save') { e.preventDefault(); save(); return }
+      if (action === 'delete') { if (selId) remove(selId); return }
+      // Backspace keeps deleting while the action still has its default key.
+      if (e.key === 'Backspace' && selId && shortcutKeys.delete === 'delete') { remove(selId); return }
+      if (action) {
+        const available = action === 'polygon' ? projectType === 'instance-segmentation'
+          : action === 'obb' ? obbEnabled
+          : action === 'keypoints' ? keypointsEnabled
+          : true
+        if (available && !isCls) setTool(action)
+      }
+      // 1–9 follow the rows the class search shows, so a filtered list stays predictable.
+      const target = hotkeyClass(classHotkeys, e.key)
+      if (target && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (isCls) toggleClassLabel(target.id)
+        else if (selId) relabel(selId, target.id)
+        else setSelClass(target.id)
+      }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   })
 
-  const tools: { id: string; icon: LucideIcon; label: string }[] = isCls ? [{ id: 'pan', icon: Hand, label: 'Pan (V)' }] : [
-    { id: 'pan', icon: Hand, label: 'Pan (V)' },
-    { id: 'bbox', icon: SquareDashed, label: 'Bounding Box (B)' },
-    ...(projectType === 'instance-segmentation' ? [{ id: 'polygon', icon: Spline, label: 'Polygon (P)' }] : []),
-    ...(obbEnabled ? [{ id: 'obb', icon: RotateCw, label: 'Rotated Box (O)' }] : []),
-    ...(keypointsEnabled ? [{ id: 'keypoints', icon: Waypoints, label: 'Keypoints (K)' }] : []),
-    { id: 'smart', icon: Sparkles, label: 'Smart Polygon (S) — click an object' },
-  ]
+  // Toolbar titles show the assigned key, so a remap stays discoverable.
+  const keyHint = (id: ShortcutId) => keyLabel(shortcutKeys[id]).replace(/ \+ /g, '+')
+
+  const tools: { id: string; icon: LucideIcon; label: string }[] = isCls
+    ? [{ id: 'pan', icon: Hand, label: `Pan (${keyHint('pan')})` }]
+    : [
+      { id: 'pan', icon: Hand, label: `Pan (${keyHint('pan')})` },
+      { id: 'bbox', icon: SquareDashed, label: `Bounding Box (${keyHint('bbox')})` },
+      ...(projectType === 'instance-segmentation' ? [{ id: 'polygon', icon: Spline, label: `Polygon (${keyHint('polygon')})` }] : []),
+      ...(obbEnabled ? [{ id: 'obb', icon: RotateCw, label: `Rotated Box (${keyHint('obb')})` }] : []),
+      ...(keypointsEnabled ? [{ id: 'keypoints', icon: Waypoints, label: `Keypoints (${keyHint('keypoints')})` }] : []),
+      { id: 'smart', icon: Sparkles, label: `Smart Polygon (${keyHint('smart')}) — click an object` },
+    ]
   const ready = (models.data ?? []).filter((m) => m.status === 'ready')
   const used = new Set(anns.map((a) => a.classId))
 
@@ -702,23 +773,44 @@ export default function Editor() {
                 )}</div>
               <div className="px-4 pt-2"><Tabs tabs={[{ id: 'classes', label: 'Classes' }, { id: 'objects', label: 'Objects' }]} active={tab} onChange={setTab} /></div>
               {tab === 'classes' ? (
-                <div className="px-4 py-2">
-                  {classes.map((c, i) => {
-                    const active = isCls ? used.has(c.id) : selClass === c.id
-                    return (
-                      <button key={c.id} data-testid="class-option" onClick={() => (isCls ? toggleClassLabel(c.id) : selId ? relabel(selId, c.id) : setSelClass(c.id))}
-                        className={cn('flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm', active ? 'bg-accent font-medium text-accent-foreground' : 'hover:bg-muted')}>
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />{c.name}
-                        {active && <Check className="h-3.5 w-3.5 text-primary" />}
-                        <span className="ml-auto text-[10px] text-muted-foreground">{i < 9 ? i + 1 : ''}</span>
-                      </button>
-                    )
-                  })}
-                  <div className="mt-2 flex gap-1.5">
-                    <Input className="h-8" placeholder="New class…" value={newClass} onChange={(e) => setNewClass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && createClass()} />
-                    <Button size="sm" onClick={createClass} aria-label="Add class"><Plus className="h-3.5 w-3.5" /></Button>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="shrink-0 px-4 pt-2">
+                    <input ref={classSearchRef} type="search" value={classQuery} data-testid="class-search"
+                      aria-label="Search classes" aria-describedby={classCountId} placeholder="Search classes…"
+                      autoComplete="off" spellCheck={false} title="Press / to focus"
+                      onChange={(e) => setClassQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setClassQuery(''); e.currentTarget.blur() } }}
+                      className="h-8 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:border-ring placeholder:text-muted-foreground" />
+                    <p id={classCountId} aria-live="polite" data-testid="class-count"
+                      className="flex h-5 items-center text-[11px] text-muted-foreground">
+                      {classResultText(classes.length, classHotkeys.length, classSearch)}
+                    </p>
                   </div>
-                  {selId && !isCls && <p className="mt-2 text-[11px] text-muted-foreground">Click a class (or press 1–9) to relabel the selected annotation.</p>}
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
+                    {classHotkeys.map((c, i) => {
+                      const active = isCls ? used.has(c.id) : selClass === c.id
+                      return (
+                        <button key={c.id} data-testid="class-option" data-hotkey={i < 9 ? i + 1 : undefined}
+                          aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
+                          onClick={() => (isCls ? toggleClassLabel(c.id) : selId ? relabel(selId, c.id) : setSelClass(c.id))}
+                          className={cn('flex min-h-8 w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm', active ? 'bg-accent font-medium text-accent-foreground' : 'hover:bg-muted')}>
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden />{c.name}
+                          {active && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                          <span className="ml-auto pl-2 text-[10px] tabular-nums text-muted-foreground">{i < 9 ? i + 1 : ''}</span>
+                        </button>
+                      )
+                    })}
+                    {!classHotkeys.length && (
+                      <div data-testid="class-empty" className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        No class matches
+                      </div>
+                    )}
+                    <div className="mt-2 flex gap-1.5">
+                      <Input className="h-8" placeholder="New class…" value={newClass} onChange={(e) => setNewClass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && createClass()} />
+                      <Button size="sm" onClick={createClass} aria-label="Add class"><Plus className="h-3.5 w-3.5" /></Button>
+                    </div>
+                    {selId && !isCls && <p className="mt-2 text-[11px] text-muted-foreground">Click a class (or press 1–9) to relabel the selected annotation.</p>}
+                  </div>
                 </div>
               ) : (
                 <div className="px-2 py-2">
@@ -970,12 +1062,30 @@ export default function Editor() {
             </div>
           )}
           {tool === 'smart' && (smartBusy || smartErr || smartPts.length > 0) && (
-            <div className="absolute left-1/2 top-3 flex -translate-x-1/2 flex-col items-center gap-1">
+            <div className="absolute left-1/2 top-3 flex w-full max-w-[20rem] -translate-x-1/2 flex-col items-center gap-1 px-1">
               {smartBusy && <div className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs shadow"><LoaderCircle className="h-3.5 w-3.5 animate-spin text-tertiary" /> Segmenting…</div>}
               {smartErr && <div role="alert" className="flex items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive shadow"><TriangleAlert className="h-3.5 w-3.5" /> {smartErr}</div>}
               {!smartBusy && !smartErr && smartPts.length > 0 && (
-                <div className="rounded-full border bg-card px-3 py-1.5 text-xs shadow">
+                <div className="rounded-full border bg-card px-3 py-1.5 text-center text-xs shadow">
                   {(smartPts.length + smartNeg.length) / 2} {(smartPts.length + smartNeg.length) / 2 === 1 ? 'point' : 'points'} · Enter to commit · Esc to cancel
+                </div>
+              )}
+              {smartPoly && smartPts.length > 0 && (
+                <div data-testid="simplify-control" className="w-full rounded-xl border bg-card p-2.5 text-left shadow">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium">Simplify polygon</span>
+                    <span data-testid="simplify-points" className="text-[11px] tabular-nums text-muted-foreground">
+                      {smartPoly.length / 2} points
+                    </span>
+                  </div>
+                  <input type="range" min={EPS_MIN} max={EPS_MAX} step={0.0005} value={epsilon} data-testid="simplify-slider"
+                    aria-label="Polygon simplification" aria-valuetext={`${smartPoly.length / 2} points`}
+                    aria-busy={smartBusy || undefined} onChange={(e) => simplify(Number(e.target.value))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && smartFresh && !smartBusy) commitSmart() }}
+                    className="mt-1 w-full cursor-pointer accent-primary" />
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Detailed</span><span>Simple</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1043,7 +1153,7 @@ export default function Editor() {
           </div>
         </div>
       </div>
-      <ShortcutModal open={shortcuts} onClose={() => setShortcuts(false)} />
+      <ShortcutModal open={shortcuts} onClose={() => setShortcuts(false)} keys={shortcutKeys} onSave={setShortcutKeys} />
     </main>
   )
 }
