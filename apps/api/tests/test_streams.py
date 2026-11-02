@@ -6,6 +6,8 @@ import tempfile
 import threading
 import time
 import uuid
+from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
@@ -191,6 +193,25 @@ def test_mjpeg_requires_valid_token(c):
     assert c.get(f"{BASE}/{sid}/mjpeg").status_code == 403
     assert c.get(f"{BASE}/{sid}/mjpeg?token=garbage").status_code == 403
     assert c.get(f"{BASE}/{sid}/frame?token=garbage").status_code == 403
+    expired = f"exp={int(time.time()) - 60}&sig=deadbeef&viewer=x"
+    assert c.get(f"{BASE}/{sid}/frame?{expired}").status_code == 403
+
+
+def test_view_urls_are_signed_for_the_viewing_user(c):
+    """Finding 1: the minted footage URL names its viewer and verifies only for that viewer."""
+    from app.security import check_signature
+
+    me = c.get("/api/me").json()["id"]
+    sid = create_stream(c, name="Signed view")
+    body = c.get(f"{BASE}/{sid}").json()
+    for kind in ("mjpeg", "frame"):
+        query = dict(parse_qsl(urlsplit(body[kind]).query))
+        assert query.get("viewer") == me, (kind, body[kind])
+        assert query.get("exp") and query.get("sig"), (kind, body[kind])
+        rel = f"ws/{WS}/projects/{PR}/streams/{sid}/{kind}"
+        assert check_signature(rel, int(query["exp"]), query["sig"], me)
+        assert not check_signature(rel, int(query["exp"]), query["sig"], "someone-else")
+        assert not check_signature(rel.replace(sid, "other-stream"), int(query["exp"]), query["sig"], me)
 
 
 @pytest.fixture
@@ -356,6 +377,60 @@ def test_stream_end_to_end_line_crossing(c, monkeypatch, video):
         assert any(e["id"] == ev["id"] for e in page["items"]), (params, page)
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
     assert c.get(f"{BASE}/{sid}").json()["status"] == "stopped"
+
+
+def test_frame_view_is_attributed_to_the_signed_viewer(c, monkeypatch, video):
+    """Finding 1 end to end: a watched frame is audited to the user its URL was signed for."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Audit
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    me = c.get("/api/me").json()["id"]
+    sid = create_stream(c, source=video, sample_fps=10, name="Attributed view")
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=10)
+    _poll(lambda: c.get(f"{BASE}/{sid}").json()["frames"] > 0, timeout=10)
+    frame = c.get(f"{BASE}/{sid}").json()["frame"]
+    auth = c.headers.pop("Authorization")                # the URL alone must identify the viewer
+    try:
+        assert c.get(frame).status_code == 200
+        swapped = frame.replace(f"viewer={me}", "viewer=someone-else")
+        assert c.get(swapped).status_code == 403         # a swapped viewer no longer verifies
+    finally:
+        c.headers["Authorization"] = auth
+    with SessionLocal() as db:
+        row = db.scalar(select(Audit).where(Audit.action == "stream.view", Audit.target == sid)
+                        .order_by(Audit.created.desc()))
+        assert row is not None and row.user_id == me, row
+        assert row.meta["via"] == "frame"
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
+def test_event_snapshots_live_under_the_project_folder(c, monkeypatch, video):
+    """Finding 2: footage lives under snapshots/<project id>/ so retention can attribute and delete it."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Project, StreamEvent
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sid = create_stream(c, source=video, sample_fps=10, name="Scoped snapshots", rules=[rule])
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    evs = _poll(lambda: c.get(f"{BASE}/{sid}/events").json()["items"] or None, timeout=25)
+    with SessionLocal() as db:
+        pid = db.scalar(select(Project.id).where(Project.slug == PR))
+        row = db.get(StreamEvent, evs[0]["id"])
+        assert row.snapshot_path.startswith(f"snapshots/{pid}/"), row.snapshot_path
+        assert row.clean_path.startswith(f"snapshots/{pid}/"), row.clean_path
+        assert Path(row.snapshot_path).parent == Path(row.clean_path).parent
+        written = [DATA_DIR / row.snapshot_path, DATA_DIR / row.clean_path]
+        assert all(p.is_file() for p in written)
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+    assert not any(p.exists() for p in written)          # deleting the stream takes its footage with it
 
 
 class _GpuBusyOnce(_FakeModel):
@@ -549,12 +624,11 @@ def test_frame_is_scoped_and_token_bound(c):
     sid = create_stream(c)
     other = create_stream(c, name="Other")
     frame = c.get(f"{BASE}/{sid}").json()["frame"]
-    assert c.get(frame).status_code == 503              # scoped + valid token, but stopped: no frame
-    token = frame.split("token=", 1)[1]
+    assert c.get(frame).status_code == 503              # signed + scoped, but stopped: no frame
+    query = frame.split("?", 1)[1]
     wrong_project = frame.replace(f"/ws/{WS}/projects/{PR}/", f"/ws/{WS}/projects/other-project/")
-    assert c.get(wrong_project).status_code == 404
-    other_path = f"{BASE}/{other}/frame?token={token}"
-    assert c.get(other_path).status_code == 403         # token bound to its stream
+    assert c.get(wrong_project).status_code == 403      # the signature covers the whole route path
+    assert c.get(f"{BASE}/{other}/frame?{query}").status_code == 403   # bound to its stream
 
 
 @pytest.mark.parametrize("source", [

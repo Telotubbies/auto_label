@@ -159,6 +159,7 @@ class _Worker:
     def __init__(self, row: Stream):
         self.id = row.id
         self.workspace_id = row.workspace_id
+        self.project_id = row.project_id
         self.name = row.name
         self.source = row.source
         self.model_ref = row.model_ref
@@ -590,11 +591,11 @@ class _Worker:
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0) if hot else (150, 150, 150), 3 if hot else 1)
             if hot:
                 cv2.circle(img, (int(p["x"] * w), int((p["y"] + p["height"] / 2) * h)), 6, (0, 0, 255), -1)
-        folder = DATA_DIR / "streams" / self.id
+        folder = DATA_DIR / "snapshots" / self.project_id   # project-keyed: retention can attribute it
         folder.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(folder / f"{eid}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
         cv2.imwrite(str(folder / f"{eid}.src.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
-        return f"streams/{self.id}/{eid}.jpg", f"streams/{self.id}/{eid}.src.jpg"
+        return (f"snapshots/{self.project_id}/{eid}.jpg", f"snapshots/{self.project_id}/{eid}.src.jpg")
 
 
 class StreamManager:

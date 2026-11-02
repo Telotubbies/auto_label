@@ -53,6 +53,6 @@ def test_mask_never_leaks_ciphertext(monkeypatch):
     assert creds.mask_source(sealed) == ""
 
 
-def test_seal_existing_is_a_noop_without_stream_model():
-    assert getattr(models, "Stream", None) is None
+def test_seal_existing_is_a_noop_without_stream_model(monkeypatch):
+    monkeypatch.setattr(models, "Stream", None)   # a build that predates Task 10b
     assert creds.seal_existing(None) == 0

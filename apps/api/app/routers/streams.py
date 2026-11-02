@@ -1,9 +1,8 @@
 """Streams API: CRUD, signed live views, rule events, review and dataset ingest."""
-import hashlib
-import hmac
 import secrets
 import shutil
 import time
+from contextlib import suppress
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -12,11 +11,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete as sa_delete, func, select
 
 from ..adapters import resolve
-from ..config import DATA_DIR, MAX_UPLOAD_MB, SECRET
+from ..config import DATA_DIR, MAX_UPLOAD_MB
 from ..db import SessionLocal
 from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, Workspace
-from ..security import sign_path
+from ..security import check_signature, sign_path, sign_query
 from ..streams.event_fields import class_key
 from ..streams.manager import check_source, display_source, manager
 from .images import ingest, safe_name
@@ -34,22 +33,19 @@ _OPS = {">=", ">", "<=", "<", "=="}
 
 # --- signed frame / MJPEG urls (an <img src> cannot send a bearer header) ------
 
-def _sign(prefix: str, sid: str, exp: int) -> str:
-    return hmac.new(SECRET.encode(), f"{prefix}:{sid}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+def _view_rel(ws: str, project: str, sid: str, kind: str) -> str:
+    """The API-relative route path the audit middleware checks the signature against (Task 26)."""
+    return f"ws/{ws}/projects/{project}/streams/{sid}/{kind}"
 
 
-def _token(prefix: str, sid: str) -> str:
-    exp = int(time.time()) + TOKEN_TTL
-    return f"{exp}.{_sign(prefix, sid, exp)}"
+def _view_query(c: Ctx, sid: str, kind: str) -> str:
+    """Sign a footage URL for the current user, so every watched frame is attributable."""
+    return sign_query(_view_rel(c.ws.slug, c.project.slug, sid, kind), TOKEN_TTL, viewer=c.user.id)
 
 
-def _check_token(token: str, prefix: str, sid: str) -> bool:
-    try:
-        exp_s, sig = token.split(".", 1)
-        exp = int(exp_s)
-    except (AttributeError, ValueError):
-        return False
-    return exp >= time.time() and hmac.compare_digest(_sign(prefix, sid, exp), sig)
+def _check_view(ws: str, project: str, sid: str, kind: str, exp: int, sig: str, viewer: str) -> None:
+    if not (sig and viewer) or not check_signature(_view_rel(ws, project, sid, kind), exp, sig, viewer):
+        raise HTTPException(403, "bad or expired signature")
 
 
 # --- serialisation ------------------------------------------------------------
@@ -72,8 +68,8 @@ def stream_out(c: Ctx, s: Stream) -> dict:
             "frames": live["frames"] if live else 0,
             "detections": live["detections"] if live else 0,
             "events": events,
-            "mjpeg": f"{base}/mjpeg?token={_token('mjpeg', s.id)}",
-            "frame": f"{base}/frame?token={_token('frame', s.id)}",
+            "mjpeg": f"{base}/mjpeg?{_view_query(c, s.id, 'mjpeg')}",
+            "frame": f"{base}/frame?{_view_query(c, s.id, 'frame')}",
             "created": s.created}
 
 
@@ -82,6 +78,18 @@ def _get(c: Ctx, sid: str) -> Stream:
     if s is None or s.workspace_id != c.ws.id or s.project_id != c.project.id:
         raise HTTPException(404, "stream not found")
     return s
+
+
+def _unlink_stored(rel_paths: list[str]) -> None:
+    """Delete the event files of a removed stream; anything outside DATA_DIR is left alone.
+
+    A file still held open on Windows is left for the retention job instead of failing the delete.
+    """
+    for rel in rel_paths:
+        path = (DATA_DIR / rel).resolve()
+        if DATA_DIR in path.parents:
+            with suppress(OSError):
+                path.unlink(missing_ok=True)
 
 
 # --- validation ---------------------------------------------------------------
@@ -283,11 +291,14 @@ def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
     s = _get(c, sid)
     source = s.source
     manager.stop(sid)
+    stored = [p for row in c.db.execute(select(StreamEvent.snapshot_path, StreamEvent.clean_path)
+                                        .where(StreamEvent.stream_id == sid)).all() for p in row if p]
     c.db.execute(sa_delete(StreamEvent).where(StreamEvent.stream_id == sid))
     c.db.delete(s)
     audit(c.db, c.ws.id, c.user.id, "stream.delete", s.name)
     c.db.commit()
-    shutil.rmtree(DATA_DIR / "streams" / sid, ignore_errors=True)
+    _unlink_stored(stored)
+    shutil.rmtree(DATA_DIR / "streams" / sid, ignore_errors=True)   # pre-fix footage, keyed by stream
     if source.startswith("file:videos/"):
         left = c.db.scalar(select(func.count(Stream.id)).where(Stream.source == source)) or 0
         if not left:                                  # demo uploads must not accumulate
@@ -365,9 +376,8 @@ def _live_stream(ws: str, project: str, sid: str) -> None:
 
 
 @router.get("/{sid}/frame")
-def frame(ws: str, project: str, sid: str, token: str = ""):
-    if not _check_token(token, "frame", sid):
-        raise HTTPException(403, "bad token")
+def frame(ws: str, project: str, sid: str, exp: int = 0, sig: str = "", viewer: str = ""):
+    _check_view(ws, project, sid, "frame", exp, sig, viewer)
     _live_stream(ws, project, sid)
     data = manager.latest_jpeg(sid)
     if data is None:
@@ -376,9 +386,8 @@ def frame(ws: str, project: str, sid: str, token: str = ""):
 
 
 @router.get("/{sid}/mjpeg")
-def mjpeg(ws: str, project: str, sid: str, token: str = ""):
-    if not _check_token(token, "mjpeg", sid):
-        raise HTTPException(403, "bad token")
+def mjpeg(ws: str, project: str, sid: str, exp: int = 0, sig: str = "", viewer: str = ""):
+    _check_view(ws, project, sid, "mjpeg", exp, sig, viewer)
     _live_stream(ws, project, sid)
 
     def frames():

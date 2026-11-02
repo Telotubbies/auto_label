@@ -234,54 +234,80 @@ def test_export_is_itself_audited(admin, ids, marker):
         drop(rid)
 
 
-# A stand-in for the Task 10b stream routes: the middleware audits every successful GET of footage.
-@app.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream123/frame")
-def _stream_frame_stub():
-    return {"ok": True}
+# A real stream row and frame: the Task 10b routes own the footage paths this module used to stub.
+@pytest.fixture
+def stream_id(ids):
+    from app.models import Project, Stream
+
+    with SessionLocal() as db:
+        pid = db.scalar(select(Project.id).where(Project.slug == "ppe-detection"))
+        row = Stream(workspace_id=ids["ws"], project_id=pid, name="audit view",
+                     source="rtsp://cam.local/live", model_ref="ultralytics:yolo11n")
+        db.add(row)
+        db.commit()
+        sid = row.id
+    yield sid
+    with SessionLocal() as db:
+        db.execute(delete(Stream).where(Stream.id == sid))
+        db.commit()
 
 
-def test_stream_view_is_audited(admin, ids):
+@pytest.fixture
+def live_frame(monkeypatch):
+    """A frame without threads: the route only needs `manager.latest_jpeg` to answer."""
+    from app.routers import streams as stream_routes
+
+    monkeypatch.setattr(stream_routes.manager, "latest_jpeg", lambda _sid: b"\xff\xd8\xff\xd9")
+
+
+def _frame_url(sid: str, viewer: str) -> str:
+    from app.security import sign_query
+
+    rel = f"ws/{WS}/projects/ppe-detection/streams/{sid}/frame"
+    return f"/api/{rel}?{sign_query(rel, viewer=viewer)}"
+
+
+def test_stream_view_is_audited(admin, ids, stream_id, live_frame):
     with SessionLocal() as db:
         uid = db.scalar(select(User.id).where(User.email == "demo@labeldesk.dev"))
         db.execute(delete(Audit).where(Audit.action == "stream.view"))
         db.commit()
-    r = admin.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream123/frame")
+    r = admin.get(_frame_url(stream_id, uid))
     assert r.status_code == 200, r.text
     with SessionLocal() as db:
         row = db.scalar(select(Audit).where(Audit.action == "stream.view").order_by(Audit.created.desc()))
         assert row is not None
-        assert row.workspace_id == ids["ws"] and row.target == "stream123"
+        assert row.workspace_id == ids["ws"] and row.target == stream_id
         assert row.user_id == uid
         assert row.meta["via"] == "frame" and row.meta["project"] == "ppe-detection"
 
 
-def test_failed_stream_request_is_not_audited(admin):
+def test_failed_stream_request_is_not_audited(admin, ids, live_frame):
+    missing = "stream404" + secrets.token_hex(3)
     with SessionLocal() as db:
-        db.execute(delete(Audit).where(Audit.target == "stream404"))
+        db.execute(delete(Audit).where(Audit.target == missing))
         db.commit()
-    assert admin.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream404/frame").status_code == 404
+    assert admin.get(_frame_url(missing, ids["demo"])).status_code == 404
     with SessionLocal() as db:
-        assert db.scalar(select(Audit.id).where(Audit.target == "stream404")) is None
+        assert db.scalar(select(Audit.id).where(Audit.target == missing)) is None
 
 
-def test_signed_stream_url_records_the_bound_viewer(ids):
+def test_signed_stream_url_records_the_bound_viewer(ids, stream_id, live_frame):
     """I8: a signed frame URL names its viewer; the middleware must attribute the view to them."""
-    from app.security import sign_query
-
     with SessionLocal() as db:
         db.execute(delete(Audit).where(Audit.action == "stream.view"))
         db.commit()
-    qs = sign_query(f"ws/{WS}/projects/ppe-detection/streams/stream123/frame", viewer=ids["labeler"])
+    url = _frame_url(stream_id, ids["labeler"])
     raw = TestClient(app)                                  # no bearer token: viewer comes from the signature
-    assert raw.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream123/frame?{qs}").status_code == 200
+    assert raw.get(url).status_code == 200
     with SessionLocal() as db:
         row = db.scalar(select(Audit).where(Audit.action == "stream.view").order_by(Audit.created.desc()))
         assert row is not None and row.user_id == ids["labeler"]
 
-    # Tampering with the viewer invalidates the signature, so the row is not attributed to anyone else.
-    tampered = qs.replace(f"viewer={ids['labeler']}", f"viewer={ids['demo']}")
-    assert raw.get(f"/api/ws/{WS}/projects/ppe-detection/streams/stream123/frame?{tampered}").status_code == 200
+    # Tampering with the viewer invalidates the signature, so nothing is attributed to anyone else.
+    tampered = url.replace(f"viewer={ids['labeler']}", f"viewer={ids['demo']}")
+    assert raw.get(tampered).status_code == 403
     with SessionLocal() as db:
-        row = db.scalar(select(Audit).where(Audit.action == "stream.view").order_by(Audit.created.desc()))
-        assert row is not None and row.user_id is None
+        rows = db.scalars(select(Audit).where(Audit.action == "stream.view")).all()
+        assert [r.user_id for r in rows] == [ids["labeler"]]
 
