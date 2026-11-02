@@ -331,6 +331,26 @@ def data(c, project):
     m3 = model("run-c", v2id, latency=15.0)
     m4 = model("run-d", vid, latency=30.0)
     m5 = model("run-e", vid, latency=12.0)
+    m6 = model("run-no-dets", vid, latency=8.0, ev=_eval([], latency=8.0))
+
+    # A frozen version whose evaluation spans two splits while the live rows say something else:
+    # the slice dimension must follow the manifest, never Image.split.
+    with SessionLocal() as db:
+        v3 = Version(project_id=pid, number=3, name="mixed", status="ready", stats={})
+        db.add(v3)
+        db.commit()
+        v3id = v3.id
+    mixed = {
+        "classes": ["person", "helmet"],
+        "version_hash": "mixed",
+        "items": [
+            {"file": "test/a.jpg", "split": "test", "source": a},
+            {"file": "valid/b.jpg", "split": "valid", "source": b},
+        ],
+    }
+    (DATA_DIR / "versions" / v3id).mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "versions" / v3id / "manifest.json").write_text(json.dumps(mixed))
+    m7 = model("run-mixed", v3id, latency=9.0)
     with SessionLocal() as db:
         renamed = db.get(TrainedModel, m5)
         renamed.classes = [
@@ -378,11 +398,14 @@ def data(c, project):
         "pid": pid,
         "vid": vid,
         "v2id": v2id,
+        "v3id": v3id,
         "m1": m1,
         "m2": m2,
         "m3": m3,
         "m4": m4,
         "m5": m5,
+        "m6": m6,
+        "m7": m7,
         "other_model": other_model,
         "files": files,
     }
@@ -411,7 +434,14 @@ def test_training_curves_reject_foreign_model(c, data):
 def test_training_curves_default_is_newest_first(c, data):
     body = c.get(f"/api/ws/{WS}/projects/{NAME}/insights/training").json()
     ids = [run["id"] for run in body["runs"]]
-    assert set(ids) == {data["m1"], data["m2"], data["m3"], data["m5"]}
+    assert set(ids) == {
+        data["m1"],
+        data["m2"],
+        data["m3"],
+        data["m5"],
+        data["m6"],
+        data["m7"],
+    }
 
 
 def test_eval_insights_shapes(c, data):
@@ -427,6 +457,7 @@ def test_eval_insights_shapes(c, data):
     assert len(ev["f1_curve"]) == 19
     assert all({"conf", "precision", "recall", "f1"} <= set(p) for p in ev["f1_curve"])
     assert ev["per_class_pr"] and ev["per_class_pr"][0]["points"]
+    assert ev["has_detections"] is True
     cal = ev["calibration"]
     assert 0 <= cal["ece"] <= 1 and 0 <= cal["brier"] <= 1
     assert (
@@ -434,7 +465,9 @@ def test_eval_insights_shapes(c, data):
     )  # every stored prediction above 0.05
     assert all(0 <= b["conf"] <= 1 and 0 <= b["accuracy"] <= 1 for b in cal["bins"])
     dims = {s["dimension"] for s in ev["slices"]}
-    assert dims == {"size", "tag", "batch", "split", "brightness", "source"}
+    # "split" is dropped: this evaluation lives on one frozen split, so the slice would be a
+    # single bucket (see insights_eval.slices).
+    assert dims == {"size", "tag", "batch", "brightness", "source"}
     for s in ev["slices"]:
         assert s["images"] >= 0 and s["instances"] >= 0
         assert s["AP50"] is None or 0 <= s["AP50"] <= 1
@@ -477,6 +510,81 @@ def test_eval_insights_without_eval(c, data):
     body = c.get(f"/api/ws/{WS}/projects/{NAME}/insights/models/{data['m4']}").json()
     assert body["eval"] is None and body["reason"]
     assert body["model"]["id"] == data["m4"]
+
+
+def test_eval_without_detections_returns_no_calibration(c, data):
+    """An eval that stored COCO metrics but no per-image rows must not render zeros as values."""
+    insights.clear_cache()
+    body = c.get(f"/api/ws/{WS}/projects/{NAME}/insights/models/{data['m6']}").json()
+    ev = body["eval"]
+    assert ev["has_detections"] is False
+    assert ev["calibration"] is None
+    assert ev["f1_curve"] == [] and ev["per_class_pr"] == [] and ev["slices"] == []
+    assert ev["sample_images"] == 0
+    # The stored full-eval numbers survive, so the UI can fall back to them.
+    assert ev["f1_best"] == {"conf": 0.4, "f1": 0.66}
+    assert ev["coco"]["AP50"] == 0.7
+
+
+def test_slice_split_uses_the_frozen_manifest_split(c, data):
+    """Re-splitting after an evaluation must not move images between slice buckets."""
+    insights.clear_cache()
+
+    def live_split(name: str) -> None:
+        with SessionLocal() as db:
+            row = db.scalar(
+                select(Image).where(Image.project_id == data["pid"], Image.name == name)
+            )
+            row.split = "train"
+            db.commit()
+
+    for name in ("a.jpg", "b.jpg"):
+        live_split(name)
+    try:
+        body = c.get(
+            f"/api/ws/{WS}/projects/{NAME}/insights/models/{data['m7']}"
+        ).json()
+        values = {(s["dimension"], s["value"]) for s in body["eval"]["slices"]}
+        assert ("split", "test") in values and ("split", "valid") in values
+        assert ("split", "train") not in values
+    finally:
+        with SessionLocal() as db:
+            for name in ("a.jpg", "b.jpg"):
+                row = db.scalar(
+                    select(Image).where(
+                        Image.project_id == data["pid"], Image.name == name
+                    )
+                )
+                row.split = "test"
+            db.commit()
+        insights.clear_cache()
+
+
+def test_cache_invalidated_by_tag_rename(c, data):
+    insights.clear_cache()
+    url = f"/api/ws/{WS}/projects/{NAME}/insights/models/{data['m1']}"
+    first = c.get(url).json()
+    assert any(
+        s["dimension"] == "tag" and s["value"] == "day" for s in first["eval"]["slices"]
+    )
+    try:
+        r = c.post(
+            f"/api/ws/{WS}/projects/{NAME}/tags/rename",
+            json={"name": "day", "new_name": "daylight"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["images_updated"] >= 1
+        second = c.get(url).json()
+        assert second["cache"]["signature"] != first["cache"]["signature"]
+        assert second["cache"]["hit"] is False
+        tags = {s["value"] for s in second["eval"]["slices"] if s["dimension"] == "tag"}
+        assert "daylight" in tags and "day" not in tags
+    finally:
+        c.post(
+            f"/api/ws/{WS}/projects/{NAME}/tags/rename",
+            json={"name": "daylight", "new_name": "day"},
+        )
+        insights.clear_cache()
 
 
 def test_eval_insights_isolated_by_project(c, data):

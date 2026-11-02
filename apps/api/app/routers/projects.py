@@ -270,7 +270,10 @@ def rename_tag(body: TagRename, c: Ctx = Depends(project_ctx)):
             tags = [t for t in img.tags if t != body.name]
             if body.new_name and body.new_name not in tags:
                 tags.append(body.new_name)
-            img.tags = tags; n += 1
+            # Insights slices group by live tags; bumping `updated` invalidates their cache stamp.
+            img.tags = tags
+            img.updated = now()
+            n += 1
     c.db.commit()
     return {"images_updated": n}
 

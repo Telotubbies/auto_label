@@ -3,23 +3,17 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { ImageOff, Scale } from 'lucide-react'
 import { api, fileUrl } from '@/lib/api'
 import type { CompareDisagreement, CompareInsights, ModelDetections, ModelEvalDetection, ModelItem } from '@/lib/types'
-import { Badge, Card, EmptyState, Modal } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import {
   ChartCard, DataTable, EChart, ErrorState, PageSkeleton, axisLine, axisText, chartBase, legendBase, runColor,
   splitLine, useChartTheme, type ChartOption, type ChartTheme, type ExportRows,
 } from './charts'
+import { defaultCompare, toggleSelection } from './modelSelection'
 import { useCompareInsights } from './useInsights'
 
 const num3 = (v?: number | null) => (v == null || Number.isNaN(v) ? '—' : v.toFixed(3))
 const fmtValue = (value: unknown) => Array.isArray(value) ? value.map((v) => Number(v).toFixed(3)).join(', ') : Number(value).toFixed(3)
-
-function defaultCompare(candidates: ModelItem[], modelParam?: string): string[] {
-  const anchor = candidates.find((m) => m.id === modelParam) ?? candidates[0]
-  if (!anchor) return []
-  const peer = candidates.find((m) => m.id !== anchor.id && m.versionId === anchor.versionId && m.task === anchor.task)
-  return peer ? [anchor.id, peer.id] : [anchor.id]
-}
 
 function classOrder(models: CompareInsights['models']): string[] {
   const seen = new Set<string>()
@@ -224,13 +218,7 @@ export function CompareTab({ ws, slug, modelParam }: { ws: string; slug: string;
   }
 
   const toggle = (id: string) => {
-    setPicked((prev) => {
-      const current = prev ?? fallback
-      if (current.includes(id)) return current.length > 2 ? current.filter((x) => x !== id) : current
-      if (current.length >= 4) return current
-      const next = new Set([...current, id])
-      return candidates.filter((m) => next.has(m.id)).map((m) => m.id)
-    })
+    setPicked((prev) => toggleSelection(candidates, prev ?? fallback, id))
   }
 
   if (modelsQ.isLoading) return <PageSkeleton />
@@ -258,7 +246,12 @@ export function CompareTab({ ws, slug, modelParam }: { ws: string; slug: string;
             <h2 className="text-sm font-semibold">Models to compare</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">Pick 2–4 evaluated models from the same dataset version and task. {selection.length} selected.</p>
           </div>
-          {data?.cache.hit ? <Badge className="bg-success/15 text-success">server cache hit</Badge> : null}
+          <div className="flex items-center gap-2">
+            {data?.cache.hit ? <Badge className="bg-success/15 text-success">server cache hit</Badge> : null}
+            {selection.length ? (
+              <Button variant="ghost" size="sm" onClick={() => setPicked([])}>Clear selection</Button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Models to compare">
           {candidates.map((model) => {
@@ -285,7 +278,7 @@ export function CompareTab({ ws, slug, modelParam }: { ws: string; slug: string;
       </Card>
 
       {selection.length < 2 ? (
-        <Card className="p-6"><EmptyState title="Select at least two models" hint="The comparison plots need two or more evaluated models." /></Card>
+        <Card className="p-6"><EmptyState title="Select at least two models" hint="Add one more evaluated model from the same dataset version. Clear the selection if you want to start from another version." /></Card>
       ) : compare.isLoading ? (
         <PageSkeleton />
       ) : compare.isError ? (

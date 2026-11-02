@@ -305,11 +305,14 @@ export interface F1Point { conf: number; precision: number; recall: number; f1: 
 export interface EvalInsights extends ModelEval {
   per_class_pr: PerClassPR[]
   f1_curve: F1Point[]
-  calibration: EvalCalibration
+  /** null when the stored eval has no per-image detections to bin (zeros would read as real values). */
+  calibration: EvalCalibration | null
   slices: EvalSlice[]
   split_images: number
   /** Images actually scored for the slice/calibration breakdowns. */
   sample_images: number
+  /** False when the eval stored COCO metrics but no per-image rows. */
+  has_detections: boolean
   detections: ModelEvalDetection[]
 }
 

@@ -113,7 +113,7 @@ function f1Option(ev: EvalInsights, theme: ChartTheme): ChartOption {
 }
 
 function calibrationOption(ev: EvalInsights, theme: ChartTheme): ChartOption {
-  const bins = ev.calibration.bins
+  const bins = ev.calibration?.bins ?? []
   return chartBase(theme, {
     grid: { left: 8, right: 14, top: 16, bottom: 8, containLabel: true },
     tooltip: { trigger: 'axis', valueFormatter: fmtValue },
@@ -154,6 +154,16 @@ function sliceOption(rows: EvalInsights['slices'], theme: ChartTheme): ChartOpti
 }
 
 const SLICE_DIMENSIONS: EvalSliceDimension[] = ['size', 'tag', 'batch', 'split', 'brightness', 'source']
+
+const NO_DETECTIONS = 'No per-image detections stored for this run.'
+
+function NoDetections({ text }: { text: string }) {
+  return (
+    <div className="grid h-40 place-items-center rounded-md border border-dashed px-4 text-center text-sm text-muted-foreground">
+      {text}
+    </div>
+  )
+}
 
 export function EvaluationTab({ ws, slug, modelParam }: { ws: string; slug: string; modelParam?: string }) {
   const theme = useChartTheme()
@@ -235,16 +245,20 @@ export function EvaluationTab({ ws, slug, modelParam }: { ws: string; slug: stri
             <Kpi label={mask ? 'Mask AP50' : 'Box AP50'} value={pct(ev.coco.AP50)} />
             <Kpi label={mask ? 'Mask AP50-95' : 'Box AP50-95'} value={pct(ev.coco.AP)} />
             <Kpi label="Precision @ chosen threshold" value={pct(best?.precision)} sub={`threshold ${ev.f1_best.conf.toFixed(2)}`} />
-            <Kpi label="Recall @ chosen threshold" value={pct(best?.recall)} sub={`F1 ${best?.f1.toFixed(3) ?? '—'}`} />
+            <Kpi label="Recall @ chosen threshold" value={pct(best?.recall)}
+              sub={best ? `F1 ${best.f1.toFixed(3)}` : `F1 ${ev.f1_best.f1.toFixed(3)} · full eval`} />
             <Kpi label="Latency" value={`${ev.latency_ms.toFixed(1)} ms`} sub="per image" />
-            <Kpi label="Calibration ECE" value={ev.calibration.ece.toFixed(3)} sub={`Brier ${ev.calibration.brier.toFixed(3)}`} />
+            <Kpi label="Calibration ECE" value={ev.calibration ? ev.calibration.ece.toFixed(3) : '—'}
+              sub={ev.calibration ? `Brier ${ev.calibration.brier.toFixed(3)}` : 'no detections stored'} />
           </dl>
 
-          <p className="text-[11px] text-muted-foreground">
-            Derived charts (per-class PR, F1 sweep, calibration, slices) use the stored detail sample:
-            {' '}{ev.sample_images.toLocaleString()} of {ev.split_images.toLocaleString()} images, top 100 predictions per image.
-            {mask ? ' Box IoU is used because masks are not stored per detection.' : ''}
-          </p>
+          {ev.has_detections ? (
+            <p className="text-[11px] text-muted-foreground">
+              Derived charts (per-class PR, F1 sweep, calibration, slices) use the stored detail sample:
+              {' '}{ev.sample_images.toLocaleString()} of {ev.split_images.toLocaleString()} images, top 100 predictions per image.
+              {mask ? ' Box IoU is used because masks are not stored per detection.' : ''}
+            </p>
+          ) : null}
 
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <ChartCard title="Per-class AP" description="Grouped bars: AP (left) and AP50 (right) per class; colour identifies the class."
@@ -258,61 +272,78 @@ export function EvaluationTab({ ws, slug, modelParam }: { ws: string; slug: stri
                 ariaLabel={`Grouped bar chart of AP and AP50 for ${ev.per_class.length} classes. A table view lists the same values.`} />
             </ChartCard>
 
-            <ChartCard title="Per-class precision–recall" description="One curve per class; toggle classes in the legend. Hover for exact values."
-              summary={`Precision–recall curves for ${ev.per_class_pr.length} classes across the confidence sweep.`}
-              exportName="evaluation-per-class-pr"
-              csvRows={[['Class', 'Recall', 'Precision'], ...ev.per_class_pr.flatMap((c) => c.points.map((p) => [c.class, p.recall, p.precision] as (string | number)[]))]}
-              jsonData={ev.per_class_pr}
-              table={<DataTable caption="Every point on each per-class precision–recall curve." head={['Class', 'Recall', 'Precision']}
-                rows={ev.per_class_pr.flatMap((c, i) => c.points.map((p) => [
-                  <Swatch key={`${c.class}-${p.recall}`} color={toRgb(classColor(i))} label={c.class} />,
-                  num3(p.recall), num3(p.precision)]))} />}>
-              <EChart option={prOption(ev, theme)} height={280}
-                ariaLabel={`Precision–recall curves for ${ev.per_class_pr.length} classes. A table view summarises each class.`} />
-            </ChartCard>
+            {ev.has_detections ? (
+              <>
+                <ChartCard title="Per-class precision–recall" description="One curve per class; toggle classes in the legend. Hover for exact values."
+                  summary={`Precision–recall curves for ${ev.per_class_pr.length} classes across the confidence sweep.`}
+                  exportName="evaluation-per-class-pr"
+                  csvRows={[['Class', 'Recall', 'Precision'], ...ev.per_class_pr.flatMap((c) => c.points.map((p) => [c.class, p.recall, p.precision] as (string | number)[]))]}
+                  jsonData={ev.per_class_pr}
+                  table={<DataTable caption="Every point on each per-class precision–recall curve." head={['Class', 'Recall', 'Precision']}
+                    rows={ev.per_class_pr.flatMap((c, i) => c.points.map((p) => [
+                      <Swatch key={`${c.class}-${p.recall}`} color={toRgb(classColor(i))} label={c.class} />,
+                      num3(p.recall), num3(p.precision)]))} />}>
+                  <EChart option={prOption(ev, theme)} height={280}
+                    ariaLabel={`Precision–recall curves for ${ev.per_class_pr.length} classes. A table view summarises each class.`} />
+                </ChartCard>
 
-            <ChartCard title="F1 vs confidence" description={`Precision, recall and F1 on the detail sample. The dashed line marks the chosen threshold, ${ev.f1_best.conf.toFixed(2)}.`}
-              summary={`F1 peaks at ${ev.f1_best.f1.toFixed(3)} with confidence ${ev.f1_best.conf.toFixed(2)}.`}
-              exportName="evaluation-f1-confidence"
-              csvRows={[['Confidence', 'Precision', 'Recall', 'F1'], ...ev.f1_curve.map((p) => [p.conf, p.precision, p.recall, p.f1])]}
-              jsonData={{ f1_best: ev.f1_best, f1_curve: ev.f1_curve }}
-              table={<DataTable caption="Precision, recall and F1 at each confidence step." head={['Confidence', 'Precision', 'Recall', 'F1']}
-                rows={ev.f1_curve.map((p) => [p.conf.toFixed(2), num3(p.precision), num3(p.recall), num3(p.f1)])} />}>
-              <EChart option={f1Option(ev, theme)} height={260}
-                ariaLabel={`Line chart of precision, recall and F1 against confidence, with the best threshold at ${ev.f1_best.conf.toFixed(2)}.`} />
-            </ChartCard>
+                <ChartCard title="F1 vs confidence" description={`Precision, recall and F1 on the detail sample. The dashed line marks the chosen threshold, ${ev.f1_best.conf.toFixed(2)}.`}
+                  summary={`F1 peaks at ${ev.f1_best.f1.toFixed(3)} with confidence ${ev.f1_best.conf.toFixed(2)}.`}
+                  exportName="evaluation-f1-confidence"
+                  csvRows={[['Confidence', 'Precision', 'Recall', 'F1'], ...ev.f1_curve.map((p) => [p.conf, p.precision, p.recall, p.f1])]}
+                  jsonData={{ f1_best: ev.f1_best, f1_curve: ev.f1_curve }}
+                  table={<DataTable caption="Precision, recall and F1 at each confidence step." head={['Confidence', 'Precision', 'Recall', 'F1']}
+                    rows={ev.f1_curve.map((p) => [p.conf.toFixed(2), num3(p.precision), num3(p.recall), num3(p.f1)])} />}>
+                  <EChart option={f1Option(ev, theme)} height={260}
+                    ariaLabel={`Line chart of precision, recall and F1 against confidence, with the best threshold at ${ev.f1_best.conf.toFixed(2)}.`} />
+                </ChartCard>
 
-            <ChartCard title="Calibration" description={`Observed accuracy per confidence bin on the detail sample. ECE ${ev.calibration.ece.toFixed(3)} · Brier ${ev.calibration.brier.toFixed(3)}.`}
-              summary={`Reliability diagram with ${ev.calibration.bins.length} confidence bins; expected calibration error ${ev.calibration.ece.toFixed(3)} and Brier score ${ev.calibration.brier.toFixed(3)}.`}
-              exportName="evaluation-calibration"
-              csvRows={[['Bin', 'Confidence', 'Accuracy', 'Count'], ...ev.calibration.bins.map((b) => [b.bin, b.conf, b.accuracy, b.count])]}
-              jsonData={ev.calibration}
-              table={<DataTable caption="Confidence bins with observed accuracy and image counts." head={['Bin', 'Confidence', 'Accuracy', 'Count']}
-                rows={ev.calibration.bins.map((b) => [b.bin, b.conf.toFixed(2), num3(b.accuracy), b.count])} />}>
-              <EChart option={calibrationOption(ev, theme)} height={260}
-                ariaLabel={`Reliability diagram: observed accuracy for ${ev.calibration.bins.length} confidence bins against the diagonal.`} />
-            </ChartCard>
+                {ev.calibration ? (
+                  <ChartCard title="Calibration" description={`Observed accuracy per confidence bin on the detail sample. ECE ${ev.calibration.ece.toFixed(3)} · Brier ${ev.calibration.brier.toFixed(3)}.`}
+                    summary={`Reliability diagram with ${ev.calibration.bins.length} confidence bins; expected calibration error ${ev.calibration.ece.toFixed(3)} and Brier score ${ev.calibration.brier.toFixed(3)}.`}
+                    exportName="evaluation-calibration"
+                    csvRows={[['Bin', 'Confidence', 'Accuracy', 'Count'], ...ev.calibration.bins.map((b) => [b.bin, b.conf, b.accuracy, b.count])]}
+                    jsonData={ev.calibration}
+                    table={<DataTable caption="Confidence bins with observed accuracy and prediction counts." head={['Bin', 'Confidence', 'Accuracy', 'Count']}
+                      rows={ev.calibration.bins.map((b) => [b.bin, b.conf.toFixed(2), num3(b.accuracy), b.count])} />}>
+                    <EChart option={calibrationOption(ev, theme)} height={260}
+                      ariaLabel={`Reliability diagram: observed accuracy for ${ev.calibration.bins.length} confidence bins against the diagonal.`} />
+                  </ChartCard>
+                ) : null}
+              </>
+            ) : (
+              <Card className="min-w-0 p-4">
+                <h3 className="text-sm font-semibold">Per-image curves</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {NO_DETECTIONS} The PR curves, the F1 sweep and the calibration diagram are derived from
+                  those rows, so they are unavailable here instead of being drawn as zeros. The AP figures
+                  above are the stored full-evaluation numbers.
+                </p>
+              </Card>
+            )}
           </div>
 
-          <ChartCard title="Slice metrics" description={`AP (left) and AP50 (right) per slice value from the detail sample; the top eight values per dimension by image count are shown.`}
+          <ChartCard title="Slice metrics" description="AP (left) and AP50 (right) per slice value from the stored detections; the top eight values per dimension by image count are shown. The split dimension follows the frozen version manifest and appears only when the evaluation spans more than one split."
             summary={`AP and AP50 across ${sliceRows.length} ${activeDim ?? ''} slices.`}
             exportName={`evaluation-slices-${activeDim ?? 'all'}`}
             csvRows={[['Dimension', 'Value', 'Images', 'Instances', 'AP', 'AP50'], ...sliceRows.map((s) => [s.dimension, s.value, s.images, s.instances, s.AP, s.AP50])]}
             jsonData={{ dimension: activeDim, slices: sliceRows }}
-            actions={
+            actions={ev.has_detections ? (
               <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 Slice
                 <Select value={activeDim} onChange={(e) => setDimension(e.target.value as EvalSliceDimension)} aria-label="Slice dimension" className="h-8 text-xs">
                   {SLICE_DIMENSIONS.map((d) => <option key={d} value={d}>{presentDims.has(d) ? d : `${d} (no data)`}</option>)}
                 </Select>
               </label>
-            }
+            ) : undefined}
             table={<DataTable caption={`Slice metrics by ${activeDim ?? 'dimension'}.`} head={['Value', 'Images', 'Instances', 'AP', 'AP50']}
               rows={sliceRows.map((s) => [s.value, s.images, s.instances, num3(s.AP), num3(s.AP50)])} />}>
-            {sliceRows.length
-              ? <EChart option={sliceOption(sliceRows, theme)} height={260}
-                  ariaLabel={`Grouped bar chart of AP and AP50 for ${sliceRows.length} ${activeDim ?? ''} slices. A table view lists the same values.`} />
-              : <div className="grid h-60 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">No slices for this dimension.</div>}
+            {!ev.has_detections
+              ? <NoDetections text="Slice AP is unavailable because this run stored no per-image detections." />
+              : sliceRows.length
+                ? <EChart option={sliceOption(sliceRows, theme)} height={260}
+                    ariaLabel={`Grouped bar chart of AP and AP50 for ${sliceRows.length} ${activeDim ?? ''} slices. A table view lists the same values.`} />
+                : <div className="grid h-60 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">No slices for this dimension.</div>}
           </ChartCard>
 
           <section aria-labelledby="detailed-evaluation" className="space-y-3 pt-2">

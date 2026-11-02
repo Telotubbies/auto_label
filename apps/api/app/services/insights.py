@@ -488,6 +488,10 @@ def _build_model(db: Session, m: TrainedModel) -> dict:
     classes = agg.classes_for(ev, detections, m.classes)
     split = str(ev.get("split") or "test")
     files = _eval_files(ev, detections)
+    has_detections = bool(detections)
+    # Without per-image rows there is nothing to sweep or bin: return empty/null derived sections
+    # instead of a zero curve that reads as a real (bad) measurement. The stored full-eval numbers
+    # (coco, per_class, f1_best) still stand.
     out = {
         "split": split,
         "eval": {
@@ -504,11 +508,14 @@ def _build_model(db: Session, m: TrainedModel) -> dict:
             "latency_ms": float(ev.get("latency_ms") or 0.0),
             "split_images": int(ev.get("split_images") or len(detections)),
             "sample_images": len(detections),
+            "has_detections": has_detections,
             "worst": ev.get("worst") or [],
             "detections": detections,
-            "f1_curve": agg.f1_curve(detections),
-            "per_class_pr": agg.per_class_pr(detections, classes),
-            "calibration": agg.calibration(detections),
+            "f1_curve": agg.f1_curve(detections) if has_detections else [],
+            "per_class_pr": agg.per_class_pr(detections, classes)
+            if has_detections
+            else [],
+            "calibration": agg.calibration(detections) if has_detections else None,
             "slices": agg.slices(db, m, detections, split, classes),
         },
         "model": head,

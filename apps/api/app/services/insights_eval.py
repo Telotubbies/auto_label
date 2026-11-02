@@ -189,6 +189,13 @@ def calibration(detections: list[dict]) -> dict:
 def slices(
     db: Session, m: TrainedModel, detections: list[dict], split: str, classes: list[str]
 ) -> list[dict]:
+    """AP per slice value.
+
+    The `split` value comes from the frozen version manifest, never from the mutable `Image.split`
+    (a re-split after the evaluation must not move images into a bucket the model never saw). An
+    evaluation loads exactly one split, so `split` is emitted only when the frozen manifest spans
+    more than one — a single bucket carries no information.
+    """
     if not detections:
         return []
     meta = image_meta(db, m, detections, split)
@@ -200,6 +207,8 @@ def slices(
 
     out = []
     for dim, values in groups.items():
+        if dim == "split" and len(values) < 2:
+            continue  # one frozen split is already stated in the payload header
         kept = sorted(values.items(), key=lambda kv: (-len(kv[1]), kv[0]))[
             :MAX_SLICE_VALUES
         ]
@@ -247,19 +256,24 @@ def _slice_values(d: dict, info: dict) -> list[tuple[str, str]]:
 def image_meta(
     db: Session, m: TrainedModel, detections: list[dict], split: str
 ) -> dict[str, dict]:
-    """Map eval file name -> Image row via the version manifest (split/file -> source image id)."""
-    by_key: dict[str, str] = {}
-    by_name: dict[str, str] = {}
+    """Map eval file name -> Image row via the version manifest (split/file -> source image id).
+
+    ``split`` is the split the evaluation ran on and the manifest's frozen split is returned with
+    it, so slices group by what the model was scored on rather than by the current row state.
+    """
+    by_key: dict[str, tuple[str, str]] = {}
+    by_name: dict[str, tuple[str, str]] = {}
     manifest = DATA_DIR / "versions" / m.version_id / "manifest.json"
     if manifest.exists():
         try:
             for item in json.loads(manifest.read_text()).get("items") or []:
                 name = Path(item.get("file", "")).name
-                by_key[f"{item.get('split')}/{name}"] = item.get("source")
-                by_name.setdefault(name, item.get("source"))
+                frozen = str(item.get("split") or split)
+                by_key[f"{frozen}/{name}"] = (item.get("source"), frozen)
+                by_name.setdefault(name, (item.get("source"), frozen))
         except (OSError, ValueError):
             by_key, by_name = {}, {}
-    ids = {i for i in by_key.values() if i} | {i for i in by_name.values() if i}
+    ids = {i for i, _ in by_key.values() if i} | {i for i, _ in by_name.values() if i}
     rows = (
         {
             r.id: r
@@ -283,12 +297,15 @@ def image_meta(
     meta: dict[str, dict] = {}
     for d in detections:
         name = Path(d["file"]).name
-        row = rows.get(by_key.get(f"{split}/{name}") or by_name.get(name))
+        source, frozen = (
+            by_key.get(f"{split}/{name}") or by_name.get(name) or (None, split)
+        )
+        row = rows.get(source)
         if row is None:
             meta[d["file"]] = {
                 "width": d.get("width"),
                 "height": d.get("height"),
-                "split": split,
+                "split": frozen,
                 "tags": [],
                 "batch": None,
                 "source": "human",
@@ -298,7 +315,7 @@ def image_meta(
         meta[d["file"]] = {
             "width": row.width,
             "height": row.height,
-            "split": row.split,
+            "split": frozen,
             "tags": list(row.tags or []),
             "batch": batches.get(row.batch_id),
             "source": _label_source(row.annotations or []),
