@@ -1,4 +1,5 @@
 """I19: the remote GPU path meters usage and emits eval/model.ready/job.done."""
+import contextlib
 import os
 import uuid
 
@@ -9,10 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app.db import Base, SessionLocal, engine
+from app.db import Base, SessionLocal, engine, get_db
 from app.main import app
 from app.models import Job, Project, TrainedModel, UsageEvent, User, Version, Webhook, WebhookDelivery, Workspace
 from app.models import now
+from app.services import finalize
 
 TOKEN = {"X-Worker-Token": os.environ["LD_WORKER_TOKEN"]}
 
@@ -131,3 +133,116 @@ def test_remote_autolabel_complete_meters_elapsed_gpu_time():
                                                  UsageEvent.metric == "gpu_seconds"))
         assert gpu is not None and gpu.quantity > 0
         assert db.get(Job, jid).status == "done"
+
+
+def _gpu_usage(workspace_id):
+    with SessionLocal() as db:
+        count = db.scalar(select(func.count()).select_from(UsageEvent).where(
+            UsageEvent.workspace_id == workspace_id, UsageEvent.metric == "gpu_seconds"))
+        total = db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0)).where(
+            UsageEvent.workspace_id == workspace_id, UsageEvent.metric == "gpu_seconds"))
+    return count, float(total)
+
+
+def _event_count(workspace_id, event):
+    with SessionLocal() as db:
+        return db.scalar(select(func.count()).select_from(WebhookDelivery).where(
+            WebhookDelivery.workspace_id == workspace_id, WebhookDelivery.event == event))
+
+
+def test_remote_complete_is_idempotent_and_fail_cannot_overwrite_done(monkeypatch):
+    """I19: a retried complete (or a late /fail) must not re-meter, re-evaluate or re-emit job.done."""
+    ids = _train_job()
+    calls = []
+
+    def fake_evaluate(*args, **kwargs):
+        calls.append(1)
+        if len(calls) > 1:
+            raise AssertionError("evaluation must run at most once")
+        return {"AP": 0.5}
+
+    monkeypatch.setattr(finalize, "evaluate", fake_evaluate)
+    upload = {"weights": ("best.pt", b"not-a-real-checkpoint")}
+    data = {"result": '{"history": [{"epoch": 1, "mAP50": 0.5}]}'}
+
+    with TestClient(app) as c:
+        r = c.post(f"/api/worker/jobs/{ids['job']}/complete", headers=TOKEN, data=data, files=upload)
+        assert r.status_code == 200, r.text
+        gpu_after_first = _gpu_usage(ids["ws"])
+        done_after_first = _event_count(ids["ws"], "job.done")
+        assert gpu_after_first[0] == 1 and done_after_first == 1
+
+        r = c.post(f"/api/worker/jobs/{ids['job']}/complete", headers=TOKEN, data=data, files=upload)
+        assert r.status_code == 200, r.text
+        r = c.post(f"/api/worker/jobs/{ids['job']}/fail", headers=TOKEN, json={"error": "late timeout"})
+        assert r.status_code == 200, r.text
+
+    assert calls == [1]
+    assert _gpu_usage(ids["ws"]) == gpu_after_first
+    assert _event_count(ids["ws"], "job.done") == done_after_first
+    with SessionLocal() as db:
+        job = db.get(Job, ids["job"])
+        assert job.status == "done"
+        assert job.result["model_id"] == ids["model"]
+        assert db.get(TrainedModel, ids["model"]).status == "ready"
+
+
+def test_remote_complete_finalizes_in_background_under_a_training_lease(monkeypatch):
+    """I19: eval must run off the request path, on its own session, under `scheduler.training_scope`."""
+    ids = _train_job()
+    order, scopes, seen = [], [], {}
+
+    @contextlib.contextmanager
+    def spy_scope():
+        scopes.append("enter")
+        try:
+            yield
+        finally:
+            scopes.append("exit")
+
+    real_job_done = finalize.job_done
+
+    def tracking_job_done(db, job, status, error=""):
+        order.append("job_done")
+        return real_job_done(db, job, status, error)
+
+    def fake_evaluate(model_ref, version_dir, task, db=None, workspace_id=None):
+        order.append("evaluate")
+        seen["db"] = db
+        seen["in_scope"] = scopes == ["enter"]
+        return {"AP": 0.5}
+
+    monkeypatch.setattr(finalize, "evaluate", fake_evaluate)
+    monkeypatch.setattr(finalize, "job_done", tracking_job_done)
+    monkeypatch.setattr("app.gpu.scheduler.training_scope", spy_scope)
+
+    request_sessions = []
+
+    def tracking_get_db():
+        session = SessionLocal()
+        request_sessions.append(session)
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = tracking_get_db
+    try:
+        with TestClient(app) as c:
+            r = c.post(f"/api/worker/jobs/{ids['job']}/complete", headers=TOKEN,
+                       data={"result": '{"history": [{"epoch": 1, "mAP50": 0.5}]}'},
+                       files={"weights": ("best.pt", b"not-a-real-checkpoint")})
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert r.status_code == 200, r.text
+    # TestClient runs background tasks before returning, so the evaluator has already run.
+    assert order == ["job_done", "evaluate"], order
+    assert scopes == ["enter", "exit"], scopes
+    assert seen["in_scope"] is True
+    assert len(request_sessions) == 1
+    assert seen["db"] is not request_sessions[0]
+    with SessionLocal() as db:
+        assert db.get(Job, ids["job"]).status == "done"
+        metrics = db.get(TrainedModel, ids["model"]).metrics
+        assert metrics["eval"] == {"AP": 0.5}
