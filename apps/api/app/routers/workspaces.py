@@ -96,9 +96,11 @@ def home(c: Ctx = Depends(ws_ctx)) -> dict:
     for p in projects:
         # Mutation is local to this request; every project can grant a different role.
         apply_project_role(c, p)
+        can_annotate = c.can("project.annotate")
         can_review = c.can("project.review")
         queue = grouped.get(p.id, [])
-        to_annotate = sum(n for status, assignee, n in queue if status == "annotating" and assignee == c.user.id)
+        to_annotate = sum(n for status, assignee, n in queue
+                          if status == "annotating" and assignee == c.user.id) if can_annotate else 0
         to_review = sum(n for status, _, n in queue if status == "review") if can_review else 0
         unassigned = sum(n for status, _, n in queue if status == "unassigned") if can_review else 0
         if not (to_annotate or to_review or unassigned):

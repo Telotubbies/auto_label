@@ -15,6 +15,9 @@ export interface OnboardingFacts {
   deployments: number
   teammates: number
   canInvite: boolean
+  canCreateProject: boolean
+  canUpload: boolean
+  canTrain: boolean
   firstProject: string | null
 }
 
@@ -32,13 +35,13 @@ export function onboardingSteps(f: OnboardingFacts): OnboardingStep[] {
   const project = (path: string) => (f.firstProject ? `/${f.ws}/${f.firstProject}/${path}` : null)
   const steps: OnboardingStep[] = [
     { key: 'project', title: 'Create a project', hint: 'A project holds the images, classes and versions for one model.',
-      done: f.projects > 0, to: null, action: 'create-project' },
+      done: f.projects > 0, to: null, action: f.canCreateProject ? 'create-project' : null },
     { key: 'images', title: 'Upload images', hint: 'JPG, PNG, WebP, TIFF or a ZIP — annotations import too.',
-      done: f.images > 0, to: project('upload'), action: null },
+      done: f.images > 0, to: f.canUpload ? project('upload') : null, action: null },
     { key: 'labels', title: 'Label your first images', hint: 'Annotate on the board or let auto-label pre-fill boxes.',
       done: f.annotations > 0, to: project('annotate'), action: null },
     { key: 'model', title: 'Train a model', hint: 'Pick a dataset version and a model family.',
-      done: f.models > 0, to: project('train'), action: null },
+      done: f.models > 0, to: f.canTrain ? project('train') : null, action: null },
     { key: 'deploy', title: 'Deploy a model', hint: 'Ready models are served by the hosted API.',
       done: f.deployments > 0, to: `/${f.ws}/deployments`, action: null },
   ]

@@ -79,6 +79,10 @@ def data(c):
             # Beta holds a review item so a leaked workspace reviewer role would show up here.
             Image(project_id=beta.id, name="b1.jpg", sha256="d" * 64, width=10, height=10, path="d", thumb="d",
                   status="review", n_annotations=3),
+            # Assigned work for a member whose project role is viewer: the queue must stay hidden
+            # because saving annotations is forbidden to them.
+            Image(project_id=alpha.id, name="a4.jpg", sha256="f" * 64, width=10, height=10, path="f", thumb="f",
+                  status="annotating", assignee_id=viewer.id, n_annotations=0),
             # Must never leak into the home dashboard of WS.
             Image(project_id=foreign.id, name="x.jpg", sha256="e" * 64, width=10, height=10, path="x", thumb="x",
                   status="review", n_annotations=99),
@@ -112,7 +116,7 @@ def test_home_stats_are_workspace_scoped(c, data):
     r = c.get(f"/api/ws/{WS}/home", headers=_headers(data["owner"]))
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["stats"] == {"projects": 2, "images": 4, "annotations": 6, "models": 3, "deployments": 2}
+    assert body["stats"] == {"projects": 2, "images": 5, "annotations": 6, "models": 3, "deployments": 2}
     assert {w["project"] for w in body["waiting"]} == {"alpha", "beta"}
     assert body["totals"] == {"to_annotate": 0, "to_review": 2, "unassigned": 1}
 
@@ -134,6 +138,8 @@ def test_workspace_reviewer_demoted_to_labeler_hides_that_projects_review_queue(
 
 def test_viewer_has_no_work_queue(c, data):
     body = c.get(f"/api/ws/{WS}/home", headers=_headers(data["viewer"])).json()
+    # The fixture assigns one annotating image to this billing member; a viewer cannot save
+    # annotations, so the dashboard must not advertise it as work they can do.
     assert body["totals"] == {"to_annotate": 0, "to_review": 0, "unassigned": 0}
     assert body["waiting"] == []
 

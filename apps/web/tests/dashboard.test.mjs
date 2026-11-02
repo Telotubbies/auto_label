@@ -8,7 +8,7 @@ import {
 
 const facts = (over = {}) => ({
   ws: 'acme', projects: 1, images: 10, annotations: 25, models: 2, deployments: 1,
-  teammates: 2, canInvite: true, firstProject: 'ppe', ...over,
+  teammates: 2, canInvite: true, canCreateProject: true, canUpload: true, canTrain: true, firstProject: 'ppe', ...over,
 })
 
 test('the checklist follows the data lifecycle and marks finished work', () => {
@@ -35,6 +35,23 @@ test('image and label steps point at the first project once one exists', () => {
 test('the invite step disappears for roles that cannot invite', () => {
   const steps = onboardingSteps(facts({ canInvite: false, teammates: 0 }))
   assert.equal(steps.some((s) => s.key === 'team'), false)
+})
+
+test('a labeler gets no upload or train shortcut the project gate would bounce', () => {
+  const steps = onboardingSteps(facts({ canUpload: false, canTrain: false, canInvite: false }))
+  assert.equal(steps.find((s) => s.key === 'images').to, null)
+  assert.equal(steps.find((s) => s.key === 'model').to, null)
+  // Labeling is still their job, so that shortcut stays.
+  assert.equal(steps.find((s) => s.key === 'labels').to, '/acme/ppe/annotate')
+})
+
+test('a billing member in an empty workspace gets no create action', () => {
+  const steps = onboardingSteps(facts({
+    projects: 0, images: 0, annotations: 0, models: 0, deployments: 0, teammates: 0, firstProject: null,
+    canCreateProject: false, canUpload: false, canTrain: false, canInvite: false,
+  }))
+  assert.equal(steps[0].done, false)
+  assert.equal(steps[0].action, null)
 })
 
 test('the tour key is per user and per workspace', () => {

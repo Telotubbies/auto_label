@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { api, get } from '@/lib/api'
 import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import type { Job, Project } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Progress, Stat, StatusPill, fmtAgo } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,9 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
     refetchInterval: (q) => ((q.state.data ?? []).some((j) => ACTIVE.has(j.status)) ? 4000 : false),
   })
   const members = useQuery({ queryKey: ['members', ws], queryFn: () => api.members(ws) })
+  // The checklist links into the first project, so gate those links on that project's real
+  // permissions instead of the workspace rank — the same source PermGate enforces.
+  const { permissions: projectPerms } = useProjectPermissions(ws, projects[0]?.slug ?? '')
 
   // The first-run tour is per person and per workspace: a second workspace is a new tour.
   useEffect(() => {
@@ -54,8 +58,11 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
     deployments: home.data?.stats.deployments ?? 0,
     teammates: members.data ? Math.max(0, members.data.members.length - 1 + members.data.invites.length) : 0,
     canInvite: can('admin'),
+    canCreateProject: can('admin'),
+    canUpload: projectPerms.includes('project.upload'),
+    canTrain: projectPerms.includes('project.train'),
     firstProject: projects[0]?.slug ?? null,
-  } satisfies OnboardingFacts), [home.data, members.data, projects, ws, can])
+  } satisfies OnboardingFacts), [home.data, members.data, projects, ws, can, projectPerms])
 
   if (home.isLoading) {
     return (
