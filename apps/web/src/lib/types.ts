@@ -53,6 +53,15 @@ export interface Job {
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
+
+/** GET /api/ws/{ws}/home — workspace totals plus the caller's own queues. */
+export interface HomeStats { projects: number; images: number; annotations: number; models: number; deployments: number }
+export interface HomeWaiting { project: string; project_name: string; to_annotate: number; to_review: number; unassigned: number }
+export interface WorkspaceHome {
+  stats: HomeStats
+  waiting: HomeWaiting[]
+  totals: { to_annotate: number; to_review: number; unassigned: number }
+}
 export interface Version {
   id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed'
   stats: { images?: number; source_images?: number; splits?: Record<string, number>; classes?: Record<string, number>; class_names?: string[] }

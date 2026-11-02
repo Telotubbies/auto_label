@@ -184,6 +184,9 @@
 .lift { transition: transform .16s ease, box-shadow .16s ease; }
 .lift:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -6px rgb(0 0 0 / .18); }
 
+/* Guided-tour spotlight: rings the section being explained without dimming the rest of the page. */
+.tour-target { outline: 3px solid var(--ring); outline-offset: 4px; border-radius: var(--radius); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..apikeys import scopes_of
 from ..config import DATA_DIR, PLANS, PUBLIC_URL
-from ..deps import Ctx, audit, credits_left, plan, ws_ctx
+from ..deps import Ctx, apply_project_role, audit, credits_left, plan, ws_ctx
 from ..models import (API_SCOPES, ROLES, WORKSPACE_ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project,
                       ProjectMember, TrainedModel, User, Workspace)
 from ..security import new_api_key
@@ -67,6 +67,50 @@ def patch_ws(body: WsPatch, c: Ctx = Depends(ws_ctx)):
     audit(c.db, c.ws.id, c.user.id, "workspace.update", c.ws.name)
     c.db.commit()
     return {"slug": c.ws.slug, "name": c.ws.name, "plan": c.ws.plan, "require_mfa": c.ws.require_mfa}
+
+
+@router.get("/home")
+def home(c: Ctx = Depends(ws_ctx)) -> dict:
+    """Dashboard totals plus the caller's queue, resolved with their role in each project."""
+    projects = c.db.scalars(select(Project).where(Project.workspace_id == c.ws.id, Project.deleted_at.is_(None))
+                            .order_by(Project.updated.desc())).all()
+    pids = [p.id for p in projects]
+    images = annotations = models = deployments = 0
+    rows = []
+    if pids:
+        live = (Image.project_id.in_(pids)) & Image.deleted_at.is_(None)
+        images = c.db.scalar(select(func.count(Image.id)).where(live)) or 0
+        annotations = c.db.scalar(select(func.sum(Image.n_annotations)).where(live)) or 0
+        models = c.db.scalar(select(func.count(TrainedModel.id)).where(TrainedModel.project_id.in_(pids))) or 0
+        deployments = c.db.scalar(select(func.count(TrainedModel.id)).where(
+            TrainedModel.project_id.in_(pids), TrainedModel.status == "ready")) or 0
+        rows = c.db.execute(select(Image.project_id, Image.status, Image.assignee_id, func.count())
+                            .where(live).group_by(Image.project_id, Image.status, Image.assignee_id)).all()
+
+    grouped: dict[str, list[tuple[str, str | None, int]]] = {}
+    for pid, status, assignee, n in rows:
+        grouped.setdefault(pid, []).append((status, assignee, int(n)))
+
+    waiting: list[dict] = []
+    totals = {"to_annotate": 0, "to_review": 0, "unassigned": 0}
+    for p in projects:
+        # Mutation is local to this request; every project can grant a different role.
+        apply_project_role(c, p)
+        can_review = c.can("project.review")
+        queue = grouped.get(p.id, [])
+        to_annotate = sum(n for status, assignee, n in queue if status == "annotating" and assignee == c.user.id)
+        to_review = sum(n for status, _, n in queue if status == "review") if can_review else 0
+        unassigned = sum(n for status, _, n in queue if status == "unassigned") if can_review else 0
+        if not (to_annotate or to_review or unassigned):
+            continue
+        waiting.append({"project": p.slug, "project_name": p.name, "to_annotate": to_annotate,
+                        "to_review": to_review, "unassigned": unassigned})
+        for key, value in (("to_annotate", to_annotate), ("to_review", to_review), ("unassigned", unassigned)):
+            totals[key] += value
+
+    return {"stats": {"projects": len(projects), "images": images, "annotations": annotations,
+                      "models": models, "deployments": deployments},
+            "waiting": waiting, "totals": totals}
 
 
 @router.get("/usage")

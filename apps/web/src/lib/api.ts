@@ -7,7 +7,7 @@ import type {
   InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass,
   LeaderboardRow, Me, Member, ModelDetections, ModelInsights, ModelItem, Permissions,
   PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput, ProjectRole, RegistryItem,
-  RoleLevel, TrainingInsights, Version, WorkerRow, WorkspaceInfo, WorkspacePrivacy,
+  RoleLevel, TrainingInsights, Version, WorkerRow, WorkspaceHome, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -139,6 +139,7 @@ export const api = {
   config: () => get<{ signup_enabled: boolean; sam: { loaded: boolean; error: string | null } }>('/config'),
   me: () => get<Me>('/me'),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
+  home: (ws: string) => get<WorkspaceHome>(`/ws/${ws}/home`),
   projects: (ws: string) => get<Project[]>(`/ws/${ws}/projects`),
   project: (ws: string, p: string) => get<Project>(P(ws, p)),
   classes: (ws: string, p: string) => get<LabelClass[]>(`${P(ws, p)}/classes`),

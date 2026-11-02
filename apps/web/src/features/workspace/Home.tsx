@@ -7,6 +7,7 @@ import { useApp } from '@/lib/store'
 import type { Project } from '@/lib/types'
 import { Badge, Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, fmtAgo, toast } from '@/components/ui'
 import { typeLabel } from '@/components/shell'
+import { WorkspaceDashboard } from './Dashboard'
 import { cn } from '@/lib/utils'
 
 const TYPES = [
@@ -91,12 +92,21 @@ export default function Home() {
 
   return (
     <div className="anim-page min-h-full">
-      <PageHeader title={currentFolder ? <><button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setFolder(null)}>{name}</button> / {currentFolder.name}</> : name}
+      <PageHeader title={currentFolder ? <><button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setFolder(null)}>{name}</button> / {currentFolder.name}</> : 'Home'}
+        desc={currentFolder ? undefined : 'What needs you, what changed, and how to get set up.'}
         actions={can('admin') && <Button variant="outline" size="sm" onClick={() => nav(`/${ws}/settings/members`)}><UserPlus className="h-4 w-4" /> Invite Team</Button>} />
+      {!currentFolder && <WorkspaceDashboard ws={ws} projects={projects.data ?? []} onCreateProject={() => setShowNew(true)} />}
+      <section data-tour="home-projects" aria-labelledby="projects-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3 px-8 pt-6">
+          <div>
+            <h2 id="projects-heading" className="text-lg font-semibold tracking-tight">Projects</h2>
+            <p className="text-sm text-muted-foreground">Open a project to upload images, annotate them and train a model.</p>
+          </div>
+        </div>
       <div className="flex flex-wrap items-center gap-3 px-8">
         <div className="relative w-64"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <Select value={type} onChange={(e) => setType(e.target.value)}><option value="">All types</option>{TYPES.map((t) => <option key={t.id} value={t.id}>{typeLabel(t.id)}</option>)}</Select>
-        <Select value={sort} onChange={(e) => setSort(e.target.value)}><option value="updated">Date edited</option><option value="name">Name</option><option value="images">Image count</option></Select>
+        <Select aria-label="Filter by project type" value={type} onChange={(e) => setType(e.target.value)}><option value="">All types</option>{TYPES.map((t) => <option key={t.id} value={t.id}>{typeLabel(t.id)}</option>)}</Select>
+        <Select aria-label="Sort projects" value={sort} onChange={(e) => setSort(e.target.value)}><option value="updated">Date edited</option><option value="name">Name</option><option value="images">Image count</option></Select>
         <div className="ml-auto flex gap-2">
           {can('reviewer') && <Button variant="outline" size="sm" onClick={() => { const n = prompt('Folder name'); n && act(() => post(`/ws/${ws}/folders`, { name: n })) }}><FolderPlus className="h-4 w-4" /> New Folder</Button>}
           {can('admin') && <Button size="sm" onClick={() => setShowNew(true)}><Plus className="h-4 w-4" /> New Project</Button>}
@@ -150,6 +160,7 @@ export default function Home() {
             action={can('admin') && <Button size="sm" onClick={() => setShowNew(true)}><Plus className="h-4 w-4" /> Create your first project</Button>} /></div>
         )}
       </div>
+      </section>
       <NewProject open={showNew} onClose={() => setShowNew(false)} folders={folders.data ?? []} />
     </div>
   )
