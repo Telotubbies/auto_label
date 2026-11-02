@@ -33,6 +33,7 @@ def stream_analytics(
 
     `tz_offset` is the viewer's offset east of UTC in minutes, so days and hours bucket in local time.
     """
+    c.perm("project.streams")
     return insights_stream.analytics(c.db, c.project, days, tz_offset)
 
 

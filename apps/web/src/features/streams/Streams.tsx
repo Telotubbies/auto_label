@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cctv, Eye, MoreVertical, Play, Plus, Square, Trash2, TriangleAlert, Upload } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import type { RegistryItem, StreamItem, StreamStatus } from '@/lib/types'
 import { Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -301,9 +301,10 @@ function StreamTable({ streams, admin, busyId, onStart, onStop, onDelete }: {
 
 export default function Streams() {
   const { ws = '', project = '' } = useParams()
-  const can = useApp((s) => s.can)
+  const { isManager } = useProjectPermissions(ws, project)
   const qc = useQueryClient()
-  const admin = can('admin')
+  // Server writes are need("admin") -> project manager; the workspace rank cannot say that.
+  const admin = isManager
   const [newOpen, setNewOpen] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
 

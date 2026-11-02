@@ -14,6 +14,8 @@ const dataset = read('../src/features/project/Dataset.tsx')
 const editor = read('../src/features/editor/Editor.tsx')
 const versions = read('../src/features/project/Versions.tsx')
 const privacy = read('../src/features/governance/Privacy.tsx')
+const streams = read('../src/features/streams/Streams.tsx')
+const streamDetail = read('../src/features/streams/StreamDetail.tsx')
 
 function lineWith(src, needle) {
   const line = src.split('\n').find((l) => l.includes(needle))
@@ -59,4 +61,18 @@ test('The workspace Privacy page edits each project with that project\'s role', 
   assert.match(privacy, /useProjectPermissions\(ws, project\.slug\)/)
   assert.match(lineWith(privacy, "const canEdit"), /can\('project\.privacy'\)/)
   assert.doesNotMatch(privacy, /canEdit=\{canEdit\}/)
+})
+
+test('Streams manages cameras with the effective project manager role', () => {
+  assert.match(streams, /useProjectPermissions\(ws, project\)/)
+  assert.doesNotMatch(streams, /useApp\(\(s\) => s\.can\)/)
+  assert.match(lineWith(streams, 'const admin'), /\bisManager\b/)
+})
+
+test('StreamDetail reviews with project.review and manages with isManager', () => {
+  assert.match(streamDetail, /useProjectPermissions\(ws, project\)/)
+  assert.doesNotMatch(streamDetail, /can\('reviewer'\)/)
+  assert.doesNotMatch(streamDetail, /can\('admin'\)/)
+  assert.match(lineWith(streamDetail, "canReview ="), /can\('project\.review'\)/)
+  assert.match(lineWith(streamDetail, 'const admin'), /\bisManager\b/)
 })

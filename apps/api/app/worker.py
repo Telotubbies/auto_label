@@ -505,6 +505,7 @@ def run_extract_frames(job: Job):
             planned = set(plan_frames(frame_count, fps, mode, target_fps, every_s)) if (
                 mode != "scene" and frame_count > 0 and fps > 0) else None
             step = max(1, round(fps * every_s) if mode == "every" else round(fps / target_fps)) if fps > 0 else 1
+            storage_room = metering.remaining(db, ws, "storage_bytes")   # I8: frames are storage too
 
             batch = Batch(project_id=p.id, name=f"Video · {v.name}", source="video", created_by=P.get("created_by"))
             db.add(batch)
@@ -512,6 +513,7 @@ def run_extract_frames(job: Job):
             known = set(db.scalars(select(Image.sha256).where(Image.project_id == p.id, Image.deleted_at.is_(None))))
             stem = Path(v.name).stem or "video"
             kept = read = 0
+            kept_bytes = 0
             last_kept_time = -1.0
             prev_hist = None
             while True:
@@ -549,6 +551,8 @@ def run_extract_frames(job: Job):
                 buf = io.BytesIO()
                 im.save(buf, "JPEG", quality=92)
                 data = buf.getvalue()
+                if kept_bytes + len(data) > storage_room:   # I8: frames are billable storage too
+                    raise QuotaExhausted(f"Storage quota reached on the {plan(ws)['label']} plan")
                 digest = hashlib.sha256(data).hexdigest()
                 if digest in known:                     # identical frame (long still, duplicate upload)
                     continue
@@ -565,6 +569,7 @@ def run_extract_frames(job: Job):
                 db.add(img)
                 set_annotations(db, img, [])
                 metering.record(db, ws.id, "storage_bytes", len(data), project_id=p.id, image_id=img.id)
+                kept_bytes += len(data)
                 kept += 1
                 if mode == "scene" and fps > 0:
                     last_kept_time = index / fps

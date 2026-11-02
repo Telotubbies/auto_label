@@ -11,13 +11,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete as sa_delete, func, select
 
 from ..adapters import resolve
-from ..config import DATA_DIR, MAX_UPLOAD_MB
+from ..config import DATA_DIR, MAX_UPLOAD_MB, PLANS
 from ..db import SessionLocal
 from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, Workspace
 from ..security import check_signature, sign_path, sign_query
+from ..services import metering
+from ..streams import creds
 from ..streams.event_fields import class_key
-from ..streams.manager import check_source, display_source, manager
+from ..streams.manager import check_source, manager
 from .images import ingest, safe_name
 
 P = "/api/ws/{ws}/projects/{project}/streams"
@@ -60,7 +62,7 @@ def stream_out(c: Ctx, s: Stream) -> dict:
     live = manager.status(s.id)
     events = c.db.scalar(select(func.count(StreamEvent.id)).where(StreamEvent.stream_id == s.id)) or 0
     base = f"/api/ws/{c.ws.slug}/projects/{c.project.slug}/streams/{s.id}"
-    return {"id": s.id, "name": s.name, "source": display_source(s.source), "modelRef": s.model_ref,
+    return {"id": s.id, "name": s.name, "source": creds.mask_source(s.source), "modelRef": s.model_ref,
             "sampleFps": s.sample_fps, "zones": s.zones or [], "rules": s.rules or [],
             "status": live["status"] if live else s.status,
             "lastError": live["last_error"] if live else (s.last_error or ""),
@@ -213,7 +215,7 @@ def create(body: StreamIn, c: Ctx = Depends(project_ctx)):
     if not name:
         raise HTTPException(400, "name and source are required")
     try:
-        source = check_source(body.source)
+        source = creds.seal_source(check_source(body.source))
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     zones = check_zones(body.zones)
@@ -222,13 +224,14 @@ def create(body: StreamIn, c: Ctx = Depends(project_ctx)):
                model_ref=check_model(c, body.model_ref), sample_fps=check_fps(body.sample_fps),
                zones=zones, rules=rules, status="stopped")
     c.db.add(s)
-    audit(c.db, c.ws.id, c.user.id, "stream.create", s.name, source=display_source(s.source), model=s.model_ref)
+    audit(c.db, c.ws.id, c.user.id, "stream.create", s.name, source=creds.mask_source(s.source), model=s.model_ref)
     c.db.commit()
     return stream_out(c, s)
 
 
 @router.get("")
 def list_streams(c: Ctx = Depends(project_ctx)):
+    c.perm("project.streams")
     rows = c.db.scalars(select(Stream).where(Stream.workspace_id == c.ws.id, Stream.project_id == c.project.id)
                         .order_by(Stream.created.desc(), Stream.id)).all()
     return [stream_out(c, s) for s in rows]
@@ -245,6 +248,7 @@ class StreamPatch(BaseModel):
 
 @router.get("/{sid}")
 def get_stream(sid: str, c: Ctx = Depends(project_ctx)):
+    c.perm("project.streams")
     return stream_out(c, _get(c, sid))
 
 
@@ -259,7 +263,7 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
         s.name = body.name.strip()[:255]
     if body.source is not None:
         try:
-            s.source = check_source(body.source)
+            s.source = creds.seal_source(check_source(body.source))
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
     if body.model_ref is not None:
@@ -277,7 +281,7 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
         s.rules = rules
     if live:
         manager.stop(sid)
-    audit(c.db, c.ws.id, c.user.id, "stream.update", s.name, source=display_source(s.source), model=s.model_ref)
+    audit(c.db, c.ws.id, c.user.id, "stream.update", s.name, source=creds.mask_source(s.source), model=s.model_ref)
     c.db.commit()
     if live:
         manager.start(sid)
@@ -289,7 +293,10 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
 def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     s = _get(c, sid)
-    source = s.source
+    try:
+        source = creds.open_source(s.source)
+    except ValueError:
+        source = ""
     manager.stop(sid)
     stored = [p for row in c.db.execute(select(StreamEvent.snapshot_path, StreamEvent.clean_path)
                                         .where(StreamEvent.stream_id == sid)).all() for p in row if p]
@@ -302,7 +309,12 @@ def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
     if source.startswith("file:videos/"):
         left = c.db.scalar(select(func.count(Stream.id)).where(Stream.source == source)) or 0
         if not left:                                  # demo uploads must not accumulate
-            (DATA_DIR / source[len("file:"):]).unlink(missing_ok=True)
+            path = DATA_DIR / source[len("file:"):]
+            freed = path.stat().st_size if path.is_file() else 0
+            path.unlink(missing_ok=True)
+            if freed:                                 # give the bytes back to the storage meter
+                metering.adjust(c.db, c.ws, "storage_bytes", -freed, project_id=c.project.id)
+                c.db.commit()
     return {"ok": True}
 
 
@@ -310,6 +322,11 @@ def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
 def start_stream(sid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     s = _get(c, sid)
+    limits = PLANS.get(c.ws.plan, PLANS["free"])
+    cap = int(limits.get("streams", 0))
+    if cap and manager.active_count(c.ws.id, exclude=s.id) >= cap:
+        raise HTTPException(402, f"Stream limit reached on the {limits['label']} plan")
+    metering.check(c.db, c.ws, "stream_hours", 1 / 3600)
     try:
         manager.start(s.id)
     except KeyError:
@@ -338,6 +355,8 @@ async def upload_video(file: UploadFile = File(...), c: Ctx = Depends(project_ct
     if suffix not in VIDEO_EXTS:
         raise HTTPException(400, f"unsupported video type {suffix or '(none)'}")
     budget = MAX_UPLOAD_MB * 1024 * 1024
+    room = metering.remaining(c.db, c.ws, "storage_bytes")
+    label = PLANS.get(c.ws.plan, PLANS["free"])["label"]
     folder = DATA_DIR / "videos"
     folder.mkdir(parents=True, exist_ok=True)
     name = f"{secrets.token_hex(4)}_{safe_name(original)}"
@@ -349,6 +368,8 @@ async def upload_video(file: UploadFile = File(...), c: Ctx = Depends(project_ct
                 size += len(chunk)
                 if size > budget:
                     raise HTTPException(413, f"upload larger than {MAX_UPLOAD_MB} MB")
+                if size > room:                      # stream_uploads are billable storage (I8)
+                    raise HTTPException(402, f"Storage quota reached on the {label} plan")
                 fh.write(chunk)
     except Exception:
         dest.unlink(missing_ok=True)
@@ -356,6 +377,8 @@ async def upload_video(file: UploadFile = File(...), c: Ctx = Depends(project_ct
     if size == 0:
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "empty video")
+    metering.record(c.db, c.ws.id, "storage_bytes", size, project_id=c.project.id, stream_upload=name)
+    c.db.commit()
     return {"source": f"file:videos/{name}"}
 
 
@@ -370,7 +393,8 @@ def _live_stream(ws: str, project: str, sid: str) -> None:
     with SessionLocal() as db:
         s = db.scalar(select(Stream).join(Project, Project.id == Stream.project_id)
                       .join(Workspace, Workspace.id == Stream.workspace_id)
-                      .where(Stream.id == sid, Workspace.slug == ws, Project.slug == project))
+                      .where(Stream.id == sid, Workspace.slug == ws, Project.slug == project,
+                             Project.deleted_at.is_(None)))
         if s is None:
             raise HTTPException(404, "stream not found")
 
@@ -415,6 +439,7 @@ def _like(term: str) -> str:
 @router.get("/{sid}/events")
 def list_events(sid: str, rule: str = "", klass: str = Query("", alias="class"), reviewed: str = "",
                 kind: str = "", offset: int = 0, limit: int = 100, c: Ctx = Depends(project_ctx)):
+    c.perm("project.streams")
     _get(c, sid)
     limit = max(1, min(limit, 500))
     if reviewed.lower() not in ("", "yes", "no", "true", "false", "1", "0"):

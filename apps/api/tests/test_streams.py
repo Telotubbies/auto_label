@@ -135,11 +135,13 @@ def _fake_resolve(ref, db=None, workspace_id=None):
 
 
 def test_stop_returns_when_source_never_opens(c):
-    sid = create_stream(c, source="rtsp://10.255.255.1/none")
+    # A globally routable but unreachable address: the source allowlist resolves and rejects
+    # private/link-local hosts (I2), so tests cannot use an internal address as a bad camera.
+    sid = create_stream(c, source="rtsp://8.8.8.8:554/none")
     assert c.post(f"{BASE}/{sid}/start").status_code == 200
     # Review Focus 4: the bad source must be visible before stop, not just a final "stopped".
     j = _poll(_status_is(c, sid, "reconnecting"), timeout=20)
-    assert "10.255.255.1" in j["lastError"]
+    assert "8.8.8.8" in j["lastError"]
     t = time.time()
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
     assert time.time() - t < 5
@@ -655,14 +657,14 @@ def test_zone_ids_must_be_unique(c):
 
 
 def test_rtsp_credentials_are_masked(c):
-    sid = create_stream(c, source="rtsp://alice:s3cret@cam.local/live")
+    sid = create_stream(c, source="rtsp://alice:s3cret@8.8.8.8/live")
     body = c.get(f"{BASE}/{sid}").json()
     assert "s3cret" not in body["source"] and "***@" in body["source"]
     from app.streams.manager import display_source
-    assert display_source("rtsp://alice:s3cret@cam.local/live") == "rtsp://***@cam.local/live"
+    assert display_source("rtsp://alice:s3cret@8.8.8.8/live") == "rtsp://***@8.8.8.8/live"
     # Finding M1: a raw @ inside the password must not survive the mask either
-    assert display_source("rtsp://user:p@ss@host/live") == "rtsp://***@host/live"
-    assert "ss@" not in c.post(BASE, json={"name": "At sign", "source": "rtsp://user:p@ss@host/live",
+    assert display_source("rtsp://user:p@ss@8.8.8.8/live") == "rtsp://***@8.8.8.8/live"
+    assert "ss@" not in c.post(BASE, json={"name": "At sign", "source": "rtsp://user:p@ss@8.8.8.8/live",
                                            "model_ref": "ultralytics:yolo11n"}).json()["source"]
 
 
@@ -684,8 +686,8 @@ def test_frame_is_scoped_and_token_bound(c):
 
 
 @pytest.mark.parametrize("source", [
-    "rtsp://cam.local/stream", "rtsps://cam.local/stream", "http://cam.local/s.mjpg",
-    "https://cam.local/s.mjpg", "file:videos/demo.mp4", "RTSP://cam.local/stream",
+    "rtsp://8.8.8.8/stream", "rtsps://8.8.8.8/stream", "http://8.8.8.8/s.mjpg",
+    "https://8.8.8.8/s.mjpg", "file:videos/demo.mp4", "RTSP://8.8.8.8/stream",
     "FILE:VIDEOS/demo.mp4",
 ])
 def test_allows_allowlisted_sources(c, source):
@@ -812,3 +814,292 @@ def test_uploaded_video_is_removed_with_the_stream(c):
     sid = create_stream(c, source=up["source"])
     assert c.delete(f"{BASE}/{sid}").status_code == 200
     assert not stored.exists()
+
+
+# --- review 772d0b7 regressions -------------------------------------------------------
+
+def _workspace():
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Workspace
+    with SessionLocal() as db:
+        return db.scalar(select(Workspace).where(Workspace.slug == WS))
+
+
+@pytest.fixture
+def ws_quotas():
+    """Save/restore the demo workspace quotas so a 402 test cannot poison its neighbours."""
+    from sqlalchemy import select
+
+    saved = dict(_workspace().quotas or {})
+    yield saved
+    from app.db import SessionLocal
+    from app.models import Workspace
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        ws.quotas = saved or None
+        db.commit()
+
+
+def _set_quotas(**overrides):
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Workspace
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        ws.quotas = {**(ws.quotas or {}), **overrides}
+        db.commit()
+
+
+def _meter_used(metric: str) -> float:
+    from app.db import SessionLocal
+    from app.services import metering
+    with SessionLocal() as db:
+        return metering.used(db, _workspace(), metric)
+
+
+def _video_bytes(seconds: float = 1.0) -> bytes:
+    path = _write_video(f"meter-{uuid.uuid4().hex[:8]}", seconds=seconds)
+    try:
+        return path.read_bytes()
+    finally:
+        _unlink(path)
+
+
+class _OpenableCap:
+    """Minimal VideoCapture stand-in: the grabber must see the exact URL it was handed."""
+
+    def __init__(self):
+        self.n = 0
+
+    def isOpened(self):
+        return True
+
+    def read(self):
+        self.n += 1
+        return True, np.zeros((32, 48, 3), np.uint8)
+
+    def get(self, _prop):
+        return 5.0
+
+    def set(self, *_a):
+        return True
+
+    def release(self):
+        pass
+
+
+def test_credentialed_camera_survives_a_restart_and_opens_decrypted(c, monkeypatch):
+    """C1: seal on write, reopen on start; a boot-time seal must never brick the camera."""
+    import app.streams.manager as mgr
+    from app import bootstrap
+    from app.db import SessionLocal
+    from app.models import Stream
+
+    opened: list[str] = []
+    monkeypatch.setattr(mgr.cv2, "VideoCapture",
+                        lambda src, *a, **k: (opened.append(src), _OpenableCap())[1])
+    monkeypatch.setattr(mgr, "resolve", _fake_resolve)
+    source = "rtsp://alice:s3cret@8.8.8.8:554/live"
+    sid = create_stream(c, source=source)
+    with SessionLocal() as db:
+        row = db.get(Stream, sid)
+        assert row.source.startswith("enc:v1:"), row.source
+        assert "s3cret" not in row.source
+    bootstrap.init_db()                       # the documented restart path
+    with SessionLocal() as db:
+        assert db.get(Stream, sid).source.startswith("enc:v1:")
+    assert c.get(f"{BASE}/{sid}").json()["source"] == "rtsp://alice:****@8.8.8.8:554/live"
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(lambda: opened or None, timeout=10)
+    assert opened[0] == source                # OpenCV sees the decrypted URL, not ciphertext
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
+def test_sealed_credentials_without_the_key_fail_loudly(c, monkeypatch):
+    """C1: a rotated-away key must be a readable stream error, never a ciphertext-to-FFmpeg attempt."""
+    from app.services import secretbox
+
+    sid = create_stream(c, source="rtsp://alice:s3cret@8.8.8.8/live")
+
+    def no_key(_value):
+        raise ValueError("cannot decrypt")
+
+    monkeypatch.setattr(secretbox, "decrypt", no_key)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    j = _poll(_status_is(c, sid, "error"), timeout=10)
+    assert "credentials cannot be decrypted" in j["lastError"]
+
+
+def test_trash_and_purge_stop_the_camera_and_erase_its_bytes(c, monkeypatch):
+    """C2: trashing a project stops capture, kills the signed view and purges the uploaded clip."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    proj = c.post(f"/api/ws/{WS}/projects",
+                  json={"name": f"Trash cam {uuid.uuid4().hex[:6]}", "type": "object-detection"}).json()
+    slug, pid = proj["slug"], proj["id"]
+    base = f"/api/ws/{WS}/projects/{slug}"
+    up = c.post(f"{base}/streams/upload-video",
+                files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")}).json()
+    stored = DATA_DIR / up["source"][len("file:"):]
+    sid = c.post(f"{base}/streams", json={"name": "Camera", "source": up["source"],
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5}).json()["id"]
+    assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+    _poll(lambda: (j if (j := c.get(f"{base}/streams/{sid}").json()).get("status") == "live" else None),
+          timeout=15)
+    _poll(lambda: c.get(f"{base}/streams/{sid}").json()["frames"] > 0, timeout=10)
+    frame = c.get(f"{base}/streams/{sid}").json()["frame"]
+    assert c.get(frame).status_code == 200
+
+    assert c.delete(base).status_code == 200          # trash
+    assert manager.status(sid) is None
+    time.sleep(0.3)
+    assert c.get(frame).status_code == 404            # a signed live URL dies with the project
+
+    assert c.delete(f"/api/ws/{WS}/trash/{pid}").status_code == 200
+    time.sleep(0.3)
+    assert not stored.exists(), "the uploaded stream video survived the purge"
+    assert not (DATA_DIR / "streams" / sid).exists()
+    assert not (DATA_DIR / "snapshots" / pid).exists()
+
+
+def test_worker_refuses_to_record_into_a_trashed_project(c):
+    """C2: even a thread that outlived the trash call must not write another snapshot."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Project, Stream, StreamEvent
+    from app.streams.manager import _Worker
+
+    sid = create_stream(c, name="Trashed worker")
+    with SessionLocal() as db:
+        row = db.get(Stream, sid)
+        pid = row.project_id
+        project = db.get(Project, pid)
+        project.deleted_at = time.time()
+        db.commit()
+        worker = _Worker(row)
+    folder = DATA_DIR / "snapshots" / pid
+    before = set(folder.glob("*")) if folder.exists() else set()
+    try:
+        worker._record({"rule": 0, "kind": "count"}, time.time(), [], np.zeros((16, 16, 3), np.uint8))
+        after = set(folder.glob("*")) if folder.exists() else set()
+        assert after == before
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count(StreamEvent.id)).where(StreamEvent.stream_id == sid)) == 0
+    finally:
+        with SessionLocal() as db:
+            db.get(Project, pid).deleted_at = None
+            db.commit()
+        c.delete(f"{BASE}/{sid}")
+
+
+@pytest.mark.parametrize("source", [
+    "rtsp://10.0.0.5/live",
+    "rtsp://192.168.1.20:554/stream1",
+    "http://127.0.0.1:8000/admin",
+    "http://169.254.169.254/latest/meta-data/",
+    "rtsp://[::1]:8554/live",
+    "http://[::ffff:169.254.169.254]/latest/meta-data/",
+])
+def test_rejects_non_public_stream_hosts(c, source):
+    """I2: a project manager must not turn the API into a bridge to the internal network."""
+    r = c.post(BASE, json={"name": "SSRF", "source": source, "model_ref": "ultralytics:yolo11n"})
+    assert r.status_code == 400, (source, r.text)
+    assert "private or reserved" in r.json()["detail"]
+
+
+def test_stream_source_rechecks_dns_on_every_connect(monkeypatch):
+    """I2: a name that rebinds to a private address after the first check is refused."""
+    import app.streams.manager as mgr
+    from app.services.safefetch import BlockedURL
+
+    answers = iter(["8.8.8.8", BlockedURL("URL points to a private or reserved address")])
+
+    def rebinding(_host, _port):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(mgr, "_public_ip", rebinding)
+    assert mgr.check_source("rtsp://camera.example.test/live") == "rtsp://camera.example.test/live"
+    with pytest.raises(ValueError, match="private"):
+        mgr.check_source("rtsp://camera.example.test/live")
+
+
+def test_stream_reads_require_project_streams_permission(c):
+    """I3: project.streams is real — a labeler cannot list, open or read a stream's events."""
+    sid = create_stream(c, name="Permissioned")
+    assert c.get(f"{BASE}/{sid}/events").status_code == 200
+    lab = TestClient(app)
+    tok = lab.post("/api/auth/login", json={"email": "labeler@labeldesk.dev",
+                                            "password": "demo1234"}).json()["token"]
+    lab.headers["Authorization"] = f"Bearer {tok}"
+    for url in (BASE, f"{BASE}/{sid}", f"{BASE}/{sid}/events"):
+        assert lab.get(url).status_code == 403, url
+    rev = TestClient(app)
+    tok = rev.post("/api/auth/login", json={"email": "reviewer@labeldesk.dev",
+                                            "password": "demo1234"}).json()["token"]
+    rev.headers["Authorization"] = f"Bearer {tok}"
+    assert rev.get(BASE).status_code == 200
+    assert rev.get(f"{BASE}/{sid}/events").status_code == 200
+
+
+def test_upload_video_meters_storage(c):
+    """I8: a stream upload is billable storage, not invisible bytes."""
+    before = _meter_used("storage_bytes")
+    data = _video_bytes()
+    up = c.post(f"{BASE}/upload-video", files={"file": ("clip.avi", data, "video/x-msvideo")})
+    assert up.status_code == 200, up.text
+    assert _meter_used("storage_bytes") == pytest.approx(before + len(data), abs=1)
+    (DATA_DIR / up.json()["source"][len("file:"):]).unlink(missing_ok=True)
+
+
+def test_upload_video_enforces_the_storage_quota(c, ws_quotas):
+    """I8: an upload that does not fit the plan is refused and leaves no partial file."""
+    _set_quotas(storage_bytes=_meter_used("storage_bytes") + 10)
+    before = set((DATA_DIR / "videos").glob("*"))
+    r = c.post(f"{BASE}/upload-video", files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")})
+    assert r.status_code == 402, r.text
+    assert set((DATA_DIR / "videos").glob("*")) == before
+
+
+def test_start_rejects_when_stream_hours_are_exhausted(c, ws_quotas):
+    """I8: stream_hours gates starting, not only proving."""
+    _set_quotas(stream_hours=0)
+    sid = create_stream(c)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 402
+
+
+def test_stop_records_stream_hours(c, monkeypatch, video):
+    """I8: wall-clock processing time lands in the meter."""
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    before = _meter_used("stream_hours")
+    sid = create_stream(c, source=video, sample_fps=5)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=15)
+    time.sleep(0.4)
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+    assert _meter_used("stream_hours") > before
+
+
+def test_start_enforces_the_plan_stream_cap(c, monkeypatch, video):
+    """I8: starting streams is capped per plan instead of spawning unbounded threads."""
+    from app import config
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    monkeypatch.setitem(config.PLANS["free"], "streams", 1)
+    first = create_stream(c, name="First cam", source=video)
+    second = create_stream(c, name="Second cam", source=video)
+    try:
+        assert c.post(f"{BASE}/{first}/start").status_code == 200
+        _poll(_status_is(c, first, "live"), timeout=15)
+        assert c.post(f"{BASE}/{second}/start").status_code == 402
+    finally:
+        c.post(f"{BASE}/{first}/stop")
+        c.post(f"{BASE}/{second}/stop")

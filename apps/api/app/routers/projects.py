@@ -9,8 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..deps import Ctx, audit, plan, project_ctx, ws_ctx
-from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, TrainedModel, Version, now,
-                      set_annotations)
+from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, Stream, TrainedModel,
+                      Version, now, set_annotations)
 from ..naming import clean_class_name
 from ..security import sign_path
 from ..services import health
@@ -174,6 +174,12 @@ def patch_project(body: ProjectPatch, c: Ctx = Depends(project_ctx)):
 @router.delete("/{project}")
 def delete_project(c: Ctx = Depends(project_ctx)):
     c.need("admin")
+    from ..streams.manager import manager
+    # C2: capture threads are independent of the row; trashing must stop them before the
+    # project disappears from every lookup (otherwise footage keeps being written).
+    for sid in c.db.scalars(select(Stream.id).where(Stream.workspace_id == c.ws.id,
+                                                    Stream.project_id == c.project.id)).all():
+        manager.stop(sid)
     c.project.deleted_at = time.time()
     audit(c.db, c.ws.id, c.user.id, "project.delete", c.project.name)
     c.db.commit()

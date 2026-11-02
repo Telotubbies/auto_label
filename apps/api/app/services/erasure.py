@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
-from ..models import Project, TrainedModel, Version, Video
+from ..models import Project, Stream, TrainedModel, Version, Video
 from . import versioning
 
 log = logging.getLogger("labeldesk.erasure")
@@ -75,6 +75,14 @@ def project_paths(db: Session, project: Project) -> list[Path]:
             paths.append(DATA_DIR / m.weights)
     for v in db.scalars(select(Version).where(Version.project_id == project.id)):
         paths += [versioning.version_dir(v), DATA_DIR / "exports" / v.id]
+    for s in db.scalars(select(Stream).where(Stream.project_id == project.id)):
+        # C2: camera threads and their per-stream folder are project bytes too.
+        paths.append(DATA_DIR / "streams" / s.id)
+        if (s.source or "").startswith("file:videos/"):
+            shared = db.scalar(select(Stream.id).where(Stream.source == s.source,
+                                                       Stream.project_id != project.id).limit(1))
+            if shared is None:                  # another project may reuse the same upload
+                paths.append(DATA_DIR / s.source[len("file:"):])
     return paths
 
 

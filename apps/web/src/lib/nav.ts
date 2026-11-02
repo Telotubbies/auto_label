@@ -108,8 +108,8 @@ export const projectNav: NavGroup<ProjectNavItem>[] = [
   ]},
   { id: 'deploy', label: 'DEPLOY', items: [
     { to: 'deploy', label: 'Deploy & Test', icon: 'deploy', perm: 'project.models' },
-    // Task 10b's CCTV streams are a deploy surface; any project member may view them.
-    { to: 'streams', label: 'Streams', icon: 'streams', perm: 'project.read' },
+    // Streams are cameras + footage: watching follows project.streams (manager/reviewer).
+    { to: 'streams', label: 'Streams', icon: 'streams', perm: 'project.streams' },
   ]},
   // Access is a tab of Project settings since the v2 tree; the separate /access route redirects.
   { id: 'settings', label: 'SETTINGS', items: [

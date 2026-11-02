@@ -421,6 +421,10 @@ def purge(pid: str, c: Ctx = Depends(ws_ctx)):
     p = c.db.get(Project, pid)
     if not p or p.workspace_id != c.ws.id or not p.deleted_at:
         raise HTTPException(404, "project not in trash")
+    from ..models import Stream
+    from ..streams.manager import manager
+    for sid in c.db.scalars(select(Stream.id).where(Stream.project_id == p.id)).all():
+        manager.stop(sid)                       # C2: no thread may outlive its project row
     from ..services.erasure import delete_project_data
     _, ok = delete_project_data(c.db, p)        # bytes first; the DB cascade never touches the volume
     if not ok:

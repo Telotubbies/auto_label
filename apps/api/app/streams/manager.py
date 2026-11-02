@@ -28,7 +28,10 @@ from ..adapters import ADAPTERS, resolve
 from ..config import DATA_DIR
 from ..db import session_scope
 from ..gpu import GpuBusy
-from ..models import Stream, StreamEvent, new_id
+from ..models import Project, Stream, StreamEvent, new_id
+from ..services import metering
+from ..services.safefetch import _public_ip
+from .creds import open_source
 from .event_fields import filter_fields
 from .rules import Engine
 
@@ -41,6 +44,8 @@ _MAX_BACKOFF = 30
 _FILE_FAILURES = 3             # consecutive open/read failures on a local file -> fatal, not endless retry
 _REOPEN_AFTER = 10.0           # same frame hash (or no frame) this long -> reopen
 _JPEG_QUALITY = 85
+_METER_EVERY = 300.0           # stream_hours are durable at least every 5 min, not only on a clean stop
+_DEFAULT_PORTS = {"rtsp": 554, "rtsps": 322, "http": 80, "https": 443}
 
 
 # Greedy through the last @ before the path, so a raw @ inside the password is masked too.
@@ -87,6 +92,12 @@ def check_source(source: str) -> str:
         raise ValueError("invalid source: use rtsp, rtsps, http, https or an uploaded video")
     if not parts.netloc:
         raise ValueError("invalid source: the URL needs a host")
+    # SSRF: FFmpeg/OpenCV would connect with the API host's own network position. Resolve the
+    # host on every validation (create, update and each reconnect) and refuse non-public unicast.
+    try:
+        _public_ip(parts.hostname, parts.port or _DEFAULT_PORTS[scheme])
+    except ValueError as e:
+        raise ValueError(f"invalid source: {e}") from e
     return scheme + s[len(parts.scheme):]
 
 
@@ -161,7 +172,14 @@ class _Worker:
         self.workspace_id = row.workspace_id
         self.project_id = row.project_id
         self.name = row.name
-        self.source = row.source
+        # Stored sources may be sealed (secretbox). Open once, here: every consumer (OpenCV,
+        # status text, logs) must see the real URL, never `enc:v1:...`.
+        self._source_error = ""
+        try:
+            self.source = open_source(row.source)
+        except ValueError:
+            self.source = ""
+            self._source_error = "stream credentials cannot be decrypted"
         self.model_ref = row.model_ref
         self.sample_fps = min(30.0, max(0.5, float(row.sample_fps or 5.0)))
         self.zones = list(row.zones or [])
@@ -186,9 +204,13 @@ class _Worker:
         self._detections = 0
         self._fps_times: deque[float] = deque()
         self._threads: list[threading.Thread] = []
+        self._metered_until = time.time()
 
     # ---- lifecycle ---------------------------------------------------------
     def start(self) -> None:
+        if self._source_error:
+            self._fail(self._source_error)
+            return
         self._set("connecting")
         for target, name in ((self._grab, "grabber"), (self._process, "processor")):
             t = threading.Thread(target=self._guard, args=(target,),
@@ -222,6 +244,32 @@ class _Worker:
         for t in reversed(self._threads):      # processor leaves first, the grabber may be in a read timeout
             t.join(2.0)
         self._threads.clear()
+        self._meter()
+
+    # ---- metering ----------------------------------------------------------
+    def _meter(self, now: float | None = None) -> None:
+        """Record the wall-clock time since the last sample as stream_hours (crash-safe granularity)."""
+        now = time.time() if now is None else now
+        hours = (now - self._metered_until) / 3600.0
+        if hours <= 0:
+            return
+        self._metered_until = now
+        try:
+            with session_scope() as db:
+                metering.record(db, self.workspace_id, "stream_hours", hours,
+                                project_id=self.project_id, stream_id=self.id)
+        except Exception:                      # metering must never kill a worker
+            log.exception("stream %s: could not meter stream hours", self.id)
+
+    def _project_gone(self) -> bool:
+        """True when the owning project was trashed or purged under a still-running worker."""
+        try:
+            with session_scope() as db:
+                project = db.get(Project, self.project_id)
+                return project is None or project.deleted_at is not None
+        except Exception:
+            log.exception("stream %s: could not read the project state", self.id)
+            return False
 
     def running(self) -> bool:
         return not self._stopped and any(t.is_alive() for t in self._threads)
@@ -464,6 +512,8 @@ class _Worker:
                 frame, seq, ts = self._frame, self._frames, self._frame_ts
                 has_frame = self._frame_ts > 0
             now = time.time()
+            if now - self._metered_until >= _METER_EVERY:
+                self._meter(now)
             # No-new-frame watchdog: a capture stack can hang inside read() without raising. The
             # processor cannot release the handle (the grabber owns it), so it asks the grabber to
             # reopen; a blocked read returns through its own timeout and the grabber then recycles it.
@@ -552,6 +602,11 @@ class _Worker:
 
     # ---- events ------------------------------------------------------------
     def _record(self, ev: dict, ts: float, preds: list[dict], frame) -> None:
+        if self._project_gone():
+            # C2: a purge can race a rule firing. Stop the threads here instead of recreating
+            # identifiable footage under a project the operator already deleted.
+            self._stop.set()
+            return
         i = int(ev.get("rule", -1))
         rule = self.rules[i] if 0 <= i < len(self.rules) else {}
         kind = ev.get("kind") or rule.get("kind")
@@ -575,6 +630,8 @@ class _Worker:
 
     def _save_frames(self, frame, preds: list[dict], ev: dict, eid: str) -> tuple[str, str]:
         """Write the annotated review snapshot and the untouched frame for dataset ingest."""
+        if self._project_gone():
+            return "", ""
         img = frame.copy()
         h, w = img.shape[:2]
         for z in self.zones:
@@ -643,6 +700,13 @@ class StreamManager:
             ids = list(self._workers)
         for sid in ids:
             self.stop(sid)
+
+    def active_count(self, workspace_id: str, exclude: str | None = None) -> int:
+        """Live workers of one workspace, for the per-plan stream cap."""
+        with self._lock:
+            workers = list(self._workers.values())
+        return sum(1 for w in workers
+                   if w.workspace_id == workspace_id and w.id != exclude and w.running())
 
     def pause_all(self) -> None:
         with self._lock:
