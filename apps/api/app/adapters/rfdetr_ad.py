@@ -113,7 +113,13 @@ def _coco_root(dataset_dir: Path, model_id: str) -> Path:
             dst.mkdir(parents=True)
             data = json.loads(src.read_text())
             for img in data["images"]:
-                img["file_name"] = os.path.relpath(root / split / img["file_name"], dst)
+                # DATA_DIR and the export can sit on different drives on Windows (E: data, C: pytest
+                # tmp); relpath raises ValueError across drives, so fall back to the absolute path.
+                target = root / split / img["file_name"]
+                try:
+                    img["file_name"] = os.path.relpath(target, dst)
+                except ValueError:
+                    img["file_name"] = str(target)
             (dst / "_annotations.coco.json").write_text(json.dumps(data))
     if not (work / "valid" / "_annotations.coco.json").exists():
         shutil.copytree(work / "train", work / "valid")
