@@ -187,7 +187,7 @@ export default function Playground() {
 
   const pickSample = async (s: PlaygroundSample) => {
     try {
-      const r = await fetch(fileUrl(s.url))
+      const r = await fetch(fileUrl(s.thumbnail))
       if (!r.ok) throw new Error('Could not load that sample image.')
       const blob = await r.blob()
       pick(new File([blob], s.name || 'sample.jpg', { type: blob.type || 'image/jpeg' }), s.id)

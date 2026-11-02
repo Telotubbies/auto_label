@@ -136,18 +136,58 @@ def test_preflight_reports_unavailable_when_a_trained_checkpoint_is_gone(client,
     assert "models" not in m["message"] and "/nope" not in m["message"]
 
 
-def test_preflight_key_matches_the_real_adapter_lease_key(client, monkeypatch):
-    """The residency check only works while the preflight key equals the key the loader takes."""
+def test_preflight_accepts_a_trained_hf_model_directory(client, monkeypatch):
+    """HF training saves models/<id>/ as a directory, not a checkpoint file; it must count as present."""
+    from app.config import DATA_DIR
+
+    model_dir = DATA_DIR / "models" / "g1-hf-dir"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "config.json").write_text("{}")
+    try:
+        item = catalog_item("trained:hfdir", family="hf")
+        wire(monkeypatch, [item], {"trained:hfdir": "hf|models/g1-hf-dir"},
+             {"trained:hfdir": "models/g1-hf-dir"})
+        (m,) = client.post(PREFLIGHT, json={"model_refs": ["trained:hfdir"]}).json()["models"]
+        assert m["state"] == "cold" and m["retry"] is False
+    finally:
+        (model_dir / "config.json").unlink(missing_ok=True)
+        model_dir.rmdir()
+
+
+def test_preflight_recognises_weights_leased_by_the_real_loader(client, monkeypatch):
+    """Lease through the adapter's own predict -> _load path, not through the key under test."""
+    import sys
+    import types
+
+    from PIL import Image as PImage
+
     from app.adapters import ADAPTERS
     from app.gpu import GpuScheduler
     from app.services import runtime_state
 
+    class FakeBoxes:
+        def __len__(self):
+            return 0
+
+    class FakeResult:
+        names, boxes, masks, probs = {}, FakeBoxes(), None, None
+
+    class FakeYOLO:
+        def __init__(self, weights):
+            self.weights = weights
+
+        def predict(self, _im, conf=0.4, iou=0.5, verbose=False):
+            return [FakeResult()]
+
+    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    scheduler = GpuScheduler(4500, None)
+    monkeypatch.setattr("app.gpu.scheduler", scheduler)      # _load imports this at call time
+    monkeypatch.setattr(runtime_state, "scheduler", scheduler)
     ref = "ultralytics:yolo26n"
     monkeypatch.setattr(runtime_state, "catalog", lambda db, ws: [catalog_item(ref)])
-    scheduler = GpuScheduler(4500, None)
-    scheduler.lease(ADAPTERS["ultralytics"].runtime_key("yolo26n", None), 10,
-                    lambda: object(), lambda _obj: None)
-    monkeypatch.setattr(runtime_state, "scheduler", scheduler)
+
+    ADAPTERS["ultralytics"].predict("yolo26n", PImage.new("RGB", (8, 8)))
+    assert scheduler.state()["leases"], "the loader did not lease a model"
     (m,) = client.post(PREFLIGHT, json={"model_refs": [ref]}).json()["models"]
     assert m["state"] == "ready"
 
@@ -169,13 +209,15 @@ def sample_rows():
     stamp = str(int(time.time() * 1000))[-10:]
     ids = {
         "new": f"g1-new-{stamp}", "old": f"g1-old-{stamp}", "blank": f"g1-blank-{stamp}",
-        "foreign": f"g1-fgn-{stamp}", "project": f"g1p-{stamp}", "other_project": f"g1o-{stamp}",
+        "mine": f"g1-mine-{stamp}", "foreign": f"g1-fgn-{stamp}",
+        "project": f"g1p-{stamp}", "other_project": f"g1o-{stamp}",
         "other_ws": f"g1o-{stamp}", "empty_ws": f"g1e-{stamp}",
     }
     now = time.time()
     with SessionLocal() as db:
         ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
         user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        labeler = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
         project = Project(id=ids["project"], workspace_id=ws.id, slug=f"g1-samples-{stamp}",
                           name="G1 samples", type="object-detection")
         other_ws = Workspace(id=ids["other_ws"], slug=f"g1-other-{stamp}", name="G1 other", owner_id=ws.owner_id)
@@ -185,13 +227,16 @@ def sample_rows():
         rows = [
             Image(id=ids["new"], project_id=project.id, name="new.png", sha256="a" * 64, width=20, height=10,
                   path=f"projects/{project.id}/new.png", thumb=f"projects/{project.id}/new-thumb.png",
-                  n_annotations=2, created=now + 200),
+                  assignee_id=user.id, n_annotations=2, created=now + 200),
             Image(id=ids["old"], project_id=project.id, name="old.png", sha256="b" * 64, width=20, height=10,
                   path=f"projects/{project.id}/old.png", thumb=f"projects/{project.id}/old-thumb.png",
-                  n_annotations=1, created=now + 100),
+                  assignee_id=user.id, n_annotations=1, created=now + 100),
             Image(id=ids["blank"], project_id=project.id, name="blank.png", sha256="c" * 64, width=20, height=10,
                   path=f"projects/{project.id}/blank.png", thumb=f"projects/{project.id}/blank-thumb.png",
-                  n_annotations=0, created=now + 300),
+                  assignee_id=user.id, n_annotations=0, created=now + 300),
+            Image(id=ids["mine"], project_id=project.id, name="mine.png", sha256="e" * 64, width=20, height=10,
+                  path=f"projects/{project.id}/mine.png", thumb=f"projects/{project.id}/mine-thumb.png",
+                  assignee_id=labeler.id, n_annotations=1, created=now + 150),
             Image(id=ids["foreign"], project_id=other_project.id, name="foreign.png", sha256="d" * 64,
                   width=20, height=10, path=f"projects/{other_project.id}/foreign.png",
                   thumb=f"projects/{other_project.id}/foreign-thumb.png", n_annotations=3, created=now + 400),
@@ -205,7 +250,7 @@ def sample_rows():
         db.commit()
     yield {**ids, "empty_slug": f"g1-empty-{stamp}"}
     with SessionLocal() as db:
-        for image_id in ("new", "old", "blank", "foreign"):
+        for image_id in ("new", "old", "blank", "mine", "foreign"):
             row = db.get(Image, ids[image_id])
             if row:
                 db.delete(row)
@@ -231,7 +276,24 @@ def test_samples_return_recent_annotated_images_of_this_workspace(client, sample
     assert samples.index(by_id[sample_rows["new"]]) < samples.index(by_id[sample_rows["old"]])
     s = by_id[sample_rows["new"]]
     assert s["thumbnail"].startswith("/api/files/") and "sig=" in s["thumbnail"]
-    assert s["url"].startswith("/api/files/")
+    assert "url" not in s                     # the strip only ever receives a signed thumbnail
+
+
+def test_samples_hide_images_a_labeler_is_not_assigned(client, sample_rows):
+    """The image list hides unassigned images from labelers; the sample strip must obey the same rule."""
+    tok = client.post("/api/auth/login", json={"email": "labeler@labeldesk.dev", "password": "demo1234"}).json()["token"]
+    saved = client.headers["Authorization"]
+    try:
+        client.headers["Authorization"] = f"Bearer {tok}"
+        r = client.get(SAMPLES, params={"limit": 12})
+    finally:
+        client.headers["Authorization"] = saved
+    assert r.status_code == 200, r.text
+    by_id = {s["id"]: s for s in r.json()["samples"]}
+    assert sample_rows["mine"] in by_id                 # assigned to this labeler
+    assert sample_rows["new"] not in by_id              # assigned to someone else
+    assert sample_rows["old"] not in by_id
+    assert all("url" not in s for s in by_id.values())
 
 
 def test_samples_respect_the_limit(client, sample_rows):

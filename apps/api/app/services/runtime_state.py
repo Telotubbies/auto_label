@@ -83,4 +83,8 @@ def preflight(db: Session, workspace_id: str, refs: list[str]) -> list[dict]:
 
 
 def _weights_present(weights: str | None) -> bool:
-    return bool(weights) and (DATA_DIR / weights).is_file()
+    """A checkpoint is a file; HF training saves models/<id>/ as a directory with config.json."""
+    if not weights:
+        return False
+    path = DATA_DIR / weights
+    return path.is_file() or (path.is_dir() and (path / "config.json").is_file())

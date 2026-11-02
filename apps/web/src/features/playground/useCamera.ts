@@ -19,6 +19,11 @@ const errorFor = (e: unknown): Exclude<CameraError, null> => {
   return 'failed'
 }
 
+/** Stop every track of a stream; safe for a null ref and used on stop, restart and unmount. */
+const stopTracks = (stream: MediaStream | null) => {
+  stream?.getTracks().forEach((track) => track.stop())
+}
+
 /**
  * Camera input for the Playground: nothing starts until the user asks, one frame becomes a File
  * that goes through the same predict path as an upload, and every track stops after capture.
@@ -26,11 +31,12 @@ const errorFor = (e: unknown): Exclude<CameraError, null> => {
 export function useCamera(onFrame: (file: File) => void) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const startingRef = useRef(false)          // getUserMedia is in flight: ignore a second start
   const [active, setActive] = useState(false)
   const [error, setError] = useState<CameraError>(null)
 
   const stop = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop())
+    stopTracks(streamRef.current)
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     setActive(false)
@@ -39,11 +45,14 @@ export function useCamera(onFrame: (file: File) => void) {
   useEffect(() => stop, [stop])              // leaving the page must never leave the camera on
 
   const start = useCallback(async () => {
+    if (startingRef.current || streamRef.current) return
+    startingRef.current = true
     setError(null)
-    if (!window.isSecureContext) { setError('insecure'); return }
-    if (!navigator.mediaDevices?.getUserMedia) { setError('unsupported'); return }
     try {
+      if (!window.isSecureContext) { setError('insecure'); return }
+      if (!navigator.mediaDevices?.getUserMedia) { setError('unsupported'); return }
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      stopTracks(streamRef.current)              // never keep a previous stream alive
       streamRef.current = stream
       const video = videoRef.current
       if (!video) { stop(); return }
@@ -53,6 +62,8 @@ export function useCamera(onFrame: (file: File) => void) {
     } catch (e) {
       setError(errorFor(e))
       stop()
+    } finally {
+      startingRef.current = false
     }
   }, [stop])
 

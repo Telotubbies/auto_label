@@ -4,12 +4,13 @@ import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
+from .. import rbac
 from ..adapters import resolve, validate_prediction
 from ..deps import Ctx, ws_ctx
 from ..gpu import GpuBusy
-from ..models import Image, Project
+from ..models import Image, Project, ProjectMember
 from ..security import sign_path
 from ..services import runtime_state
 from ..services.imaging import open_image
@@ -95,20 +96,35 @@ def preflight(body: PreflightIn, c: Ctx = Depends(ws_ctx)):
     return {"models": runtime_state.preflight(c.db, c.ws.id, _refs(body.model_refs))}
 
 
+def _labeler_projects(db, c: Ctx) -> set[str]:
+    """Projects where the caller is a labeler, resolved like deps.apply_project_role."""
+    if c.ws_role in ("owner", "admin"):
+        return set()
+    project_ids = db.scalars(select(Project.id).where(Project.workspace_id == c.ws.id,
+                                                      Project.deleted_at.is_(None))).all()
+    explicit = dict(db.execute(select(ProjectMember.project_id, ProjectMember.role).where(
+        ProjectMember.user_id == c.user.id, ProjectMember.project_id.in_(project_ids))).all())
+    inherited = rbac.base_project_role(c.role, c.ws_role)
+    return {pid for pid in project_ids if explicit.get(pid, inherited) == "labeler"}
+
+
 @router.get("/samples")
 def samples(limit: int = 6, c: Ctx = Depends(ws_ctx)):
-    """Recent annotated images of this workspace, ready to load into the Playground."""
+    """Recent annotated images of this workspace, ready to load into the Playground.
+
+    Labelers only see the images assigned to them, exactly like the image list; the strip receives a
+    signed thumbnail only, so a sample URL cannot be used to fetch the full-size original."""
     limit = max(1, min(limit, MAX_SAMPLES))
-    rows = c.db.execute(
-        select(Image.id, Image.name, Image.thumb, Image.path, Project.slug, Project.name)
-        .join(Project, Project.id == Image.project_id)
-        .where(Project.workspace_id == c.ws.id, Project.deleted_at.is_(None),
-               Image.deleted_at.is_(None), Image.n_annotations > 0, Image.thumb != "", Image.path != "")
-        .order_by(Image.created.desc())
-        .limit(limit)
-    ).all()
+    q = (select(Image.id, Image.name, Image.thumb, Project.slug, Project.name)
+         .join(Project, Project.id == Image.project_id)
+         .where(Project.workspace_id == c.ws.id, Project.deleted_at.is_(None),
+                Image.deleted_at.is_(None), Image.n_annotations > 0, Image.thumb != ""))
+    labeler_projects = _labeler_projects(c.db, c)
+    if labeler_projects:
+        q = q.where(or_(~Project.id.in_(labeler_projects), Image.assignee_id == c.user.id))
+    rows = c.db.execute(q.order_by(Image.created.desc()).limit(limit)).all()
     return {"samples": [
-        {"id": image_id, "name": name, "thumbnail": sign_path(thumb), "url": sign_path(path),
+        {"id": image_id, "name": name, "thumbnail": sign_path(thumb),
          "project": {"slug": slug, "name": project_name}}
-        for image_id, name, thumb, path, slug, project_name in rows
+        for image_id, name, thumb, slug, project_name in rows
     ]}

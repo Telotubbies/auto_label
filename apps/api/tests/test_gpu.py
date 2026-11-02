@@ -342,11 +342,17 @@ def test_state_reports_in_flight_loads_without_waiting_for_the_loader():
     t.start()
     assert started.wait(5)
     box: dict = {}
-    reader = threading.Thread(target=lambda: box.setdefault("state", s.inflight()))
+
+    def read() -> None:
+        box["inflight"] = s.inflight()
+        box["state"] = s.state()
+
+    reader = threading.Thread(target=read)
     reader.start()
     reader.join(2)
-    assert not reader.is_alive(), "inflight() blocked on an in-flight load"
-    assert box["state"] == ["slow"]
+    assert not reader.is_alive(), "state()/inflight() blocked on an in-flight load"
+    assert box["inflight"] == ["slow"]
+    assert box["state"]["leases"] == []          # nothing is leased until the loader returns
     release.set()
     t.join(5)
     state = s.state()

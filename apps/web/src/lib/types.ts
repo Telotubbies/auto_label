@@ -230,7 +230,7 @@ export interface PlaygroundRuntime {
 }
 /** A recent annotated image of this workspace, offered as a Playground starting point. */
 export interface PlaygroundSample {
-  id: string; name: string; thumbnail: string; url: string
+  id: string; name: string; thumbnail: string
   project: { slug: string; name: string }
 }
 
