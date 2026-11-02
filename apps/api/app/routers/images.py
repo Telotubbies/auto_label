@@ -661,6 +661,7 @@ def suggest_class(image_id: str, body: SuggestIn, u: User = Depends(current_user
 class SmartIn(BaseModel):
     points: list[list[float]]
     negatives: list[list[float]] = []
+    epsilon: float = segment.DEFAULT_EPS
 
 
 @router.post("/api/images/{image_id}/smart-polygon")
@@ -668,10 +669,15 @@ def smart_polygon(image_id: str, body: SmartIn, u: User = Depends(current_user),
     c, img = _assigned(*image_ctx(db, u, image_id))
     if not body.points:
         raise HTTPException(400, "click at least one point")
-    poly, source = segment.smart_polygon(imaging.load(img.path), body.points, body.negatives)
+    try:
+        eps = segment.clamp_epsilon(body.epsilon)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    poly, source = segment.smart_polygon(imaging.load(img.path), body.points, body.negatives,
+                                         eps=eps, cache_key=img.id)
     if not poly:
         raise HTTPException(422, "could not find an object at those points โ€” try clicking nearer its centre")
-    return {"polygon": poly, "source": source}
+    return {"polygon": poly, "source": source, "epsilon": eps}
 
 
 class AssistIn(BaseModel):
