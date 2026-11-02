@@ -29,6 +29,7 @@ from ..config import DATA_DIR
 from ..db import session_scope
 from ..gpu import GpuBusy
 from ..models import Stream, StreamEvent, new_id
+from .event_fields import filter_fields
 from .rules import Engine
 
 log = logging.getLogger("labeldesk.streams")
@@ -37,11 +38,13 @@ log = logging.getLogger("labeldesk.streams")
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;3000000")
 
 _MAX_BACKOFF = 30
+_FILE_FAILURES = 3             # consecutive open/read failures on a local file -> fatal, not endless retry
 _REOPEN_AFTER = 10.0           # same frame hash (or no frame) this long -> reopen
 _JPEG_QUALITY = 85
 
 
-_CREDENTIALS = re.compile(r"(://)[^/@\s]+@")
+# Greedy through the last @ before the path, so a raw @ inside the password is masked too.
+_CREDENTIALS = re.compile(r"(://)[^/\s]*@")
 
 
 def display_source(source: str) -> str:
@@ -196,10 +199,15 @@ class _Worker:
         """An unexpected worker exception must surface as `error`, never as a silently dead thread."""
         try:
             fn()
-        except Exception as e:
+        except Exception:
             log.exception("stream %s: worker crashed", self.id)
+            self._fail("stream worker failed")
+
+    def _fail(self, message: str) -> None:
+        """Fatal exit. `fatal` is flipped under the state lock: a concurrent grabber `live` write loses."""
+        with self._state_lock:
             self.fatal = True
-            self._set("error", f"stream worker failed: {e}")
+        self._set("error", message)
 
     def stop(self) -> None:
         """Signal both threads and wait; the grabber releases its own VideoCapture when it exits.
@@ -252,6 +260,8 @@ class _Worker:
         if self._stopped:
             return
         with self._state_lock:
+            if self.fatal and status == "live":   # a fatal exit must never be overwritten as healthy
+                return
             error = self.last_error if error is None else error
             if status == self.status and error == self.last_error:
                 return
@@ -323,26 +333,28 @@ class _Worker:
         try:
             self.source = check_source(self.source)
         except ValueError as e:
-            self.fatal = True
-            self._set("error", str(e))
+            self._fail(str(e))
             return
         missing = self._missing_file()
         if missing:
-            self._set("error", missing)
-            self.fatal = True
+            self._fail(missing)
             return
         backoff = 1
+        failures = 0                            # consecutive open/read failures (files get a budget)
         while not self._stop.is_set():
             if self.fatal:
                 return
             missing = self._missing_file()
             if missing:
-                self._set("error", missing)
-                self.fatal = True
+                self._fail(missing)
                 return
             self._reopen.clear()
             cap = self._open()
             if cap is None:
+                failures += 1
+                if self._is_file and failures >= _FILE_FAILURES:
+                    self._fail(f"cannot open video file: {display_source(self.source)}")
+                    return
                 self._set("reconnecting", f"cannot open source: {display_source(self.source)}")
                 if self._stop.wait(backoff):
                     return
@@ -351,6 +363,7 @@ class _Worker:
             backoff = 1
             interval = 1.0 / self._pacing_fps(cap) if self._is_file else 0.0
             last_hash, last_change = None, time.time()
+            read_failed = False
             try:
                 while not self._stop.is_set():
                     if self.fatal:
@@ -366,9 +379,11 @@ class _Worker:
                             pass
                         ok, frame = cap.read()
                         if not ok:
+                            read_failed = True
                             break
                     if self._reopen.is_set():     # processor watchdog asked for a fresh capture
                         break
+                    failures = 0                  # frames are flowing: the file budget starts over
                     ts = time.time()
                     # A paused / GPU-busy stream keeps capturing so its live view stays warm; do not let the
                     # grabber overwrite the status the scheduler asked for. A fatal processor exit (e.g. an
@@ -397,6 +412,12 @@ class _Worker:
                     log.exception("stream %s: capture release failed", self.id)
             if self._stop.is_set():
                 return
+            if read_failed:
+                failures += 1
+                if self._is_file and failures >= _FILE_FAILURES:
+                    # A corrupt / mislabelled upload opens or reads badly forever; say so instead.
+                    self._fail(f"cannot read video file: {display_source(self.source)}")
+                    return
             if self._is_file:
                 # a looping file only gets here on a real read failure: retry with backoff
                 self._set("reconnecting", f"cannot read source: {display_source(self.source)}")
@@ -412,17 +433,20 @@ class _Worker:
             with session_scope() as db:
                 resolved = resolve(self.model_ref, db, workspace_id=self.workspace_id)
         except ValueError as e:
-            self.fatal = True                  # before the status write: the grabber must not resurrect it
-            self._set("error", f"model unavailable: {e}")
+            self._fail(f"model unavailable: {e}")     # our own validation text (ruling, progress.md:148)
             return
-        except Exception as e:
-            self.fatal = True
-            self._set("error", f"model unavailable: {e}")
+        except Exception:
+            log.exception("stream %s: resolve failed", self.id)
+            self._fail("model unavailable")
             return
 
         variant = getattr(resolved, "variant", "") or ""
-        classes = (sorted({r["class"] for r in self.rules if r.get("class")})
-                   if "world" in variant.lower() else None)
+        is_world = "world" in variant.lower()
+        classes = sorted({r["class"] for r in self.rules if r.get("class")}) if is_world else None
+        if is_world and not classes:
+            # Open-vocabulary models have no vocabulary without a class-bearing rule: never report "live".
+            self._fail("YOLO-World needs at least one rule with a class")
+            return
         engine = Engine(self.rules, self.zones, 30, 2.0)
         tracker = _Tracker(2.0)
         vlm_last: dict[int, float] = {}
@@ -459,9 +483,9 @@ class _Worker:
                 self._set("paused (GPU busy)", "GPU busy: training owns the card")
                 self._stop.wait(2.0)
                 continue
-            except Exception as e:
+            except Exception:
                 log.exception("stream %s: inference failed", self.id)
-                self._set("live", f"inference failed: {e}")
+                self._set("live", "inference failed")
                 self._stop.wait(0.5)
                 continue
 
@@ -541,7 +565,8 @@ class _Worker:
         with session_scope() as db:
             db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
                                summary=ev.get("summary", ""), snapshot_path=snapshot,
-                               clean_path=clean, predictions=payload))
+                               clean_path=clean, predictions=payload,
+                               **filter_fields(rule_json, payload)))
 
     def _save_frames(self, frame, preds: list[dict], ev: dict, eid: str) -> tuple[str, str]:
         """Write the annotated review snapshot and the untouched frame for dataset ingest."""

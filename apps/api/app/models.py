@@ -388,6 +388,7 @@ class Stream(Base):
 class StreamEvent(Base):
     """One rule firing, with a JPEG snapshot and the predictions that triggered it."""
     __tablename__ = "stream_events"
+    __table_args__ = (Index("ix_stream_events_stream_ts", "stream_id", "ts"),)
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     stream_id: Mapped[str] = mapped_column(ForeignKey("streams.id", ondelete="CASCADE"), index=True)
     ts: Mapped[float] = mapped_column(Float, default=now)
@@ -397,6 +398,11 @@ class StreamEvent(Base):
     clean_path: Mapped[str] = mapped_column(String(1024), default="")        # no overlays: the dataset copy
     predictions: Mapped[list] = mapped_column(JSON, default=list)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # denormalised from `rule` / `predictions` so the timeline filters and pages in SQL
+    rule_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    rule_kind: Mapped[str] = mapped_column(String(16), default="")
+    rule_label: Mapped[str] = mapped_column(String(255), default="")
+    classes: Mapped[str] = mapped_column(Text, default="")                   # "|person|helmet|"
 
 
 class Audit(Base):

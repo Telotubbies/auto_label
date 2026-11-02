@@ -35,9 +35,10 @@ export function StreamStatusChip({ status, className }: { status: StreamStatus; 
 const fmtBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 ** 2).toFixed(1)} MB`)
 const fmtInt = (n: number) => (Number.isFinite(n) ? n.toLocaleString() : '—')
 
-/** Camera URLs often embed credentials; every project member can open this page, so never render them. */
+/** Camera URLs often embed credentials; every project member can open this page, so never render them.
+ *  Greedy through the last @ before the path: a raw @ inside the password must be masked too. */
 export const displaySource = (source: string) =>
-  source.replace(/^([a-z][a-z0-9+.-]*:\/\/)([^/@\s]+)@/i, '$1•••@')
+  source.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/\s]*@/i, '$1•••@')
 
 /** Trained models run through their family adapter, so only ultralytics/tensorrt refs are accepted by the API. */
 const isStreamModel = (m: RegistryItem) => m.family === 'ultralytics' || m.family === 'tensorrt'
