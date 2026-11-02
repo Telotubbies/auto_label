@@ -37,6 +37,10 @@ WEIGHTS = (
 WORLD_WEIGHTS = frozenset({"yolov8s-worldv2.pt", "yolov8m-worldv2.pt"})
 CLIP_CLASSES = ("person",)
 VLM_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct-AWQ"
+# Zoo checkpoints are megabytes; anything smaller is a stub left by an interrupted copy.
+MIN_CHECKPOINT_BYTES = 1_000_000
+# Files that carry weights in a Hugging Face snapshot (config.json and friends are metadata).
+WEIGHT_SUFFIXES = frozenset({".bin", ".safetensors", ".pt", ".pth", ".gguf"})
 
 Loader = Callable[[str], object]
 HfRunner = Callable[[list[str]], int]
@@ -111,15 +115,53 @@ def _fetch_weights(name: str, dest: Path, loader: Loader) -> None:
 
 
 def vlm_cached(model: str = VLM_MODEL, hub_dir: Path | None = None) -> bool:
-    """Whether the Hugging Face cache already holds ``model`` (no network access)."""
+    """Whether the cache holds a *sealed* snapshot of ``model`` (no network access).
+
+    A repository directory alone proves nothing: ``huggingface_hub`` creates it, and a
+    ``blobs/*.incomplete`` file, the moment a download starts. Cached means a
+    ``snapshots/<rev>/`` directory carries ``config.json`` plus non-zero weight files and
+    no blob is mid-download, so an interrupted fetch fails ``--check`` and gets retried.
+    """
     if hub_dir is not None:
-        root = hub_dir
+        root = Path(hub_dir)
     elif os.environ.get("HF_HUB_CACHE"):
         root = Path(os.environ["HF_HUB_CACHE"])
     else:
         hf_home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
         root = hf_home / "hub"
-    return (root / f"models--{model.replace('/', '--')}").is_dir()
+    model_dir = root / f"models--{model.replace('/', '--')}"
+    if not model_dir.is_dir():
+        return False
+    if any((model_dir / "blobs").glob("*.incomplete")):
+        return False
+    return _sealed_snapshot(model_dir) is not None
+
+
+def _sealed_snapshot(model_dir: Path) -> Path | None:
+    """The first snapshot with ``config.json`` and only non-zero weight files, if any."""
+    snapshots = model_dir / "snapshots"
+    if not snapshots.is_dir():
+        return None
+    for snapshot in sorted(path for path in snapshots.iterdir() if path.is_dir()):
+        config = snapshot / "config.json"
+        if not config.is_file() or config.stat().st_size == 0:
+            continue
+        weights = [
+            path
+            for path in snapshot.rglob("*")
+            if path.is_file() and path.suffix in WEIGHT_SUFFIXES
+        ]
+        if weights and all(path.stat().st_size > 0 for path in weights):
+            return snapshot
+    return None
+
+
+def _checkpoint_ready(target: Path) -> bool:
+    """A checkpoint is present only when it is a regular file above the plausible floor."""
+    try:
+        return target.is_file() and target.stat().st_size >= MIN_CHECKPOINT_BYTES
+    except OSError:
+        return False
 
 
 def _reason(exc: BaseException) -> str:
@@ -152,12 +194,15 @@ def run(
     for item in plan:
         if item.kind == "ultralytics":
             target = dest / item.name
-            if target.is_file():
+            if _checkpoint_ready(target):
                 out(f"PASS {item.name} (present)")
                 passed += 1
                 continue
             if check:
-                out(f"FAIL {item.name} (missing from {dest})")
+                if target.exists():
+                    out(f"FAIL {item.name} (incomplete: {target.stat().st_size} bytes in {dest})")
+                else:
+                    out(f"FAIL {item.name} (missing from {dest})")
                 failed += 1
                 continue
             try:
@@ -175,7 +220,7 @@ def run(
             passed += 1
             continue
         if check:
-            out(f"FAIL {item.name} (not in Hugging Face cache)")
+            out(f"FAIL {item.name} (no sealed snapshot in Hugging Face cache)")
             failed += 1
             continue
         command = _hf_command()
