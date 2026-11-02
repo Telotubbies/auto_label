@@ -7,8 +7,11 @@ os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 
 import numpy as np
 import pytest
+from PIL import Image as PImage
+from PIL import ImageOps
 
 from app import worker
+from app.config import DATA_DIR
 from app.db import Base, SessionLocal, engine
 from app.models import Image, Job, Project, User, Video, Workspace
 
@@ -58,8 +61,27 @@ def video_job(monkeypatch):
 
     monkeypatch.setattr(worker.cv2, "VideoCapture", lambda *a, **kw: Cap())
     from app.services import faceblur
-    monkeypatch.setattr(faceblur, "blur_faces", lambda im, detector=None: (im, 0))
+    calls: list = []
+
+    def spy(im, detector=None):
+        calls.append(im.copy())                   # the frame that reaches the blur, before encoding
+        return ImageOps.invert(im), 1             # visibly different bytes, so the stored JPEG proves it ran
+
+    monkeypatch.setattr(faceblur, "blur_faces", spy)
+    ctx.blur_calls = calls
     return ctx
+
+
+def test_extraction_blurs_every_kept_frame(video_job):
+    """I16: the PDPA control must actually run before the frame bytes are stored."""
+    worker.run_extract_frames(video_job.job)
+    assert len(video_job.blur_calls) == 1          # one call for the one kept frame
+    with SessionLocal() as db:
+        img = db.scalar(__import__("sqlalchemy").select(Image).where(Image.video_id == video_job.video))
+        assert img is not None
+        stored = PImage.open(DATA_DIR / img.path).convert("RGB")
+    # The raw frame is black; the spy inverted it, so the stored JPEG can only be the blurred output.
+    assert stored.getpixel((0, 0))[0] > 200
 
 
 def test_extraction_fails_closed_when_face_blur_is_unavailable(video_job, monkeypatch):
