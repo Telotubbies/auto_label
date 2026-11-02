@@ -26,7 +26,10 @@ async def lifespan(_app: FastAPI):
     init_db()
     stop = None
     if EMBEDDED_WORKER:
-        from .worker import start_background
+        from .worker import assert_handlers_claimed, start_background
+        # Fail before the daemon thread starts: a RuntimeError inside the thread leaves the API
+        # serving with no executor and its jobs queued forever (C2/Important 3).
+        assert_handlers_claimed()
         stop = start_background()
     yield
     if stop:

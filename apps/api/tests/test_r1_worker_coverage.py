@@ -1,6 +1,9 @@
 """C2: every CPU job kind must have an executor in the documented deployment."""
+import asyncio
 import re
 from pathlib import Path
+
+import pytest
 
 from app import config, worker
 
@@ -32,3 +35,30 @@ def test_compose_worker_claims_every_cpu_handler():
     claimed = {k.strip() for k in m.group(1).split(",") if k.strip()}
     missing = set(worker.HANDLERS) - set(config.REMOTE_JOB_KINDS) - claimed
     assert not missing, f"compose worker never claims {sorted(missing)}"
+
+
+def test_no_gpu_docs_list_claims_every_cpu_handler():
+    """DEPLOY.md's no-GPU recipe must match the startup assertion, not crash the worker (Important 3)."""
+    doc = Path(__file__).resolve().parents[3] / "docs" / "DEPLOY.md"
+    m = re.search(r"LD_LOCAL_JOBS=([a-z_,]+)", doc.read_text(encoding="utf-8"))
+    assert m, "docs/DEPLOY.md must document the no-GPU LD_LOCAL_JOBS list"
+    claimed = {k.strip() for k in m.group(1).split(",") if k.strip()}
+    missing = set(worker.HANDLERS) - set(config.REMOTE_JOB_KINDS) - claimed
+    assert not missing, f"the no-GPU docs list never claims {sorted(missing)}"
+
+
+def test_embedded_api_refuses_to_start_without_an_executor(monkeypatch):
+    """The embedded thread must be checked before it starts, or the API stays up with no executor."""
+    from app import main
+
+    monkeypatch.setattr(main, "EMBEDDED_WORKER", True)
+    monkeypatch.setattr(main, "init_db", lambda: None)
+    monkeypatch.setattr(worker, "start_background", lambda: None)
+    monkeypatch.setattr(worker, "LOCAL_JOB_KINDS", [k for k in worker.LOCAL_JOB_KINDS if k != "health"])
+
+    async def start():
+        async with main.lifespan(main.app):
+            raise AssertionError("lifespan must not start a worker with a missing executor")
+
+    with pytest.raises(RuntimeError, match="health"):
+        asyncio.run(start())
