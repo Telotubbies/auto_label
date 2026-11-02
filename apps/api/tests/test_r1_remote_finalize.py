@@ -3,6 +3,7 @@ import os
 import uuid
 
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
+os.environ["LD_EMBEDDED_WORKER"] = "0"     # no local worker may claim the "running" remote job
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +20,13 @@ TOKEN = {"X-Worker-Token": os.environ["LD_WORKER_TOKEN"]}
 @pytest.fixture(scope="module", autouse=True)
 def _schema():
     Base.metadata.create_all(engine)
+
+
+@pytest.fixture(autouse=True)
+def _no_embedded_worker(monkeypatch):
+    """Another module may have imported `app` with the embedded worker on; keep the real worker out."""
+    from app import main
+    monkeypatch.setattr(main, "EMBEDDED_WORKER", False)
 
 
 def _train_job():
@@ -98,8 +106,9 @@ def test_remote_fail_notifies_and_meters_the_failed_run():
         job = db.get(Job, ids["job"])
         assert job.status == "failed"
         assert db.get(TrainedModel, ids["model"]).status == "failed"
-        gpu = db.scalar(select(UsageEvent).where(UsageEvent.workspace_id == ids["ws"],
-                                                 UsageEvent.metric == "gpu_seconds"))
+        gpu = db.scalar(select(UsageEvent).where(
+            UsageEvent.workspace_id == ids["ws"], UsageEvent.metric == "gpu_seconds",
+            UsageEvent.meta["job_id"].as_string() == ids["job"]))
         assert gpu is not None and gpu.quantity > 0
         events = {d.event for d in db.scalars(select(WebhookDelivery).where(
             WebhookDelivery.workspace_id == ids["ws"]))}
