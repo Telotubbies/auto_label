@@ -17,10 +17,16 @@ def version_out(c: Ctx, v: Version) -> dict:
     jobs = c.db.scalars(select(Job).where(Job.project_id == v.project_id, Job.kind.in_(("version", "export")))
                         .order_by(Job.created.desc())).all()
     gen = next((j for j in jobs if j.kind == "version" and j.params.get("version_id") == v.id), None)
+    # I14: a signed URL is a download grant, so only project.export roles get one; every reader keeps
+    # the export metadata (job id/status/progress) the UI needs to show what exists.
+    can_export = c.can("project.export")
     exports = {}
     for j in jobs:
         if j.kind == "export" and j.params.get("version_id") == v.id and j.params["format"] not in exports:
-            exports[j.params["format"]] = {**job_out(j), "url": sign_path(j.result["file"]) if j.status == "done" else None}
+            item = job_out(j)
+            if can_export:
+                item["url"] = sign_path(j.result["file"]) if j.status == "done" else None
+            exports[j.params["format"]] = item
     return {"id": v.id, "number": v.number, "name": v.name or f"v{v.number}", "settings": v.settings, "status": v.status,
             "stats": v.stats, "created": v.created, "job": job_out(gen) if gen else None, "exports": exports}
 
