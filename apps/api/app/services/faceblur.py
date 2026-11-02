@@ -34,6 +34,11 @@ def _cascade():
         return None
 
 
+def available() -> bool:
+    """True when the Haar detector can actually run (fail-closed callers check this)."""
+    return _cascade() is not None
+
+
 def detect_faces(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
     """Frontal faces in a grayscale array as (x, y, w, h) pixels; [] when detection is unavailable."""
     classifier = _cascade()

@@ -1,5 +1,4 @@
 """Workspace-level: settings, members, invites, API keys, usage, audit, folders, trash."""
-import shutil
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +7,7 @@ from sqlalchemy import Text, cast, delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..apikeys import scopes_of
-from ..config import DATA_DIR, PLANS, PUBLIC_URL
+from ..config import PLANS, PUBLIC_URL
 from ..deps import Ctx, audit, credits_left, plan, ws_ctx
 from ..models import (API_SCOPES, ROLES, WORKSPACE_ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project,
                       ProjectMember, TrainedModel, User, Workspace)
@@ -353,6 +352,7 @@ def purge(pid: str, c: Ctx = Depends(ws_ctx)):
     if not p or p.workspace_id != c.ws.id or not p.deleted_at:
         raise HTTPException(404, "project not in trash")
     audit(c.db, c.ws.id, c.user.id, "project.purge", p.name)
+    from ..services.erasure import delete_project_data
+    delete_project_data(c.db, p)        # bytes first; the DB cascade never touches the volume
     c.db.delete(p); c.db.commit()
-    shutil.rmtree(DATA_DIR / "projects" / pid, ignore_errors=True)
     return {"ok": True}
