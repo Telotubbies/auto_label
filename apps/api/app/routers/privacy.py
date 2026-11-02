@@ -230,7 +230,7 @@ a new sub-processor requires the Controller's prior consent.
 
 - Encryption at rest for credentials and secrets (camera URLs, API keys, TOTP seeds).
 - Role-based access control at workspace and project level, least privilege by default.
-- An audit log records administrative actions and every view of stored footage.
+- An audit log records administrative actions and every view of stream footage served by the stream manager.
 - Face blur is on by default for uploaded video frames before they enter a dataset; stream coverage
   is added with the stream manager.
 - Multi-factor authentication is available and can be enforced per workspace.

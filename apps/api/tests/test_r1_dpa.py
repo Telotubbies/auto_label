@@ -25,11 +25,22 @@ def test_dpa_names_remote_workers_instead_of_denying_sub_processors(client):
     md = client.get(f"{BASE}/dpa").json()["markdown"]
     assert "No third-party transfer" not in md
     assert "remote gpu worker" in md.lower()
-    assert "records" in md.lower()
+    assert "that worker is a sub-processor" in md.lower()
 
 
-def test_dpa_does_not_claim_stream_audit_or_blur_before_10b(client):
-    md = client.get(f"{BASE}/dpa").json()["markdown"]
-    assert "stream footage" not in md.lower()
-    assert "video frames" in md.lower()
-    assert "face blur" in md.lower()
+def test_dpa_audit_clause_names_only_stream_footage(client):
+    """Stored images/video are served by /api/files with no audit row; only stream views are audited."""
+    md = client.get(f"{BASE}/dpa").json()["markdown"].lower()
+    assert "every view of stream footage" in md
+    assert "stored footage" not in md
+    assert "video frames" in md
+    assert "face blur" in md
+
+
+def test_stream_view_audit_covers_the_stream_transports_only():
+    from app.services.streamaudit import view_of
+
+    assert view_of("/api/ws/acme/projects/p1/streams/s1/frame")
+    assert view_of("/api/ws/acme/projects/p1/streams/s1/mjpeg")
+    assert view_of("/api/ws/acme/projects/p1/images/i1.jpg") is None
+    assert view_of("/api/files/projects/p1/images/i1.jpg") is None
