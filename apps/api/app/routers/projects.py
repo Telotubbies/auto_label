@@ -36,6 +36,11 @@ def job_out(j: Job, lean: bool = False) -> dict:
     return out
 
 
+def visible_job(c: Ctx, j: Job) -> dict:
+    """A job for a project reader: the eval report and training options need project.models (I1)."""
+    return job_out(j, lean=not c.can("project.models"))
+
+
 def _counts(db: Session, pids: list[str]) -> tuple[dict, dict, dict]:
     """(images, models, cover thumb) per project in three grouped queries."""
     live = (Image.project_id.in_(pids)) & Image.deleted_at.is_(None)
@@ -455,7 +460,7 @@ def project_jobs(kind: str | None = None, c: Ctx = Depends(project_ctx)):
     q = select(Job).where(Job.project_id == c.project.id)
     if kind:
         q = q.where(Job.kind == kind)
-    return [job_out(j) for j in c.db.scalars(q.order_by(Job.created.desc()).limit(100))]
+    return [visible_job(c, j) for j in c.db.scalars(q.order_by(Job.created.desc()).limit(100))]
 
 
 @router.get("/{project}/jobs/{jid}")
@@ -463,7 +468,7 @@ def get_job(jid: str, c: Ctx = Depends(project_ctx)):
     j = c.db.get(Job, jid)
     if not j or j.project_id != c.project.id:
         raise HTTPException(404, "job not found")
-    return job_out(j)
+    return visible_job(c, j)
 
 
 @router.post("/{project}/jobs/{jid}/cancel")

@@ -1,5 +1,6 @@
 """Workspace-level: settings, members, invites, API keys, usage, audit, folders, trash."""
 import time
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -7,7 +8,7 @@ from sqlalchemy import Text, cast, delete as sa_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..apikeys import scopes_of
-from ..config import DATA_DIR, PLANS, PUBLIC_URL
+from ..config import PLANS, PUBLIC_URL
 from ..deps import Ctx, apply_project_role, audit, credits_left, plan, ws_ctx
 from ..models import (API_SCOPES, ROLES, WORKSPACE_ROLES, ApiKey, Audit, Folder, Image, Invite, Job, Member, Project,
                       ProjectMember, TrainedModel, User, Workspace)
@@ -312,10 +313,22 @@ def audit_log(action: str = "", user: str = "", since: float | None = None, unti
 
 @router.get("/jobs")
 def ws_jobs(c: Ctx = Depends(ws_ctx)):
-    rows = c.db.execute(select(Job, Project.slug, Project.name).outerjoin(Project, Project.id == Job.project_id)
+    rows = c.db.execute(select(Job, Project).outerjoin(Project, Project.id == Job.project_id)
                         .where(Job.workspace_id == c.ws.id).order_by(Job.created.desc()).limit(100)).all()
-    from .projects import job_out
-    return [{**job_out(j), "project": slug, "project_name": name} for j, slug, name in rows]
+    from .projects import visible_job
+    out, ctxs = [], {}
+    for j, p in rows:
+        # The JobTray is read by every member; the eval report is only for project.models (I1).
+        jc = c
+        if p is not None:
+            jc = ctxs.get(p.id)
+            if jc is None:
+                jc = replace(c)
+                apply_project_role(jc, p)      # one role lookup per project, not per job
+                ctxs[p.id] = jc
+        out.append({**visible_job(jc, j), "project": p.slug if p else None,
+                    "project_name": p.name if p else None})
+    return out
 
 
 @router.get("/models")

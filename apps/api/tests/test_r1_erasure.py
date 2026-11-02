@@ -263,8 +263,8 @@ def test_image_delete_route_keeps_the_row_when_a_file_is_locked():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
-def test_bulk_delete_route_aborts_the_batch_when_a_file_is_locked():
-    """One locked file aborts the whole batch commit; a retry erases everything and credits once."""
+def test_bulk_delete_keeps_rows_and_bytes_consistent_when_a_file_is_locked():
+    """A locked file only spares its own row; rows whose bytes are already gone stay deleted."""
     from app.services import metering
     email, ws_slug, ws_id, p_id, slug = _route_project()
     suffix = uuid.uuid4().hex[:8]
@@ -287,11 +287,15 @@ def test_bulk_delete_route_aborts_the_batch_when_a_file_is_locked():
         with open(paths[1], "rb"):
             r = c.post(url, json={"ids": ids, "action": "delete"})
             assert r.status_code == 409, r.text
+            assert r.json()["deleted"] == [ids[0]]
+            assert r.json()["survived"] == [ids[1]]
+        # The first file is gone, so its row and meter entry must be committed with it: a visible
+        # row over erased bytes is the partial-erase bug this regression guards.
+        assert not paths[0].exists() and paths[1].exists()
         with SessionLocal() as db:
-            for iid in ids:
-                assert db.get(Image, iid).deleted_at is None      # the whole batch aborts
-            assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 200
-        assert paths[1].exists()
+            assert db.get(Image, ids[0]).deleted_at is not None
+            assert db.get(Image, ids[1]).deleted_at is None
+            assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 100
         r = c.post(url, json={"ids": ids, "action": "delete"})
         assert r.status_code == 200, r.text
     assert not paths[0].exists() and not paths[1].exists()

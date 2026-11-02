@@ -8,8 +8,9 @@ import re
 import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import Float, String, Text, and_, case, cast, exists, func, select
+from sqlalchemy import Float, Text, and_, case, cast, exists, func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
@@ -309,7 +310,8 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, "bad status")
     if body.action == "assign" and v and not c.db.get(Member, (c.ws.id, v)):
         raise HTTPException(400, "assignee is not a workspace member")
-    failed = False
+    deleted: list[str] = []
+    survived: list[str] = []
     for r in rows:
         if body.action == "split":
             r.split = v
@@ -320,10 +322,11 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         elif body.action == "delete":
             if r.deleted_at is None:              # a second delete must not credit storage twice
                 _, gone = erasure.delete_image_files(r.path, r.thumb)
-                if not gone:                      # keep the row and its meter entry; abort the batch below
-                    failed = True
+                if not gone:                      # keep the row and its meter entry; retry below
+                    survived.append(r.id)
                     continue
                 metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
+                deleted.append(r.id)
             r.deleted_at = now()
             c.db.execute(sa_delete(ImageClass).where(ImageClass.image_id == r.id))   # deleted images drop out of counts
         elif body.action == "status":
@@ -335,9 +338,15 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         elif body.action == "clear_annotations":
             set_annotations(c.db, r, [])
         r.updated = now()
-    if failed:
-        c.db.rollback()                           # no row is hidden while any byte in the batch survives
-        raise HTTPException(409, "some files could not be deleted; retry")
+    if survived:
+        # Rows whose bytes are already gone must be committed: rolling them back would hide the
+        # erased file behind a visible row and keep its bytes on the storage meter. Only the rows
+        # that still have their file are named in the 409, so a retry finishes exactly those.
+        if deleted:
+            audit(c.db, c.ws.id, c.user.id, f"image.bulk.{body.action}", c.project.name, count=len(deleted), value=v)
+        c.db.commit()
+        return JSONResponse(status_code=409, content={"detail": "some files could not be deleted; retry",
+                                                      "deleted": deleted, "survived": survived})
     audit(c.db, c.ws.id, c.user.id, f"image.bulk.{body.action}", c.project.name, count=len(rows), value=v)
     c.db.commit()
     return {"updated": len(rows)}
