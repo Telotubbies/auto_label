@@ -4,9 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Circle, Group, Image as KImage, Layer, Line, Rect, Stage, Transformer } from 'react-konva'
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, Bot, Check, ChevronLeft,
-  ChevronRight, Eye, EyeOff, FileCode, Hand, History, Info, Keyboard,
-  LoaderCircle, Lock, MessageSquare, Plus, Redo2, RotateCw, Send, SlidersHorizontal,
-  Sparkles, SquareDashed, Spline, Tag, TriangleAlert, Undo2, Unlock, Waypoints,
+  ChevronRight, FileCode, Hand, History, Info, Keyboard,
+  LoaderCircle, MessageSquare, Plus, Redo2, RotateCw, Send, SlidersHorizontal,
+  Sparkles, SquareDashed, Spline, Tag, TriangleAlert, Undo2, Waypoints,
   X, type LucideIcon,
 } from 'lucide-react'
 import { ApiError, api, fileUrl, get, patch, post, put } from '@/lib/api'
@@ -15,7 +15,10 @@ import type { Annotation, LabelClass, Shape, Skeleton } from '@/lib/types'
 import { Badge, Button, Input, Select, StatusPill, Tabs, toast } from '@/components/ui'
 import { Glass } from '@/components/glass'
 import { cn } from '@/lib/utils'
-import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, SourceChip, type EditorComment, type LogEntry } from './Panels'
+import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, type EditorComment, type LogEntry } from './Panels'
+import { ObjectRows, OrderControls } from './ObjectList'
+import { moveAnnotation, type OrderAction } from './annotationOrder'
+import { cullAnnotations, obbCorners, viewportBounds } from './culling'
 import { ShortcutModal } from './ShortcutModal'
 import { classListQuery, classResultText, hotkeyClass, isClassListVisible, visibleClasses } from './classFilter'
 import {
@@ -34,6 +37,11 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 const HINT = 'pointer-events-none absolute left-1/2 top-3 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-full border bg-card px-3 py-1.5 text-center text-xs shadow'
 const uid = () => 'a' + Math.random().toString(36).slice(2, 12)
 const isAi = (a: Annotation) => !!a.source && a.source !== 'human'
+/** Transformer anchors live above the shapes layer; their mousedown must not start a new box. */
+function insideTransformer(node: any) {
+  for (let n = node; n; n = n.getParent?.()) if (n.getClassName?.() === 'Transformer') return true
+  return false
+}
 
 /** Even-odd point-in-polygon test on a normalized flat [x0,y0,x1,y1,…] ring. */
 function inPoly(x: number, y: number, pts: number[]) {
@@ -52,12 +60,6 @@ const parseNum = (text: string) => {
   return Number.isFinite(n) ? n : null
 }
 const wrapAngle = (a: number) => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI
-/** Pixel-space corners, matching `imaging.obb_corners` in the API (clockwise at angle 0). */
-function obbCorners(s: { cx: number; cy: number; w: number; h: number; angle: number }, H: number) {
-  const cx = s.cx * W, cy = s.cy * H, hw = (s.w * W) / 2, hh = (s.h * H) / 2
-  const c = Math.cos(s.angle), sn = Math.sin(s.angle)
-  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].flatMap(([dx, dy]) => [cx + dx * c - dy * sn, cy + dx * sn + dy * c])
-}
 
 interface ClassSuggestion {
   classId: string | null
@@ -257,9 +259,15 @@ export default function Editor() {
   const [tool, setTool] = useState<string>('bbox')
   const wrapRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(0.5)
+  const [stageSize, setStageSize] = useState({ w: 800, h: 600 })
+  // null = centred on the image; a pan gesture stores its own offset until the next zoom/resize.
+  const [pan, setPan] = useState<{ x: number; y: number } | null>(null)
   const fit = useCallback(() => {
     const el = wrapRef.current
-    if (el) setZoom(Math.min(el.clientWidth / W, el.clientHeight / H) * 0.92)
+    if (!el) return
+    const w = el.clientWidth, h = el.clientHeight
+    setStageSize({ w, h })
+    setZoom(Math.min(w / W, h / H) * 0.92)
   }, [H])
   useEffect(() => {
     const el = wrapRef.current
@@ -267,6 +275,9 @@ export default function Editor() {
     const ro = new ResizeObserver(fit); ro.observe(el)
     return () => ro.disconnect()
   }, [fit])
+  useEffect(() => { setPan(null) }, [zoom, stageSize.w, stageSize.h, img?.id])
+  const stageX = pan?.x ?? (stageSize.w - W * zoom) / 2
+  const stageY = pan?.y ?? (stageSize.h - H * zoom) / 2
   useEffect(() => {
     if (isCls) setTool('pan')
     else if (isKp) setTool('keypoints')
@@ -365,6 +376,16 @@ export default function Editor() {
   const skelOf = (classId: string) => classes.find((c) => c.id === classId)?.skeleton ?? null
   const keypointsEnabled = isKp || !!selCls?.skeleton
   const transformable = !!sel && sel.shape.kind === 'bbox' && !locked.has(sel.id)
+  // Culling: mount only shapes near the viewport; the selected node always stays for the Transformer.
+  const drawable = useMemo(() => anns.filter((a) => !hidden.has(a.id)), [anns, hidden])
+  const viewport = useMemo(
+    () => viewportBounds({ width: stageSize.w, height: stageSize.h, scale: zoom, x: stageX, y: stageY }),
+    [stageSize, zoom, stageX, stageY],
+  )
+  const rendered = useMemo(
+    () => cullAnnotations(drawable, viewport, { width: W, height: H, always: selId }),
+    [drawable, viewport, selId, H],
+  )
   useEffect(() => {
     if (trRef.current && selId && transformable) {
       const node = stageRef.current?.findOne('#' + selId)
@@ -501,6 +522,7 @@ export default function Editor() {
   const onDown = (e: any) => {
     const name = e?.target?.name?.()
     if (name === 'smart-pt' || name === 'smart-neg') return
+    if (insideTransformer(e?.target)) return
     if (tool === 'pan' || isCls) return
     const p = pointer()
     if (tool === 'bbox' || tool === 'obb') {
@@ -569,6 +591,16 @@ export default function Editor() {
   }
   const toggleLocked = (id: string) => {
     setLocked((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  }
+  // The array is the paint order, so the Objects list shows it reversed (front-most first).
+  const stackRows = useMemo(() => [...anns].reverse(), [anns])
+  const moveOrder = (action: OrderAction) => {
+    if (!selId) return
+    const next = moveAnnotation(anns, selId, action)
+    if (next === anns) return
+    const label = action === 'front' ? 'Bring to front' : action === 'forward' ? 'Bring forward'
+      : action === 'backward' ? 'Send backward' : 'Send to back'
+    push(next, label, sel ? cls(sel.classId).name : undefined)
   }
   const toggleAttribute = (id: string, key: string) => {
     if (locked.has(id)) return lockedMsg()
@@ -763,15 +795,15 @@ export default function Editor() {
         </div>
         <div className={cn('w-64 flex-col overflow-hidden border-r md:flex', panelsOpen ? 'flex' : 'hidden')}>
           {rail === 'labels' && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <div className="px-4 pt-4"><h2 className="text-sm font-semibold">{isCls ? 'Image label' : 'Annotations'} <Badge>{anns.length}</Badge></h2>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="shrink-0 px-4 pt-4"><h2 className="text-sm font-semibold">{isCls ? 'Image label' : 'Annotations'} <Badge>{anns.length}</Badge></h2>
                 <p className="pt-1 text-xs text-muted-foreground">Group: {proj.data?.annotationGroup}</p>
                 {!isCls && anns.some(isAi) && (
                   <p className="flex items-center gap-1.5 pt-1 text-[11px] text-muted-foreground">
                     <span aria-hidden className="inline-block w-4 border-t-2 border-dashed border-muted-foreground" /> Dashed = AI-generated
                   </p>
                 )}</div>
-              <div className="px-4 pt-2"><Tabs tabs={[{ id: 'classes', label: 'Classes' }, { id: 'objects', label: 'Objects' }]} active={tab} onChange={setTab} /></div>
+              <div className="shrink-0 px-4 pt-2"><Tabs tabs={[{ id: 'classes', label: 'Classes' }, { id: 'objects', label: 'Objects' }]} active={tab} onChange={setTab} /></div>
               {tab === 'classes' ? (
                 <div className="flex min-h-0 flex-1 flex-col">
                   <div className="shrink-0 px-4 pt-2">
@@ -813,110 +845,93 @@ export default function Editor() {
                   </div>
                 </div>
               ) : (
-                <div className="px-2 py-2">
-                  {anns.map((a) => {
-                    const c = cls(a.classId)
-                    const isHidden = hidden.has(a.id)
-                    const isLocked = locked.has(a.id)
-                    return (
-                      <div key={a.id} data-testid="object-row" onClick={() => setSelId(a.id)}
-                        className={cn('flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-sm', selId === a.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
-                        <button type="button" data-testid="object-select"
-                          onClick={(e) => { e.stopPropagation(); setSelId(a.id) }}
-                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden />
-                          <span className={cn('min-w-0 flex-1 truncate', isHidden && 'text-muted-foreground line-through')}>{c.name}</span>
-                          <SourceChip source={a.source} confidence={a.confidence} kind={a.shape.kind === 'class' ? 'label' : a.shape.kind} />
-                        </button>
-                        <button type="button" aria-pressed={isHidden} aria-label={`${isHidden ? 'Show' : 'Hide'} ${c.name}`} data-testid="object-hide"
-                          onClick={(e) => { e.stopPropagation(); toggleHidden(a.id) }}
-                          className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
-                          {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                        </button>
-                        <button type="button" aria-pressed={isLocked} aria-label={`${isLocked ? 'Unlock' : 'Lock'} ${c.name}`} data-testid="object-lock"
-                          onClick={(e) => { e.stopPropagation(); toggleLocked(a.id) }}
-                          className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
-                          {isLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                        </button>
-                        <button type="button" aria-label={`Delete ${c.name}`} data-testid="object-delete"
-                          onClick={(e) => { e.stopPropagation(); remove(a.id) }}
-                          className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-destructive">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )
-                  })}
-                  {!anns.length && (
-                    <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
-                      No objects yet
-                      <br />
-                      Draw a box or polygon on the image, or use Smart Polygon.
-                    </div>
-                  )}
-                  {sel && !isCls && (
-                    <div className="pt-2">
-                      <Button variant="outline" size="sm" data-testid="suggest-class" disabled={suggestBusy} onClick={suggestClass}
-                        className="h-7 w-full text-xs">
-                        {suggestBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-tertiary" />} Suggest class
-                      </Button>
-                      {suggestErr && <p role="alert" className="pt-1.5 text-[11px] text-destructive">{suggestErr}</p>}
-                    </div>
-                  )}
-                  {suggestion && (
-                    <div data-testid="class-suggestion" className="mt-2 rounded-lg border border-tertiary/40 bg-tertiary-container/40 p-2.5 text-xs">
-                      {suggestion.classId && suggestion.name ? (
-                        <>
-                          <div className="flex items-center gap-1.5 font-medium">
-                            <Sparkles className="h-3.5 w-3.5 shrink-0 text-tertiary" /> VLM suggests {suggestion.name}
-                          </div>
-                          <p className="pt-0.5 text-[10px] text-muted-foreground">First match among {suggestion.checked} {suggestion.checked === 1 ? 'class' : 'classes'} checked.</p>
-                          <div className="mt-2 flex gap-1.5">
-                            <Button size="sm" className="h-7 text-xs" onClick={() => applySuggestion(suggestion.classId!, suggestion.name!)}>Apply</Button>
-                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSuggestion(null)}>Dismiss</Button>
-                          </div>
-                          {suggestion.candidates.some((c) => c.classId !== suggestion.classId) && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {suggestion.candidates.filter((c) => c.classId !== suggestion.classId).slice(0, 4).map((c) => (
-                                <button key={c.classId} type="button" onClick={() => applySuggestion(c.classId, c.name)}
-                                  className="cursor-pointer rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground">{c.name}</button>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex items-start justify-between gap-2">
-                          <span>No class matched — check the label.</span>
-                          <button type="button" onClick={() => setSuggestion(null)} className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground">Dismiss</button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {!sel && !isCls && !!selCls?.skeleton?.names.length && (
-                    <div className="mt-2 rounded-lg border border-dashed p-2.5 text-center">
-                      <p className="pb-1.5 text-[11px] text-muted-foreground">
-                        {selCls.name} — {selCls.skeleton.names.length} joints
-                      </p>
-                      <Button size="sm" variant="outline" className="h-7 min-h-6 w-full text-xs" data-testid="start-keypoints" onClick={startKeypoints}>
-                        <Waypoints className="h-3.5 w-3.5" /> Start keypoints
-                      </Button>
-                    </div>
-                  )}
-                  {sel && !isCls && sel.shape.kind !== 'class' && (
-                    <GeometryPanel key={sel.id} shape={sel.shape} skeleton={skelOf(sel.classId)}
-                      activeJoint={activeJoint} onActiveJoint={setActiveJoint}
-                      onShape={(shape) => editShape(sel.id, shape)} />
-                  )}
-                  {!isCls && (tool === 'bbox' || tool === 'obb' || sel?.shape.kind === 'bbox' || sel?.shape.kind === 'obb') && (
-                    <Button size="sm" variant="outline" className="mt-2 h-7 min-h-6 w-full text-xs" data-testid="add-centred-box" onClick={addCentredBox}>
-                      <SquareDashed className="h-3.5 w-3.5" /> Add centred box
-                    </Button>
-                  )}
-                  {sel && (
-                    <p className="px-1 pt-2 text-[11px] leading-relaxed text-muted-foreground">
-                      Selected: Delete removes it, 1–9 relabels it.
-                      {locked.has(sel.id) ? ' Locked — unlock to move or resize on the canvas.' : hidden.has(sel.id) ? ' Hidden on the canvas.' : ' Lock keeps it still while you work.'}
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex shrink-0 items-baseline justify-between px-4 pb-1 pt-2">
+                    <p data-testid="object-count" className="text-[11px] text-muted-foreground">
+                      {anns.length} {anns.length === 1 ? 'object' : 'objects'}
                     </p>
+                    <p className="text-[10px] text-muted-foreground">Top = front</p>
+                  </div>
+                  {anns.length ? (
+                    <ObjectRows rows={stackRows} total={anns.length} classOf={cls} selId={selId}
+                      hidden={hidden} locked={locked} onSelect={setSelId}
+                      onHide={toggleHidden} onLock={toggleLocked} onDelete={remove} />
+                  ) : (
+                    <div className="px-4 pt-2">
+                      <div data-testid="object-empty" className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        No objects yet
+                        <br />
+                        Draw a box or polygon on the image, or use Smart Polygon.
+                      </div>
+                    </div>
                   )}
+                  <div className="max-h-[50%] min-h-0 shrink-0 overflow-y-auto px-2 pb-2">
+                    {sel && !isCls && <OrderControls list={anns} id={sel.id} onMove={moveOrder} />}
+                    {sel && !isCls && (
+                      <div className="pt-2">
+                        <Button variant="outline" size="sm" data-testid="suggest-class" disabled={suggestBusy} onClick={suggestClass}
+                          className="h-7 w-full text-xs">
+                          {suggestBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-tertiary" />} Suggest class
+                        </Button>
+                        {suggestErr && <p role="alert" className="pt-1.5 text-[11px] text-destructive">{suggestErr}</p>}
+                      </div>
+                    )}
+                    {suggestion && (
+                      <div data-testid="class-suggestion" className="mt-2 rounded-lg border border-tertiary/40 bg-tertiary-container/40 p-2.5 text-xs">
+                        {suggestion.classId && suggestion.name ? (
+                          <>
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <Sparkles className="h-3.5 w-3.5 shrink-0 text-tertiary" /> VLM suggests {suggestion.name}
+                            </div>
+                            <p className="pt-0.5 text-[10px] text-muted-foreground">First match among {suggestion.checked} {suggestion.checked === 1 ? 'class' : 'classes'} checked.</p>
+                            <div className="mt-2 flex gap-1.5">
+                              <Button size="sm" className="h-7 text-xs" onClick={() => applySuggestion(suggestion.classId!, suggestion.name!)}>Apply</Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSuggestion(null)}>Dismiss</Button>
+                            </div>
+                            {suggestion.candidates.some((c) => c.classId !== suggestion.classId) && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {suggestion.candidates.filter((c) => c.classId !== suggestion.classId).slice(0, 4).map((c) => (
+                                  <button key={c.classId} type="button" onClick={() => applySuggestion(c.classId, c.name)}
+                                    className="cursor-pointer rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground">{c.name}</button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-start justify-between gap-2">
+                            <span>No class matched — check the label.</span>
+                            <button type="button" onClick={() => setSuggestion(null)} className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground">Dismiss</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!sel && !isCls && !!selCls?.skeleton?.names.length && (
+                      <div className="mt-2 rounded-lg border border-dashed p-2.5 text-center">
+                        <p className="pb-1.5 text-[11px] text-muted-foreground">
+                          {selCls.name} — {selCls.skeleton.names.length} joints
+                        </p>
+                        <Button size="sm" variant="outline" className="h-7 min-h-6 w-full text-xs" data-testid="start-keypoints" onClick={startKeypoints}>
+                          <Waypoints className="h-3.5 w-3.5" /> Start keypoints
+                        </Button>
+                      </div>
+                    )}
+                    {sel && !isCls && sel.shape.kind !== 'class' && (
+                      <GeometryPanel key={sel.id} shape={sel.shape} skeleton={skelOf(sel.classId)}
+                        activeJoint={activeJoint} onActiveJoint={setActiveJoint}
+                        onShape={(shape) => editShape(sel.id, shape)} />
+                    )}
+                    {!isCls && (tool === 'bbox' || tool === 'obb' || sel?.shape.kind === 'bbox' || sel?.shape.kind === 'obb') && (
+                      <Button size="sm" variant="outline" className="mt-2 h-7 min-h-6 w-full text-xs" data-testid="add-centred-box" onClick={addCentredBox}>
+                        <SquareDashed className="h-3.5 w-3.5" /> Add centred box
+                      </Button>
+                    )}
+                    {sel && (
+                      <p className="px-1 pt-2 text-[11px] leading-relaxed text-muted-foreground">
+                        Selected: Delete removes it, 1–9 relabels it.
+                        {locked.has(sel.id) ? ' Locked — unlock to move or resize on the canvas.' : hidden.has(sel.id) ? ' Hidden on the canvas.' : ' Lock keeps it still while you work.'}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
               {!isCls && (
@@ -949,16 +964,20 @@ export default function Editor() {
         </div>
 
         <div ref={wrapRef} data-testid="canvas-area" className="canvas-well relative flex-1 overflow-hidden">
-          <div data-testid="stage-filter" data-ai={anns.filter(isAi).length} className="absolute inset-0" style={{ filter: `brightness(${brightness}%) contrast(${contrast}%)` }}>
-            <Stage ref={stageRef} width={wrapRef.current?.clientWidth ?? 800} height={wrapRef.current?.clientHeight ?? 600}
-              scaleX={zoom} scaleY={zoom}
-              x={((wrapRef.current?.clientWidth ?? 800) - W * zoom) / 2} y={((wrapRef.current?.clientHeight ?? 600) - H * zoom) / 2}
+          <div data-testid="stage-filter" data-ai={anns.filter(isAi).length}
+            data-rendered={rendered.length} data-total={drawable.length} data-culled={drawable.length - rendered.length}
+            data-selected-rendered={selId ? rendered.some((a) => a.id === selId) : undefined}
+            data-stage-x={Math.round(stageX)} data-stage-y={Math.round(stageY)}
+            className="absolute inset-0" style={{ filter: `brightness(${brightness}%) contrast(${contrast}%)` }}>
+            <Stage ref={stageRef} width={stageSize.w} height={stageSize.h}
+              scaleX={zoom} scaleY={zoom} x={stageX} y={stageY}
               draggable={tool === 'pan'} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onDblClick={() => polyPts.length && closePoly()}
+              onDragEnd={(e) => { if (e.target === e.target.getStage()) setPan({ x: e.target.x(), y: e.target.y() }) }}
               onContextMenu={(e) => e.evt.preventDefault()}
               onWheel={(e) => { e.evt.preventDefault(); setZoom((z) => Math.min(8, Math.max(0.05, z * (e.evt.deltaY > 0 ? 0.9 : 1.1)))) }}>
               <Layer listening={false}>{htmlImg && <KImage image={htmlImg} width={W} height={H} />}</Layer>
               <Layer>
-                {anns.filter((a) => !hidden.has(a.id)).map((a) => {
+                {rendered.map((a) => {
                   const color = cls(a.classId).color
                   if (a.shape.kind === 'bbox') {
                     const s = a.shape
@@ -1021,9 +1040,11 @@ export default function Editor() {
                   }
                   return null
                 })}
-                {drawing && <Rect x={drawing.x} y={drawing.y} width={drawing.w} height={drawing.h} stroke={cls(selClass).color} strokeWidth={2 / zoom} dash={[6 / zoom, 4 / zoom]} />}
-                {polyPts.length > 0 && <Line points={polyPts} stroke={cls(selClass).color} strokeWidth={2 / zoom} />}
-                {polyPts.map((v, i) => i % 2 === 0 && <Circle key={i} x={v} y={polyPts[i + 1]} radius={4 / zoom} fill={cls(selClass).color} />)}
+              </Layer>
+              <Layer>
+                {drawing && <Rect x={drawing.x} y={drawing.y} width={drawing.w} height={drawing.h} stroke={cls(selClass).color} strokeWidth={2 / zoom} dash={[6 / zoom, 4 / zoom]} listening={false} />}
+                {polyPts.length > 0 && <Line points={polyPts} stroke={cls(selClass).color} strokeWidth={2 / zoom} listening={false} />}
+                {polyPts.map((v, i) => i % 2 === 0 && <Circle key={i} x={v} y={polyPts[i + 1]} radius={4 / zoom} fill={cls(selClass).color} listening={false} />)}
                 {smartPoly && smartPoly.length >= 6 && (
                   <Line points={smartPoly.map((v, i) => v * (i % 2 ? H : W))} closed stroke={SMART} strokeWidth={2 / zoom}
                     dash={[8 / zoom, 5 / zoom]} fill={SMART + '18'} listening={false} />
@@ -1124,7 +1145,7 @@ export default function Editor() {
               </button>
               <span className="mx-2 h-4 w-px bg-border" aria-hidden />
               <button onClick={() => setZoom((z) => Math.max(0.05, z / 1.2))} className="cursor-pointer px-1" aria-label="Zoom out">−</button>
-              <span className="w-12 text-center">{Math.round(zoom * 100)}%</span>
+              <span data-testid="zoom-level" className="w-12 text-center">{Math.round(zoom * 100)}%</span>
               <button onClick={() => setZoom((z) => Math.min(8, z * 1.2))} className="cursor-pointer px-1" aria-label="Zoom in">+</button>
               <button onClick={fit} className="ml-1 cursor-pointer rounded px-1.5 text-muted-foreground hover:bg-accent">FIT</button>
             </Glass>
