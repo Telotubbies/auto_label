@@ -464,6 +464,8 @@ class Worker(Base):
     current_job: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started: Mapped[float] = mapped_column(Float, default=now)
     last_seen: Mapped[float] = mapped_column(Float, default=now, index=True)
+
+
 class DeploymentAlias(Base):
     """One inference alias per project (`production`, `staging`) -> a ready trained model."""
     __tablename__ = "deployment_aliases"
@@ -474,6 +476,10 @@ class DeploymentAlias(Base):
     model_id: Mapped[str | None] = mapped_column(ForeignKey("trained_models.id", ondelete="SET NULL"), nullable=True)
     previous_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # rollback target
     updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
 class ConsensusJob(Base):
     """One image set sent to K labelers; the merge writes the agreed labels back."""
     __tablename__ = "consensus_jobs"
@@ -555,6 +561,8 @@ class UsageEvent(Base):
     quantity: Mapped[float] = mapped_column(Float, default=0.0)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[float] = mapped_column(Float, default=now, index=True)
+
+
 class ConsensusAssignment(Base):
     """A labeler's private draft for one image of a job; the Image row is only written on merge."""
     __tablename__ = "consensus_assignments"
