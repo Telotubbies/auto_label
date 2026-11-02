@@ -8,7 +8,7 @@ import type {
   Job, LabelClass, LeaderboardRow, Me, Member, ModelDetections, ModelInsights,
   ModelItem, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
   ProjectRole, RegistryItem, RoleLevel, TrainingInsights, Version, VideoFrame, VideoItem,
-  WorkerRow, WorkspaceInfo, WorkspacePrivacy,
+  WorkerRow, WorkspaceFlags, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -140,6 +140,9 @@ export const api = {
   config: () => get<{ signup_enabled: boolean; sam: { loaded: boolean; error: string | null } }>('/config'),
   me: () => get<Me>('/me'),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
+  flags: (ws: string) => get<WorkspaceFlags>(`/ws/${ws}/flags`),
+  setFlag: (ws: string, key: string, enabled: boolean) =>
+    put<{ key: string; enabled: boolean }>(`/ws/${ws}/flags/${encodeURIComponent(key)}`, { enabled }),
   projects: (ws: string) => get<Project[]>(`/ws/${ws}/projects`),
   project: (ws: string, p: string) => get<Project>(P(ws, p)),
   classes: (ws: string, p: string) => get<LabelClass[]>(`${P(ws, p)}/classes`),

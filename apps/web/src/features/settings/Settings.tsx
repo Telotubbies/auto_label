@@ -9,6 +9,7 @@ import type { LoginEvent, Me, MfaSetup, Role, SessionRow, Usage, UsageMeter, Usa
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Spinner, Stat, Switch, fmtAgo, fmtDate, toast } from '@/components/ui'
 import { DEFAULT_SEED, dateLocale, setThemePrefs, useThemePrefs, type Contrast, type ModePref, type Scheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import { flagsKey, useWorkspaceFlags } from '@/lib/flags'
 import PrivacyWorkspace from '@/features/governance/Privacy'
 import { WorkspaceRoles } from '@/features/governance/Roles'
 
@@ -670,7 +671,65 @@ function Workspace() {
         </div>
         {info.isError && <Button variant="outline" size="sm" onClick={() => void info.refetch()}>Try again</Button>}
       </Card>
+      <FeatureFlags />
     </div>
+  )
+}
+
+function FeatureFlags() {
+  const { ws = '' } = useParams()
+  const qc = useQueryClient()
+  const q = useWorkspaceFlags()
+  const [saving, setSaving] = useState<string | null>(null)
+
+  const toggle = async (key: string, enabled: boolean) => {
+    if (saving) return
+    setSaving(key)
+    try {
+      await api.setFlag(ws, key, enabled)
+      await qc.invalidateQueries({ queryKey: flagsKey(ws) })
+      toast.ok(enabled ? 'Feature turned on' : 'Feature turned off')
+    } catch (e) {
+      toast.err(e as Error)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const flags = q.data?.flags ?? []
+  return (
+    <Card className="space-y-3 p-5">
+      <div>
+        <h2 className="font-semibold">Feature flags</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          New features stay off until you turn them on here. Turning one on affects this workspace only.
+        </p>
+      </div>
+      {q.isLoading ? (
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Loading feature flags…</p>
+      ) : q.isError ? (
+        <div className="space-y-2">
+          <p role="alert" className="text-sm text-destructive">Could not load feature flags.</p>
+          <Button variant="outline" size="sm" onClick={() => void q.refetch()}>Try again</Button>
+        </div>
+      ) : !flags.length ? (
+        <p className="text-sm text-muted-foreground">No features are available to enable yet.</p>
+      ) : (
+        <fieldset disabled={saving !== null} aria-busy={saving !== null} className="m-0 min-w-0 border-0 p-0">
+          <ul className="divide-y border-t">
+            {flags.map((f) => (
+              <li key={f.key} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{f.description}</div>
+                  <code className="text-xs text-muted-foreground">{f.key}</code>
+                </div>
+                <Switch label={f.description} checked={f.enabled} onChange={(enabled) => void toggle(f.key, enabled)} />
+              </li>
+            ))}
+          </ul>
+        </fieldset>
+      )}
+    </Card>
   )
 }
 
