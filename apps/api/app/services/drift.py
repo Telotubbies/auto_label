@@ -18,9 +18,11 @@ from PIL import Image as PImage
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..adapters.base import Cancelled
 from ..config import DATA_DIR, DRIFT_MAX_SAMPLES, DRIFT_MIN_SAMPLES, DRIFT_P
 from ..db import SessionLocal
 from ..deps import audit
+from ..errors import safe_error
 from ..models import (
     DriftRun,
     DriftSample,
@@ -248,6 +250,7 @@ def record_sample(
         if row is not None:
             row.created = now()
             row.source = source
+            row.model_id = model_id or row.model_id      # I23: the latest serving model owns it
             return row
 
         rel = _rel_path(workspace_id, project.id, sha)
@@ -379,19 +382,19 @@ def _reference_count(db: Session, project: Project, model: TrainedModel | None) 
     return int(db.scalar(select(func.count()).select_from(rows)) or 0)
 
 
-def _current_features(db: Session, project: Project, dim: int) -> list[list[float]]:
+def _current_features(db: Session, project: Project, dim: int, model_id: str | None = None) -> list[list[float]]:
     cutoff = now() - WINDOW_S
-    rows = db.scalars(
-        select(DriftSample)
-        .where(DriftSample.project_id == project.id, DriftSample.created >= cutoff)
-        .order_by(DriftSample.created.desc())
-        .limit(MAX_CURRENT)
-    ).all()
+    q = select(DriftSample).where(DriftSample.project_id == project.id, DriftSample.created >= cutoff)
+    if model_id:
+        q = q.where(DriftSample.model_id == model_id)      # I23: staging traffic must not alert production
+    rows = db.scalars(q.order_by(DriftSample.created.desc()).limit(MAX_CURRENT)).all()
     return [list(r.features) for r in rows if r.features and len(r.features) == dim]
 
 
-def analyse(db: Session, project: Project) -> DriftRun:
+def analyse(db: Session, project: Project, should_stop=None) -> DriftRun:
     """Run the two-sample test and persist a DriftRun (insufficient/failed runs included)."""
+    if should_stop and should_stop():
+        raise Cancelled("drift job cancelled")
     model = production_model(db, project)
     run = DriftRun(
         workspace_id=project.workspace_id,
@@ -407,17 +410,19 @@ def analyse(db: Session, project: Project) -> DriftRun:
     try:
         # Cheap gate first: without enough production inputs the test cannot run, so do not
         # spend up to MAX_REFERENCE image decodes (and an embedding pass) to find that out.
-        current = sample_count(db, project, window_s=WINDOW_S)
+        current = sample_count(db, project, window_s=WINDOW_S, model_id=model.id if model else None)
         run.n_current = current
         if current < DRIFT_MIN_SAMPLES:
             run.n_reference = _reference_count(db, project, model)
+            if should_stop and should_stop():
+                raise Cancelled("drift job cancelled")
             run.status, run.p_value, run.finished = "insufficient", 1.0, now()
             db.commit()
             return run
         ref, source = _reference_features(db, project, model)
         run.feature_source = source or SOURCE_UNKNOWN  # label what was used, not what was importable
         dim = len(ref[0]) if ref else 0
-        cur = _current_features(db, project, dim) if dim else []
+        cur = _current_features(db, project, dim, model_id=model.id if model else None) if dim else []
         run.n_reference, run.n_current = len(ref), len(cur)
         if len(ref) < DRIFT_MIN_SAMPLES or len(cur) < DRIFT_MIN_SAMPLES:
             run.status, run.p_value, run.finished = "insufficient", 1.0, now()
@@ -427,6 +432,8 @@ def analyse(db: Session, project: Project) -> DriftRun:
         run.statistic = mmd2(x, y)
         run.p_value = permutation_p(x, y)
         run.alert = run.p_value < run.threshold
+        if should_stop and should_stop():
+            raise Cancelled("drift job cancelled")
         run.status, run.finished = "done", now()
         if run.alert:
             audit(
@@ -439,13 +446,15 @@ def analyse(db: Session, project: Project) -> DriftRun:
                 p_value=run.p_value,
             )
         db.commit()
+    except Cancelled:
+        raise
     except Exception as e:  # noqa: BLE001 - surface the failure on the run row
         log.exception("drift analysis failed for project %s", project.id)
         db.rollback()
         run = db.get(DriftRun, run.id) or run
         run.status, run.error, run.finished = (
             "failed",
-            f"{type(e).__name__}: {e}",
+            safe_error(e, "drift"),
             now(),
         )
         db.commit()
@@ -456,10 +465,11 @@ def run_job(job: Job) -> dict:
     """Worker entrypoint: open a fresh session, analyse, and return a plain dict."""
     try:
         with SessionLocal() as db:
-            project = db.get(Project, job.project_id)
+            project = db.get(Project, job.project_id) if job.project_id else None
             if project is None:
                 raise ValueError("project not found")
-            run = analyse(db, project)
+            from .. import jobs
+            run = analyse(db, project, should_stop=lambda: jobs.is_cancelled(job.id))
             return {
                 "run_id": run.id,
                 "status": run.status,
@@ -480,7 +490,7 @@ def run_job(job: Job) -> dict:
             "alert": False,
             "n_reference": 0,
             "n_current": 0,
-            "error": f"{type(e).__name__}: {e}",
+            "error": safe_error(e, "drift"),
         }
     finally:
         embeddings.release()  # CLIP must not outlive the scan (training leases need the VRAM)
@@ -562,11 +572,14 @@ def runs(db: Session, project: Project, limit: int = 10) -> list[dict]:
     return [_summary(r) for r in rows]
 
 
-def sample_count(db: Session, project: Project, window_s: float | None = None) -> int:
+def sample_count(db: Session, project: Project, window_s: float | None = None,
+                 model_id: str | None = None) -> int:
     """Stored production samples; `window_s` limits it to the drift window used by `analyse`."""
     q = select(func.count(DriftSample.id)).where(DriftSample.project_id == project.id)
     if window_s:
         q = q.where(DriftSample.created >= now() - window_s)
+    if model_id:
+        q = q.where(DriftSample.model_id == model_id)
     return int(db.scalar(q) or 0)
 
 
@@ -576,16 +589,14 @@ def sample_count(db: Session, project: Project, window_s: float | None = None) -
 def send_to_labeling(db: Session, project: Project, run: DriftRun, user) -> int:
     """Copy up to 20 samples from the run window into a review batch; returns the ingested count."""
     start = run.created - WINDOW_S
-    rows = db.scalars(
-        select(DriftSample)
-        .where(
-            DriftSample.project_id == project.id,
-            DriftSample.created <= run.created,
-            DriftSample.created >= start,
-        )
-        .order_by(DriftSample.created.desc())
-        .limit(SEND_CAP)
-    ).all()
+    q = select(DriftSample).where(
+        DriftSample.project_id == project.id,
+        DriftSample.created <= run.created,
+        DriftSample.created >= start,
+    )
+    if run.model_id:
+        q = q.where(DriftSample.model_id == run.model_id)   # I23: only the monitored model's inputs
+    rows = db.scalars(q.order_by(DriftSample.created.desc()).limit(SEND_CAP)).all()
     files: list[tuple[str, bytes]] = []
     for sample in rows:
         if not sample.path:

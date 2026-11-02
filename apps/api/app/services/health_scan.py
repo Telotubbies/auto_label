@@ -5,6 +5,7 @@ path used by the analytics request; it never touches an image or a model.
 """
 
 from collections import Counter
+from collections.abc import Callable
 import math
 import threading
 
@@ -12,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..adapters import model_conf, resolve
+from ..adapters.base import Cancelled
 from ..models import Image, Job, Project, TrainedModel
 from . import imaging, versioning
 
@@ -110,8 +112,15 @@ def latest_model(db: Session, project: Project) -> TrainedModel | None:
     )
 
 
+def _stop(should_stop: Callable[[], bool] | None) -> None:
+    """Raise ``Cancelled`` when the job's cancellation predicate has flipped."""
+    if should_stop is not None and should_stop():
+        raise Cancelled("job cancelled")
+
+
 def _missing_boxes(
-    db: Session, project: Project, rows: list[Image], model: TrainedModel | None, conf: float | None
+    db: Session, project: Project, rows: list[Image], model: TrainedModel | None, conf: float | None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> list[dict]:
     """Predictions above the model threshold with IoU < 0.3 to every human ground-truth box."""
     if project.type == "classification" or model is None:
@@ -123,6 +132,7 @@ def _missing_boxes(
     conf = DEFAULT_CONF if conf is None else conf
     out = []
     for img in rows:
+        _stop(should_stop)                     # a long scan must honour a cancel between images
         if len(out) >= MISSING_LIMIT:
             break
         if not img.width or not img.height:
@@ -168,20 +178,24 @@ def _leakage_pairs(project: Project, rows: list[Image]) -> int:
     return sum(n * (n - 1) // 2 for n in sizes.values() if n > 1)
 
 
-def scan_health(db: Session, project: Project) -> dict:
+def scan_health(db: Session, project: Project, should_stop: Callable[[], bool] | None = None) -> dict:
     """The `health` job body: the two expensive checks, stored on the job row with the signature."""
+    _stop(should_stop)
     sig = signature(db, project)
     model = latest_model(db, project)
     conf = model_conf(model) if model else None
     conf = DEFAULT_CONF if conf is None else conf
     rows = db.scalars(select(Image).where(Image.project_id == project.id, Image.deleted_at.is_(None))).all()
+    _stop(should_stop)
+    leakage = _leakage_pairs(project, rows)
+    _stop(should_stop)
     return {
         "signature": sig,
         "model_id": model.id if model else None,
         "conf": conf if model else None,
         "checks": {
-            "leakage_pairs": _leakage_pairs(project, rows),
-            "missing_boxes": _missing_boxes(db, project, rows, model, conf),
+            "leakage_pairs": leakage,
+            "missing_boxes": _missing_boxes(db, project, rows, model, conf, should_stop),
         },
     }
 

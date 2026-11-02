@@ -16,9 +16,11 @@ from ..adapters import model_conf
 from ..config import CREDIT_COST, DATA_DIR, WORKER_TOKEN, REMOTE_JOB_KINDS
 from ..db import get_db
 from ..deps import charge
+from ..errors import safe_error, safe_text
 from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
 from ..security import sign_path
-from ..services import exporters, ml, versioning
+from ..services import exporters, metering, ml, versioning
+from ..services import finalize
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 
@@ -86,7 +88,7 @@ def claim(body: ClaimIn, db: Session = Depends(get_db)):
             try:
                 payload = _payload(db, j)
             except Exception as e:
-                j.status, j.error, j.finished = "failed", f"{type(e).__name__}: {e}", now()
+                j.status, j.error, j.finished = "failed", safe_error(e, j.kind), now()
                 db.commit(); continue
             db.commit()
             return {"job": {"id": j.id, "kind": j.kind, "payload": payload}}
@@ -124,6 +126,11 @@ def annotations(jid: str, body: AnnIn, db: Session = Depends(get_db)):
     if not j or not img or img.project_id != j.project_id:
         raise HTTPException(404, "not found")
     if body.annotations:
+        ids = {a.get("classId") for a in body.annotations if isinstance(a, dict) and a.get("classId")}
+        known = set(db.scalars(select(LabelClass.id).where(LabelClass.project_id == j.project_id,
+                                                          LabelClass.id.in_(ids)))) if ids else set()
+        if ids - known:
+            raise HTTPException(400, "annotation class does not belong to this project")
         P = j.params
         src = P.get("model_ref") or (f"trained:{P['model_id']}" if P.get("model_id") else "sam3")
         set_annotations(db, img, (img.annotations or []) + [{**a, "source": a.get("source") or src}
@@ -133,6 +140,10 @@ def annotations(jid: str, body: AnnIn, db: Session = Depends(get_db)):
         img.updated = now()
         # remote runs charge per labeled image as the work lands (the embedded worker charges at the end)
         charge(db, db.get(Workspace, j.workspace_id), CREDIT_COST["autolabel_image"])
+    # every processed image called the model, even when it produced no annotation
+    mid = j.params.get("model_id")
+    metering.record(db, j.workspace_id, "ai_calls", 1, project_id=j.project_id,
+                    model_id=mid, kind="autolabel")
     db.commit()
     return {"ok": True}
 
@@ -154,11 +165,14 @@ async def complete(jid: str, result: str = Form("{}"), weights: UploadFile | Non
             shutil.copyfileobj(weights.file, f)
         tm.weights = dst.relative_to(DATA_DIR).as_posix()
         tm.history = res.get("history", tm.history)
-        tm.metrics = ml.final_metrics(tm.history, tm.task)
         tm.status = "ready"
-        res = {"model_id": tm.id, **tm.metrics}
+        elapsed = max(0.0, now() - (j.started or now()))
+        metering.record(db, j.workspace_id, "gpu_seconds", round(elapsed, 2),
+                        project_id=j.project_id, job_id=j.id)
+        res = {"model_id": tm.id, **finalize.evaluate_and_announce(db, tm)}
     j.status = "cancelled" if j.status == "cancelling" else "done"
     j.progress, j.result, j.finished = 100.0, {**(j.result or {}), **res}, now()
+    finalize.job_done(db, j, j.status)
     db.commit()
     return {"ok": True}
 
@@ -172,7 +186,7 @@ def fail(jid: str, body: FailIn, db: Session = Depends(get_db)):
     j = db.get(Job, jid)
     if not j:
         raise HTTPException(404, "job not found")
-    j.status, j.error, j.finished = "failed", body.error[:4000], now()
+    j.status, j.error, j.finished = "failed", safe_text(body.error, j.kind), now()
     if j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         if tm:

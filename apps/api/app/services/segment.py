@@ -100,13 +100,14 @@ def _load_sam():
 
 
 def sam_status() -> dict:
-    return {"loaded": _sam["proc"] is not None, "error": _sam["err"]}
+    return {"loaded": _sam["proc"] is not None,
+            "error": "SAM is not available on this server" if _sam["err"] else ""}
 
 
 def _require_sam():
     proc = _load_sam()
     if proc is None:
-        raise RuntimeError(f"SAM 3.1 is not available on this worker ({_sam['err']})")
+        raise RuntimeError("SAM 3.1 is not available on this worker")
     return proc
 
 
@@ -181,7 +182,7 @@ def sam_text(im: PImage.Image, prompts: list[str], threshold: float = 0.4) -> li
     """-> [(prompt index, normalized polygon, score)]; raises if SAM can't load."""
     proc = lease_sam()
     if proc is None:
-        raise RuntimeError(f"SAM 3.1 is not available on this worker ({_sam['err']})")
+        raise RuntimeError("SAM 3.1 is not available on this worker")
     state = proc.set_image(im)
     out = []
     for i, prompt in enumerate(prompts):
