@@ -1,16 +1,17 @@
 # LabelDesk self-hosted inference
 
 A small, single-tenant FastAPI service that serves exported LabelDesk model files from a mounted
-directory. It is the container image the hosted **Deploy** page points at when a user wants to run
-inference on their own hardware. There is no workspace, API key or billing code in this service and
-no secret is read or baked into the image — deploy one container per tenant.
+directory on your own hardware. It is a standalone container: the hosted **Deploy** page still
+documents the hosted API, so point self-hosted clients at this service's `/predict` directly.
+There is no workspace, API key or billing code in this service and no secret is read or baked into
+the image — deploy one container per tenant.
 
 ## Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/healthz` | model files found, backend availability, service/library versions |
-| `GET` | `/models` | every servable file, its backend and whether this image can load it |
+| `GET` | `/healthz` | model files found, backend dependency availability, service/library versions |
+| `GET` | `/models` | every servable file, its backend, and whether the backend's dependencies are installed |
 | `POST` | `/predict` | multipart `file`, optional `confidence` (0–1, default 0.4), optional `model` |
 
 `POST /predict` returns the same shape as the hosted API: centre-based boxes in image pixels, plus
@@ -30,7 +31,9 @@ the decoded image size and the model that produced the result. Classification mo
 ```
 
 `model` is the file name from `GET /models`; omit it when exactly one model is mounted. A bad
-upload returns `400 not a valid image`, an unknown model `404`, a missing backend `503`.
+upload returns `400 not a valid image`, an unknown model `404`, a missing backend `503`. Uploads are
+capped at **20 MB** (larger bodies return `413`). `confidence` and `model` are multipart form fields;
+the hosted API's `?confidence=` query parameter does not apply to this service.
 
 ## Model directory contract
 
@@ -66,11 +69,14 @@ Or without compose:
 
 ```bash
 docker build -t labeldesk-inference:cpu apps/inference
-docker run --rm -p 8010:8010 --read-only \
+docker run --rm -p 8010:8010 --read-only --tmpfs /tmp:size=64m \
   -v "$PWD/models:/models:ro" labeldesk-inference:cpu
 ```
 
-The mounted directory must be readable by uid `10001`. On Linux, `chmod -R a+rX models` is enough.
+`--read-only` needs a writable `/tmp`: Starlette spools multipart bodies above 1 MB to disk, so
+without the 64 MB tmpfs (larger than the 20 MB upload cap) full-size photos fail with
+`400 There was an error parsing the body`. The mounted directory must be readable by uid `10001`.
+On Linux, `chmod -R a+rX models` is enough.
 
 ## Run — GPU (`.pt`, optional `.engine`)
 
