@@ -68,6 +68,15 @@ class Workspace(Base):
     created: Mapped[float] = mapped_column(Float, default=now)
 
 
+class WorkspaceFlag(Base):
+    """Per-workspace feature-flag override. No row (or enabled=False) means the flag is off."""
+    __tablename__ = "workspace_flags"
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
 class Member(Base):
     __tablename__ = "members"
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)

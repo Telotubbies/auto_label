@@ -31,6 +31,11 @@ export interface Usage {
 }
 export interface WorkspaceInfo { id: string; slug: string; name: string; role: Role; owner_id: string; require_mfa: boolean; usage: Usage }
 
+/** One feature flag from the API's registry, with its effective state for this workspace. */
+export interface FeatureFlag { key: string; description: string; enabled: boolean }
+
+export interface WorkspaceFlags { enabled: string[]; flags: FeatureFlag[] }
+
 /** Keypoint schema owned by one class: named joints plus the bones drawn between them. */
 export interface Skeleton { names: string[]; edges: [number, number][]; flip_idx?: number[] }
 export interface LabelClass { id: string; name: string; color: string; count: number; skeleton?: Skeleton | null }
