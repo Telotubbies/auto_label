@@ -242,8 +242,8 @@ def test_bad_variant_and_max_minutes_rejected(c, version_id):
 
 
 def test_remote_worker_mode_rejects_unsupported_options(c, version_id, monkeypatch):
-    from app.routers import training
-    monkeypatch.setattr(training, "LOCAL_JOB_KINDS", ["version", "export", "autolabel"])
+    from app import config
+    monkeypatch.setattr(config, "EMBEDDED_WORKER", False)
     for body in ({"variant": "rtdetr-l"}, {"variant": "yolov8s-worldv2"}, {"variant": "yolo11s"},
                  {"max_minutes": 5}, {"resume_from": "any-model"}):
         r = c.post(f"{BASE}/train", json={"version_id": version_id, **body})
@@ -251,10 +251,9 @@ def test_remote_worker_mode_rejects_unsupported_options(c, version_id, monkeypat
 
 
 def test_remote_worker_mode_queues_size_for_yolo26(c, version_id, monkeypatch):
-    from app import worker
-    from app.routers import training
+    from app import config, worker
+    monkeypatch.setattr(config, "EMBEDDED_WORKER", False)
     off = ["version", "export", "autolabel"]
-    monkeypatch.setattr(training, "LOCAL_JOB_KINDS", off)
     monkeypatch.setattr(worker, "LOCAL_JOB_KINDS", off)      # keep the embedded worker off this job
     m = c.post(f"{BASE}/train", json={"version_id": version_id, "variant": "yolo26s", "epochs": 1, "imgsz": 160,
                                       "batch": 4}).json()

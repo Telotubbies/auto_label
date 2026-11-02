@@ -29,6 +29,16 @@ for _kind in ("connector_sync", "retention", "extract_frames", "track_forward"):
 REMOTE_JOB_KINDS = ("train", "autolabel")
 WORKER_TOKEN = _env("LD_WORKER_TOKEN")                        # shared secret for `labeldesk-worker`
 
+
+def runs_locally(kind: str) -> bool:
+    """True when *this* process executes ``kind``.
+
+    ``LOCAL_JOB_KINDS`` only says what the embedded worker may run; a process with
+    ``LD_EMBEDDED_WORKER=0`` runs nothing, even though the default list still names train.
+    Remote-worker restrictions key off this answer, never off the list alone.
+    """
+    return EMBEDDED_WORKER and kind in LOCAL_JOB_KINDS
+
 # ML integration — all optional; features degrade with a clear error when missing
 SAM_ROOT = Path(_env("LD_SAM_ROOT", str(REPO_ROOT / "sam3_auto_label")))
 SAM_ENABLED = _env("LD_SAM_ENABLED", "auto")                  # auto | 1 | 0

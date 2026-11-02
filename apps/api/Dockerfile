@@ -15,5 +15,6 @@ USER labeldesk
 VOLUME /data
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"
-# 2 web workers; background jobs run in the separate `worker` service (LD_EMBEDDED_WORKER=0)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# One web worker: selections, rate limits and the GPU ledger are process-local; the heavy jobs
+# run in the separate `worker` service (LD_EMBEDDED_WORKER=0).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
