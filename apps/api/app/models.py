@@ -30,6 +30,9 @@ API_SCOPES = ("read", "upload", "train", "infer")
 CONNECTOR_KINDS = ("s3", "gcs", "azure")
 WEBHOOK_EVENTS = ("job.done", "model.ready", "stream.event")
 DATA_REGIONS = ("th", "sg", "us")
+DEPLOY_ALIASES = ("production", "staging")
+# Metering keys. GPU time, stream time and AI calls are monthly allowances; storage is current bytes.
+METRICS = ("gpu_seconds", "stream_hours", "ai_calls", "storage_bytes")
 
 
 class User(Base):
@@ -60,6 +63,8 @@ class Workspace(Base):
     credits_period: Mapped[str] = mapped_column(String(7), default="")   # YYYY-MM the counter belongs to
     require_mfa: Mapped[bool] = mapped_column(Boolean, default=False)    # members must enrol TOTP to enter
     data_region: Mapped[str] = mapped_column(String(16), default="th")   # PDPA residency declaration
+    # Per-workspace quota overrides; NULL/absent keys fall back to the plan allowance.
+    quotas: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
 
 
@@ -415,3 +420,80 @@ class Worker(Base):
     current_job: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started: Mapped[float] = mapped_column(Float, default=now)
     last_seen: Mapped[float] = mapped_column(Float, default=now, index=True)
+class DeploymentAlias(Base):
+    """One inference alias per project (`production`, `staging`) -> a ready trained model."""
+    __tablename__ = "deployment_aliases"
+    __table_args__ = (UniqueConstraint("project_id", "alias"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    alias: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str | None] = mapped_column(ForeignKey("trained_models.id", ondelete="SET NULL"), nullable=True)
+    previous_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # rollback target
+    updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
+class DeploymentEvent(Base):
+    """Append-only alias history: what moved where, who did it, and when."""
+    __tablename__ = "deployment_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    alias: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    from_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    action: Mapped[str] = mapped_column(String(16), default="deploy")   # deploy | rollback
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class DriftSample(Base):
+    """A recent production input (hosted API or stream) kept for the two-sample drift test."""
+    __tablename__ = "drift_samples"
+    __table_args__ = (Index("ix_drift_samples_project_created", "project_id", "created"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="api")        # api | stream
+    sha256: Mapped[str] = mapped_column(String(64))
+    path: Mapped[str] = mapped_column(String(512), default="")
+    features: Mapped[list] = mapped_column(JSON, default=list)
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class DriftRun(Base):
+    """One embedding MMD run between the training distribution and recent production samples."""
+    __tablename__ = "drift_runs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")   # running | done | insufficient | failed
+    statistic: Mapped[float] = mapped_column(Float, default=0.0)
+    p_value: Mapped[float] = mapped_column(Float, default=1.0)
+    threshold: Mapped[float] = mapped_column(Float, default=0.05)
+    n_reference: Mapped[int] = mapped_column(Integer, default=0)
+    n_current: Mapped[int] = mapped_column(Integer, default=0)
+    alert: Mapped[bool] = mapped_column(Boolean, default=False)
+    feature_source: Mapped[str] = mapped_column(String(32), default="colour/layout map")
+    samples_sent: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[float] = mapped_column(Float, default=now)
+    finished: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class UsageEvent(Base):
+    """One metered quantity. Rows stay after a project is deleted: usage history is billing data."""
+    __tablename__ = "usage_events"
+    __table_args__ = (Index("ix_usage_events_ws_metric_created", "workspace_id", "metric", "created"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    metric: Mapped[str] = mapped_column(String(32))
+    quantity: Mapped[float] = mapped_column(Float, default=0.0)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created: Mapped[float] = mapped_column(Float, default=now, index=True)

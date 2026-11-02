@@ -14,6 +14,7 @@ from ..models import (API_SCOPES, ROLES, WORKSPACE_ROLES, ApiKey, Audit, Folder,
                       ProjectMember, TrainedModel, User, Workspace)
 from ..security import new_api_key
 from ..superadmin import is_superadmin
+from ..services import metering
 from .. import mailer
 
 router = APIRouter(prefix="/api/ws/{ws}", tags=["workspace"])
@@ -80,6 +81,8 @@ def get_usage(c: Ctx = Depends(ws_ctx)):
         key = action.split(".")[0]
         daily.setdefault(d, {}); daily[d][key] = daily[d].get(key, 0) + 1
     out["daily"] = [{"date": d, **v} for d, v in sorted(daily.items())]
+    out["meters"] = metering.summary(c.db, c.ws)
+    out["daily_meters"] = metering.daily(c.db, c.ws, 30)
     return out
 
 

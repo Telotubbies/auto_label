@@ -76,8 +76,13 @@ Kaggle ต้องเปิด Settings → Internet: On ด้วย worker �
 ถ้าต้องการให้รันงานเดียวแล้วจบ ให้ใส่ `--once`
 
 ### ไม่มี GPU เลย
-ตั้ง `LD_LOCAL_JOBS=version,export,train,autolabel` ใน `.env` แล้ว VM จะ train ด้วย CPU เอง
+ตั้ง `LD_LOCAL_JOBS=version,export,drift,active_learning,train,autolabel` ใน `.env` แล้ว VM จะ train ด้วย CPU เอง
 ช้ากว่า แต่โมเดล n/s ขนาดเล็กที่ 30–50 epochs บนรูปหลักร้อยใบยังพอรับได้
+
+> ค่าเริ่มต้นของ `worker` ใน compose คือ `version,export,drift,active_learning` — drift monitor จึงทำงานบน VM
+> นี้ได้ทันที (ใช้สี/เลย์เอาต์ของรูปบน volume ถ้าไม่ได้ติดตั้ง CLIP) ส่วน `active_learning` ต้องรันโมเดลที่เทรนแล้ว
+> เพื่อให้คะแนนรูป จึงต้องมี worker ที่โหลดโมเดลได้ (CPU/GPU) และไม่ควรย้ายไปไว้ที่ service `api`
+> งาน `train`/`autolabel` ยังคงจ่ายให้ `labeldesk-worker` บนเครื่อง GPU ตามปกติ
 
 ---
 

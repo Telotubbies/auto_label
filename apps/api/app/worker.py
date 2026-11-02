@@ -28,12 +28,15 @@ from .gpu import scheduler
 from .models import (Batch, Image, Job, LabelClass, Project, TrainedModel, Version, Video, Workspace, new_id, now,
                      set_annotations)
 from .services import (
+    active_learning,
     connectors,
+    drift,
     exporters,
     health,
     imaging,
     insights_embedding,
     insights_jobs,
+    metering,
     ml,
     segment,
     track,
@@ -49,6 +52,11 @@ WATCHDOG_MIN_S = 120.0                      # later epochs: never call a run sta
 FIRST_EPOCH_MIN_S = 600.0                   # the first epoch also pays for export + model load
 WATCHDOG_POLL_S = 0.01                      # floor for the adaptive poll (tests shrink the limit)
 MAX_EPOCH_SAMPLES = 50                      # median over the recent epochs only
+MIN_TRAIN_GPU_S = 60.0                      # the /train estimate floor: less cannot fund a minimal run
+
+
+class QuotaExhausted(RuntimeError):
+    """A job stopped at the workspace allowance; it must fail instead of reporting a truncated result."""
 
 
 def _stall_limit(epoch_secs: list[float]) -> float:
@@ -95,6 +103,7 @@ class _Watchdog:
             del self.epoch_secs[:-MAX_EPOCH_SAMPLES]       # old epochs must not pin the limit forever
             self._seen_epoch = True
             self.last = self.last_epoch = now
+            self.stalled = False                           # an epoch is progress: clear a pre-epoch false alarm
 
     def beat(self) -> None:
         """Refresh liveness only (a polling adapter saw real progress); never an epoch sample."""
@@ -217,6 +226,11 @@ def _is_oom(exc: BaseException) -> bool:
     return isinstance(exc, torch.cuda.OutOfMemoryError)
 
 
+def _over_budget(started: float, budget: float, now_m: float) -> bool:
+    """True when a lease has run longer than the GPU allowance the job started with."""
+    return now_m - started > budget
+
+
 def run_train(job: Job):
     """Train, evaluate and register one model, recording progress stages for the UI."""
     t0 = time.monotonic()
@@ -234,6 +248,17 @@ def run_train(job: Job):
         tm = db.get(TrainedModel, job.params["model_id"])
         v = db.get(Version, tm.version_id)
         p = db.get(Project, tm.project_id)
+        previous = (tm.status, tm.weights)      # what the row keeps when a run is cut short
+        # The enqueue already reserved the estimate; this is the belt: if the allowance shrank
+        # while the job waited, refuse rather than register a zero-epoch model.
+        budget = metering.remaining(db, db.get(Workspace, job.workspace_id), "gpu_seconds")
+        if budget < MIN_TRAIN_GPU_S:
+            tm.status = "ready" if previous[0] == "ready" else "failed"     # never a promoted stub
+            db.commit()
+            raise QuotaExhausted(
+                f"GPU time allowance exhausted: {budget:.0f} s left, a training run needs at least "
+                f"{MIN_TRAIN_GPU_S:.0f} s"
+            )
         tm.status = "training"; db.commit()
         history: list[dict] = []
         variant = tm.variant or tm.arch
@@ -247,6 +272,8 @@ def run_train(job: Job):
         opts["stalled"] = lambda: watchdog.stalled     # read by the adapter's per-batch callbacks
         opts["heartbeat"] = watchdog.beat              # polling adapters call it only on real progress
         train_note = None
+        lease_start: float | None = None
+        budget_stop = False
 
         def on_epoch(ep, total, metrics):
             watchdog.tick()
@@ -257,11 +284,18 @@ def run_train(job: Job):
                 s.commit()
 
         def should_stop():
-            return _cancelled(job.id) or watchdog.stalled
+            nonlocal budget_stop
+            if _cancelled(job.id) or watchdog.stalled:
+                return True
+            if lease_start is not None and _over_budget(lease_start, budget, time.monotonic()):
+                budget_stop = True
+                return True
+            return False
 
         try:
             mark("acquire_gpu", "running")
             with scheduler.exclusive(f"training {variant}"):
+                lease_start = time.monotonic()
                 mark("acquire_gpu")
                 mark("materialise", "running")
                 versioning.cached_export(v, "coco")      # also proves the dataset is readable
@@ -302,6 +336,14 @@ def run_train(job: Job):
                     watchdog.stop()
                 if watchdog.stalled:
                     raise RuntimeError(f"no training progress for {watchdog.limit:g} s")
+                if budget_stop and len(history) < opts["epochs"]:
+                    # The adapter stopped cleanly and kept best.pt, but that checkpoint covers only
+                    # part of the run: never register it as a ready (deployable) model.
+                    mark("train", "failed", note="GPU allowance exhausted; model not registered")
+                    raise QuotaExhausted(
+                        f"GPU time allowance exhausted after {len(history)} of {opts['epochs']} epochs "
+                        f"({budget:g} s was left when the run started); model not registered"
+                    )
                 mark("train", note=train_note)
                 mark("evaluate", "running")
                 tm.weights, tm.status = res.weights, "ready"     # resolve() only accepts ready models
@@ -326,15 +368,30 @@ def run_train(job: Job):
                 mark("register")
             mark("release")
         except Exception as e:
-            tm.status = "cancelled" if isinstance(e, Cancelled) else "failed"
+            if isinstance(e, QuotaExhausted):
+                # Keep a previously good checkpoint deployable; a fresh (queued) model simply fails.
+                tm.status = "ready" if previous[0] == "ready" else "failed"
+                tm.weights = previous[1]
+            else:
+                tm.status = "cancelled" if isinstance(e, Cancelled) else "failed"
             db.commit()
             shutil.rmtree(DATA_DIR / "train_data" / tm.id, ignore_errors=True)   # adapter only cleans on success
             for name, entry in list(stages.items()):
                 if entry["status"] == "running":
                     mark(name, "failed")
             mark("release")                 # the exclusive context has already released the GPU
+            _meter_gpu(db, job, time.monotonic() - t0)   # failed runs still held the card
             raise
+        _meter_gpu(db, job, time.monotonic() - t0)
         return {"model_id": tm.id, **tm.metrics, "stages": stages}
+
+
+def _meter_gpu(db, job: Job, seconds: float) -> None:
+    """Meter wall-clock seconds a training lease held the card (spec 7.1)."""
+    if seconds > 0:
+        metering.record(db, job.workspace_id, "gpu_seconds", round(seconds, 2), project_id=job.project_id,
+                        job_id=job.id)
+        db.commit()
 
 
 def run_autolabel(job: Job):
@@ -351,10 +408,16 @@ def run_autolabel(job: Job):
             q = q.where(Image.n_annotations == 0)
         rows = db.scalars(q).all()
         sam_ok = sam_available()
-        labeled = total = 0
+        ws = db.get(Workspace, job.workspace_id)
+        labeled = total = processed = 0
+        clamped = False
         for i, img in enumerate(rows):
             if _cancelled(job.id):
                 break
+            if metering.remaining(db, ws, "ai_calls") <= 0:
+                clamped = True            # an enqueued job stops at the allowance instead of overrunning it
+                break
+            processed += 1
             anns = label_image(imaging.load(img.path), project_type=p.type, params=P, classes=classes,
                                db=db, workspace_id=job.workspace_id, sam_ok=sam_ok)
             if anns:
@@ -366,10 +429,13 @@ def run_autolabel(job: Job):
                 total += len(anns)
                 db.commit()          # keep earlier images even if a later VLM call dies
                 # bill per committed image: a run that dies midway is still charged for what it labeled
-                charge(db, db.get(Workspace, job.workspace_id), CREDIT_COST["autolabel_image"])
-                db.commit()
+                charge(db, ws, CREDIT_COST["autolabel_image"])
+            # every processed image called the model, even when it produced no annotation
+            metering.record(db, job.workspace_id, "ai_calls", 1, project_id=job.project_id, kind="autolabel")
+            db.commit()
             _set(job.id, progress=round((i + 1) / max(1, len(rows)) * 100, 1))
-        return {"images": len(rows), "labeled": labeled, "annotations": total}
+        return {"images": processed, "selected": len(rows), "labeled": labeled,
+                "annotations": total, "quota_clamped": clamped}
 
 
 def run_health(job: Job):
@@ -573,6 +639,7 @@ HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_e
             "train": run_train, "autolabel": run_autolabel, "health": run_health,
             "connector_sync": connectors.sync_job, "retention": run_retention,
             "extract_frames": run_extract_frames, "track_forward": run_track_forward,
+            "drift": drift.run_job, "active_learning": active_learning.run_job,
             "insights_images": run_insights_images, "insights_leakage": run_insights_leakage,
             "insights_embedding": run_insights_embedding}
 
@@ -614,6 +681,23 @@ def recover():
         db.commit()
 
 
+OPS_SCHEDULE_S = 900           # check for due daily drift runs every 15 minutes
+_last_ops_schedule = time.monotonic()
+
+
+def _schedule_ops() -> None:
+    """Queue the daily drift job for projects that have a ready model and no run in 24 h."""
+    global _last_ops_schedule
+    if time.monotonic() - _last_ops_schedule < OPS_SCHEDULE_S:
+        return
+    _last_ops_schedule = time.monotonic()
+    try:
+        with SessionLocal() as db:
+            drift.schedule_daily(db)
+    except Exception:                  # a scheduler failure must never stop the job loop
+        log.exception("could not schedule drift jobs")
+
+
 def loop(stop: threading.Event | None = None):
     from .config import RETENTION_CHECK_S
     from .services import heartbeat, retention
@@ -627,6 +711,7 @@ def loop(stop: threading.Event | None = None):
             except Exception:                    # a broken retention pass must not stop every job
                 log.exception("could not enqueue the retention job")
             next_cleanup = time.monotonic() + RETENTION_CHECK_S
+        _schedule_ops()           # self-throttled; long jobs must not starve the daily drift check
         jid = _claim()
         if jid:
             heartbeat.beat(LOCAL_JOB_KINDS, current_job=jid)

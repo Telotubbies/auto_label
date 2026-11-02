@@ -12,10 +12,22 @@ export interface SessionRow { id: string; created: number; last_seen: number; ip
 export interface LoginEvent { method: 'password' | 'mfa' | 'oidc'; ok: boolean; ip: string; user_agent: string; created: number }
 export interface MfaSetup { secret: string; otpauth: string; qr: string }
 
+/** One metered resource: consumption against the plan or workspace allowance. */
+export interface UsageMeter {
+  used: number; quota: number; period: 'month' | 'total'; label: string
+}
+export type UsageMeterKey = 'gpu_seconds' | 'stream_hours' | 'ai_calls' | 'storage_bytes'
+export interface UsageDailyMeter {
+  date: string; gpu_seconds: number; stream_hours: number; ai_calls: number; storage_bytes: number
+}
 export interface Usage {
   plan: string; plan_label: string; limits: { projects: number; images: number; seats: number; credits: number; label: string }
   credits_used: number; credits_left: number; period: string; projects: number; images: number; seats: number; models: number
   daily?: Record<string, number | string>[]
+  /** Absent on older API builds: the metered section hides itself. */
+  meters?: Partial<Record<UsageMeterKey, UsageMeter>>
+  /** 30 days, ascending. */
+  daily_meters?: UsageDailyMeter[]
 }
 export interface WorkspaceInfo { id: string; slug: string; name: string; role: Role; owner_id: string; require_mfa: boolean; usage: Usage }
 
@@ -126,6 +138,29 @@ export interface LeaderboardRow {
   version: number | null; versionId: string; ap: number | null; latency_ms: number | null
   comparable: boolean; created: number
 }
+/** A served model alias (`production` / `staging`) and the model currently behind it. */
+export interface DeploymentAlias {
+  id: string; alias: string
+  model_id: string | null; model_name: string | null; model_arch: string | null
+  model_status: 'queued' | 'training' | 'ready' | 'failed' | null
+  previous_model_id: string | null; previous_model_name: string | null
+  updated: number | null; updated_by: string | null
+}
+export interface DeploymentReadyModel { id: string; name: string; arch: string }
+export interface DriftSummary {
+  run_id: string
+  status: 'running' | 'done' | 'insufficient' | 'failed'
+  alert: boolean; statistic: number; p_value: number
+  n_reference: number; n_current: number
+  feature_source: string; error: string; min_samples: number
+  created: number
+}
+export interface DeploymentProject {
+  id: string; slug: string; name: string
+  aliases: DeploymentAlias[]; ready_models: DeploymentReadyModel[]; drift: DriftSummary | null
+}
+export interface DeploymentOverview { projects: DeploymentProject[] }
+
 export interface TrainVariant { id: string; label: string; weights: string }
 export interface TrainFamily { family: string; label: string; adapter?: string; license: string; available: boolean; reason: string; variants: TrainVariant[] }
 export interface TrainOptions { supported: boolean; reason?: string; task?: string; families?: TrainFamily[] }

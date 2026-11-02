@@ -26,7 +26,8 @@ def init_db():
         "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0",
         "platform_admin": "BOOLEAN DEFAULT FALSE"})
     ensure_columns(engine, "workspaces", {"require_mfa": "BOOLEAN DEFAULT FALSE",
-                                          "data_region": "VARCHAR(16) DEFAULT 'th'"})
+                                          "data_region": "VARCHAR(16) DEFAULT 'th'",
+                                          "quotas": "JSON"})
     ensure_columns(engine, "projects", {"retention_days": "INTEGER", "face_blur": "BOOLEAN DEFAULT TRUE",
                                         "biometrics": "BOOLEAN DEFAULT FALSE", "legal_basis": "TEXT DEFAULT ''"})
     ensure_columns(engine, "members", {"custom_role_id": "VARCHAR(32)"})

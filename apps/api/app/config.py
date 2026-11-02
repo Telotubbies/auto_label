@@ -21,7 +21,7 @@ SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
 LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS",
                                    "version,export,export_engine,train,autolabel,health,connector_sync,retention,"
-                                   "extract_frames,track_forward,"
+                                   "extract_frames,track_forward,drift,active_learning,"
                                    "insights_images,insights_leakage,insights_embedding").split(",") if k]
 for _kind in ("connector_sync", "retention", "extract_frames", "track_forward"):
     if _kind not in LOCAL_JOB_KINDS:
@@ -38,12 +38,24 @@ TRAIN_DEVICE = _env("LD_TRAIN_DEVICE", "")                    # "" = ultralytics
 VLM_URL = _env("LD_VLM_URL", "http://localhost:8000/v1").rstrip("/")
 VLM_MODEL = _env("LD_VLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct-AWQ")
 
-# Plans — limits enforced server-side; billing integration is out of scope
+GB = 1024 ** 3
+# Plans — limits enforced server-side; billing integration is out of scope.
+# gpu_seconds / stream_hours / ai_calls are monthly; storage_bytes is current usage.
 PLANS = {
-    "free":       {"label": "Free",       "projects": 3,   "images": 10_000,    "seats": 3,   "credits": 30},
-    "pro":        {"label": "Pro",        "projects": 50,  "images": 250_000,   "seats": 20,  "credits": 500},
-    "enterprise": {"label": "Enterprise", "projects": 10_000, "images": 10_000_000, "seats": 10_000, "credits": 100_000},
+    "free":       {"label": "Free",       "projects": 3,   "images": 10_000,    "seats": 3,   "credits": 30,
+                   "gpu_seconds": 3_600, "stream_hours": 20, "ai_calls": 2_000, "storage_bytes": 5 * GB},
+    "pro":        {"label": "Pro",        "projects": 50,  "images": 250_000,   "seats": 20,  "credits": 500,
+                   "gpu_seconds": 36_000, "stream_hours": 200, "ai_calls": 20_000, "storage_bytes": 50 * GB},
+    "enterprise": {"label": "Enterprise", "projects": 10_000, "images": 10_000_000, "seats": 10_000, "credits": 100_000,
+                   "gpu_seconds": 360_000, "stream_hours": 2_000, "ai_calls": 200_000, "storage_bytes": 500 * GB},
 }
+# Automatic active-learning sampling: per-project daily cap and the uncertainty band (spec 3.3).
+AL_DAILY_CAP = int(_env("LD_AL_DAILY_CAP", "25"))
+AL_BAND = (0.3, 0.5)
+# Drift monitor: two-sample MMD p-value below this raises the alert.
+DRIFT_P = float(_env("LD_DRIFT_P", "0.05"))
+DRIFT_MAX_SAMPLES = int(_env("LD_DRIFT_MAX_SAMPLES", "500"))
+DRIFT_MIN_SAMPLES = int(_env("LD_DRIFT_MIN_SAMPLES", "12"))
 # credits charged per action (mirrors Roboflow's credit-metered model)
 CREDIT_COST = {"train": 3, "autolabel_image": 0.01, "infer": 0.001, "version": 0.5}
 

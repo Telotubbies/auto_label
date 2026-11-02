@@ -312,6 +312,11 @@ export function JobTray() {
               {!live && <button type="button" aria-label="Dismiss" onClick={() => setDismissed((d) => new Set(d).add(j.id))} className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full hover:bg-accent"><X className="h-3.5 w-3.5" /></button>}
             </div>
             {live && <Progress className="mt-1.5" value={j.progress} />}
+            {!live && j.kind === 'autolabel' && j.result?.quota_clamped && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Stopped at the AI-call allowance after {j.result.images} of {j.result.selected ?? j.result.images} images.
+              </p>
+            )}
           </div>
         )
       })}

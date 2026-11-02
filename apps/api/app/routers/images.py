@@ -23,7 +23,7 @@ from ..models import (SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Label
                       new_id, now, set_annotations)
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import faceblur, imaging, importers, insights, ml, segment
+from ..services import faceblur, imaging, importers, insights, metering, ml, segment
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -86,6 +86,8 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     have = db.scalar(select(func.count(Image.id)).join(Project).where(Project.workspace_id == c.ws.id, Image.deleted_at.is_(None)))
     if have + len(bundle.images) > plan(c.ws)["images"]:
         raise HTTPException(402, f"image limit reached on the {plan(c.ws)['label']} plan")
+    # storage quota is checked against the whole payload; duplicates below never add bytes
+    metering.check(db, c.ws, "storage_bytes", sum(len(d) for d in bundle.images.values()))
     batch = Batch(project_id=p.id, name=batch_name or time.strftime("Uploaded on %b %d, %Y %H:%M"), source=source,
                   created_by=user_id)
     db.add(batch); db.flush()
@@ -134,6 +136,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
             img.status = "done" if to_dataset else "review"
         db.add(img)
         set_annotations(db, img, anns)
+        metering.record(db, c.ws.id, "storage_bytes", len(data), project_id=p.id, image_id=img.id)
         out.append(img)
     p.updated = now()
     audit(db, c.ws.id, user_id, "image.upload", p.name, images=len(out), duplicates=dups, source=source)
@@ -265,6 +268,8 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
         elif body.action == "remove_tag":
             r.tags = [t for t in r.tags or [] if t != v]
         elif body.action == "delete":
+            if r.deleted_at is None:              # a second delete must not credit storage twice
+                metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
             r.deleted_at = now()
             c.db.execute(sa_delete(ImageClass).where(ImageClass.image_id == r.id))   # deleted images drop out of counts
         elif body.action == "status":
@@ -454,6 +459,8 @@ def patch_image(image_id: str, body: ImagePatch, u: User = Depends(current_user)
 def delete_image(image_id: str, u: User = Depends(current_user), db: Session = Depends(get_db)):
     c, img = _assigned(*image_ctx(db, u, image_id))
     c.need("reviewer")
+    if img.deleted_at is None:                    # release the bytes the storage meter counted at upload
+        metering.adjust(db, c.ws, "storage_bytes", -float(img.size or 0), project_id=img.project_id)
     img.deleted_at = now()
     db.execute(sa_delete(ImageClass).where(ImageClass.image_id == img.id))
     db.commit()

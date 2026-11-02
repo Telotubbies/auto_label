@@ -134,6 +134,37 @@ def test_unloader_failure_does_not_corrupt_ledger():
     assert [x["key"] for x in s.state()["leases"]] == ["b"]
 
 
+def test_a_loader_that_returns_none_is_not_leased():
+    """R2-1: a load that produced nothing must not be charged to the VRAM ledger."""
+    s = GpuScheduler(100, None)
+    s.lease("live", 30, lambda: object(), lambda _o: None)
+
+    assert s.lease("optional", 30, lambda: None, lambda _o: None) is None
+    assert s.state()["used_mb"] == 30
+    assert [x["key"] for x in s.state()["leases"]] == ["live"]
+
+
+def test_an_optional_lease_refuses_instead_of_evicting():
+    """R2-1: `evict=False` may only use free room, so a failed optional load costs no live model."""
+    s = GpuScheduler(100, None)
+    dropped: list[str] = []
+    s.lease("live", 60, lambda: object(), lambda _o: dropped.append("live"))
+
+    with pytest.raises(RuntimeError, match="no room"):
+        s.lease("optional", 50, lambda: object(), lambda _o: None, evict=False)
+
+    assert dropped == []
+    assert s.state()["used_mb"] == 60
+
+
+def test_release_reports_whether_it_unloaded():
+    """R2-2: callers use the result to unload exactly once."""
+    s = GpuScheduler(100, None)
+    s.lease("a", 30, lambda: object(), lambda _o: None)
+    assert s.release("a") is True
+    assert s.release("a") is False
+
+
 def test_exclusive_cleans_up_on_body_exception():
     vlm = FakeVlm()
     s = GpuScheduler(100, vlm)

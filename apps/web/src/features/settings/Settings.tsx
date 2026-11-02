@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CheckCircle2, CircleAlert, Copy, KeyRound, ShieldCheck, ShieldOff, Trash2, XCircle } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, del, get, patch, post, tokens } from '@/lib/api'
 import { useApp } from '@/lib/store'
-import type { LoginEvent, Me, MfaSetup, Role, SessionRow } from '@/lib/types'
+import type { LoginEvent, Me, MfaSetup, Role, SessionRow, Usage, UsageMeter, UsageMeterKey } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Spinner, Stat, Switch, fmtAgo, fmtDate, toast } from '@/components/ui'
-import { DEFAULT_SEED, setThemePrefs, useThemePrefs, type Contrast, type ModePref, type Scheme } from '@/lib/theme'
+import { DEFAULT_SEED, dateLocale, setThemePrefs, useThemePrefs, type Contrast, type ModePref, type Scheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import PrivacyWorkspace from '@/features/governance/Privacy'
 import { WorkspaceRoles } from '@/features/governance/Roles'
@@ -784,12 +784,128 @@ function ApiKeys() {
   )
 }
 
+const METER_ORDER: UsageMeterKey[] = ['gpu_seconds', 'stream_hours', 'ai_calls', 'storage_bytes']
+const METER_LABEL: Record<UsageMeterKey, string> = {
+  gpu_seconds: 'GPU time', stream_hours: 'Stream hours', ai_calls: 'AI calls', storage_bytes: 'Storage',
+}
+const num1 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 })
+
+const fmtGpuSeconds = (seconds: number) => {
+  const minutes = Math.round(Math.max(0, seconds) / 60)
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (!hours) return `${rest}m`
+  return rest ? `${hours}h ${rest}m` : `${hours}h`
+}
+const fmtStreamHours = (hours: number) => `${num1.format(hours)} h`
+const fmtStorage = (bytes: number) =>
+  bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
+const METER_VALUE: Record<UsageMeterKey, (value: number) => string> = {
+  gpu_seconds: fmtGpuSeconds,
+  stream_hours: fmtStreamHours,
+  ai_calls: (value) => value.toLocaleString(),
+  storage_bytes: fmtStorage,
+}
+
+const dayLabel = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric' })
+const fullDayLabel = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })
+
+const TOOLTIP_STYLE = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }
+const TOOLTIP_LABEL_STYLE = { color: 'var(--muted-foreground)' }
+
+/** Activity breakdown still returned in `daily`: images, inferences, training runs and versions. */
+const ACTIVITY_SERIES = [
+  { key: 'image', label: 'Images uploaded', color: 'var(--tertiary)' },
+  { key: 'infer', label: 'Inferences', color: 'var(--info)' },
+  { key: 'train', label: 'Training runs', color: 'var(--success)' },
+  { key: 'version', label: 'Versions', color: 'var(--warning)' },
+] as const
+
+function MeterCard({ meterKey, meter }: { meterKey: UsageMeterKey; meter: UsageMeter }) {
+  const fmt = METER_VALUE[meterKey]
+  const label = meter.label || METER_LABEL[meterKey]
+  return (
+    <Card className="p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <span className="text-[11px] text-muted-foreground">{meter.period === 'month' ? 'this month' : 'current'}</span>
+      </div>
+      <div className="mt-1 text-xl font-bold tracking-tight">
+        {fmt(meter.used)}
+        <span className="text-sm font-normal text-muted-foreground"> / {fmt(meter.quota)}</span>
+      </div>
+      {meter.quota > 0 && (
+        <div aria-hidden="true">
+          <Progress className="mt-2" value={(meter.used / meter.quota) * 100} />
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function UsageSkeleton() {
+  return (
+    <div role="status" className="space-y-4">
+      <span className="sr-only">Loading usage…</span>
+      <Card className="p-5">
+        <div className="skeleton h-3 w-24" />
+        <div className="skeleton mt-2 h-8 w-40" />
+        <div className="skeleton mt-2 h-3 w-64" />
+      </Card>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((card) => (
+          <Card key={card} className="p-4">
+            <div className="skeleton h-3 w-16" />
+            <div className="skeleton mt-2 h-5 w-28" />
+            <div className="skeleton mt-2 h-1.5 w-full" />
+          </Card>
+        ))}
+      </div>
+      <Card className="p-4">
+        <div className="skeleton h-4 w-40" />
+        <div className="skeleton mt-3 h-56 w-full" />
+      </Card>
+    </div>
+  )
+}
+
 function Usage() {
   const { ws = '' } = useParams()
-  const q = useQuery({ queryKey: ['usage', ws], queryFn: () => get<any>(`/ws/${ws}/usage`) })
+  const q = useQuery({ queryKey: ['usage', ws], queryFn: () => get<Usage>(`/ws/${ws}/usage`) })
   const u = q.data
+  if (q.isPending) return <UsageSkeleton />
+  if (q.isError) {
+    return (
+      <Card className="p-6">
+        <EmptyState
+          icon={<CircleAlert className="h-8 w-8 text-destructive" aria-hidden />}
+          title="Couldn't load usage."
+          hint={q.error instanceof Error ? q.error.message : 'Something went wrong — try again.'}
+          action={<Button variant="outline" size="sm" onClick={() => void q.refetch()}>Try again</Button>}
+        />
+      </Card>
+    )
+  }
   if (!u) return null
+
   const bar = (used: number, lim: number) => <Progress className="mt-2" value={(used / lim) * 100} />
+  const meters = METER_ORDER.flatMap((key) => {
+    const meter = u.meters?.[key]
+    return meter ? [{ key, meter }] : []
+  })
+  const dailyMeters = (u.daily_meters ?? []).map((d) => ({
+    date: d.date,
+    label: dayLabel(d.date),
+    ai_calls: d.ai_calls,
+    gpu_minutes: Math.round((d.gpu_seconds / 60) * 10) / 10,
+    stream_hours: d.stream_hours,
+    storage_bytes: d.storage_bytes,
+  }))
+  const activity = (u.daily ?? []).map((d) => ({
+    ...d,
+    label: typeof d.date === 'string' ? dayLabel(d.date) : d.date,
+  }))
+
   return (
     <div className="space-y-4">
       <Card className="flex items-center justify-between p-5">
@@ -802,10 +918,100 @@ function Usage() {
         <Card className="p-4"><div className="text-xs text-muted-foreground">Projects</div><div className="text-xl font-bold">{u.projects} <span className="text-sm font-normal text-muted-foreground">/ {u.limits.projects}</span></div>{bar(u.projects, u.limits.projects)}</Card>
         <Card className="p-4"><div className="text-xs text-muted-foreground">Seats</div><div className="text-xl font-bold">{u.seats} <span className="text-sm font-normal text-muted-foreground">/ {u.limits.seats}</span></div>{bar(u.seats, u.limits.seats)}</Card>
       </div>
+
+      {meters.length > 0 && (
+        <section aria-labelledby="metered-usage-heading" className="space-y-3">
+          <div>
+            <h2 id="metered-usage-heading" className="text-sm font-semibold">Metered usage</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Consumption measured across this workspace for the current period.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {meters.map(({ key, meter }) => <MeterCard key={key} meterKey={key} meter={meter} />)}
+          </div>
+        </section>
+      )}
+
+      {dailyMeters.length > 0 ? (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold">Metered activity, last 30 days</h2>
+            <p className="text-xs text-muted-foreground">AI calls (bars) and GPU minutes (line)</p>
+          </div>
+          <div className="mt-3 h-64" role="img" aria-label="AI calls shown as bars and GPU minutes shown as a line for each of the last 30 days. The table view below lists the same figures.">
+            <div className="h-full" aria-hidden="true">
+              <ResponsiveContainer>
+                <ComposedChart data={dailyMeters} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="label" minTickGap={24} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                  <YAxis yAxisId="calls" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
+                  <YAxis yAxisId="gpu" orientation="right" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} width={36} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE}
+                    formatter={(value, name) => [name === 'GPU minutes' ? `${num1.format(Number(value))} min` : Number(value).toLocaleString(), name]} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar yAxisId="calls" dataKey="ai_calls" name="AI calls" fill="var(--primary)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                  <Line yAxisId="gpu" type="monotone" dataKey="gpu_minutes" name="GPU minutes" stroke="var(--info)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <details className="mt-2">
+            <summary className="inline-flex min-h-6 cursor-pointer items-center rounded px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground">Table view</summary>
+            <div className="mt-2 max-h-72 overflow-auto rounded-md border" role="region" aria-label="Metered activity table" tabIndex={0}>
+              <table className="w-full min-w-[34rem] text-sm">
+                <caption className="sr-only">Daily metered usage for the last 30 days</caption>
+                <thead className="sticky top-0 bg-muted/80 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-medium">Date</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">AI calls</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">GPU minutes</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Stream hours</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Storage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyMeters.map((d) => (
+                    <tr key={d.date} className="border-t">
+                      <th scope="row" className="px-3 py-2 text-left font-normal text-muted-foreground">{fullDayLabel(d.date)}</th>
+                      <td className="px-3 py-2 text-right tabular-nums">{d.ai_calls.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{num1.format(d.gpu_minutes)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{num1.format(d.stream_hours)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtStorage(d.storage_bytes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </Card>
+      ) : (
+        <Card className="p-6">
+          <EmptyState title="No metered activity yet." hint="Daily AI calls, GPU time, stream hours and storage appear here once the workspace starts working." />
+        </Card>
+      )}
+
       <Card className="p-4">
-        <h2 className="mb-3 text-sm font-semibold">Activity, last 30 days</h2>
-        <div className="h-56"><ResponsiveContainer><BarChart data={u.daily}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#eee" /><XAxis dataKey="date" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip />
-          {['image', 'infer', 'train', 'version'].map((k, i) => <Bar key={k} dataKey={k} stackId="a" fill={['#8b5cf6', '#3b82f6', '#22c55e', '#f97316'][i]} />)}</BarChart></ResponsiveContainer></div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">Activity, last 30 days</h2>
+          <p className="text-xs text-muted-foreground">Uploads, inferences, training runs and versions</p>
+        </div>
+        {activity.length > 0 ? (
+          <div className="mt-3 h-56" role="img" aria-label="Stacked bars of images uploaded, inferences, training runs and versions created per day for the last 30 days.">
+            <div className="h-full" aria-hidden="true">
+              <ResponsiveContainer>
+                <BarChart data={activity}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="label" minTickGap={24} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                  <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {ACTIVITY_SERIES.map((s) => <Bar key={s.key} dataKey={s.key} name={s.label} stackId="a" fill={s.color} isAnimationActive={false} />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">No activity recorded in the last 30 days.</p>
+        )}
       </Card>
       <Stat label="Models trained" value={u.models} />
     </div>

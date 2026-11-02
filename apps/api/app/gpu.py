@@ -66,8 +66,13 @@ class GpuScheduler:
 
     # ---- leases
     def lease(self, key: str, vram_mb: int, loader: Callable[[], Any],
-              unloader: Callable[[Any], None]) -> Any:
-        """Return the cached object for `key`, loading it after LRU-evicting other leases."""
+              unloader: Callable[[Any], None], *, evict: bool = True) -> Any:
+        """Return the cached object for `key`, loading it after LRU-evicting other leases.
+
+        `evict=False` is for optional models: they may only use free ledger room and are refused
+        with GpuBusy when they would have to displace a live lease, so a failed optional load never
+        costs another model. A loader that returns None loaded nothing: no VRAM is charged for it.
+        """
         with self._lock:
             # the holder check comes before the cache hit: while training owns the card, API requests
             # must get GpuBusy even if evaluation cached the very same model a moment ago
@@ -79,9 +84,14 @@ class GpuScheduler:
                 return hit.obj
             if vram_mb > self.budget_mb:
                 raise RuntimeError(f"{key} needs {vram_mb} MiB but the GPU budget is {self.budget_mb} MiB")
-            while self._used_mb + vram_mb > self.budget_mb:
-                self._evict(next(iter(self._leases)))
+            if evict:
+                while self._used_mb + vram_mb > self.budget_mb:
+                    self._evict(next(iter(self._leases)))
+            elif self._used_mb + vram_mb > self.budget_mb:
+                raise GpuBusy(f"GPU busy: no room for {key} in the {self.budget_mb} MiB budget")
             obj = loader()
+            if obj is None:
+                return None              # nothing was loaded, so nothing is leased or unloaded
             self._leases[key] = _Lease(obj, int(vram_mb), unloader)
             self._used_mb += int(vram_mb)
             return obj
@@ -93,6 +103,17 @@ class GpuScheduler:
             lease.unloader(lease.obj)
         except Exception:                    # an unloader must never corrupt the ledger
             log.exception("GPU unload failed for %s", key)
+
+    def release(self, key: str) -> bool:
+        """Unload one lease now (an optional model that must not outlive the job that loaded it).
+
+        Returns True when a lease was released, so a caller can unload the model exactly once.
+        """
+        with self._lock:
+            if key not in self._leases:
+                return False
+            self._evict(key)
+            return True
 
     def state(self) -> dict:
         with self._lock:

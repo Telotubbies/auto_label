@@ -1,11 +1,10 @@
 """Train, models, test inference, auto-label, and the API-key hosted inference/upload API."""
 import base64
-import random
-import time
+import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..adapters import ADAPTERS, engine_ref, resolve
@@ -14,14 +13,15 @@ from ..apikeys import resolve_key
 from ..config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
-from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
+from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now
 from ..security import sign_path
-from ..services import imaging, ml, safefetch
+from ..services import active_learning, deployments, drift, imaging, metering, ml, safefetch
 from .projects import job_out
 
 router = APIRouter(tags=["training"])
 P = "/api/ws/{ws}/projects/{project}"
 LICENSE = "AGPL-3.0"       # the ultralytics families
+log = logging.getLogger(__name__)
 _SIZES = {"n": "Nano — fastest", "s": "Small", "m": "Medium — balanced", "l": "Large", "x": "X-Large — most accurate"}
 
 
@@ -201,6 +201,11 @@ class TrainIn(BaseModel):
     batch: int = 8
 
 
+def _gpu_estimate(train_images: int, epochs: int, imgsz: int) -> float:
+    """Seconds behind the Train page estimate: images × epochs × (imgsz/640)² at 600 images/minute."""
+    return max(60.0, train_images * max(1, epochs) * (imgsz / 640) ** 2 / 600 * 60)
+
+
 @router.post(P + "/train")
 def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
     c.need("admin")
@@ -234,6 +239,8 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
             raise HTTPException(400, "resume_from must be a ready model of the same task in this project")
         if resume.variant != variant:
             raise HTTPException(400, f"resume_from is a {resume.variant} model; pick the same variant")
+    metering.check(c.db, c.ws, "gpu_seconds",      # reserve the whole estimated run, not one second
+                   _gpu_estimate(int((v.stats or {}).get("splits", {}).get("train") or 0), body.epochs, body.imgsz))
     charge(c.db, c.ws, CREDIT_COST["train"])
     m = TrainedModel(workspace_id=c.ws.id, project_id=c.project.id, version_id=v.id, task=task,
                      name=body.name.strip() or f"{c.project.slug}/{v.number}-{variant}",
@@ -377,7 +384,7 @@ def _autolabel_target(c: Ctx, body: AutoLabelIn):
     return r
 
 
-def _autolabel_images(c: Ctx, body: AutoLabelIn, limit: int):
+def _autolabel_query(c: Ctx, body: AutoLabelIn):
     q = select(Image).where(Image.project_id == c.project.id, Image.deleted_at.is_(None))
     if body.image_ids:
         q = q.where(Image.id.in_(body.image_ids))
@@ -385,13 +392,24 @@ def _autolabel_images(c: Ctx, body: AutoLabelIn, limit: int):
         q = q.where(Image.batch_id == body.batch_id)
     if body.only_unannotated:
         q = q.where(Image.n_annotations == 0)
-    return c.db.scalars(q.order_by(Image.created.desc()).limit(limit)).all()
+    return q
+
+
+def _autolabel_images(c: Ctx, body: AutoLabelIn, limit: int):
+    return c.db.scalars(_autolabel_query(c, body).order_by(Image.created.desc()).limit(limit)).all()
+
+
+def _autolabel_target_count(c: Ctx, body: AutoLabelIn) -> int:
+    """How many images the job will call the model on — the AI-call amount to reserve."""
+    return int(c.db.scalar(select(func.count()).select_from(_autolabel_query(c, body).subquery())) or 0)
 
 
 @router.post(P + "/autolabel")
 def autolabel(body: AutoLabelIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
     _autolabel_target(c, body)
+    metering.check(c.db, c.ws, "ai_calls",      # one call per processed image, reserved up front
+                   _autolabel_target_count(c, body))
     j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="autolabel", params=body.model_dump(), created_by=c.user.id)
     c.db.add(j)
     audit(c.db, c.ws.id, c.user.id, "autolabel.start", c.project.name,
@@ -460,15 +478,41 @@ async def _image_from_request(request: Request, file: UploadFile | None, image: 
     raise HTTPException(400, "send an image as multipart `file`, `image` (url/base64) or a base64 body")
 
 
-@router.post("/api/v1/models/{model_id}/predict", operation_id="predict",
-             openapi_extra={"x-scopes": ["infer"]})
-async def hosted_predict(model_id: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
-                         overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
-                         db: Session = Depends(get_db)):
-    ws = key_ws(db, api_key, request, "infer")
-    m = db.get(TrainedModel, model_id)
-    if not m or m.workspace_id != ws.id or m.status != "ready":
+def _hosted_model(db: Session, ws: Workspace, ref: str) -> TrainedModel:
+    """A model id or a deployment alias: `production` (unique) or `production@project-slug`."""
+    m = db.get(TrainedModel, ref)
+    if m:
+        if m.workspace_id != ws.id or m.status != "ready":
+            raise HTTPException(404, "model not found")
+        return m
+    project, alias = None, ref
+    if "@" in ref:
+        alias, _, slug = ref.partition("@")
+        project = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == slug,
+                                                  Project.deleted_at.is_(None)))
+        if not project:
+            raise HTTPException(404, "project not found")
+    elif ref in deployments.ALIASES:
+        rows = db.scalars(select(Project).join(DeploymentAlias, DeploymentAlias.project_id == Project.id)
+                          .where(Project.workspace_id == ws.id, Project.deleted_at.is_(None),
+                                 DeploymentAlias.alias == ref)).all()
+        if len(rows) > 1:
+            raise HTTPException(409, f"alias '{ref}' exists in several projects — use {ref}@<project>")
+        if not rows:
+            raise HTTPException(404, "model not found")
+        project = rows[0]
+    else:
         raise HTTPException(404, "model not found")
+    m = deployments.alias_model(db, project, alias)
+    if not m:
+        raise HTTPException(404, f"alias '{alias}' is not deployed")
+    return m
+
+
+async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Request, confidence: float | None,
+                        overlap: float, image: str | None, file: UploadFile | None) -> dict:
+    """Shared path for id-based and alias-based hosted prediction: meter, infer, feed drift/AL."""
+    metering.check(db, ws, "ai_calls", 1)
     charge(db, ws, CREDIT_COST["infer"])
     data = await _image_from_request(request, file, image)
     im = imaging.open_image(data)
@@ -477,26 +521,27 @@ async def hosted_predict(model_id: str, request: Request, api_key: str | None = 
         kw["conf"] = confidence
     out = resolve(f"trained:{m.id}", db, workspace_id=ws.id).predict(im, **kw)
     audit(db, ws.id, None, "infer.hosted", m.name, n=len(out["predictions"]))
-    _active_learning(db, ws, db.get(Project, m.project_id), data, out)
-    db.commit()
+    metering.record(db, ws.id, "ai_calls", 1, project_id=m.project_id, model_id=m.id, kind="hosted")
+    db.commit()                                    # the paid inference is safe before any monitoring work
+    p = db.get(Project, m.project_id)
+    if p is not None and (p.settings or {}).get("drift_monitor", True):
+        try:                                       # sampling is best-effort: it must never 500 a good prediction
+            drift.record_sample(db, ws.id, p, m.id, data, source="api")
+            active_learning.auto_offer(db, ws, p, data, out)
+            db.commit()
+        except Exception:                          # noqa: BLE001 - a full disk or DB error is not an infer failure
+            log.exception("drift/active-learning sampling failed for model %s", m.id)
+            db.rollback()
     return out
 
 
-def _active_learning(db: Session, ws: Workspace, p: Project, data: bytes, pred: dict):
-    """Project setting active_learning = {enabled, below: conf threshold, sample_pct}."""
-    cfg = (p.settings or {}).get("active_learning") or {}
-    if not cfg.get("enabled"):
-        return
-    confs = [x.get("confidence", 1) for x in pred["predictions"]]
-    low = any(cf < float(cfg.get("below", 0.5)) for cf in confs) or (not confs and cfg.get("include_empty", True))
-    if low or random.random() * 100 < float(cfg.get("sample_pct", 0)):
-        from ..deps import Ctx as _Ctx
-        from .images import ingest
-        try:
-            ingest(db, _Ctx(user=None, ws=ws, role="admin", db=db, project=p), [(f"al_{int(time.time()*1000)}.jpg", data)],
-                   "Active Learning", "train", ["active-learning"], source="active-learning", to_dataset=False)
-        except HTTPException:
-            pass   # plan limit / duplicate: inference result still returned
+@router.post("/api/v1/models/{model_id}/predict", operation_id="predict",
+             openapi_extra={"x-scopes": ["infer"]})
+async def hosted_predict(model_id: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
+                         overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
+                         db: Session = Depends(get_db)):
+    ws = key_ws(db, api_key, request, "infer")
+    return await _hosted_infer(db, ws, _hosted_model(db, ws, model_id), request, confidence, overlap, image, file)
 
 
 @router.post("/api/v1/{ws_slug}/{project}/upload", operation_id="upload_images_v1",

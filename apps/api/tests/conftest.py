@@ -25,6 +25,7 @@ else:
 os.environ.setdefault("LD_EMBEDDED_WORKER", "1")
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ.setdefault("LD_SAM_ENABLED", "0")
+os.environ.setdefault("LD_CLIP", "0")              # optional CLIP: keep the cheap deterministic features
 os.environ.setdefault("LD_RATE_LIMIT", "0")
 os.environ.setdefault("LD_WEBHOOK_FLUSH", "0")
 

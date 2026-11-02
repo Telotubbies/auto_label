@@ -3,12 +3,12 @@
 import type {
   AdminJobsHealth, AdminOverview, AdminStatus, AdminWorkspace, Analytics, Annotation, AuditFilters,
   AuditRow, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, CustomRole,
-  DpaDoc, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry, InsightImageStats, InsightLabeling,
-  InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass,
-  LeaderboardRow, Me, Member, ModelDetections, ModelInsights, ModelItem, Permissions,
-  PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput, ProjectRole, RegistryItem,
-  RoleLevel, TrainingInsights, Version, VideoFrame, VideoItem, WorkerRow, WorkspaceInfo,
-  WorkspacePrivacy,
+  DeploymentAlias, DeploymentOverview, DpaDoc, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry,
+  InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff,
+  Job, LabelClass, LeaderboardRow, Me, Member, ModelDetections, ModelInsights,
+  ModelItem, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
+  ProjectRole, RegistryItem, RoleLevel, TrainingInsights, Version, VideoFrame, VideoItem,
+  WorkerRow, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -173,6 +173,13 @@ export const api = {
       { from_image_id: fromImageId, to_image_id: toImageId }),
   trackForward: (imageId: string, body: { annotation_id: string; frames: number }) =>
     post<Job>(`/images/${imageId}/track-forward`, body),
+  deployments: (ws: string) => get<DeploymentOverview>(`/ws/${ws}/deployments`),
+  setDeployment: (ws: string, p: string, alias: string, model_id: string) =>
+    put<DeploymentAlias>(`${P(ws, p)}/deployments/${encodeURIComponent(alias)}`, { model_id }),
+  rollbackDeployment: (ws: string, p: string, alias: string) =>
+    post<DeploymentAlias>(`${P(ws, p)}/deployments/${encodeURIComponent(alias)}/rollback`, {}),
+  sendDriftToLabeling: (ws: string, p: string, runId: string) =>
+    post<{ sent: number }>(`${P(ws, p)}/drift/${encodeURIComponent(runId)}/send-to-labeling`, {}),
   healthCheck: (ws: string, p: string, imgsz?: number) => post<Job>(`${P(ws, p)}/health`, imgsz ? { imgsz } : {}),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),
   registry: (ws: string) => get<RegistryItem[]>(`/ws/${ws}/registry`),
