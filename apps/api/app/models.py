@@ -569,4 +569,7 @@ class LabelEvent(Base):
     annotations: Mapped[int] = mapped_column(Integer, default=0)
     ai_seen: Mapped[int] = mapped_column(Integer, default=0)
     ai_kept: Mapped[int] = mapped_column(Integer, default=0)
+    # distinct AI annotation ids this save exposed to the labeler; acceptance is derived from these
+    # plus the image's final annotations, never from the per-save counters above
+    ai_ids: Mapped[list] = mapped_column(JSON, default=list)
     created: Mapped[float] = mapped_column(Float, default=now)

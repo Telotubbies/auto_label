@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import ConsensusAssignment, ConsensusJob, Image, Member, User, Workspace, set_annotations
+from app.models import ConsensusAssignment, ConsensusJob, Image, LabelEvent, Member, User, Workspace, set_annotations
 from app.security import issue_access
 from app.services import labeling, labeling_ops
 
@@ -200,6 +200,25 @@ def submit(client, auth, who: str, labels: str, job_id: str, image_id: str, anns
                        headers=auth[who]["h"])
 
 
+def upload_image(client, project, name: str, color: tuple[int, int, int] = (12, 12, 12)) -> str:
+    """A fresh image in the QA project, so a test never borrows module-global job state."""
+    up = client.post(f"{project['base']}/upload", files=[("files", (name, jpeg(color)))],
+                     data={"split": "train", "batch_name": "qa-fix"})
+    assert up.status_code == 200, up.text
+    return up.json()["images"][0]["id"]
+
+
+def assign(image_id: str, user_id: str | None) -> None:
+    with SessionLocal() as db:
+        db.get(Image, image_id).assignee_id = user_id
+        db.commit()
+
+
+def labeler_row(client, auth, project, user_id: str) -> tuple[dict, dict]:
+    dash = client.get(f"{project['labels']}/dashboard", headers=auth["reviewer"]["h"]).json()
+    return next(x for x in dash["labelers"] if x["user_id"] == user_id), dash
+
+
 def drop_job(job_id: str, reset: list[str] | None = None) -> None:
     """Remove a throwaway consensus job (and its assignments) so module state does not leak."""
     with SessionLocal() as db:
@@ -277,7 +296,7 @@ def test_merge_without_two_drafts_is_rejected(client, auth, project):
         assert r.status_code == 409 and "not ready to merge" in r.json()["detail"]
         det = client.get(f"{project['labels']}/consensus/{job_id}").json()
         assert det["status"] == "collecting" and det["submitted"] == 1
-        assert save(client, auth, "labeler", img, [box(person, 0.35, 0.35, aid="lab")]).json()["status"] == "consensus"
+        assert save(client, auth, "labeler", img, [box(person, 0.31, 0.31, aid="lab")]).json()["status"] == "consensus"
         assert submit(client, auth, "labeler", project["labels"], job_id, img).status_code == 200
         r = client.post(f"{project['labels']}/consensus/{job_id}/merge")
         assert r.status_code == 200, r.text
@@ -431,26 +450,27 @@ def test_annotator_without_assignment_or_honeypot_is_denied(client, auth, projec
 
 
 def test_dashboard_ai_acceptance_and_rejection_rate(client, auth, project):
+    """AI acceptance is provenance-based: AI ids seen that survive on an approved image."""
     img = project["images"][3]
     person = project["classes"]["person"]
     ai = box(person, 0.3, 0.3, aid="ai1", source="ultralytics:yolo26n")
     ai["confidence"] = 0.9
     seed(img, [ai])
     assert save(client, auth, "labeler", img, [ai]).status_code == 200
-    dash = client.get(f"{project['labels']}/dashboard", headers=auth["reviewer"]["h"]).json()
-    row = next(x for x in dash["labelers"] if x["user_id"] == auth["labeler"]["id"])
-    assert row["ai_acceptance"] == 1.0
+    row, _ = labeler_row(client, auth, project, auth["labeler"]["id"])
+    assert row["ai_acceptance"] == 0.0                         # seen, but the image is not approved yet
+    r = client.post(f"/api/images/{img}/review", json={"approved": True}, headers=auth["reviewer"]["h"])
+    assert r.status_code == 200, r.text
+    row, _ = labeler_row(client, auth, project, auth["labeler"]["id"])
+    assert row["ai_acceptance"] == 1.0                         # the AI label survived on an approved image
     assert save(client, auth, "labeler", img, [box(person, 0.5, 0.5, aid="human1")]).status_code == 200
-    dash = client.get(f"{project['labels']}/dashboard", headers=auth["reviewer"]["h"]).json()
-    row = next(x for x in dash["labelers"] if x["user_id"] == auth["labeler"]["id"])
-    assert row["ai_acceptance"] == 0.5                                 # 1 kept of 2 seen
-    assert dash["totals"]["ai_acceptance"] == 0.5
+    row, dash = labeler_row(client, auth, project, auth["labeler"]["id"])
+    assert row["ai_acceptance"] == 0.0                         # rewritten by a human, so not accepted
+    assert dash["totals"]["ai_acceptance"] == 0.0
     r = client.post(f"/api/images/{img}/review", json={"approved": False}, headers=auth["reviewer"]["h"])
     assert r.status_code == 200, r.text
-    dash = client.get(f"{project['labels']}/dashboard", headers=auth["reviewer"]["h"]).json()
-    row = next(x for x in dash["labelers"] if x["user_id"] == auth["labeler"]["id"])
+    row, dash = labeler_row(client, auth, project, auth["labeler"]["id"])
     assert row["rejection_rate"] == 1.0
-    assert dash["totals"]["review_queue"] >= 0
     assert dash["window_days"] == 30
     assert len(dash["daily"]) == 30 and all(d["images"] >= 0 for d in dash["daily"])
     own = client.get(f"{project['labels']}/dashboard", headers=auth["labeler"]["h"]).json()
@@ -459,6 +479,10 @@ def test_dashboard_ai_acceptance_and_rejection_rate(client, auth, project):
 
 def test_review_queue_sorted_by_disagreement(client, auth, project):
     disagree, agree = project["images"][0], project["images"][1]
+    # img0's tied drafts are deliberately not merged (C1); park it in review so the queue scores them.
+    with SessionLocal() as db:
+        db.get(Image, disagree).status = "review"
+        db.commit()
     items = client.get(f"{project['labels']}/review-queue", headers=auth["reviewer"]["h"]).json()["items"]
     ids = [x["image_id"] for x in items]
     assert disagree in ids and agree in ids
@@ -623,4 +647,237 @@ def test_dashboard_counts_max_annotations_per_image(client, auth, project):
     day_b = next(d for d in before["daily"] if d["date"] == today)
     day_a = next(d for d in after["daily"] if d["date"] == today)
     assert day_a["annotations"] - day_b["annotations"] == 2
+
+
+# --- fix round 1: consensus, acceptance, honeypot privacy --------------------------------
+
+def draft_assignments(client, auth, project, job_id: str, plans: dict[str, list[dict]]) -> dict:
+    """Autosave + submit one draft per assignee, in job-detail order; returns the refreshed detail."""
+    who = {auth[k]["id"]: k for k in ("admin", "labeler", "reviewer")}
+    det = client.get(f"{project['labels']}/consensus/{job_id}").json()
+    for im in det["images"]:
+        for ann, assignee in zip(plans[im["image_id"]], im["assignees"], strict=True):
+            key = who[assignee["user_id"]]
+            assert save(client, auth, key, im["image_id"], [ann]).status_code == 200
+            r = submit(client, auth, key, project["labels"], job_id, im["image_id"], [ann])
+            assert r.status_code == 200, r.text
+    return client.get(f"{project['labels']}/consensus/{job_id}").json()
+
+
+def test_merge_without_majority_keeps_image_and_exposes_drafts(client, auth, project):
+    """C1: a tie is not a majority — keep the image, flag it, and let the reviewer read the drafts."""
+    agree = upload_image(client, project, "consensus-agree.jpg", (30, 30, 30))
+    split = upload_image(client, project, "consensus-split.jpg", (31, 31, 31))
+    for img in (agree, split):
+        assign(img, auth["labeler"]["id"])
+    person = project["classes"]["person"]
+    r = client.post(f"{project['labels']}/consensus", json={"image_ids": [agree, split], "k": 2})
+    assert r.status_code == 200, r.text
+    job_id = r.json()["id"]
+    try:
+        det = draft_assignments(client, auth, project, job_id, {
+            agree: [box(person, 0.2, 0.2, aid="agree-a"), box(person, 0.2, 0.2, aid="agree-b")],
+            split: [box(person, 0.05, 0.05, aid="left"), box(person, 0.75, 0.75, aid="right")],
+        })
+        assert det["status"] == "ready"
+        out = client.post(f"{project['labels']}/consensus/{job_id}/merge")
+        assert out.status_code == 200, out.text
+        body = out.json()
+        assert body["merged"] == 1 and body["status"] == "merged"
+        assert body["no_consensus"] == [split]
+        assert len(stored(agree)) == 1 and stored(agree)[0]["classId"] == person
+        assert stored(split) == []
+        with SessionLocal() as db:
+            img = db.get(Image, split)
+            assert img.status != "review" and img.n_annotations == 0      # not cleared, not parked as review
+        det = client.get(f"{project['labels']}/consensus/{job_id}").json()
+        rows = {row["image_id"]: row for row in det["images"]}
+        assert rows[agree]["no_consensus"] is False
+        assert rows[split]["no_consensus"] is True
+        drafts = {d["user_id"]: d["annotations"] for d in rows[split]["drafts"]}
+        assert len(drafts) == 2
+        assert {a["id"] for anns in drafts.values() for a in anns} == {"left", "right"}
+    finally:
+        drop_job(job_id, reset=[agree, split])
+
+
+def test_merge_without_any_majority_is_rejected_and_keeps_the_job_open(client, auth, project):
+    """C1: with no majority anywhere, merge fails closed instead of wiping the drafts."""
+    img = upload_image(client, project, "consensus-tie.jpg", (32, 32, 32))
+    assign(img, auth["labeler"]["id"])
+    person = project["classes"]["person"]
+    r = client.post(f"{project['labels']}/consensus", json={"image_ids": [img], "k": 2})
+    assert r.status_code == 200, r.text
+    job_id = r.json()["id"]
+    try:
+        det = draft_assignments(client, auth, project, job_id, {
+            img: [box(person, 0.05, 0.05, aid="far-left"), box(person, 0.75, 0.75, aid="far-right")],
+        })
+        assert det["status"] == "ready"
+        r = client.post(f"{project['labels']}/consensus/{job_id}/merge")
+        assert r.status_code == 409 and "strict majority" in r.json()["detail"]
+        assert stored(img) == []
+        with SessionLocal() as db:
+            assert db.get(Image, img).status != "review"
+        det = client.get(f"{project['labels']}/consensus/{job_id}").json()
+        assert det["status"] == "ready" and det["submitted"] == 2
+        assert det["images"][0]["no_consensus"] is True
+        assert len(det["images"][0]["drafts"]) == 2
+    finally:
+        drop_job(job_id, reset=[img])
+
+
+def test_ai_acceptance_is_per_image_state_not_per_autosave(client, auth, project):
+    """I1: repeated autosaves of one AI box must not multiply the acceptance denominator."""
+    with SessionLocal() as db:                            # a dedicated labeler keeps the rate unambiguous
+        ws = db.scalar(select(Workspace).where(Workspace.slug == project["ws"]))
+        user = User(email=f"accept-{uuid.uuid4().hex[:8]}@labeldesk.dev", name="Acceptance Tester", pw_hash="x")
+        db.add(user)
+        db.flush()
+        db.add(Member(workspace_id=ws.id, user_id=user.id, role="annotator", created=4000.0))
+        db.commit()
+        uid = user.id
+    h = {"Authorization": f"Bearer {issue_access(uid)}"}
+    img = upload_image(client, project, "acceptance.jpg", (33, 33, 33))
+    assign(img, uid)
+    person = project["classes"]["person"]
+    ai = box(person, 0.3, 0.3, aid="ai-fix", source="ultralytics:yolo26n")
+    ai["confidence"] = 0.9
+    seed(img, [ai])
+    try:
+        for _ in range(3):                                # autosave the same AI box three times
+            r = client.put(f"/api/images/{img}/annotations", json={"annotations": [ai]}, headers=h)
+            assert r.status_code == 200, r.text
+        row, _ = labeler_row(client, auth, project, uid)
+        assert row["ai_acceptance"] == 0.0                # seen once, not approved yet
+        r = client.post(f"/api/images/{img}/review", json={"approved": True}, headers=auth["reviewer"]["h"])
+        assert r.status_code == 200, r.text
+        row, _ = labeler_row(client, auth, project, uid)
+        assert row["ai_acceptance"] == 1.0                # one AI id seen, one kept — not 3/3 or 3/4
+        r = client.put(f"/api/images/{img}/annotations",
+                       json={"annotations": [box(person, 0.4, 0.4, aid="human-fix")]}, headers=h)
+        assert r.status_code == 200, r.text
+        row, _ = labeler_row(client, auth, project, uid)
+        assert row["ai_acceptance"] == 0.0                # deleting the AI box leaves 0 %, never 0.75
+    finally:
+        with SessionLocal() as db:
+            db.execute(sa_delete(LabelEvent).where(LabelEvent.user_id == uid))
+            db.execute(sa_delete(Member).where(Member.user_id == uid))
+            db.delete(db.get(User, uid))
+            db.commit()
+
+
+def test_audit_log_requires_reviewer(client, auth, project):
+    """I2: the audit feed names honeypot images, so annotators must not read it."""
+    img = upload_image(client, project, "audit-honeypot.jpg", (34, 34, 34))
+    assign(img, auth["labeler"]["id"])
+    seed(img, [box(project["classes"]["helmet"], 0.2, 0.2, aid="hp-audit")])
+    r = client.post(f"{project['labels']}/honeypots", json={"image_id": img}, headers=auth["reviewer"]["h"])
+    assert r.status_code == 200, r.text
+    hid = r.json()["id"]
+    try:
+        assert client.get(f"/api/ws/{project['ws']}/audit", headers=auth["labeler"]["h"]).status_code == 403
+        # Task 26 moved the audit feed behind workspace.audit (owner/admin), not merely reviewer.
+        rows = client.get(f"/api/ws/{project['ws']}/audit", headers=auth["admin"]["h"]).json()
+        assert any(row["action"].startswith("labeling.honeypot") for row in rows)
+    finally:
+        client.delete(f"{project['labels']}/honeypots/{hid}", headers=auth["reviewer"]["h"])
+
+
+def test_annotator_dataset_filters_do_not_reveal_honeypots(client, auth, project):
+    """I2: the real count must not leak through annotated/min_ann/sort/class/board."""
+    img = upload_image(client, project, "honeypot-filters.jpg", (35, 35, 35))
+    assign(img, auth["labeler"]["id"])
+    helmet = project["classes"]["helmet"]
+    seed(img, [box(helmet, 0.05 * i, 0.05 * i, aid=f"hp-filter-{i}") for i in range(5)])
+    with SessionLocal() as db:
+        batch_id = db.get(Image, img).batch_id
+    r = client.post(f"{project['labels']}/honeypots", json={"image_id": img}, headers=auth["reviewer"]["h"])
+    assert r.status_code == 200, r.text
+    hid = r.json()["id"]
+    base = project["base"]
+
+    def ids_of(query: str, who: str = "labeler") -> set[str]:
+        return {x["id"] for x in client.get(f"{base}/images?limit=1000{query}",
+                                            headers=auth[who]["h"]).json()["items"]}
+    try:
+        assert img in ids_of("")                                   # visible, but blanked
+        assert img not in ids_of("&annotated=yes")
+        assert img in ids_of("&annotated=no")
+        assert img not in ids_of("&min_ann=1")
+        assert img in ids_of("&max_ann=0")
+        assert img not in ids_of(f"&class_id={helmet}")
+        most = client.get(f"{base}/images?limit=1000&sort=most", headers=auth["labeler"]["h"]).json()["items"]
+        assert most and most[0]["id"] != img                       # five hidden labels do not sort it first
+        board = client.get(f"{base}/board", headers=auth["labeler"]["h"]).json()
+        card = next(c for col in board["columns"].values() for c in col if c["batchId"] == batch_id)
+        assert card["images"] == 1 and card["annotated"] == 0
+        # reviewers still see the truth in the same filters
+        assert img in ids_of("&annotated=yes", "reviewer")
+        assert img in ids_of(f"&class_id={helmet}", "reviewer")
+        row = next(x for x in client.get(f"{base}/images?limit=1000", headers=auth["labeler"]["h"]).json()["items"]
+                   if x["id"] == img)
+        assert row["annotationCount"] == 0 and row["annotated"] is False and row["classIds"] == []
+    finally:
+        client.delete(f"{project['labels']}/honeypots/{hid}", headers=auth["reviewer"]["h"])
+
+
+def test_honeypot_on_unassigned_image_is_assigned_and_attemptable(client, auth, project):
+    """I3: creating a honeypot on an unassigned image must put it in a labeler's queue."""
+    img = upload_image(client, project, "honeypot-unassigned.jpg", (36, 36, 36))
+    with SessionLocal() as db:
+        assert db.get(Image, img).assignee_id is None
+    seed(img, [box(project["classes"]["person"], 0.25, 0.25, aid="hp-unassigned")])
+    r = client.post(f"{project['labels']}/honeypots", json={"image_id": img}, headers=auth["reviewer"]["h"])
+    assert r.status_code == 200, r.text
+    item = r.json()
+    hid = item["id"]
+    try:
+        assert item["needs_assignee"] is False
+        with SessionLocal() as db:
+            assert db.get(Image, img).assignee_id == auth["labeler"]["id"]
+        view = client.get(f"/api/images/{img}", headers=auth["labeler"]["h"])
+        assert view.status_code == 200, view.text
+        assert view.json()["annotations"] == []
+        r = save(client, auth, "labeler", img, [box(project["classes"]["person"], 0.25, 0.25, aid="try")])
+        assert r.status_code == 200 and r.json()["status"] == "honeypot"
+        items = client.get(f"{project['labels']}/honeypots", headers=auth["reviewer"]["h"]).json()["items"]
+        assert next(x for x in items if x["id"] == hid)["attempts"] == 1
+    finally:
+        client.delete(f"{project['labels']}/honeypots/{hid}", headers=auth["reviewer"]["h"])
+
+
+def test_consensus_drafts_are_capped(client, auth, project):
+    """I5: a draft cannot carry an unbounded annotation list into the merge pass."""
+    img = upload_image(client, project, "consensus-cap.jpg", (37, 37, 37))
+    assign(img, auth["labeler"]["id"])
+    person = project["classes"]["person"]
+    r = client.post(f"{project['labels']}/consensus", json={"image_ids": [img], "k": 2})
+    assert r.status_code == 200, r.text
+    job_id = r.json()["id"]
+    try:
+        cap = labeling.MAX_DRAFT_ANNOTATIONS
+        too_many = [box(person, 0.01 * i, 0.01, aid=f"cap{i}") for i in range(cap + 1)]
+        r = save(client, auth, "admin", img, too_many)
+        assert r.status_code == 413 and str(cap) in r.json()["detail"]
+        r = submit(client, auth, "admin", project["labels"], job_id, img, too_many)
+        assert r.status_code == 413 and str(cap) in r.json()["detail"]
+    finally:
+        drop_job(job_id, reset=[img])
+
+
+def test_merge_large_input_is_bounded():
+    """I5: class/spatial bucketing keeps a 4 000-annotation merge well under a second-scale pass."""
+    sets = []
+    for s in range(10):
+        anns = []
+        for gx in range(20):
+            for gy in range(20):
+                anns.append(box("person", gx / 20, gy / 20, 0.04, 0.04, aid=f"s{s}-{gx}-{gy}"))
+        sets.append(anns)
+    started = time.perf_counter()
+    merged = labeling.merge_sets(sets)
+    elapsed = time.perf_counter() - started
+    assert len(merged) == 400
+    assert elapsed < 5.0
 

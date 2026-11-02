@@ -34,6 +34,7 @@ def init_db():
     ensure_columns(engine, "project_members", {"custom_role_id": "VARCHAR(32)"})
     ensure_columns(engine, "classes", {"skeleton": "JSON"})
     ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER"})
+    ensure_columns(engine, "label_events", {"ai_ids": "JSON"})
     ensure_columns(engine, "refresh_tokens", {
         "created": "FLOAT DEFAULT 0", "last_seen": "FLOAT DEFAULT 0",
         "ip": "VARCHAR(64) DEFAULT ''", "user_agent": "VARCHAR(255) DEFAULT ''"})

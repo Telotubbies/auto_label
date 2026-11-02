@@ -9,7 +9,7 @@ import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import Float, String, case, cast, exists, func, select
+from sqlalchemy import Float, String, and_, case, cast, exists, func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
@@ -185,6 +185,12 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         if selected_ids is None:
             raise HTTPException(404, "selection not found")
         s = s.where(Image.id.in_(selected_ids))
+    # Annotators must not learn which images are honeypots through counts, filters or ordering:
+    # their effective annotation count is 0 everywhere, matching the blanked payload.
+    is_annotator = c.role == "annotator"
+    honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
+    n_ann = (case((Image.id.in_(honeypot_ids), 0), else_=Image.n_annotations)
+             if is_annotator else Image.n_annotations)
     if q:
         s = s.where(Image.name.ilike(f"%{q.replace('%', '').replace('_', '')}%"))
     if split:
@@ -196,11 +202,13 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
     if assignee:
         s = s.where(Image.assignee_id == (None if assignee == "none" else assignee))
     if annotated == "yes":
-        s = s.where(Image.n_annotations > 0)
+        s = s.where(n_ann > 0)
     elif annotated == "no":
-        s = s.where(Image.n_annotations == 0)
+        s = s.where(n_ann == 0)
     if class_id:
         s = s.where(exists().where(ImageClass.image_id == Image.id, ImageClass.class_id == class_id))
+        if is_annotator:
+            s = s.where(Image.id.not_in(honeypot_ids))     # the class index would name the answer key
     if tag:
         # tags is a JSON list; match the quoted element in its text form (portable sqlite/postgres)
         pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
@@ -215,9 +223,9 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
     if max_ar is not None:
         s = s.where(cast(Image.width, Float) / func.nullif(Image.height, 0) < max_ar)
     if min_ann is not None:
-        s = s.where(Image.n_annotations >= min_ann)
+        s = s.where(n_ann >= min_ann)
     if max_ann is not None:
-        s = s.where(Image.n_annotations <= max_ann)
+        s = s.where(n_ann <= max_ann)
     total = c.db.scalar(select(func.count()).select_from(s.subquery()))
     start, size = max(0, offset), max(1, min(limit, 1000))
     if sort == "review":
@@ -225,9 +233,11 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         # Ranking needs annotation JSON, so bound the scan instead of hydrating the whole project.
         conf = float((c.project.settings or {}).get("autolabel_conf", 0.4))
         rows = c.db.scalars(s.order_by(Image.created.desc(), Image.id).limit(2000)).all()
+        hidden_rows = (set(c.db.scalars(select(Honeypot.image_id).where(
+            Honeypot.image_id.in_([r.id for r in rows])))) if is_annotator and rows else set())
 
         def rank(img):
-            anns = img.annotations or []
+            anns = [] if img.id in hidden_rows else (img.annotations or [])
             low = any(a.get("source") not in (None, "human", "vlm+sam3") and isinstance(a.get("confidence"), (int, float))
                       and a["confidence"] < conf + 0.15 for a in anns)
             vlm = any(a.get("source") == "vlm+sam3" for a in anns)
@@ -237,7 +247,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         rows = rows[start:start + size]
     else:
         order = {"newest": Image.created.desc(), "oldest": Image.created, "name": Image.name,
-                 "most": Image.n_annotations.desc(), "least": Image.n_annotations}.get(sort, Image.created.desc())
+                 "most": n_ann.desc(), "least": n_ann}.get(sort, Image.created.desc())
         rows = c.db.scalars(s.options(defer(Image.annotations)).order_by(order, Image.id)
                             .offset(start).limit(size)).all()
     by_img: dict[str, list[str]] = {}
@@ -247,7 +257,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
             by_img.setdefault(iid, []).append(cid)
     # a honeypot row would otherwise leak its answer key through counts and AI-review flags
     hidden = set()
-    if c.role == "annotator" and rows:
+    if is_annotator and rows:
         hidden = set(c.db.scalars(select(Honeypot.image_id).where(
             Honeypot.image_id.in_([r.id for r in rows]))))
     items = []
@@ -308,8 +318,12 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
 
 @router.get(P + "/board")
 def board(c: Ctx = Depends(project_ctx)):
+    honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
+    # the "annotated" badge must not count a honeypot's hidden answer key for annotators
+    known = (case((and_(Image.n_annotations > 0, Image.id.not_in(honeypot_ids)), 1), else_=0)
+             if c.role == "annotator" else case((Image.n_annotations > 0, 1), else_=0))
     s = _visible(select(Image.batch_id, Image.assignee_id, Image.status, func.count(),
-                        func.sum(case((Image.n_annotations > 0, 1), else_=0))).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
+                        func.sum(known)).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
     rows = c.db.execute(s.group_by(Image.batch_id, Image.assignee_id, Image.status)).all()
     batches = {b.id: b for b in c.db.scalars(select(Batch).where(Batch.project_id == c.project.id))}
     users = {u.id: u.name for u in c.db.scalars(select(User).join(Member, Member.user_id == User.id)
@@ -347,7 +361,11 @@ def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
     if body.assignee_id is not None:
         s = s.where(Image.assignee_id == (body.assignee_id or None))
     if body.only_annotated:
-        s = s.where(Image.n_annotations > 0)
+        n_ann = Image.n_annotations
+        if c.role == "annotator":
+            honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
+            n_ann = case((Image.id.in_(honeypot_ids), 0), else_=Image.n_annotations)
+        s = s.where(n_ann > 0)
     rows = c.db.scalars(s).all()
     if body.set_assignee and not c.db.get(Member, (c.ws.id, body.set_assignee)):
         raise HTTPException(400, "assignee is not a workspace member")
@@ -459,8 +477,11 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
     if len(body.annotations) > 5000:
         raise HTTPException(413, "too many annotations on one image (max 5000)")
     c, img = _assigned(*image_ctx(db, u, image_id))
-    checked = [_check_ann(a) for a in body.annotations]
     assignment = labeling_ops.latest_assignment(db, img.id, u.id)
+    if assignment is not None and len(body.annotations) > labeling.MAX_DRAFT_ANNOTATIONS:
+        # the merge runs synchronously; an oversized draft would block every other request
+        raise HTTPException(413, f"at most {labeling.MAX_DRAFT_ANNOTATIONS} annotations per consensus draft")
+    checked = [_check_ann(a) for a in body.annotations]
     if assignment is not None:
         # consensus mode: autosave keeps the draft private and does NOT submit it; the Image row is
         # only written when the job is merged.
