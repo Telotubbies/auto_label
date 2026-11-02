@@ -260,7 +260,13 @@ def _backfill_image_classes():
 
 
 def _backfill_storage():
-    """Give every workspace a storage meter from its live images when it has none (I20)."""
+    """Reconcile each workspace's storage meter with its live image bytes (I20, I10).
+
+    ``len(events) == 0`` is not the test for "unmetered": an upgrade after any upload leaves a
+    partial total. Top the meter up to the image bytes instead (a delta event), so repeated boots
+    are no-ops and an under-count self-corrects. Never write a negative delta here — deletes are
+    already metered by ``metering.adjust``.
+    """
     with SessionLocal() as db:
         sums = dict(db.execute(select(Image.project_id, func.sum(Image.size))
                                .where(Image.deleted_at.is_(None)).group_by(Image.project_id)).all())
@@ -272,9 +278,9 @@ def _backfill_storage():
             total = totals.get(ws.id, 0.0)
             if total <= 0:
                 continue
-            has = db.scalar(select(UsageEvent.id).where(UsageEvent.workspace_id == ws.id,
-                                                        UsageEvent.metric == "storage_bytes").limit(1))
-            if not has:
-                db.add(UsageEvent(workspace_id=ws.id, metric="storage_bytes", quantity=total,
+            metered = float(db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0)).where(
+                UsageEvent.workspace_id == ws.id, UsageEvent.metric == "storage_bytes")) or 0.0)
+            if total > metered:
+                db.add(UsageEvent(workspace_id=ws.id, metric="storage_bytes", quantity=total - metered,
                                   meta={"backfill": True}))
         db.commit()

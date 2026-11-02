@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import REMOTE_JOB_KINDS
 from ..deps import Ctx, audit, plan, project_ctx, ws_ctx
 from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, TrainedModel, Version, now,
                       set_annotations)
@@ -485,6 +486,8 @@ def cancel_job(jid: str, c: Ctx = Depends(project_ctx)):
         j.status = "cancelled"; j.finished = now()
     elif j.status == "running":
         j.status = "cancelling"
+        if j.kind in REMOTE_JOB_KINDS:      # the dead-worker reaper must know when the ask happened
+            j.result = {**(j.result or {}), "cancel_requested": now()}
     c.db.commit()
     return job_out(j)
 

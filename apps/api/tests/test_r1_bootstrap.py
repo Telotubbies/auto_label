@@ -76,6 +76,45 @@ def test_storage_backfill_is_idempotent():
         assert len(rows) == 1
 
 
+def test_storage_backfill_reconciles_a_partial_meter():
+    """I10: a workspace that already metered one upload must still be topped up to its image bytes."""
+    ws_id, _, _ = _workspace_with_images(2, 1000)
+    with SessionLocal() as db:
+        db.add(UsageEvent(workspace_id=ws_id, metric="storage_bytes", quantity=500))
+        db.commit()
+
+    bootstrap._backfill_storage()
+    with SessionLocal() as db:
+        qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+            UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+        assert qty == pytest.approx(2000)
+        rows = db.scalars(select(UsageEvent).where(UsageEvent.workspace_id == ws_id,
+                                                   UsageEvent.metric == "storage_bytes")).all()
+        assert len(rows) == 2                       # the existing event plus one reconciliation delta
+
+    bootstrap._backfill_storage()                   # repeated boots are no-ops
+    with SessionLocal() as db:
+        qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+            UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+        assert qty == pytest.approx(2000)
+        rows = db.scalars(select(UsageEvent).where(UsageEvent.workspace_id == ws_id,
+                                                   UsageEvent.metric == "storage_bytes")).all()
+        assert len(rows) == 2
+
+
+def test_storage_backfill_never_reduces_an_over_counted_meter():
+    """Deletes are negative events; the boot reconciler must not invent a second downward delta."""
+    ws_id, _, _ = _workspace_with_images(1, 1000)
+    with SessionLocal() as db:
+        db.add(UsageEvent(workspace_id=ws_id, metric="storage_bytes", quantity=1500))
+        db.commit()
+    bootstrap._backfill_storage()
+    with SessionLocal() as db:
+        qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+            UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+        assert qty == pytest.approx(1500)
+
+
 def test_image_class_backfill_repairs_a_partial_index():
     ws_id, p_id, ids = _workspace_with_images(2)
     with SessionLocal() as db:

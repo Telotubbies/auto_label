@@ -111,6 +111,8 @@ def progress(jid: str, body: ProgressIn, db: Session = Depends(get_db)):
     if not j:
         raise HTTPException(404, "job not found")
     j.progress = round(body.progress, 1)
+    if j.kind in REMOTE_JOB_KINDS:      # progress is the only liveness signal a pip worker sends (I9)
+        j.result = {**(j.result or {}), "heartbeat": now()}
     if body.history is not None and j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         tm.history = body.history

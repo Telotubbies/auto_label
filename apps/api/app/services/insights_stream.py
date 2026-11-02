@@ -272,7 +272,7 @@ def analytics(
         }
 
     stamp = _stamp(db, project, days, tz_offset)
-    payload, _hit = cached(f"streams:{project.id}:{days}:{tz_offset}", stamp, compute)
+    payload, _hit = cached(f"streams:{project.id}", f"{days}:{tz_offset}", stamp, compute)
     return payload
 
 

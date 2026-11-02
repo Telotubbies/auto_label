@@ -41,6 +41,7 @@ from .services import (
     metering,
     ml,
     quality,
+    remote_reaper,
     segment,
     track,
     versioning,
@@ -754,6 +755,23 @@ def recover():
 
 OPS_SCHEDULE_S = 900           # check for due daily drift runs every 15 minutes
 _last_ops_schedule = time.monotonic()
+REAP_S = 60                    # a dead remote worker is noticed within a minute of its timeout
+_last_reap = 0.0
+
+
+def _reap_remote() -> None:
+    """Fail remote jobs whose worker vanished; cheap query, throttled to REAP_S."""
+    global _last_reap
+    if time.monotonic() - _last_reap < REAP_S:
+        return
+    _last_reap = time.monotonic()
+    try:
+        with SessionLocal() as db:
+            changed = remote_reaper.reap(db)
+        if changed:
+            log.warning("failed %d remote job(s) whose worker stopped reporting: %s", len(changed), changed)
+    except Exception:                  # a reaper bug must never stop the job loop
+        log.exception("could not reap remote jobs")
 
 
 def _schedule_ops() -> None:
@@ -784,6 +802,7 @@ def loop(stop: threading.Event | None = None):
                 log.exception("could not enqueue the retention job")
             next_cleanup = time.monotonic() + RETENTION_CHECK_S
         _schedule_ops()           # self-throttled; long jobs must not starve the daily drift check
+        _reap_remote()            # a dead GPU worker must not leave train/autolabel running forever
         jid = _claim()
         if jid:
             heartbeat.beat(LOCAL_JOB_KINDS, current_job=jid)

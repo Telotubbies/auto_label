@@ -488,7 +488,7 @@ __all__ = [
 def model_insights(db: Session, project_id: str, mid: str) -> dict:
     m = model_in_project(db, project_id, mid)
     sig = f"{model_signature(m)}:{data_stamp(db, project_id)}"
-    payload, hit = cached(f"eval:{project_id}:{mid}", sig, lambda: _build_model(db, m))
+    payload, hit = cached(f"model:{project_id}", f"eval:{mid}", sig, lambda: _build_model(db, m))
     split = payload.get("split") or "test"
     out = {k: v for k, v in payload.items() if k != "_files"}
     out["images"] = {
@@ -719,7 +719,8 @@ def compare(db: Session, project_id: str, ids: list[str]) -> dict:
 
     sig = f"{'|'.join(model_signature(m) for m in models)}:{data_stamp(db, project_id)}"
     payload, hit = cached(
-        f"compare:{project_id}:{','.join(unique)}",
+        f"model:{project_id}",
+        f"compare:{','.join(unique)}",
         sig,
         lambda: _build_compare(db, models, evals),
     )

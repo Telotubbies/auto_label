@@ -978,15 +978,45 @@ def test_dashboard_is_scoped_to_its_project(c, data):
     c.delete(f"{DASH}/{dash['id']}")
 
 
-def test_annotator_can_read_but_not_save_dashboards(c, data):
+def test_labeler_cannot_read_lineage_widgets_or_dashboard_specs(c, data):
+    """I11: aggregation reads are a review surface; a labeler must not trigger a full dataset scan."""
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
     headers = {"Authorization": f"Bearer {issue_access(user.id)}"}
-    assert c.get(DASH, headers=headers).status_code == 200
-    assert c.get(f"{INS}/lineage", headers=headers).status_code == 200
-    assert (
-        c.post(
-            DASH, json={"name": "nope", "widgets": WIDGETS}, headers=headers
-        ).status_code
-        == 403
-    )
+    assert c.get(f"{INS}/lineage", headers=headers).status_code == 403
+    assert c.get(f"{INS}/streams", headers=headers).status_code == 403
+    assert c.get(DASH, headers=headers).status_code == 403
+    widget = {"source": "dataset", "measure": "annotations", "dimension": "class"}
+    assert c.post(f"{INS}/query", json=widget, headers=headers).status_code == 403
+
+    dash = c.post(DASH, json={"name": "Shared", "widgets": WIDGETS}).json()
+    share = c.post(f"{DASH}/{dash['id']}/share").json()
+    try:
+        assert c.get(f"{DASH}/{dash['id']}", headers=headers).status_code == 403
+        # an explicitly shared link is a deliberate read-only exception; it carries specs, not aggregates
+        assert c.get(f"{DASH}/shared/{share['token']}", headers=headers).status_code == 200
+    finally:
+        c.delete(f"{DASH}/{dash['id']}")
+
+
+def test_widget_cache_is_bounded_per_project(data):
+    """I11: distinct tag/class/batch specs must not grow one project's cache without a bound."""
+    from app.services import insights_common
+
+    insights_common.clear_cache()
+    scope = f"query:{data['pid']}"
+    built: list[int] = []
+    for i in range(insights_common.CACHE_MAX_PER_SCOPE * 3):
+        insights_common.cached(scope, f"spec-{i}", "sig", lambda i=i: built.append(i) or {"rows": []})
+
+    assert insights_common.cache_size(scope) == insights_common.CACHE_MAX_PER_SCOPE
+    assert insights_common.cache_total() <= insights_common.CACHE_MAX
+
+    calls = len(built)
+    newest = f"spec-{insights_common.CACHE_MAX_PER_SCOPE * 3 - 1}"
+    payload, hit = insights_common.cached(scope, newest, "sig", lambda: built.append(-1) or {"rows": []})
+    assert hit is True and payload == {"rows": []} and len(built) == calls
+
+    other = f"query:{data['other_id']}"        # one project's keys never evict another's
+    insights_common.cached(other, "spec", "sig", lambda: {"rows": []})
+    assert insights_common.cache_size(other) == 1

@@ -27,6 +27,7 @@ def _bad(exc: ValueError) -> HTTPException:
 
 @router.get("")
 def list_dashboards(c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")               # dashboards are a review surface, not a labeler read (I11)
     return insights_dashboards.list_dashboards(c.db, c.project)
 
 
@@ -57,6 +58,7 @@ def shared_dashboard(token: str, c: Ctx = Depends(project_ctx)):
 
 @router.get("/{dashboard_id}")
 def get_dashboard(dashboard_id: str, c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")
     try:
         return insights_dashboards.get(c.db, c.project, dashboard_id)
     except LookupError as exc:

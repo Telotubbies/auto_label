@@ -134,22 +134,22 @@ def run(db: Session, project: Project, spec: dict) -> dict:
         if filters.get("version") and version is None:
             raise LookupError("version not found")
         stamp = str(insights.signature(db, project, version))
-        key = f"query:{project.id}:{json.dumps(query, sort_keys=True)}"
+        key = json.dumps(query, sort_keys=True)
         payload, _hit = cached(
-            key, stamp, lambda: _dataset(db, project, query, version)
+            f"query:{project.id}", key, stamp, lambda: _dataset(db, project, query, version)
         )
     elif query["source"] == "model":
         model = model_in_project(db, project.id, filters["model"])
         stamp = f"{model_signature(model)}:{data_stamp(db, project.id)}"
-        key = f"query:{project.id}:{json.dumps(query, sort_keys=True)}"
-        payload, _hit = cached(key, stamp, lambda: _model(model, query))
+        key = json.dumps(query, sort_keys=True)
+        payload, _hit = cached(f"query:{project.id}", key, stamp, lambda: _model(model, query))
     else:
         days = filters.get("days") or insights_stream.DEFAULT_DAYS
         tz_offset = filters.get("tz_offset") or 0
         stamp = insights_stream._stamp(db, project, days, tz_offset)
-        key = f"query:{project.id}:{json.dumps(query, sort_keys=True)}"
+        key = json.dumps(query, sort_keys=True)
         payload, _hit = cached(
-            key, f"{stamp}:{days}", lambda: _streams(db, project, query)
+            f"query:{project.id}", key, f"{stamp}:{days}", lambda: _streams(db, project, query)
         )
     payload["filters"] = query["filters"]
     return payload
