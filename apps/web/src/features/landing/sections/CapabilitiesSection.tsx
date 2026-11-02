@@ -139,7 +139,7 @@ export default function CapabilitiesSection() {
         id="capabilities-title"
         tag="Capabilities"
         title="What can you build?"
-        intro="Three jobs, one pipeline. Start from boxes, masks or a camera feed — the data never leaves the same place."
+        intro="Three jobs, one pipeline. Start from boxes, masks or a camera feed — the whole recipe stays in one project."
         className="[&>span]:self-start"
       />
 
@@ -162,7 +162,7 @@ export default function CapabilitiesSection() {
             icon={Spline}
             title="Segment"
             lead="Turn rough boxes into tight masks, then move a vertex when the edge matters."
-            detail="SAM 3.1 handles the first pass; you handle the last 5%."
+            detail="Connect SAM 3.1 for the first pass; you handle the last 5%."
             href="#models"
             linkLabel="Learn more about segmentation"
             visual={<SegmentVisual />}

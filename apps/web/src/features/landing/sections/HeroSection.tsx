@@ -329,7 +329,7 @@ export default function HeroSection() {
 
           <Reveal className="relative mx-auto flex w-full max-w-3xl flex-col items-center text-center">
             <TagPill icon={<ScanLine aria-hidden className="h-3.5 w-3.5" />}>
-              SAM 3.1 · VLM verification · CCTV
+              SAM 3.1 &amp; VLM add-ons · CCTV
             </TagPill>
 
             <h1
@@ -342,9 +342,9 @@ export default function HeroSection() {
             </h1>
 
             <p className="mx-auto mt-5 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-              SAM 3.1 drafts the masks, a VLM checks them, and every model family — YOLO,{' '}
-              <span className="whitespace-nowrap">RT-DETR</span>, <span className="whitespace-nowrap">D-FINE</span> —
-              trains on your data and reaches your cameras.
+              Connect SAM 3.1 to draft masks and a VLM to check them, and every model family the connected worker
+              supports — YOLO, <span className="whitespace-nowrap">RT-DETR</span>,{' '}
+              <span className="whitespace-nowrap">D-FINE</span> — trains on your data and reaches your cameras.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
