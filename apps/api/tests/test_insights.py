@@ -201,7 +201,11 @@ def wait_job(c, jid: str, timeout: float = 40) -> dict:
             assert j["status"] == "done", j
             return j
         time.sleep(0.05)
-    raise TimeoutError(jid)
+    with SessionLocal() as db:
+        from app.models import Job as JobRow
+        rows = db.scalars(select(JobRow).where(JobRow.status.in_(("queued", "running")))).all()
+        blockers = [(r.kind, r.id, r.status, r.created) for r in rows]
+    raise TimeoutError(f"{jid} last={j} jobs={blockers}")
 
 
 def test_summary_counts_splits_sources_and_annotator_read(c, data):
