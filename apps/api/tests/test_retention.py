@@ -171,6 +171,35 @@ def seed_old_image(pid: str, label: str = "locked") -> dict:
         return {"id": img.id, "path": DATA_DIR / rel, "thumb": DATA_DIR / thumb, "rel": rel}
 
 
+def seed_version_with_sources(pid: str, source_ids: list[str]):
+    """A ready version whose manifest lists ``source_ids``, with both export caches on disk."""
+    with SessionLocal() as db:
+        v = Version(project_id=pid, number=int(uuid.uuid4().hex[:8], 16), status="ready")
+        db.add(v)
+        db.commit()
+        vid = v.id
+    vdir = DATA_DIR / "versions" / vid
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / "manifest.json").write_text(json.dumps({"sources": [{"id": s, "sha256": "x"} for s in source_ids]}))
+    cache = DATA_DIR / "exports" / vid / "yolo.zip"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_bytes(b"zip")
+    version_cache = vdir / "exports" / "yolo" / "frame.jpg"
+    version_cache.parent.mkdir(parents=True, exist_ok=True)
+    version_cache.write_bytes(jpeg_bytes())
+    return vid, cache, version_cache
+
+
+def drop_version(vid: str) -> None:
+    with SessionLocal() as db:
+        row = db.get(Version, vid)
+        if row:
+            db.delete(row)
+        db.commit()
+    shutil.rmtree(DATA_DIR / "versions" / vid, ignore_errors=True)
+    shutil.rmtree(DATA_DIR / "exports" / vid, ignore_errors=True)
+
+
 def test_snapshot_sweep_is_scoped_to_this_project(world):
     """C1: another tenant's snapshot files must never be swept by this project's retention run."""
     tag = uuid.uuid4().hex[:8]
@@ -254,20 +283,7 @@ def test_retention_invalidates_cached_exports_of_affected_versions(world):
     """I3: cached export archives that contain a deleted frame must stop being served."""
     pid = world["pid"]
     item = seed_old_image(pid, "exported")
-    with SessionLocal() as db:
-        v = Version(project_id=pid, number=int(uuid.uuid4().hex[:8], 16), status="ready")
-        db.add(v)
-        db.commit()
-        vid = v.id
-    vdir = DATA_DIR / "versions" / vid
-    vdir.mkdir(parents=True, exist_ok=True)
-    (vdir / "manifest.json").write_text(json.dumps({"sources": [{"id": item["id"], "sha256": "x"}]}))
-    cache = DATA_DIR / "exports" / vid / "yolo.zip"
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_bytes(b"zip")
-    version_cache = vdir / "exports" / "yolo" / "frame.jpg"
-    version_cache.parent.mkdir(parents=True, exist_ok=True)
-    version_cache.write_bytes(jpeg_bytes())
+    vid, cache, version_cache = seed_version_with_sources(pid, [item["id"]])
     try:
         result = retention.run_retention(types.SimpleNamespace(params={"project_id": pid}))
         assert result["images_deleted"] == 1
@@ -279,13 +295,55 @@ def test_retention_invalidates_cached_exports_of_affected_versions(world):
                                                 Audit.action == "retention.run").order_by(Audit.created.desc()))
             assert row is not None and row.meta["exports"] == 2
     finally:
+        drop_version(vid)
+
+
+def test_locked_export_cache_is_not_counted_and_is_retried(world, monkeypatch):
+    """N1: a Windows sharing violation on an archive must count as a failure, never as deleted."""
+    item = seed_old_image(world["pid"], "locked-export")
+    vid, cache, version_cache = seed_version_with_sources(world["pid"], [item["id"]])
+
+    def locked(path, *args, **kwargs):
+        # WinError 32: the archive is still open (a download or an export job holds it).
+        raise PermissionError(13, "Access is denied: the file is in use", str(path))
+
+    try:
+        with monkeypatch.context() as m:
+            m.setattr(retention.shutil, "rmtree", locked)
+            result = retention.run_retention(types.SimpleNamespace(params={"project_id": world["pid"]}))
+        assert result["images_deleted"] == 1
+        assert result["exports_deleted"] == 0             # not deleted, so not reported as deleted
+        assert result["failed"] >= 1
+        assert cache.exists() and version_cache.exists()
         with SessionLocal() as db:
-            row = db.get(Version, vid)
-            if row:
-                db.delete(row)
-            db.commit()
-        shutil.rmtree(vdir, ignore_errors=True)
-        shutil.rmtree(DATA_DIR / "exports" / vid, ignore_errors=True)
+            row = db.scalar(select(Audit).where(Audit.workspace_id == world["ws"],
+                                                Audit.action == "retention.run").order_by(Audit.created.desc()))
+            assert row is not None and row.meta["exports"] == 0 and row.meta["failed"] >= 1
+
+        # The image rows are gone, so only the manifest can make the retry find the stale cache.
+        retry = retention.run_retention(types.SimpleNamespace(params={"project_id": world["pid"]}))
+        assert retry["images_deleted"] == 0
+        assert retry["exports_deleted"] == 2
+        assert retry["failed"] == 0
+        assert not cache.exists() and not (DATA_DIR / "exports" / vid).exists()
+        assert not version_cache.exists()
+    finally:
+        drop_version(vid)
+
+
+def test_export_cache_left_in_place_is_not_counted_as_deleted(world, monkeypatch):
+    """N1: a remover that returns without deleting must not be trusted — verify the path is gone."""
+    item = seed_old_image(world["pid"], "silent-export")
+    vid, cache, version_cache = seed_version_with_sources(world["pid"], [item["id"]])
+    try:
+        with monkeypatch.context() as m:
+            m.setattr(retention.shutil, "rmtree", lambda path, *args, **kwargs: None)
+            result = retention.run_retention(types.SimpleNamespace(params={"project_id": world["pid"]}))
+        assert result["exports_deleted"] == 0
+        assert result["failed"] >= 1
+        assert cache.exists() and version_cache.exists()
+    finally:
+        drop_version(vid)
 
 
 def test_enqueue_if_due(world):

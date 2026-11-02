@@ -8,6 +8,10 @@ under ``snapshots/<project id>/``). Flat files directly under the shared root ca
 and are deliberately left alone — one tenant's retention policy must never delete another's footage.
 Stream models arrive with the Task 10b stream router, so they are looked up with ``getattr`` — this
 module must import on a build that has no streams at all.
+
+Cached export archives are invalidated by comparing every version's manifest ``sources`` with the frames
+that still exist, not with this run's deleted ids, so an archive that could not be removed (a locked file
+on Windows) is retried on the next run and reported as a failure instead of a deletion.
 """
 
 import json
@@ -125,34 +129,59 @@ def count_events(db: Session, project_id: str, cutoff: float) -> int:
     return len(event_rows(db, project_id, cutoff))
 
 
-def _invalidate_exports(db: Session, project_id: str, image_ids: set[str]) -> int:
-    """Delete cached export archives of versions that include any of the deleted frames.
+def _remove_export_cache(target: Path) -> bool:
+    """Remove one cached export directory; True only when the path is verifiably gone."""
+    try:
+        shutil.rmtree(target)
+    except OSError:                          # locked/read-only (Windows sharing violation)
+        log.warning("retention could not remove export cache %s", target, exc_info=True)
+    if target.exists():
+        log.warning("retention left export cache %s in place; the next run retries", target)
+        return False
+    return True
 
-    Version snapshots stay until the version itself is deleted, but a zip built from them would keep
-    serving the "deleted" personal data, so the affected caches are dropped and rebuilt on demand.
+
+def _stale_versions(db: Session, project_id: str) -> list[Version]:
+    """Versions whose manifest sources a frame that no longer exists in the project.
+
+    Derived from the manifests on every run (not from this run's deleted ids) so a failed cache
+    removal is retried next time even though the Image rows are already gone.
     """
-    if not image_ids:
-        return 0
-    removed = 0
+    existing = set(db.scalars(select(Image.id).where(Image.project_id == project_id)))
+    stale = []
     for version in db.scalars(select(Version).where(Version.project_id == project_id)):
         try:
             manifest = json.loads((DATA_DIR / "versions" / version.id / "manifest.json").read_text())
         except (OSError, ValueError):         # never generated/kept: no cache can be attributed to it
             continue
         sources = {s.get("id") for s in manifest.get("sources") or [] if isinstance(s, dict)}
-        if not image_ids & sources:
-            continue
+        if sources and not sources <= existing:
+            stale.append(version)
+    return stale
+
+
+def _invalidate_exports(db: Session, project_id: str) -> tuple[int, int]:
+    """Delete cached export archives of versions that include frames deleted by retention.
+
+    Returns (removed, failed). A target counts as removed only when it is verifiably gone; a locked
+    archive is left for the next run and reported as a failure with its path, so the job never
+    claims a cache that is still being served. Version snapshots stay until the version is deleted.
+    """
+    removed = failed = 0
+    for version in _stale_versions(db, project_id):
         for target in (DATA_DIR / "exports" / version.id, DATA_DIR / "versions" / version.id / "exports"):
-            if target.is_dir():
-                shutil.rmtree(target, ignore_errors=True)
+            if not target.is_dir():
+                continue
+            if _remove_export_cache(target):
                 removed += 1
-    return removed
+            else:
+                failed += 1
+    return removed, failed
 
 
 def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
     """Delete one project's expired frames, events and snapshot files; caller commits."""
     stats = {"images": 0, "events": 0, "snapshots": 0, "exports": 0, "bytes": 0, "failed": 0}
-    deleted_ids: set[str] = set()
     for image in db.scalars(select(Image).where(Image.project_id == project.id, Image.created < cutoff)):
         path_ok, path_bytes = _delete_stored(image.path)
         thumb_ok, thumb_bytes = _delete_stored(image.thumb)
@@ -165,7 +194,6 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
         db.execute(sa_delete(Comment).where(Comment.image_id == image.id))
         db.delete(image)
         stats["images"] += 1
-        deleted_ids.add(image.id)
 
     for event in event_rows(db, project.id, cutoff):
         ok, freed = _delete_stored(getattr(event, "snapshot_path", "") or "")
@@ -181,7 +209,8 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
         files, freed = _sweep(directory, cutoff)
         stats["snapshots"] += files
         stats["bytes"] += freed
-    stats["exports"] = _invalidate_exports(db, project.id, deleted_ids)
+    stats["exports"], export_failed = _invalidate_exports(db, project.id)
+    stats["failed"] += export_failed
     return stats
 
 
