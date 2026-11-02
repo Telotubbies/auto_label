@@ -54,7 +54,7 @@ def project_paths(db: Session, project: Project) -> list[Path]:
             paths.append(DATA_DIR / v.path)
     for m in db.scalars(select(TrainedModel).where(TrainedModel.project_id == project.id)):
         paths += [DATA_DIR / "models" / m.id, DATA_DIR / "train_data" / m.id,
-                  DATA_DIR / "engines" / f"{m.id}.engine"]
+                  DATA_DIR / "runs" / m.id, DATA_DIR / "engines" / f"{m.id}.engine"]
         if m.weights:
             paths.append(DATA_DIR / m.weights)
     for v in db.scalars(select(Version).where(Version.project_id == project.id)):
@@ -67,14 +67,27 @@ def delete_project_data(db: Session, project: Project) -> int:
     return sum(_remove(path) for path in project_paths(db, project))
 
 
-def delete_image_files(path: str | None, thumb: str | None) -> int:
-    """Erase one image and its thumbnail immediately (a soft delete must not keep the bytes)."""
-    return sum(_remove(DATA_DIR / rel) for rel in (path, thumb) if rel)
+def delete_image_files(path: str | None, thumb: str | None) -> tuple[int, bool]:
+    """Erase one image and its thumbnail immediately.
+
+    Returns ``(bytes_freed, gone)``; ``gone`` is false when a locked or undeletable file is still
+    on disk, so the caller must not credit the storage meter for bytes that survived.
+    """
+    freed = 0
+    gone = True
+    for rel in (path, thumb):
+        if not rel:
+            continue
+        freed += _remove(DATA_DIR / rel)
+        if (DATA_DIR / rel).exists():
+            gone = False
+    return freed, gone
 
 
 def delete_model_files(model: TrainedModel) -> int:
-    """Erase a model's weights, run directory and cached engine."""
-    freed = _remove(DATA_DIR / "models" / model.id) + _remove(DATA_DIR / "train_data" / model.id)
+    """Erase a model's weights, run directory, dataset copy and cached engine."""
+    freed = (_remove(DATA_DIR / "models" / model.id) + _remove(DATA_DIR / "train_data" / model.id)
+             + _remove(DATA_DIR / "runs" / model.id))
     if model.weights:
         freed += _remove(DATA_DIR / model.weights)
     freed += _remove(DATA_DIR / "engines" / f"{model.id}.engine")

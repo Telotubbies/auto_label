@@ -23,7 +23,7 @@ from ..models import (SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Label
                       new_id, now, set_annotations)
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import faceblur, imaging, importers, insights, metering, ml, segment
+from ..services import erasure, faceblur, imaging, importers, insights, metering, ml, segment
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -277,7 +277,9 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
             r.tags = [t for t in r.tags or [] if t != v]
         elif body.action == "delete":
             if r.deleted_at is None:              # a second delete must not credit storage twice
-                metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
+                _, gone = erasure.delete_image_files(r.path, r.thumb)
+                if gone:                          # a locked file keeps its bytes and its meter entry
+                    metering.adjust(c.db, c.ws, "storage_bytes", -float(r.size or 0), project_id=c.project.id)
             r.deleted_at = now()
             c.db.execute(sa_delete(ImageClass).where(ImageClass.image_id == r.id))   # deleted images drop out of counts
         elif body.action == "status":
@@ -481,12 +483,12 @@ def delete_image(image_id: str, u: User = Depends(current_user), db: Session = D
     c, img = _assigned(*image_ctx(db, u, image_id))
     c.need("reviewer")
     if img.deleted_at is None:                    # release the bytes the storage meter counted at upload
-        metering.adjust(db, c.ws, "storage_bytes", -float(img.size or 0), project_id=img.project_id)
+        _, gone = erasure.delete_image_files(img.path, img.thumb)
+        if gone:                                  # a locked file keeps its bytes and its meter entry
+            metering.adjust(db, c.ws, "storage_bytes", -float(img.size or 0), project_id=img.project_id)
     img.deleted_at = now()
     db.execute(sa_delete(ImageClass).where(ImageClass.image_id == img.id))
     db.commit()
-    from ..services.erasure import delete_image_files
-    delete_image_files(img.path, img.thumb)     # the row is gone; the JPEG must be too (I3)
     return {"ok": True}
 
 

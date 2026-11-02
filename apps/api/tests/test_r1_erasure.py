@@ -43,7 +43,8 @@ def test_project_purge_removes_all_prefixes():
         db.commit()
         pid, wid, mid, vid = p.id, ws.id, m.id, v.id
     for rel in (f"projects/{pid}/images/x.jpg", f"projects/{pid}/thumbs/x.jpg",
-                f"videos/{suffix}.mp4", f"models/{mid}/best.pt", f"versions/{vid}/manifest.json",
+                f"videos/{suffix}.mp4", f"models/{mid}/best.pt", f"runs/{mid}/weights/last.pt",
+                f"versions/{vid}/manifest.json",
                 f"exports/{vid}/coco.zip", f"snapshots/{pid}/a.jpg", f"workspaces/{wid}/drift/{pid}/a.jpg"):
         _touch(rel)
     keep = DATA_DIR / f"projects/other-{suffix}/images/keep.jpg"
@@ -52,7 +53,7 @@ def test_project_purge_removes_all_prefixes():
     from app.services.erasure import delete_project_data
     with SessionLocal() as db:
         delete_project_data(db, db.get(Project, pid))
-    for rel in (f"projects/{pid}", f"videos/{suffix}.mp4", f"models/{mid}", f"versions/{vid}",
+    for rel in (f"projects/{pid}", f"videos/{suffix}.mp4", f"models/{mid}", f"runs/{mid}", f"versions/{vid}",
                 f"exports/{vid}", f"snapshots/{pid}", f"workspaces/{wid}/drift/{pid}"):
         assert not (DATA_DIR / rel).exists(), rel
     assert keep.exists()
@@ -87,3 +88,83 @@ def test_version_delete_erases_its_bytes_only():
     assert not (DATA_DIR / f"exports/{gone_id}").exists()
     assert (DATA_DIR / f"versions/{keep_id}/manifest.json").exists()
     assert (DATA_DIR / f"exports/{keep_id}/coco.zip").exists()
+
+
+def _login(email: str, password: str = "longpassword1"):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    client = TestClient(app)
+    r = client.post("/api/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+    client.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    return client
+
+
+def _route_project():
+    """A workspace admin (legacy role) who can reach the bulk and model routes."""
+    from app.security import hash_password
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        from app.models import Member
+        u = User(id="u" + suffix, email=f"rt-{suffix}@x.io", name="Route", pw_hash=hash_password("longpassword1"),
+                 email_verified=1.0)
+        db.add(u); db.flush()
+        ws = Workspace(id="w" + suffix, slug=f"rt-{suffix}", name="Route ws", owner_id=u.id)
+        db.add(ws); db.flush()
+        p = Project(workspace_id=ws.id, slug=f"rtp-{suffix}", name="Route project")
+        db.add(p); db.flush()
+        db.add(Member(workspace_id=ws.id, user_id=u.id, role="admin"))
+        db.commit()
+        return u.email, ws.slug, ws.id, p.id, p.slug
+
+
+def test_bulk_delete_erases_every_image_and_credits_the_meter():
+    """The Dataset page uses the bulk route: it must purge bytes like the single delete does."""
+    from app.services import metering
+    email, ws_slug, ws_id, p_id, slug = _route_project()
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        rows = []
+        for i in range(2):
+            rel = f"projects/{p_id}/images/bulk-{suffix}-{i}.jpg"
+            _touch(rel)
+            rows.append(Image(id=f"ib{suffix}{i}", project_id=p_id, name=f"{i}.jpg", sha256=f"{suffix}{i}",
+                              width=2, height=2, size=100, path=rel, thumb="", annotations=[], n_annotations=0))
+        db.add_all(rows)
+        ws = db.get(Workspace, ws_id)
+        metering.record(db, ws.id, "storage_bytes", 200, project_id=p_id)
+        db.commit()
+        ids = [r.id for r in rows]
+
+    with _login(email) as c:
+        r = c.post(f"/api/ws/{ws_slug}/projects/{slug}/images/bulk", json={"ids": ids, "action": "delete"})
+    assert r.status_code == 200, r.text
+    for i in range(2):
+        assert not (DATA_DIR / f"projects/{p_id}/images/bulk-{suffix}-{i}.jpg").exists()
+    with SessionLocal() as db:
+        assert metering.used(db, db.get(Workspace, ws_id), "storage_bytes") == 0
+
+
+def test_delete_model_route_erases_weights_runs_and_engine():
+    email, ws_slug, ws_id, p_id, slug = _route_project()
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        v = Version(project_id=p_id, number=1, status="ready", stats={})
+        db.add(v); db.flush()
+        m = TrainedModel(workspace_id=ws_id, project_id=p_id, version_id=v.id, name="erase-me", arch="yolo26n",
+                         variant="yolo26n", task="detect", status="ready", family="ultralytics", classes=[],
+                         weights=f"models/run{suffix}/best.pt")
+        db.add(m); db.commit()
+        mid = m.id
+    for rel in (f"models/{mid}/best.pt", f"runs/{mid}/weights/last.pt", f"runs/{mid}/results.csv",
+                f"engines/{mid}.engine"):
+        _touch(rel)
+
+    with _login(email) as c:
+        r = c.delete(f"/api/ws/{ws_slug}/projects/{slug}/models/{mid}")
+    assert r.status_code == 200, r.text
+    assert not (DATA_DIR / f"models/{mid}").exists()
+    assert not (DATA_DIR / f"runs/{mid}").exists()
+    assert not (DATA_DIR / f"engines/{mid}.engine").exists()
