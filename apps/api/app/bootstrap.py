@@ -198,30 +198,40 @@ def seed():
 
 
 def _backfill_image_classes():
-    """Repair a missing or partial image_classes index; safe to run on every boot (I2)."""
+    """Repair a missing or partial image_classes index; safe to run on every boot (I2).
+
+    Requesting rows ahead of a cursor guarantees progress. A legacy row can hold annotations
+    that can never produce an ``ImageClass`` row (``[null]`` or a v1 dict); selecting it again
+    by the same predicate would loop forever while holding the schema lock (C1).
+    """
     from .models import set_annotations
+    cursor = ""
+    done = 0
     with SessionLocal() as db:
-        missing = select(Image.id).where(
-            Image.n_annotations > 0,
-            Image.deleted_at.is_(None),
-            ~exists(select(ImageClass.image_id).where(ImageClass.image_id == Image.id)),
-        ).order_by(Image.id).limit(500)
-        done = 0
         while True:
-            ids = list(db.scalars(missing))
-            if not ids:
+            rows = db.scalars(select(Image).where(
+                Image.n_annotations > 0,
+                Image.deleted_at.is_(None),
+                Image.id > cursor,
+                ~exists(select(ImageClass.image_id).where(ImageClass.image_id == Image.id)),
+            ).order_by(Image.id).limit(500)).all()
+            if not rows:
                 break
-            for img in db.scalars(select(Image).where(Image.id.in_(ids))):
+            cursor = rows[-1].id
+            for img in rows:
                 updated = img.updated
                 set_annotations(db, img, img.annotations or [])
                 img.updated = updated
+                if any(isinstance(a, dict) and a.get("classId") for a in (img.annotations or [])):
+                    done += 1
+                else:
+                    log.warning("image %s has no annotation with a classId; image_classes stays empty", img.id)
             try:
                 db.commit()
-            except Exception:                       # another process inserted the same rows first
+            except Exception:                   # another process inserted the same rows first
                 db.rollback()
-            done += len(ids)
-        if done:
-            log.info("backfilled image_classes index for %s images", done)
+    if done:
+        log.info("backfilled image_classes index for %s images", done)
 
 
 def _backfill_storage():

@@ -103,6 +103,40 @@ def test_image_class_backfill_survives_a_null_annotation():
         assert db.scalar(select(ImageClass.image_id).where(ImageClass.image_id == ids[0]))
 
 
+def _backfill_with_deadline(seconds: float = 3.0) -> None:
+    """Run the backfill on a daemon thread so a non-terminating repair fails instead of hanging."""
+    errors: list[BaseException] = []
+
+    def run():
+        try:
+            bootstrap._backfill_image_classes()
+        except BaseException as e:                # surfaced on the test thread below
+            errors.append(e)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(seconds)
+    assert not t.is_alive(), (
+        "image-class backfill did not finish: a row with no indexable classId is selected forever "
+        "while the schema lock is held")
+    if errors:
+        raise errors[0]
+
+
+@pytest.mark.parametrize("anns", [[None], {"label": "cat"}], ids=["null-list", "v1-dict"])
+def test_image_class_backfill_finishes_when_nothing_is_indexable(anns):
+    """C1: legacy annotations without a classId can never produce ImageClass; stop instead of looping."""
+    _, p_id, ids = _workspace_with_images(1)
+    with SessionLocal() as db:
+        img = db.get(Image, ids[0])
+        img.annotations = anns
+        img.n_annotations = 1
+        db.commit()
+    _backfill_with_deadline()
+    with SessionLocal() as db:
+        assert db.scalar(select(ImageClass.image_id).where(ImageClass.image_id == ids[0])) is None
+
+
 def test_schema_lock_serialises_writers(tmp_path, monkeypatch):
     monkeypatch.setattr(bootstrap, "DATA_DIR", tmp_path)
     active = []
