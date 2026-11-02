@@ -54,3 +54,14 @@ def _reset_rate_limiter():
     from app import ratelimit
     ratelimit.ENABLED = os.environ.get("LD_RATE_LIMIT", "1") != "0"
     ratelimit._hits.clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seeded_database():
+    """Create the schema and demo account once, before any module inserts its own rows.
+
+    Production seeding is disabled on a non-empty or production database (M7); tests must not
+    depend on that production behaviour, so they ask for the seed explicitly here.
+    """
+    from app import bootstrap
+    bootstrap.init_db()

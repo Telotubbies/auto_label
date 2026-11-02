@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import exists, func, inspect, select, update
 from sqlalchemy.exc import OperationalError
 
-from .config import DATA_DIR, REPO_ROOT, SEED_DEMO
+from .config import DATA_DIR, ENVIRONMENT, REPO_ROOT, SEED_DEMO
 from .db import Base, SessionLocal, engine
 from .models import Image, ImageClass, Project, UsageEvent, User, Workspace
 
@@ -93,8 +93,13 @@ def _init_db():
     _seal_stream_sources()
     _backfill_image_classes()
     _backfill_storage()
-    if SEED_DEMO:
+    if _should_seed():
         seed()
+
+
+def _should_seed() -> bool:
+    """M7: never ship the known demo credentials into production or a live installation."""
+    return SEED_DEMO and ENVIRONMENT != "production"
 
 
 def _backfill_sessions():
@@ -157,9 +162,9 @@ def seed():
     from .security import hash_password
 
     with SessionLocal() as db:
-        # Only a pre-existing demo account suppresses seed. Any other user (a real signup, or a
-        # test module that inserted its own fixture first) must not hide the demo login.
-        if db.scalar(select(User.id).where(User.email == DEMO_EMAIL).limit(1)):
+        # Seed only a pristine database. A demo user check let a restart add known credentials to a
+        # live installation that already had real accounts (M7).
+        if db.scalar(select(User.id).limit(1)):
             return
         admin = User(email=DEMO_EMAIL, name="Demo Admin", pw_hash=hash_password(DEMO_PW), email_verified=time.time())
         labeler = User(email="labeler@labeldesk.dev", name="Lee Labeler", pw_hash=hash_password(DEMO_PW),

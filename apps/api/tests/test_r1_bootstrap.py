@@ -37,8 +37,8 @@ def _workspace_with_images(n=2, size=12345):
         return ws.id, p.id, ids
 
 
-def test_seed_creates_demo_even_when_other_users_exist(monkeypatch):
-    """I8: a module that inserts a user first must not stop another module's demo login."""
+def test_seed_skips_a_database_that_already_has_users(monkeypatch):
+    """M7: a live installation must never gain the known demo admin on the next restart."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -51,7 +51,15 @@ def test_seed_creates_demo_even_when_other_users_exist(monkeypatch):
     monkeypatch.setattr(bootstrap, "SessionLocal", sessions)
     bootstrap.seed()
     with sessions() as db:
-        assert db.scalar(select(User.id).where(User.email == bootstrap.DEMO_EMAIL))
+        assert db.scalar(select(User.id).where(User.email == bootstrap.DEMO_EMAIL)) is None
+
+
+def test_seed_is_disabled_in_production(monkeypatch):
+    monkeypatch.setattr(bootstrap, "SEED_DEMO", True)
+    monkeypatch.setattr(bootstrap, "ENVIRONMENT", "production")
+    assert bootstrap._should_seed() is False
+    monkeypatch.setattr(bootstrap, "ENVIRONMENT", "development")
+    assert bootstrap._should_seed() is True
 
 
 def test_storage_backfill_is_idempotent():

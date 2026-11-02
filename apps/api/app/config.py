@@ -16,6 +16,7 @@ DATABASE_URL = _env("DATABASE_URL", f"sqlite:///{(DATA_DIR / 'labeldesk.db').as_
 PUBLIC_URL = _env("LD_PUBLIC_URL", "http://localhost:5173").rstrip("/")
 CORS_ORIGINS = [o for o in _env("LD_CORS_ORIGINS", "*").split(",") if o]
 SIGNUP_ENABLED = _env("LD_SIGNUP_ENABLED", "1") == "1"
+ENVIRONMENT = _env("LD_ENV", "development")                  # compose sets production
 EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside the api process
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
