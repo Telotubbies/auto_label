@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app import worker
 from app.db import Base, SessionLocal, engine
-from app.models import DriftRun, DriftSample, Job, Project, TrainedModel, User, Version, Workspace
+from app.models import DriftRun, DriftSample, Image, Job, Project, TrainedModel, User, Version, Workspace
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -85,3 +85,79 @@ def test_health_scan_stops_when_the_job_is_cancelled():
         project = db.get(Project, p_id)
         with pytest.raises(Cancelled):
             health_scan.scan_health(db, project, should_stop=lambda: True)
+
+
+def test_run_health_honours_cancellation_between_images(monkeypatch):
+    """I22: run_health must pass the job's predicate into the per-image inference loop."""
+    from PIL import Image as PImage
+
+    from app import jobs
+    from app.services import health_scan
+
+    ws_id, p_id, v_id = _project()
+    with SessionLocal() as db:
+        db.add(TrainedModel(workspace_id=ws_id, project_id=p_id, version_id=v_id, name="scan", arch="yolo26n",
+                            variant="yolo26n", task="detect", status="ready", family="ultralytics", classes=[]))
+        for i in range(4):
+            db.add(Image(id=f"hi{uuid.uuid4().hex[:8]}", project_id=p_id, name=f"{i}.jpg", sha256=f"h{i}",
+                         width=4, height=4, size=1, path=f"projects/{p_id}/images/{i}.jpg", thumb="",
+                         annotations=[], n_annotations=0))
+        j = Job(workspace_id=ws_id, project_id=p_id, kind="health", params={})
+        db.add(j); db.commit()
+        jid = j.id
+
+    calls = {"n": 0}
+    predictions: list[int] = []
+
+    def cancel_after_a_few(_jid):
+        calls["n"] += 1
+        return calls["n"] > 5                      # the job is cancelled after the first inference
+
+    class Fake:
+        def predict(self, _im, **_kw):
+            predictions.append(1)
+            return {"predictions": []}
+
+    monkeypatch.setattr(jobs, "is_cancelled", cancel_after_a_few)
+    monkeypatch.setattr(health_scan, "resolve", lambda *a, **kw: Fake())
+    monkeypatch.setattr(health_scan, "_leakage_pairs", lambda *a, **kw: 0)
+    monkeypatch.setattr(health_scan.imaging, "load", lambda _path: PImage.new("RGB", (4, 4)))
+
+    worker.run_one(jid)
+
+    with SessionLocal() as db:
+        assert db.get(Job, jid).status == "cancelled"
+    assert 0 < len(predictions) < 4                 # stopped before scanning every image
+
+
+def test_run_insights_scans_receive_the_cancellation_predicate(monkeypatch):
+    from app import jobs
+    from app.services import insights_jobs
+
+    ws_id, p_id, _ = _project()
+    with SessionLocal() as db:
+        j = Job(workspace_id=ws_id, project_id=p_id, kind="insights_images", params={})
+        db.add(j); db.commit()
+        job = db.get(Job, j.id)
+        db.expunge(job)
+    monkeypatch.setattr(jobs, "is_cancelled", lambda _jid: False)
+    seen = {}
+    monkeypatch.setattr(insights_jobs, "scan_images",
+                        lambda db, project, should_stop=None: seen.update(ok=callable(should_stop)) or {})
+    worker.run_insights_images(job)
+    assert seen["ok"] is True
+
+
+def test_insights_scan_services_stop_on_cancellation():
+    from app.adapters.base import Cancelled
+    from app.services import insights_embedding, insights_jobs
+
+    ws_id, p_id, _ = _project()
+    with SessionLocal() as db:
+        project = db.get(Project, p_id)
+        with pytest.raises(Cancelled):
+            insights_jobs.scan_images(db, project, should_stop=lambda: True)
+        with pytest.raises(Cancelled):
+            insights_jobs.scan_leakage(db, project, should_stop=lambda: True)
+        with pytest.raises(Cancelled):
+            insights_embedding.scan_embedding(db, project, should_stop=lambda: True)

@@ -792,7 +792,7 @@ def test_embedding_job_runs_under_the_gpu_lease(c, data, monkeypatch):
     seen = {}
     released = []
 
-    def fake_scan(_db, _project):
+    def fake_scan(_db, _project, should_stop=None):
         seen["holder"] = worker.scheduler.holder
         return {"signature": [], "points": [], "projection": "pca"}
 
@@ -822,7 +822,7 @@ def test_embedding_job_stays_off_the_gpu_when_clip_cannot_run(c, data, monkeypat
         def wake(self):
             vlm_calls.append("wake")
 
-    def fake_scan(_db, _project):
+    def fake_scan(_db, _project, should_stop=None):
         seen["holder"] = worker.scheduler.holder
         return {"signature": [], "points": [], "projection": "pca"}
 

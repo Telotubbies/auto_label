@@ -452,7 +452,7 @@ def run_health(job: Job):
     jobs.check(job)
     with SessionLocal() as db:
         p = db.get(Project, job.project_id)
-        return health.scan_health(db, p)
+        return health.scan_health(db, p, should_stop=lambda: jobs.is_cancelled(job.id))
 
 
 def run_extract_frames(job: Job):
@@ -634,7 +634,8 @@ def run_insights_images(job: Job):
     from . import jobs
     jobs.check(job)
     with SessionLocal() as db:
-        return insights_jobs.scan_images(db, db.get(Project, job.project_id))
+        return insights_jobs.scan_images(db, db.get(Project, job.project_id),
+                                         should_stop=lambda: jobs.is_cancelled(job.id))
 
 
 def run_insights_leakage(job: Job):
@@ -642,7 +643,8 @@ def run_insights_leakage(job: Job):
     jobs.check(job)
     with SessionLocal() as db:
         version = (job.params or {}).get("version") or None
-        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id), version)
+        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id), version,
+                                         should_stop=lambda: jobs.is_cancelled(job.id))
 
 
 def run_insights_embedding(job: Job):
@@ -650,12 +652,16 @@ def run_insights_embedding(job: Job):
     jobs.check(job)
     with SessionLocal() as db:
         project = db.get(Project, job.project_id)
+
+        def should_stop() -> bool:
+            return jobs.is_cancelled(job.id)
+
         needs_card = insights_embedding.clip_available()     # false: CV features never touch the GPU
         try:
             if needs_card:
                 with scheduler.exclusive("insights embedding"):
-                    return insights_jobs.scan_embedding(db, project)
-            return insights_jobs.scan_embedding(db, project)
+                    return insights_jobs.scan_embedding(db, project, should_stop=should_stop)
+            return insights_jobs.scan_embedding(db, project, should_stop=should_stop)
         finally:
             insights_embedding.release_clip()                # CLIP never outlives the scan
 
