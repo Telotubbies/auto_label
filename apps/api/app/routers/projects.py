@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/ws/{ws}/projects", tags=["projects"])
 PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#14b8a6", "#ef4444",
            "#6366f1", "#84cc16", "#06b6d4", "#a855f7", "#f43f5e", "#10b981", "#0ea5e9", "#d946ef"]
 # project slugs share the /:ws/<name> namespace with these workspace pages
-RESERVED = {"models", "deployments", "activity", "settings"}
+RESERVED = {"models", "deployments", "activity", "settings", "qa"}
 
 
 def job_out(j: Job) -> dict:
@@ -65,7 +65,7 @@ def classes_out(db: Session, p: Project) -> list[dict]:
 
 
 # project slugs must not shadow workspace pages (mirrors apps/web/src/components/shell.tsx)
-RESERVED = {"models", "deployments", "activity", "settings", "audit", "admin", "legal"}
+RESERVED = {"models", "deployments", "activity", "settings", "audit", "admin", "legal", "qa"}
 
 
 def slugify(name: str) -> str:

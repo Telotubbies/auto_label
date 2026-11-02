@@ -69,6 +69,8 @@ export interface ImageItem {
   review: 'approved' | 'rejected' | null; tags: string[]; batchId: string | null; annotated: boolean
   annotationCount: number; created: number; thumbnail: string; url: string; classIds: string[]
   videoId?: string | null; frameIndex?: number | null
+  /** Detail endpoint only: the image is in a collecting consensus job, so annotations are the labeler's private draft. */
+  consensusJob?: string
 }
 export interface VideoItem {
   id: string; name: string; status: 'queued' | 'extracting' | 'ready' | 'failed'; error: string
@@ -78,6 +80,8 @@ export interface VideoItem {
 export interface VideoFrame {
   id: string; name: string; frameIndex: number; time: number; url: string; thumbnail: string
   status: Status; annotations: Annotation[]
+  /** Detail endpoint only: the image is in a collecting consensus job, so annotations are the labeler's private draft. */
+  consensusJob?: string
 }
 export interface Batch { id: string; name: string; source: string; created: number; images: number }
 
@@ -333,14 +337,14 @@ export interface InsightVersionDiff {
 }
 
 export interface InsightLabeling {
-  /** `annotation` = per-annotation author is recorded; `image_assignee` = only the image assignee is known. */
-  throughput_basis: 'annotation' | 'image_assignee'
+  /** Rows come from the same LabelEvent throughput definition the QA workforce page reads. */
+  throughput_basis: 'label_event'
   throughput: { date: string; labeler_id: string | null; labeler: string; annotations: number; images: number }[]
   review: { date: string; approved: number; rejected: number; rate: number }[]
   ai: {
-    human: number; ai: number; accepted_ai: number; acceptance_rate: number
-    /** `accepted` = AI labels on approved images that nobody has changed since. */
-    by_source: { source: string; count: number; accepted: number }[]
+    human: number; ai: number; accepted_ai: number; acceptance_rate: number | null
+    /** AI-sourced annotations currently on the images. */
+    by_source: { source: string; count: number }[]
   }
 }
 
@@ -544,3 +548,57 @@ export interface WorkerRow {
 export type ComponentStatus = 'operational' | 'degraded' | 'unknown'
 export interface StatusComponent { name: string; status: ComponentStatus; detail: string }
 export interface AdminStatus { checked: number; components: StatusComponent[] }
+// ---------- labeling QA & workforce (Task 23) ---------------------------------
+export interface LabelingTotals {
+  images: number; annotations: number; ai_acceptance: number | null; consensus_pending: number
+  honeypot_accuracy: number | null; review_queue: number
+}
+
+export interface LabelerStat {
+  user_id: string; name: string; role: Role; images: number; annotations: number; per_day: number
+  ai_acceptance: number | null; honeypot_accuracy: number | null; rejection_rate: number | null
+}
+
+export interface LabelingDashboard {
+  window_days: number
+  totals: LabelingTotals
+  labelers: LabelerStat[]
+  daily: { date: string; images: number; annotations: number }[]
+}
+
+export interface MyTask { job_id: string; image_id: string; name: string; thumbnail: string; created: number }
+
+export interface ReviewQueueItem {
+  image_id: string; name: string; thumbnail: string; disagreement: number
+  submissions: number; status: string; updated: number; annotations: number
+}
+
+export type ConsensusStatus = 'collecting' | 'ready' | 'merged'
+
+export interface ConsensusJob {
+  id: string; status: ConsensusStatus; k: number; iou_threshold: number; images: number
+  assignments: number; submitted: number; agreement: number | null; created_by: string | null; created: number
+}
+
+export interface ConsensusImage {
+  image_id: string; name: string; thumbnail: string; agreement: number | null; submissions: number
+  assignees: { user_id: string; name: string; submitted: boolean; count: number }[]
+}
+
+/** The job object with `images` replaced by the per-image detail rows. */
+export type ConsensusJobDetail = Omit<ConsensusJob, 'images'> & { image_ids: string[]; images: ConsensusImage[] }
+
+/** Result of submitting one labeler's private consensus draft for an image. */
+export interface ConsensusSubmitResult {
+  submitted: number; total: number; agreement: number | null
+  jobStatus: 'collecting' | 'ready'; jobId: string
+}
+
+export interface HoneypotItem {
+  id: string; image_id: string; name: string; thumbnail: string; annotations: number
+  attempts: number; accuracy: number | null; created: number
+}
+
+export interface HoneypotLabeler { user_id: string; name: string; attempts: number; accuracy: number | null }
+
+export interface HoneypotList { items: HoneypotItem[]; labelers: HoneypotLabeler[] }

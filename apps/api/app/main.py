@@ -13,8 +13,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
-from .routers import (admin, audit, auth, connectors, deployments, devapi, devmail, flags, images, insights, insights_models, ops,
-                      playground, privacy, projects, rbac, registry, remote, training, versions, videos, webhooks, workspaces)
+from .routers import (admin, audit, auth, connectors, deployments, devapi, devmail, flags, images, insights,
+                      insights_models, labeling, ops, playground, privacy, projects, rbac, registry, remote, training,
+                      versions, videos, webhooks, workspaces)
 from .security import check_signature
 from .services.streamaudit import StreamViewAuditMiddleware
 
@@ -61,7 +62,8 @@ async def security_headers(request, call_next):
 
 
 for r in (auth, workspaces, projects, images, videos, versions, devapi, training, remote, registry, playground,
-          connectors, webhooks, insights, insights_models, rbac, privacy, admin, audit, deployments, ops, flags):
+          connectors, webhooks, insights, insights_models, labeling, rbac, privacy, admin, audit, deployments, ops,
+          flags):
     app.include_router(r.router)
 app.include_router(registry.gpu_router)
 app.include_router(ops.ws_router)

@@ -9,7 +9,7 @@ import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import Float, String, case, cast, exists, func, select
+from sqlalchemy import Float, String, and_, case, cast, exists, func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
@@ -19,11 +19,11 @@ from ..config import MAX_UPLOAD_MB
 from ..db import get_db
 from ..deps import Ctx, audit, current_user, image_ctx, plan, project_ctx
 from ..gpu import GpuBusy
-from ..models import (SPLITS, STATUSES, Batch, Comment, Image, ImageClass, LabelClass, Member, Project, TrainedModel, User,
-                      new_id, now, set_annotations)
+from ..models import (SPLITS, STATUSES, Batch, Comment, Honeypot, Image, ImageClass, LabelClass, Member, Project,
+                      TrainedModel, User, new_id, now, set_annotations)
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import faceblur, imaging, importers, insights, metering, ml, segment
+from ..services import faceblur, imaging, importers, insights, labeling, labeling_ops, metering, ml, segment
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -50,8 +50,14 @@ def image_out(i: Image, full: bool = False, class_ids: list[str] | None = None) 
 
 
 def _assigned(c: Ctx, img: Image) -> tuple[Ctx, Image]:
-    """Labelers may only touch images assigned to them; reviewers/admins see everything."""
-    if c.project_role == "labeler" and img.assignee_id != c.user.id:
+    """Labelers may only touch images assigned to them; reviewers/admins see everything.
+
+    A live consensus assignment is an explicit assignment too: jobs round-robin images
+    across every workspace member, so those annotators must reach images they do not own.
+    """
+    if (c.project_role == "labeler" and img.assignee_id != c.user.id
+            and labeling_ops.latest_assignment(c.db, img.id, c.user.id) is None
+            and labeling_ops.merged_assignment_for(c.db, img.id, c.user.id) is None):
         raise HTTPException(403, "this image is not assigned to you")
     return c, img
 
@@ -82,7 +88,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     except importers.ImportError_ as e:
         raise HTTPException(400, str(e))
     if not bundle.images:
-        raise HTTPException(400, "no images found (supported: jpg, png, bmp, webp, tif — loose or in a .zip)")
+        raise HTTPException(400, "no images found (supported: jpg, png, bmp, webp, tif โ€” loose or in a .zip)")
     have = db.scalar(select(func.count(Image.id)).join(Project).where(Project.workspace_id == c.ws.id, Image.deleted_at.is_(None)))
     if have + len(bundle.images) > plan(c.ws)["images"]:
         raise HTTPException(402, f"image limit reached on the {plan(c.ws)['label']} plan")
@@ -150,7 +156,7 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
                  tags: str = Form(""), to_dataset: bool = Form(True), c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
     if len(files) > 2000:
-        raise HTTPException(413, "max 2000 files per request — the web uploader sends batches")
+        raise HTTPException(413, "max 2000 files per request โ€” the web uploader sends batches")
     budget = MAX_UPLOAD_MB * 1024 * 1024
     payload = []
     for f in files:
@@ -179,6 +185,12 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         if selected_ids is None:
             raise HTTPException(404, "selection not found")
         s = s.where(Image.id.in_(selected_ids))
+    # Annotators must not learn which images are honeypots through counts, filters or ordering:
+    # their effective annotation count is 0 everywhere, matching the blanked payload.
+    is_annotator = c.role == "annotator"
+    honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
+    n_ann = (case((Image.id.in_(honeypot_ids), 0), else_=Image.n_annotations)
+             if is_annotator else Image.n_annotations)
     if q:
         s = s.where(Image.name.ilike(f"%{q.replace('%', '').replace('_', '')}%"))
     if split:
@@ -190,11 +202,13 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
     if assignee:
         s = s.where(Image.assignee_id == (None if assignee == "none" else assignee))
     if annotated == "yes":
-        s = s.where(Image.n_annotations > 0)
+        s = s.where(n_ann > 0)
     elif annotated == "no":
-        s = s.where(Image.n_annotations == 0)
+        s = s.where(n_ann == 0)
     if class_id:
         s = s.where(exists().where(ImageClass.image_id == Image.id, ImageClass.class_id == class_id))
+        if is_annotator:
+            s = s.where(Image.id.not_in(honeypot_ids))     # the class index would name the answer key
     if tag:
         # tags is a JSON list; match the quoted element in its text form (portable sqlite/postgres)
         pat = json.dumps(tag).replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
@@ -209,9 +223,9 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
     if max_ar is not None:
         s = s.where(cast(Image.width, Float) / func.nullif(Image.height, 0) < max_ar)
     if min_ann is not None:
-        s = s.where(Image.n_annotations >= min_ann)
+        s = s.where(n_ann >= min_ann)
     if max_ann is not None:
-        s = s.where(Image.n_annotations <= max_ann)
+        s = s.where(n_ann <= max_ann)
     total = c.db.scalar(select(func.count()).select_from(s.subquery()))
     start, size = max(0, offset), max(1, min(limit, 1000))
     if sort == "review":
@@ -219,9 +233,11 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         # Ranking needs annotation JSON, so bound the scan instead of hydrating the whole project.
         conf = float((c.project.settings or {}).get("autolabel_conf", 0.4))
         rows = c.db.scalars(s.order_by(Image.created.desc(), Image.id).limit(2000)).all()
+        hidden_rows = (set(c.db.scalars(select(Honeypot.image_id).where(
+            Honeypot.image_id.in_([r.id for r in rows])))) if is_annotator and rows else set())
 
         def rank(img):
-            anns = img.annotations or []
+            anns = [] if img.id in hidden_rows else (img.annotations or [])
             low = any(a.get("source") not in (None, "human", "vlm+sam3") and isinstance(a.get("confidence"), (int, float))
                       and a["confidence"] < conf + 0.15 for a in anns)
             vlm = any(a.get("source") == "vlm+sam3" for a in anns)
@@ -231,7 +247,7 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         rows = rows[start:start + size]
     else:
         order = {"newest": Image.created.desc(), "oldest": Image.created, "name": Image.name,
-                 "most": Image.n_annotations.desc(), "least": Image.n_annotations}.get(sort, Image.created.desc())
+                 "most": n_ann.desc(), "least": n_ann}.get(sort, Image.created.desc())
         rows = c.db.scalars(s.options(defer(Image.annotations)).order_by(order, Image.id)
                             .offset(start).limit(size)).all()
     by_img: dict[str, list[str]] = {}
@@ -239,7 +255,19 @@ def list_images(q: str = "", split: str = "", status: str = "", class_id: str = 
         for iid, cid in c.db.execute(select(ImageClass.image_id, ImageClass.class_id)
                                      .where(ImageClass.image_id.in_([r.id for r in rows]))):
             by_img.setdefault(iid, []).append(cid)
-    return {"total": total, "items": [image_out(r, class_ids=sorted(by_img.get(r.id, []))) for r in rows]}
+    # a honeypot row would otherwise leak its answer key through counts and AI-review flags
+    hidden = set()
+    if is_annotator and rows:
+        hidden = set(c.db.scalars(select(Honeypot.image_id).where(
+            Honeypot.image_id.in_([r.id for r in rows]))))
+    items = []
+    for r in rows:
+        out = image_out(r, class_ids=sorted(by_img.get(r.id, [])))
+        if r.id in hidden:
+            out.update(annotationCount=0, annotated=False, classIds=[], review=None)
+        items.append(out)
+    return {"total": total, "items": items}
+
 
 
 class BulkIn(BaseModel):
@@ -290,8 +318,12 @@ def bulk(body: BulkIn, c: Ctx = Depends(project_ctx)):
 
 @router.get(P + "/board")
 def board(c: Ctx = Depends(project_ctx)):
+    honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
+    # the "annotated" badge must not count a honeypot's hidden answer key for annotators
+    known = (case((and_(Image.n_annotations > 0, Image.id.not_in(honeypot_ids)), 1), else_=0)
+             if c.role == "annotator" else case((Image.n_annotations > 0, 1), else_=0))
     s = _visible(select(Image.batch_id, Image.assignee_id, Image.status, func.count(),
-                        func.sum(case((Image.n_annotations > 0, 1), else_=0))).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
+                        func.sum(known)).where(Image.project_id == c.project.id, Image.deleted_at.is_(None)), c)
     rows = c.db.execute(s.group_by(Image.batch_id, Image.assignee_id, Image.status)).all()
     batches = {b.id: b for b in c.db.scalars(select(Batch).where(Batch.project_id == c.project.id))}
     users = {u.id: u.name for u in c.db.scalars(select(User).join(Member, Member.user_id == User.id)
@@ -318,7 +350,7 @@ class BoardMove(BaseModel):
 
 @router.post(P + "/board/move")
 def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
-    """Move a kanban card (batch × assignee × status) to another column."""
+    """Move a kanban card (batch ร— assignee ร— status) to another column."""
     if body.to_status not in STATUSES:
         raise HTTPException(400, "bad status")
     # annotators may only submit their own work for review; everything else needs reviewer+
@@ -329,7 +361,11 @@ def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
     if body.assignee_id is not None:
         s = s.where(Image.assignee_id == (body.assignee_id or None))
     if body.only_annotated:
-        s = s.where(Image.n_annotations > 0)
+        n_ann = Image.n_annotations
+        if c.role == "annotator":
+            honeypot_ids = select(Honeypot.image_id).where(Honeypot.project_id == c.project.id)
+            n_ann = case((Image.id.in_(honeypot_ids), 0), else_=Image.n_annotations)
+        s = s.where(n_ann > 0)
     rows = c.db.scalars(s).all()
     if body.set_assignee and not c.db.get(Member, (c.ws.id, body.set_assignee)):
         raise HTTPException(400, "assignee is not a workspace member")
@@ -348,10 +384,31 @@ def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
 
 # --- single image -------------------------------------------------------------------------------
 
+def _image_with_annotations(c: Ctx, img: Image) -> dict:
+    """Annotations this caller may see: a private consensus draft, an empty honeypot canvas, or the image labels."""
+    assignment = labeling_ops.latest_assignment(c.db, img.id, c.user.id)
+    job_id = None
+    hide_key = False
+    if assignment is not None:                  # consensus drafts stay private until the job is merged
+        anns, job_id = list(assignment.annotations or []), assignment.job_id
+    elif c.role == "annotator" and labeling_ops.honeypot_for_image(c.db, img.id) is not None:
+        # the answer key stays with reviewers; labelers are scored on an empty canvas, with no hint why
+        anns, hide_key = [], True
+    else:
+        anns = list(img.annotations or [])
+    out = image_out(img, full=True)
+    out["annotations"] = anns
+    if hide_key:                               # every GT-derived field, not just the payload
+        out.update(annotationCount=0, annotated=False, classIds=[], review=None)
+    if job_id:
+        out["consensusJob"] = job_id
+    return out
+
+
 @router.get("/api/images/{image_id}")
 def get_image(image_id: str, u: User = Depends(current_user), db: Session = Depends(get_db)):
     c, img = _assigned(*image_ctx(db, u, image_id))
-    return image_out(img, full=True)
+    return _image_with_annotations(c, img)
 
 
 class AnnotationsIn(BaseModel):
@@ -378,7 +435,7 @@ def _check_ann(a: dict) -> dict:
     elif s["kind"] == "polygon":
         pts = s.get("points")
         if not isinstance(pts, list) or not (6 <= len(pts) <= 20_000) or len(pts) % 2 or not all(_num(v) for v in pts):
-            raise HTTPException(400, "polygon needs 3–10,000 normalised points")
+            raise HTTPException(400, "polygon needs 3โ€“10,000 normalised points")
         shape = {"kind": "polygon", "points": [float(v) for v in pts]}
     elif s["kind"] == "obb":
         if not (_num(s.get("cx")) and _num(s.get("cy")) and _num(s.get("w")) and _num(s.get("h"))):
@@ -386,7 +443,7 @@ def _check_ann(a: dict) -> dict:
         angle = s.get("angle")
         if (not isinstance(angle, (int, float)) or isinstance(angle, bool) or not math.isfinite(angle)
                 or not -2 * math.pi <= angle <= 2 * math.pi):
-            raise HTTPException(400, "obb angle must be a finite number of radians within ±2π")
+            raise HTTPException(400, "obb angle must be a finite number of radians within ยฑ2ฯ€")
         shape = {"kind": "obb", **{k: float(s[k]) for k in ("cx", "cy", "w", "h")}, "angle": float(angle)}
     elif s["kind"] == "keypoints":
         pts = s.get("points")
@@ -394,7 +451,7 @@ def _check_ann(a: dict) -> dict:
                 or not all(_num(pts[i]) and _num(pts[i + 1]) for i in range(0, len(pts), 3))
                 or not all(isinstance(pts[i], (int, float)) and not isinstance(pts[i], bool) and pts[i] in (0, 1, 2)
                            for i in range(2, len(pts), 3))):
-            raise HTTPException(400, "keypoints need 3–3000 flat normalised x,y,v values (v in 0,1,2)")
+            raise HTTPException(400, "keypoints need 3โ€“3000 flat normalised x,y,v values (v in 0,1,2)")
         shape = {"kind": "keypoints", "points": [float(pts[i]) if i % 3 != 2 else int(pts[i]) for i in range(len(pts))]}
     else:
         shape = {"kind": "class"}
@@ -420,11 +477,38 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
     if len(body.annotations) > 5000:
         raise HTTPException(413, "too many annotations on one image (max 5000)")
     c, img = _assigned(*image_ctx(db, u, image_id))
-    set_annotations(db, img, [_check_ann(a) for a in body.annotations])
+    assignment = labeling_ops.latest_assignment(db, img.id, u.id)
+    if assignment is not None and len(body.annotations) > labeling.MAX_DRAFT_ANNOTATIONS:
+        # the merge runs synchronously; an oversized draft would block every other request
+        raise HTTPException(413, f"at most {labeling.MAX_DRAFT_ANNOTATIONS} annotations per consensus draft")
+    if assignment is not None and assignment.submitted is not None:
+        # this draft is already part of the image's consensus total; keep that total bounded too
+        labeling_ops.check_image_cap(db, assignment.job_id, img.id, u.id, len(body.annotations))
+    checked = [_check_ann(a) for a in body.annotations]
+    if assignment is not None:
+        # consensus mode: autosave keeps the draft private and does NOT submit it; the Image row is
+        # only written when the job is merged.
+        before = list(assignment.annotations or [])
+        labeling_ops.record_save(db, c.ws.id, img, u.id, before, checked, assignment)
+        db.commit()
+        return {"saved": len(checked), "status": "consensus", "jobId": assignment.job_id}
+    if c.role == "annotator":
+        # A rejected merge goes back to the labeler (status "annotating"); any other state is frozen.
+        if (labeling_ops.merged_assignment_for(db, img.id, u.id) is not None
+                and img.status != "annotating"):
+            raise HTTPException(409, "this consensus job is already merged")
+        if labeling_ops.honeypot_for_image(db, img.id) is not None:
+            # score the attempt but never write it over the answer key: a reopen shows the empty canvas again
+            labeling_ops.record_save(db, c.ws.id, img, u.id, [], checked)
+            db.commit()
+            return {"saved": len(checked), "status": "honeypot"}
+    before = list(img.annotations or [])
+    set_annotations(db, img, checked)
     if img.status == "unassigned" and img.n_annotations:
         img.status, img.assignee_id = "annotating", img.assignee_id or u.id
     img.updated = now()
     c.project.updated = now()
+    labeling_ops.record_save(db, c.ws.id, img, u.id, before, checked)
     db.commit()
     return {"saved": img.n_annotations, "status": img.status}
 
@@ -452,7 +536,7 @@ def patch_image(image_id: str, body: ImagePatch, u: User = Depends(current_user)
             c.need("reviewer")
         img.status = body.status
     img.updated = now(); db.commit()
-    return image_out(img, full=True)
+    return _image_with_annotations(c, img)
 
 
 @router.delete("/api/images/{image_id}")
@@ -479,7 +563,7 @@ def review(image_id: str, body: ReviewIn, u: User = Depends(current_user), db: S
     img.review = "approved" if body.approved else "rejected"
     img.status = "done" if body.approved else "annotating"
     if body.note:
-        db.add(Comment(image_id=img.id, user_id=u.id, text=("✓ " if body.approved else "✗ Rejected: ") + body.note))
+        db.add(Comment(image_id=img.id, user_id=u.id, text=("โ“ " if body.approved else "โ— Rejected: ") + body.note))
     audit(db, c.ws.id, u.id, "image.review", img.name, approved=body.approved, project_id=c.project.id)
     img.updated = now(); db.commit()
     return image_out(img, full=True)
@@ -534,6 +618,9 @@ MAX_SUGGEST_CLASSES = 24       # one VLM round-trip per class; keep a single cli
 @router.post("/api/images/{image_id}/suggest-class")
 def suggest_class(image_id: str, body: SuggestIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     c, img = _assigned(*image_ctx(db, u, image_id))
+    if c.role == "annotator" and labeling_ops.honeypot_for_image(db, img.id) is not None:
+        # no oracle: the labeler cannot see the key, so they cannot ask the VLM about a hidden annotation
+        raise HTTPException(404, "annotation not found")
     ann = next((a for a in img.annotations or [] if a.get("id") == body.annotation_id), None)
     if ann is None:
         raise HTTPException(404, "annotation not found")
@@ -583,7 +670,7 @@ def smart_polygon(image_id: str, body: SmartIn, u: User = Depends(current_user),
         raise HTTPException(400, "click at least one point")
     poly, source = segment.smart_polygon(imaging.load(img.path), body.points, body.negatives)
     if not poly:
-        raise HTTPException(422, "could not find an object at those points — try clicking nearer its centre")
+        raise HTTPException(422, "could not find an object at those points โ€” try clicking nearer its centre")
     return {"polygon": poly, "source": source}
 
 
