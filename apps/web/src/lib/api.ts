@@ -7,10 +7,11 @@ import type {
   DpaDoc, HoneypotItem, HoneypotList, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry,
   InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary,
   InsightVersionDiff, Job, LabelClass, LabelingDashboard, LeaderboardRow, Lineage, Me, Member, ModelDetections,
-  ModelInsights, ModelItem, MyTask, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy,
-  ProjectPrivacyInput, ProjectRole, RegistryItem, ReviewQueueItem, RoleLevel, StreamAnalytics, StreamCreateBody,
-  StreamEventItem, StreamEventPage, StreamItem, StreamPatchBody, StreamVideoUpload, TrainingInsights, Version,
-  VideoFrame, VideoItem, WidgetData, WorkerRow, WorkspaceFlags, WorkspaceHome, WorkspaceInfo, WorkspacePrivacy,
+  ModelInsights, ModelItem, MyTask, Permissions, PlaygroundResult, PlaygroundRuntime, PlaygroundSample, Project,
+  ProjectAccess, ProjectPrivacy, ProjectPrivacyInput, ProjectRole, RegistryItem, ReviewQueueItem, RoleLevel,
+  StreamAnalytics, StreamCreateBody, StreamEventItem, StreamEventPage, StreamItem, StreamPatchBody, StreamVideoUpload,
+  TrainingInsights, Version, VideoFrame, VideoItem, WidgetData, WorkerRow, WorkspaceFlags, WorkspaceHome,
+  WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -192,6 +193,9 @@ export const api = {
   autolabelPreview: (ws: string, p: string, body: AutoLabelInput & { sample?: number }) =>
     post<AutoLabelPreview>(`${P(ws, p)}/autolabel/preview`, body),
   playgroundPredict: (ws: string, form: FormData) => post<{ results: PlaygroundResult[] }>(`/ws/${ws}/playground/predict`, form),
+  playgroundPreflight: (ws: string, refs: string[]) =>
+    post<{ models: PlaygroundRuntime[] }>(`/ws/${ws}/playground/preflight`, { model_refs: refs }),
+  playgroundSamples: (ws: string, limit = 6) => get<{ samples: PlaygroundSample[] }>(`/ws/${ws}/playground/samples?limit=${limit}`),
   insights: {
     summary: (ws: string, p: string, version?: string) =>
       get<InsightSummary>(`${P(ws, p)}/insights/summary${version ? `?version=${encodeURIComponent(version)}` : ''}`),
