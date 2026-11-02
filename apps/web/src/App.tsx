@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useWorkspaceFlags } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
@@ -105,6 +106,13 @@ function PermGate({ perm, children }: { perm: string; children: React.ReactNode 
   return can(perm) ? <>{children}</> : <Navigate to=".." replace />
 }
 
+/** Launch gate: a shipped surface stays unreachable until its workspace flag is on (I13). */
+function FlagGate({ flag, children }: { flag: string; children: React.ReactNode }) {
+  const q = useWorkspaceFlags()
+  if (q.isLoading) return <Loading />
+  return q.data?.enabled.includes(flag) ? <>{children}</> : <Navigate to=".." replace />
+}
+
 /** Platform operators only; the API enforces the same flag on /api/admin. */
 function SuperAdminGate({ children }: { children: React.ReactNode }) {
   // Read the cached /me result directly: the store's superadmin flag is published in an effect,
@@ -162,23 +170,23 @@ export default function App() {
             <Route path="upload" element={<PermGate perm="project.upload"><Upload /></PermGate>} />
             <Route path="annotate" element={<PermGate perm="project.annotate"><AnnotateBoard /></PermGate>} />
             <Route path="browse" element={<Dataset />} />
-            <Route path="videos" element={<PermGate perm="project.annotate"><VideoTimeline /></PermGate>} />
+            <Route path="videos" element={<FlagGate flag="task_22"><PermGate perm="project.annotate"><VideoTimeline /></PermGate></FlagGate>} />
             <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />
             <Route path="insights" element={<PermGate perm="project.review"><Insights /></PermGate>} />
             <Route path="model-insights" element={<PermGate perm="project.review"><ModelInsights /></PermGate>} />
-            <Route path="lineage" element={<PermGate perm="project.review"><Lineage /></PermGate>} />
-            <Route path="dashboards" element={<PermGate perm="project.review"><Dashboards /></PermGate>} />
+            <Route path="lineage" element={<FlagGate flag="task_20c"><PermGate perm="project.review"><Lineage /></PermGate></FlagGate>} />
+            <Route path="dashboards" element={<FlagGate flag="task_20c"><PermGate perm="project.review"><Dashboards /></PermGate></FlagGate>} />
             {/* A shared dashboard is a read-only link for every project member, matching the API. */}
-            <Route path="dashboards/shared/:token" element={<PermGate perm="project.read"><DashboardEditor /></PermGate>} />
-            <Route path="dashboards/:id" element={<PermGate perm="project.review"><DashboardEditor /></PermGate>} />
-            <Route path="stream-analytics" element={<PermGate perm="project.review"><StreamAnalytics /></PermGate>} />
+            <Route path="dashboards/shared/:token" element={<FlagGate flag="task_20c"><PermGate perm="project.read"><DashboardEditor /></PermGate></FlagGate>} />
+            <Route path="dashboards/:id" element={<FlagGate flag="task_20c"><PermGate perm="project.review"><DashboardEditor /></PermGate></FlagGate>} />
+            <Route path="stream-analytics" element={<FlagGate flag="task_20c"><PermGate perm="project.review"><StreamAnalytics /></PermGate></FlagGate>} />
             <Route path="classes" element={<PermGate perm="project.classes"><Classes /></PermGate>} />
             <Route path="train" element={<PermGate perm="project.train"><Train /></PermGate>} />
             <Route path="models" element={<PermGate perm="project.models"><Models /></PermGate>} />
             <Route path="deploy" element={<PermGate perm="project.models"><Deploy /></PermGate>} />
-            <Route path="streams" element={<PermGate perm="project.read"><Streams /></PermGate>} />
-            <Route path="streams/:sid" element={<PermGate perm="project.read"><StreamDetail /></PermGate>} />
-            <Route path="qa" element={<PermGate perm="project.review"><QA /></PermGate>} />
+            <Route path="streams" element={<FlagGate flag="task_10b"><PermGate perm="project.read"><Streams /></PermGate></FlagGate>} />
+            <Route path="streams/:sid" element={<FlagGate flag="task_10b"><PermGate perm="project.read"><StreamDetail /></PermGate></FlagGate>} />
+            <Route path="qa" element={<FlagGate flag="task_23"><PermGate perm="project.review"><QA /></PermGate></FlagGate>} />
             <Route path="settings" element={<ProjectSettings />} />
             {/* Nav v2 folds Access into Project settings; old deep links keep their tab. */}
             {Object.entries(LEGACY_PROJECT_PATHS).map(([from, to]) => (

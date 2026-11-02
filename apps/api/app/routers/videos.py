@@ -12,6 +12,7 @@ from ..deps import Ctx, current_user, image_ctx, project_ctx
 from ..models import Image, Job, User, Video, new_id, set_annotations
 from ..security import sign_path
 from ..services import metering, video as video_svc
+from ..services.flags import require_flag
 from ..services.video import MAX_INTERPOLATION_SPAN
 from .images import _assigned, _visible
 from .projects import job_out
@@ -35,7 +36,7 @@ def _get_video(c: Ctx, vid: str) -> Video:
     return v
 
 
-@router.post(P + "/videos")
+@router.post(P + "/videos", dependencies=[Depends(require_flag("task_22"))])
 async def upload_video(file: UploadFile = File(...), batch_name: str = Form(""), mode: str = Form("fps"),
                        target_fps: float = Form(1.0), every_s: float = Form(1.0),
                        scene_threshold: float = Form(0.35), c: Ctx = Depends(project_ctx)):
@@ -79,19 +80,19 @@ async def upload_video(file: UploadFile = File(...), batch_name: str = Form(""),
     return {"video": video_out(v), "job": job_out(j)}
 
 
-@router.get(P + "/videos")
+@router.get(P + "/videos", dependencies=[Depends(require_flag("task_22"))])
 def list_videos(c: Ctx = Depends(project_ctx)):
     rows = c.db.scalars(select(Video).where(Video.project_id == c.project.id, Video.workspace_id == c.ws.id,
                                             Video.deleted_at.is_(None)).order_by(Video.created.desc())).all()
     return [video_out(v) for v in rows]
 
 
-@router.get(P + "/videos/{vid}")
+@router.get(P + "/videos/{vid}", dependencies=[Depends(require_flag("task_22"))])
 def get_video(vid: str, c: Ctx = Depends(project_ctx)):
     return video_out(_get_video(c, vid))
 
 
-@router.get(P + "/videos/{vid}/timeline")
+@router.get(P + "/videos/{vid}/timeline", dependencies=[Depends(require_flag("task_22"))])
 def timeline(vid: str, from_index: int = Query(0, alias="from"), limit: int = Query(120, ge=1, le=500),
              c: Ctx = Depends(project_ctx)):
     v = _get_video(c, vid)
@@ -113,7 +114,7 @@ class InterpolateIn(BaseModel):
     to_image_id: str
 
 
-@router.post(P + "/videos/{vid}/interpolate")
+@router.post(P + "/videos/{vid}/interpolate", dependencies=[Depends(require_flag("task_22"))])
 def interpolate(vid: str, body: InterpolateIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
     v = _get_video(c, vid)

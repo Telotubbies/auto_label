@@ -702,7 +702,8 @@ function FeatureFlags() {
       <div>
         <h2 className="font-semibold">Feature flags</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          New features stay off until you turn them on here. Turning one on affects this workspace only.
+          These flags gate the preview surfaces shipped in this release. Turning one on affects this
+          workspace only; its API and navigation are disabled while it is off.
         </p>
       </div>
       {q.isLoading ? (

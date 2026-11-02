@@ -5,8 +5,10 @@ from pydantic import BaseModel, Field
 
 from ..deps import Ctx, project_ctx
 from ..services import insights_lineage, insights_query, insights_stream
+from ..services.flags import require_flag
 
-router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/insights", tags=["insights"])
+router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/insights", tags=["insights"],
+                   dependencies=[Depends(require_flag("task_20c"))])
 
 
 class QueryIn(BaseModel):

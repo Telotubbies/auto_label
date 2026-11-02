@@ -28,6 +28,14 @@ os.environ.setdefault("LD_SAM_ENABLED", "0")
 os.environ.setdefault("LD_CLIP", "0")              # optional CLIP: keep the cheap deterministic features
 os.environ.setdefault("LD_RATE_LIMIT", "0")
 os.environ.setdefault("LD_WEBHOOK_FLUSH", "0")
+# Values read once at `app` import: pin them here, not in the module that happens to import first,
+# or a mixed pytest selection freezes the wrong ones for every later module (I15).
+os.environ["LD_ENV"] = "dev"
+os.environ["LD_MAIL_DEV"] = "1"
+os.environ["LD_PUBLIC_URL"] = "http://localhost:5173"   # the dev inbox also requires a localhost origin
+os.environ["LD_SEED_DEMO"] = "1"
+# The suite exercises the shipped surfaces; a workspace turns them off through the same flag API.
+os.environ["LD_FLAGS_ON"] = "task_10b,task_20c,task_22,task_23"
 
 import pytest
 

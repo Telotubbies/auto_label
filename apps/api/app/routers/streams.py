@@ -17,11 +17,13 @@ from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, Workspace
 from ..security import check_signature, sign_path, sign_query
 from ..streams.event_fields import class_key
+from ..services.flags import require_workspace_flag
 from ..streams.manager import check_source, display_source, manager
 from .images import ingest, safe_name
 
 P = "/api/ws/{ws}/projects/{project}/streams"
-router = APIRouter(prefix=P, tags=["streams"])
+router = APIRouter(prefix=P, tags=["streams"],
+                   dependencies=[Depends(require_workspace_flag("task_10b"))])
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 TOKEN_TTL = 12 * 3600

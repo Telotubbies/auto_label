@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { ArrowRight, Cctv, ScanSearch, Spline, type LucideIcon } from 'lucide-react'
+import { useCapabilities } from '@/lib/capabilities'
 import { cn } from '@/lib/utils'
+import { landingAddonState } from '../addons'
 import { CornerMarks, Reveal, SectionHeading, SectionShell } from '../primitives'
 
 /** Three offset annotation rectangles, one with corner handles, over a crosshair. */
@@ -133,6 +135,8 @@ function CapabilityCard({ tone, icon: Icon, title, lead, detail, href, linkLabel
 }
 
 export default function CapabilitiesSection() {
+  const { samAvailable } = useCapabilities()
+  const addon = landingAddonState(samAvailable)
   return (
     <SectionShell id="capabilities" aria-labelledby="capabilities-title" className="py-20 sm:py-28 lg:py-32">
       <SectionHeading
@@ -162,7 +166,9 @@ export default function CapabilitiesSection() {
             icon={Spline}
             title="Segment"
             lead="Turn rough boxes into tight masks, then move a vertex when the edge matters."
-            detail="Connect SAM 3.1 for the first pass; you handle the last 5%."
+            detail={addon.available
+              ? 'SAM 3.1 drafts the first pass; you handle the last 5%.'
+              : `${addon.label}. ${addon.detail}`}
             href="#models"
             linkLabel="Learn more about segmentation"
             visual={<SegmentVisual />}

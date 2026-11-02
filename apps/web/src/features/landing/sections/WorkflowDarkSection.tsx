@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Cpu, Rocket, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCapabilities } from '@/lib/capabilities'
+import { landingAddonState } from '../addons'
 import { CornerMarks, DotGrid, Reveal, TagPill } from '../primitives'
 
 // ---------- data ---------------------------------------------------------------
 
 const STEPS = [
-  { n: '01', title: 'Label', body: 'Upload a folder, let SAM 3.1 draft masks when you connect it, and review only what the VLM marks uncertain.' },
+  { n: '01', title: 'Label', body: 'Upload a folder, let SAM 3.1 draft masks when an operator connects it, and review only what the VLM marks uncertain.' },
   { n: '02', title: 'Train', body: 'Freeze a version, pick a family, and watch loss and mAP without leaving the page.' },
   { n: '03', title: 'Deploy', body: 'Attach the model to a stream, draw zones, and read events as they land.' },
 ]
@@ -39,6 +41,8 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 export default function WorkflowDarkSection() {
   const bandRef = useRef<HTMLElement>(null)
   const [activeStep, setActiveStep] = useState(0)
+  const { samAvailable } = useCapabilities()
+  const addon = landingAddonState(samAvailable)
 
   // Scroll progress through the band drives the current step. One passive listener, one rAF, one state
   // update per index change (React bails out when the value is unchanged).
@@ -138,8 +142,7 @@ export default function WorkflowDarkSection() {
                   })}
                 </ol>
                 <p className="mt-4 text-xs leading-relaxed text-background/70 dark:text-foreground/70">
-                  SAM 3.1 and the VLM are optional add-ons: connect them to the worker and step 01 drafts and checks
-                  masks for you. Without them, labeling stays manual.
+                  {addon.label}: {addon.detail} Without them, labeling stays manual.
                 </p>
               </div>
 

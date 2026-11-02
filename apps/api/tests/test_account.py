@@ -10,9 +10,7 @@ import time
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
-os.environ["LD_MAIL_DEV"] = "1"
-os.environ["LD_ENV"] = "dev"
-os.environ["LD_PUBLIC_URL"] = "http://localhost:5173"   # the inbox also requires a localhost origin
+# LD_ENV, LD_MAIL_DEV, LD_PUBLIC_URL and LD_SEED_DEMO are pinned by conftest before any app import.
 os.environ.pop("LD_SMTP_HOST", None)          # a developer's exported SMTP config must not change these tests
 os.environ.pop("LD_SECRET_OLD", None)
 

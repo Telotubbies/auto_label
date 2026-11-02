@@ -19,7 +19,8 @@ from app.models import Audit, User, Workspace, WorkspaceFlag
 from app.services import flags
 
 WS = "labeldesk-demo"
-FLAG = "task_f1"
+FLAG = "task_10b"
+SURFACES = {"task_10b", "task_20c", "task_22", "task_23"}
 
 
 def login(email: str = "demo@labeldesk.dev", pw: str = "demo1234") -> TestClient:
@@ -46,6 +47,15 @@ def admin():
 def labeler():
     with TestClient(app):
         yield login("labeler@labeldesk.dev")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _no_global_force():
+    """This module proves the default (off); the shared suite forces the shipped flags on."""
+    saved = os.environ.pop("LD_FLAGS_ON", None)
+    yield
+    if saved is not None:
+        os.environ["LD_FLAGS_ON"] = saved
 
 
 @pytest.fixture(autouse=True)
@@ -153,3 +163,15 @@ def test_require_flag_unknown_key_is_404():
         with pytest.raises(HTTPException) as off:
             flags.require_flag("not_a_real_flag")(ctx)
         assert off.value.status_code == 404
+
+
+def test_registry_names_every_shipped_surface():
+    assert SURFACES <= set(flags.FLAGS)
+
+
+def test_streams_surface_is_gated_until_enabled(admin):
+    """I13: the flag has to gate the shipped route, not just appear in the toggle list."""
+    path = f"/api/ws/{WS}/projects/ppe-detection/streams"
+    assert admin.get(path).status_code == 404
+    assert admin.put(f"/api/ws/{WS}/flags/{FLAG}", json={"enabled": True}).status_code == 200
+    assert admin.get(path).status_code == 200

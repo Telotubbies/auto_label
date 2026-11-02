@@ -6,8 +6,10 @@ from sqlalchemy import select
 from ..deps import Ctx, audit, project_ctx
 from ..models import ConsensusJob, Honeypot
 from ..services import labeling_ops
+from ..services.flags import require_flag
 
-router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/labeling", tags=["labeling"])
+router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/labeling", tags=["labeling"],
+                   dependencies=[Depends(require_flag("task_23"))])
 
 
 def _job(c: Ctx, job_id: str) -> ConsensusJob:
