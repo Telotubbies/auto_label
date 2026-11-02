@@ -1,10 +1,11 @@
 // Typed API client. VITE_API_URL points at the API origin when web and api are on
 // different hosts (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 import type {
-  Annotation, Analytics, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, InsightDistribution, InsightEmbedding,
-  InsightGeometry, InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary,
-  InsightVersionDiff, Job, LabelClass, LeaderboardRow, Me, Member, ModelItem, PlaygroundResult, Project, RegistryItem, Version,
-  WorkspaceInfo,
+  Analytics, Annotation, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, ImageItem,
+  InsightDistribution, InsightEmbedding, InsightGeometry, InsightImageStats, InsightLabeling, InsightLeakage,
+  InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass, LeaderboardRow, Me,
+  Member, ModelDetections, ModelInsights, ModelItem, PlaygroundResult, Project, RegistryItem, TrainingInsights,
+  Version, WorkspaceInfo,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -119,6 +120,13 @@ export const api = {
   leaderboard: (ws: string, p: string) => get<LeaderboardRow[]>(`${P(ws, p)}/leaderboard`),
   jobs: (ws: string, p: string, kind = '') => get<Job[]>(`${P(ws, p)}/jobs${kind ? `?kind=${kind}` : ''}`),
   analytics: (ws: string, p: string) => get<Analytics>(`${P(ws, p)}/analytics`),
+  insightsTraining: (ws: string, p: string, runs?: string[]) =>
+    get<TrainingInsights>(`${P(ws, p)}/insights/training${runs?.length ? `?runs=${encodeURIComponent(runs.join(','))}` : ''}`),
+  insightsModel: (ws: string, p: string, id: string) => get<ModelInsights>(`${P(ws, p)}/insights/models/${id}`),
+  insightsDetections: (ws: string, p: string, id: string, files: string[]) =>
+    get<ModelDetections>(`${P(ws, p)}/insights/models/${id}/detections?files=${encodeURIComponent(files.join(','))}`),
+  insightsCompare: (ws: string, p: string, models: string[]) =>
+    get<CompareInsights>(`${P(ws, p)}/insights/compare?models=${encodeURIComponent(models.join(','))}`),
   healthCheck: (ws: string, p: string, imgsz?: number) => post<Job>(`${P(ws, p)}/health`, imgsz ? { imgsz } : {}),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),
   registry: (ws: string) => get<RegistryItem[]>(`/ws/${ws}/registry`),
