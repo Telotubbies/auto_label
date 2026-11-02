@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/labeldesk-v2
+      - "task/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Change these two paths together with tools/ld-task when the app folders move.
+env:
+  FRONTEND_APP: apps/web
+  BACKEND_APP: apps/api
+
+jobs:
+  tools:
+    name: tools and ld-task
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test tools
+        run: python -m pip install --disable-pip-version-check ruff pytest
+      - name: Lint tools
+        run: ruff check --line-length=120 tools/ld-task tools
+      - name: Check formatting
+        run: ruff format --check --line-length=120 tools/ld-task tools/tests/test_ld_task.py
+      - name: Test ld-task in throwaway worktrees
+        run: pytest tools/tests -q
+
+  api:
+    name: api syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile api and tools
+        run: python -m compileall -q "$BACKEND_APP" tools
+
+  web:
+    name: web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for frontend package
+        id: app
+        run: |
+          if [ -f "$FRONTEND_APP/package.json" ]; then
+            echo "present=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=no" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.app.outputs.present == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ env.FRONTEND_APP }}/package-lock.json
+      - if: steps.app.outputs.present == 'yes'
+        name: Install frontend dependencies
+        working-directory: ${{ env.FRONTEND_APP }}
+        run: npm ci
+      - if: steps.app.outputs.present == 'yes'
+        name: Build frontend
+        working-directory: ${{ env.FRONTEND_APP }}
+        run: npm run build

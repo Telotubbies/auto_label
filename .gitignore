@@ -94,3 +94,6 @@ design-ref/
 # Agent worktrees and SDD scratch
 .claude/worktrees/
 .claude/settings.local.json
+
+# Per-task environment written by tools/ld-task
+.env.task
