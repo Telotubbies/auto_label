@@ -351,8 +351,10 @@ def purge(pid: str, c: Ctx = Depends(ws_ctx)):
     p = c.db.get(Project, pid)
     if not p or p.workspace_id != c.ws.id or not p.deleted_at:
         raise HTTPException(404, "project not in trash")
-    audit(c.db, c.ws.id, c.user.id, "project.purge", p.name)
     from ..services.erasure import delete_project_data
-    delete_project_data(c.db, p)        # bytes first; the DB cascade never touches the volume
+    _, ok = delete_project_data(c.db, p)        # bytes first; the DB cascade never touches the volume
+    if not ok:
+        raise HTTPException(409, "some files could not be deleted; retry")
+    audit(c.db, c.ws.id, c.user.id, "project.purge", p.name)
     c.db.delete(p); c.db.commit()
     return {"ok": True}

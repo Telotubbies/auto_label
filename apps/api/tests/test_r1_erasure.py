@@ -1,4 +1,5 @@
 """I3: purging a project removes every file prefix that belongs to it, and only its own."""
+import os
 import uuid
 
 from app.config import DATA_DIR
@@ -52,7 +53,8 @@ def test_project_purge_removes_all_prefixes():
 
     from app.services.erasure import delete_project_data
     with SessionLocal() as db:
-        delete_project_data(db, db.get(Project, pid))
+        freed, ok = delete_project_data(db, db.get(Project, pid))
+    assert ok and freed > 0
     for rel in (f"projects/{pid}", f"videos/{suffix}.mp4", f"models/{mid}", f"runs/{mid}", f"versions/{vid}",
                 f"exports/{vid}", f"snapshots/{pid}", f"workspaces/{wid}/drift/{pid}"):
         assert not (DATA_DIR / rel).exists(), rel
@@ -81,8 +83,9 @@ def test_version_delete_erases_its_bytes_only():
 
     from app.services.erasure import delete_version_data
     with SessionLocal() as db:
-        freed = delete_version_data(db, db.get(Version, gone_id))
+        freed, ok = delete_version_data(db, db.get(Version, gone_id))
 
+    assert ok
     assert freed > 0
     assert not (DATA_DIR / f"versions/{gone_id}").exists()
     assert not (DATA_DIR / f"exports/{gone_id}").exists()
@@ -168,3 +171,89 @@ def test_delete_model_route_erases_weights_runs_and_engine():
     assert not (DATA_DIR / f"models/{mid}").exists()
     assert not (DATA_DIR / f"runs/{mid}").exists()
     assert not (DATA_DIR / f"engines/{mid}.engine").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
+def test_version_delete_route_keeps_the_row_when_a_file_is_locked():
+    """A Windows sharing violation must 409 and keep the row, so the retry can finish the erase."""
+    email, ws_slug, ws_id, p_id, slug = _route_project()
+    with SessionLocal() as db:
+        v = Version(project_id=p_id, number=2, status="ready", stats={})
+        db.add(v); db.commit(); vid = v.id
+    rel = f"versions/{vid}/manifest.json"
+    _touch(rel)
+    path = DATA_DIR / rel
+    url = f"/api/ws/{ws_slug}/projects/{slug}/versions/{vid}"
+
+    with _login(email) as c:
+        with open(path, "rb") as locked:
+            r = c.delete(url)
+            assert r.status_code == 409, r.text
+            assert locked.read() == b"x"                 # the locked byte is still on disk
+        with SessionLocal() as db:
+            assert db.get(Version, vid) is not None      # no row without the bytes
+        r = c.delete(url)
+        assert r.status_code == 200, r.text
+    assert not path.exists()
+    with SessionLocal() as db:
+        assert db.get(Version, vid) is None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
+def test_model_delete_route_keeps_the_row_when_a_weight_is_locked():
+    email, ws_slug, ws_id, p_id, slug = _route_project()
+    suffix = uuid.uuid4().hex[:8]
+    weights = f"models/locked-{suffix}/best.pt"
+    with SessionLocal() as db:
+        v = Version(project_id=p_id, number=1, status="ready", stats={})
+        db.add(v); db.flush()
+        m = TrainedModel(workspace_id=ws_id, project_id=p_id, version_id=v.id, name="locked-model", arch="yolo26n",
+                         variant="yolo26n", task="detect", status="ready", family="ultralytics", classes=[],
+                         weights=weights)
+        db.add(m); db.commit(); mid = m.id
+    _touch(weights)
+    path = DATA_DIR / weights
+    url = f"/api/ws/{ws_slug}/projects/{slug}/models/{mid}"
+
+    with _login(email) as c:
+        with open(path, "rb"):
+            r = c.delete(url)
+            assert r.status_code == 409, r.text
+        with SessionLocal() as db:
+            assert db.get(TrainedModel, mid) is not None
+        r = c.delete(url)
+        assert r.status_code == 200, r.text
+    assert not path.exists()
+    with SessionLocal() as db:
+        assert db.get(TrainedModel, mid) is None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="POSIX allows unlinking a file that is still open")
+def test_delete_model_files_reports_a_surviving_locked_weight():
+    """Unit contract: (freed, ok) is false while a locked weight survives, true after the retry."""
+    from app.services.erasure import delete_model_files
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        u = User(id="u" + suffix, email=f"ml-{suffix}@x.io", name="E", pw_hash="x")
+        db.add(u); db.flush()
+        ws = Workspace(id="w" + suffix, slug=f"ml-{suffix}", name="E", owner_id=u.id)
+        db.add(ws); db.flush()
+        p = Project(workspace_id=ws.id, slug=f"mlp-{suffix}", name="Locked")
+        db.add(p); db.flush()
+        v = Version(project_id=p.id, number=1, status="ready", stats={})
+        db.add(v); db.flush()
+        m = TrainedModel(workspace_id=ws.id, project_id=p.id, version_id=v.id, name="m", arch="yolo26n",
+                         variant="yolo26n", task="detect", status="ready", family="ultralytics", classes=[],
+                         weights=f"models/lock-{suffix}/best.pt")
+        db.add(m); db.commit(); mid, weights = m.id, m.weights
+
+        _touch(weights)
+        _touch(f"runs/{mid}/last.pt")
+        path = DATA_DIR / weights
+        with open(path, "rb"):
+            _, ok = delete_model_files(db.get(TrainedModel, mid))
+        assert ok is False
+        assert path.exists()
+        _, ok = delete_model_files(db.get(TrainedModel, mid))
+        assert ok is True
+        assert not path.exists()

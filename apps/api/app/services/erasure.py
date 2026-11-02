@@ -25,23 +25,39 @@ def _inside(path: Path) -> bool:
         return False
 
 
-def _remove(path: Path) -> int:
-    """Remove a file or directory under DATA_DIR; returns bytes freed (best effort)."""
+def _remove(path: Path) -> tuple[int, bool]:
+    """Remove a file or directory under DATA_DIR.
+
+    Returns ``(bytes_freed, ok)``; ``ok`` is false when the path is unsafe or still on disk after
+    the attempt. A Windows sharing violation leaves the bytes behind, so the caller must not drop
+    the DB row on a false result.
+    """
     if not _inside(path):
-        return 0
+        return 0, False
+    if not path.exists():
+        return 0, True
+    size = 0
     try:
         if path.is_dir():
             size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
-            shutil.rmtree(path, ignore_errors=True)
-        elif path.exists():
-            size = path.stat().st_size
-            path.unlink(missing_ok=True)
+            shutil.rmtree(path)
         else:
-            return 0
+            size = path.stat().st_size
+            path.unlink()
     except OSError:
         log.warning("could not erase %s", path, exc_info=True)
-        return 0
-    return size
+    if path.exists():
+        return 0, False
+    return size, True
+
+
+def _remove_all(paths: list[Path]) -> tuple[int, bool]:
+    freed, ok = 0, True
+    for path in paths:
+        got, path_ok = _remove(path)
+        freed += got
+        ok = ok and path_ok
+    return freed, ok
 
 
 def project_paths(db: Session, project: Project) -> list[Path]:
@@ -62,9 +78,9 @@ def project_paths(db: Session, project: Project) -> list[Path]:
     return paths
 
 
-def delete_project_data(db: Session, project: Project) -> int:
-    """Erase every stored byte of a project; returns the bytes freed."""
-    return sum(_remove(path) for path in project_paths(db, project))
+def delete_project_data(db: Session, project: Project) -> tuple[int, bool]:
+    """Erase every stored byte of a project; returns ``(bytes_freed, ok)``."""
+    return _remove_all(project_paths(db, project))
 
 
 def delete_image_files(path: str | None, thumb: str | None) -> tuple[int, bool]:
@@ -73,27 +89,25 @@ def delete_image_files(path: str | None, thumb: str | None) -> tuple[int, bool]:
     Returns ``(bytes_freed, gone)``; ``gone`` is false when a locked or undeletable file is still
     on disk, so the caller must not credit the storage meter for bytes that survived.
     """
-    freed = 0
-    gone = True
+    freed, gone = 0, True
     for rel in (path, thumb):
         if not rel:
             continue
-        freed += _remove(DATA_DIR / rel)
-        if (DATA_DIR / rel).exists():
-            gone = False
+        got, ok = _remove(DATA_DIR / rel)
+        freed += got
+        gone = gone and ok
     return freed, gone
 
 
-def delete_model_files(model: TrainedModel) -> int:
+def delete_model_files(model: TrainedModel) -> tuple[int, bool]:
     """Erase a model's weights, run directory, dataset copy and cached engine."""
-    freed = (_remove(DATA_DIR / "models" / model.id) + _remove(DATA_DIR / "train_data" / model.id)
-             + _remove(DATA_DIR / "runs" / model.id))
+    paths = [DATA_DIR / "models" / model.id, DATA_DIR / "train_data" / model.id,
+             DATA_DIR / "runs" / model.id, DATA_DIR / "engines" / f"{model.id}.engine"]
     if model.weights:
-        freed += _remove(DATA_DIR / model.weights)
-    freed += _remove(DATA_DIR / "engines" / f"{model.id}.engine")
-    return freed
+        paths.append(DATA_DIR / model.weights)
+    return _remove_all(paths)
 
 
-def delete_version_data(db: Session, version: Version) -> int:
+def delete_version_data(db: Session, version: Version) -> tuple[int, bool]:
     """Erase one version's snapshot and exports; the caller deletes the row afterwards."""
-    return _remove(versioning.version_dir(version)) + _remove(DATA_DIR / "exports" / version.id)
+    return _remove_all([versioning.version_dir(version), DATA_DIR / "exports" / version.id])

@@ -88,8 +88,10 @@ def rename_version(vid: str, body: RenameIn, c: Ctx = Depends(project_ctx)):
 def delete_version(vid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     v = _get(c, vid)
+    _, ok = erasure.delete_version_data(c.db, v)     # bytes first: a failed delete never loses the row
+    if not ok:
+        raise HTTPException(409, "some files could not be deleted; retry")
     audit(c.db, c.ws.id, c.user.id, "version.delete", f"{c.project.name} v{v.number}")
-    erasure.delete_version_data(c.db, v)     # bytes first: a failed delete never loses the row
     c.db.delete(v); c.db.commit()
     return {"ok": True}
 

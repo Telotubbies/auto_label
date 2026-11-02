@@ -289,9 +289,11 @@ def get_model(mid: str, c: Ctx = Depends(project_ctx)):
 def delete_model(mid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     m = _model(c, mid)
-    audit(c.db, c.ws.id, c.user.id, "model.delete", m.name)
     from ..services.erasure import delete_model_files
-    delete_model_files(m)                                   # weights survive the row otherwise (I3)
+    _, ok = delete_model_files(m)                           # weights survive the row otherwise (I3)
+    if not ok:
+        raise HTTPException(409, "some files could not be deleted; retry")
+    audit(c.db, c.ws.id, c.user.id, "model.delete", m.name)
     c.db.delete(m); c.db.commit()
     return {"ok": True}
 
