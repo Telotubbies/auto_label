@@ -55,6 +55,23 @@ class GpuScheduler:
         self._resume: Callable[[], None] = lambda: None
         self._lock = threading.RLock()
         self._local = threading.local()                              # training_scope marker
+        # A load holds _lock until the loader returns, so the ledger needs a copy that state()
+        # can read without waiting: a cold start may take seconds and the Playground must say so.
+        self._loading: set[str] = set()
+        self._loading_lock = threading.Lock()
+        self._snapshot: dict = {"used_mb": 0, "budget_mb": self.budget_mb, "holder": None, "leases": []}
+
+    def _publish(self) -> None:
+        """Refresh the lock-free ledger copy (assigning the dict is atomic under the GIL)."""
+        self._snapshot = {"used_mb": self._used_mb, "budget_mb": self.budget_mb, "holder": self.holder,
+                          "leases": [{"key": k, "vram_mb": lease.vram_mb} for k, lease in self._leases.items()]}
+
+    def _mark_loading(self, key: str, loading: bool) -> None:
+        with self._loading_lock:
+            if loading:
+                self._loading.add(key)
+            else:
+                self._loading.discard(key)
 
     @property
     def vlm_sleeping(self) -> bool | None:
@@ -89,16 +106,25 @@ class GpuScheduler:
                     self._evict(next(iter(self._leases)))
             elif self._used_mb + vram_mb > self.budget_mb:
                 raise GpuBusy(f"GPU busy: no room for {key} in the {self.budget_mb} MiB budget")
-            obj = loader()
+            obj = self._load(key, loader)
             if obj is None:
                 return None              # nothing was loaded, so nothing is leased or unloaded
             self._leases[key] = _Lease(obj, int(vram_mb), unloader)
             self._used_mb += int(vram_mb)
+            self._publish()
             return obj
+
+    def _load(self, key: str, loader: Callable[[], Any]) -> Any:
+        self._mark_loading(key, True)
+        try:
+            return loader()
+        finally:
+            self._mark_loading(key, False)
 
     def _evict(self, key: str) -> None:
         lease = self._leases.pop(key)
         self._used_mb -= lease.vram_mb
+        self._publish()
         try:
             lease.unloader(lease.obj)
         except Exception:                    # an unloader must never corrupt the ledger
@@ -116,9 +142,14 @@ class GpuScheduler:
             return True
 
     def state(self) -> dict:
-        with self._lock:
-            return {"used_mb": self._used_mb, "budget_mb": self.budget_mb, "holder": self.holder,
-                    "leases": [{"key": k, "vram_mb": l.vram_mb} for k, l in self._leases.items()]}
+        """Ledger copy. Never waits for a loader that holds the lock."""
+        snap = self._snapshot
+        return {**snap, "leases": [dict(lease) for lease in snap["leases"]]}
+
+    def inflight(self) -> list[str]:
+        """Keys with a load in progress; read under its own lock so a cold start cannot block it."""
+        with self._loading_lock:
+            return sorted(self._loading)
 
     # ---- exclusive access (training)
     @contextmanager
@@ -144,6 +175,7 @@ class GpuScheduler:
             for key in list(self._leases):
                 self._evict(key)
             self.holder = reason
+            self._publish()
             self.vlm_stopped = False
         self._run_hook(self._pause, "pause streams")
         if self.vlm is not None:
@@ -165,6 +197,7 @@ class GpuScheduler:
                     log.warning("vLLM wake failed after %s: %s", reason, e)
             with self._lock:
                 self.holder = None               # release before streams resume, so they can lease again
+                self._publish()
             self._run_hook(self._resume, "resume streams")
 
     @staticmethod

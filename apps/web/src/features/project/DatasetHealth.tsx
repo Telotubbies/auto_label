@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowUpRight, BarChart3, Table2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Analytics as AnalyticsData } from '@/lib/types'
-import { Button, Card, PageHeader, Spinner, Stat, toast } from '@/components/ui'
+import { Button, Card, Spinner, Stat, toast } from '@/components/ui'
 import { useProject } from './ProjectLayout'
 import { HealthCheck } from './HealthCheck'
 
@@ -106,7 +106,8 @@ function ChartCard({ title, desc, children }: { title: string; desc: string; chi
   )
 }
 
-export default function Analytics() {
+/** Dataset health check (Task 9): rendered as the Insights "Dataset health" tab. */
+export function DatasetHealth() {
   const { project, ws } = useProject()
   const nav = useNavigate()
   const qc = useQueryClient()
@@ -167,146 +168,143 @@ export default function Analytics() {
   ]
 
   return (
-    <div className="anim-page">
-      <PageHeader title="Dataset Health Check" desc="Class balance, object scale, label quality and where objects sit in the frame." />
-      <div className="space-y-4 px-4 pb-10 sm:px-8">
-        <div className="grid gap-3 md:grid-cols-4">
-          <Stat label="Images" value={a.images} sub={`${a.null_images} without annotations`} />
-          <Stat label="Annotations" value={a.annotations} sub={`${a.avg_annotations} per image`} />
-          <Stat label="Average size" value={`${a.avg_width}×${a.avg_height}`} sub={`median ${a.median_size}`} />
-          <Stat label="Classes" value={a.classes.length} sub={`imbalance ${a.imbalance_ratio}×`} />
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Stat label="Images" value={a.images} sub={`${a.null_images} without annotations`} />
+        <Stat label="Annotations" value={a.annotations} sub={`${a.avg_annotations} per image`} />
+        <Stat label="Average size" value={`${a.avg_width}×${a.avg_height}`} sub={`median ${a.median_size}`} />
+        <Stat label="Classes" value={a.classes.length} sub={`imbalance ${a.imbalance_ratio}×`} />
+      </div>
+
+      {a.imbalance_ratio > 5 && (
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <span>The most common class has <b>{a.imbalance_ratio}×</b> more labels than the rarest. Consider collecting more of the under-represented classes.</span>
+        </div>
+      )}
+
+      <HealthCheck ws={ws} slug={project.slug} models={project.models} checks={a.checks} job={a.health_job}
+        stale={a.health_stale} recommendations={a.recommendations} onRun={() => run.mutate()}
+        runPending={run.isPending} hasImages={a.images > 0} />
+
+      <section aria-labelledby="distribution-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+          <div>
+            <h2 id="distribution-heading" className="text-lg font-semibold tracking-tight">Dataset distribution</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Counts include every status. Click a bar or row to open the matching images in the dataset grid.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setTableView((v) => !v)} aria-pressed={tableView}
+            title={tableView ? 'Show the charts' : 'Show the same numbers as a table'}>
+            {tableView ? <BarChart3 className="h-3.5 w-3.5" /> : <Table2 className="h-3.5 w-3.5" />}
+            {tableView ? 'Chart view' : 'Table view'}
+          </Button>
         </div>
 
-        {a.imbalance_ratio > 5 && (
-          <div role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-foreground">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-            <span>The most common class has <b>{a.imbalance_ratio}×</b> more labels than the rarest. Consider collecting more of the under-represented classes.</span>
-          </div>
-        )}
-
-        <HealthCheck ws={ws} slug={project.slug} models={project.models} checks={a.checks} job={a.health_job}
-          stale={a.health_stale} recommendations={a.recommendations} onRun={() => run.mutate()}
-          runPending={run.isPending} hasImages={a.images > 0} />
-
-        <section aria-labelledby="distribution-heading">
-          <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
-            <div>
-              <h2 id="distribution-heading" className="text-lg font-semibold tracking-tight">Dataset distribution</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">Counts include every status. Click a bar or row to open the matching images in the dataset grid.</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => setTableView((v) => !v)} aria-pressed={tableView}
-              title={tableView ? 'Show the charts' : 'Show the same numbers as a table'}>
-              {tableView ? <BarChart3 className="h-3.5 w-3.5" /> : <Table2 className="h-3.5 w-3.5" />}
-              {tableView ? 'Chart view' : 'Table view'}
-            </Button>
-          </div>
-
-          {tableView ? (
+        {tableView ? (
+          <Card className="mt-2 p-4">
+            <DistributionTable rows={tableRows} />
+          </Card>
+        ) : (
+          <>
             <Card className="mt-2 p-4">
-              <DistributionTable rows={tableRows} />
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold">Class balance</h3>
+                <span className="text-xs text-muted-foreground">{a.classes.length} classes · {a.imbalance_ratio}× imbalance</span>
+              </div>
+              {a.classes.length ? (
+                <ul className="mt-2 space-y-0.5">
+                  {a.classes.map((c) => (
+                    <BarRow key={c.id} label={c.name} value={c.count} width={(c.count / topClass) * 100}
+                      meta={`${pct(c.count, a.annotations)}%`}
+                      badge={c.count < topClass * 0.2 ? 'low' : undefined}
+                      onClick={() => goBrowse({ class: c.id })}
+                      ariaLabel={`Show images containing the ${c.name} class in the dataset grid`} />
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No classes defined yet.</p>
+              )}
             </Card>
-          ) : (
-            <>
-              <Card className="mt-2 p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-sm font-semibold">Class balance</h3>
-                  <span className="text-xs text-muted-foreground">{a.classes.length} classes · {a.imbalance_ratio}× imbalance</span>
-                </div>
-                {a.classes.length ? (
-                  <ul className="mt-2 space-y-0.5">
-                    {a.classes.map((c) => (
-                      <BarRow key={c.id} label={c.name} value={c.count} width={(c.count / topClass) * 100}
-                        meta={`${pct(c.count, a.annotations)}%`}
-                        badge={c.count < topClass * 0.2 ? 'low' : undefined}
-                        onClick={() => goBrowse({ class: c.id })}
-                        ariaLabel={`Show images containing the ${c.name} class in the dataset grid`} />
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-3 text-sm text-muted-foreground">No classes defined yet.</p>
-                )}
-              </Card>
 
-              <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
-                <ChartCard title="Annotations per image" desc="Click a bar to filter by annotation count.">
-                  <ul className="mt-2 max-h-72 space-y-0.5 overflow-y-auto pr-1">
-                    {a.annotations_per_image.map((d) => {
-                      const n = Number(d.n)
-                      const filter: Record<string, string | number> = d.n === '20+' || !Number.isFinite(n)
-                        ? { min_ann: 20 }
-                        : { min_ann: n, max_ann: n }
-                      return (
-                        <BarRow key={d.n} label={String(d.n)} value={d.images} width={(d.images / annMax) * 100}
-                          onClick={() => goBrowse(filter)}
-                          ariaLabel={`Show images with ${d.n === '20+' ? '20 or more' : d.n} annotations in the dataset grid`} />
-                      )
-                    })}
-                  </ul>
-                  {!a.annotations_per_image.length && <p className="mt-3 text-sm text-muted-foreground">No annotations yet.</p>}
-                </ChartCard>
+            <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+              <ChartCard title="Annotations per image" desc="Click a bar to filter by annotation count.">
+                <ul className="mt-2 max-h-72 space-y-0.5 overflow-y-auto pr-1">
+                  {a.annotations_per_image.map((d) => {
+                    const n = Number(d.n)
+                    const filter: Record<string, string | number> = d.n === '20+' || !Number.isFinite(n)
+                      ? { min_ann: 20 }
+                      : { min_ann: n, max_ann: n }
+                    return (
+                      <BarRow key={d.n} label={String(d.n)} value={d.images} width={(d.images / annMax) * 100}
+                        onClick={() => goBrowse(filter)}
+                        ariaLabel={`Show images with ${d.n === '20+' ? '20 or more' : d.n} annotations in the dataset grid`} />
+                    )
+                  })}
+                </ul>
+                {!a.annotations_per_image.length && <p className="mt-3 text-sm text-muted-foreground">No annotations yet.</p>}
+              </ChartCard>
 
-                <ChartCard title="Image size" desc="Click a bar to filter by megapixels.">
-                  <ul className="mt-2 space-y-0.5">
-                    {sizeData.map((d) => (
-                      <BarRow key={d.bucket} label={d.bucket} value={d.images} width={(d.images / sizeMax) * 100}
-                        onClick={() => goBrowse(SIZE_FILTERS[d.bucket] ?? {})}
-                        ariaLabel={`Show images in the ${d.bucket} size range in the dataset grid`} />
-                    ))}
-                  </ul>
-                </ChartCard>
-
-                <ChartCard title="Aspect ratio" desc="Click a bar to filter by width ÷ height.">
-                  <ul className="mt-2 space-y-0.5">
-                    {aspectData.map((d) => (
-                      <BarRow key={d.bucket} label={d.bucket} value={d.images} width={(d.images / aspectMax) * 100}
-                        onClick={() => goBrowse(ASPECT_FILTERS[d.bucket] ?? {})}
-                        ariaLabel={`Show ${d.bucket} images in the dataset grid`} />
-                    ))}
-                  </ul>
-                </ChartCard>
-              </div>
-            </>
-          )}
-        </section>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="p-4">
-            <h3 className="mb-3 text-sm font-semibold">Annotation heatmap <span className="font-normal text-muted-foreground">(object centres)</span></h3>
-            <div role="img" aria-label={`Where annotations cluster in the frame; the busiest cell holds ${maxHeat} objects.`}
-              className="mx-auto grid aspect-video max-w-md grid-cols-10 gap-0.5 rounded border bg-muted p-0.5">
-              {(a.heatmap ?? []).flat().map((v, i) => (
-                <div key={i} className="rounded-sm" title={`${v} objects`}
-                  style={{ background: 'var(--primary)', opacity: v ? 0.12 + 0.88 * (v / maxHeat) : 0.04 }} />
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-4 text-sm">
-            <h3 className="mb-3 font-semibold">Splits &amp; status</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <h4 className="mb-1 text-xs font-semibold text-muted-foreground">Splits</h4>
-                <ul>
-                  {Object.entries(a.splits).map(([k, v]) => (
-                    <LinkRow key={k} label={k} value={v}
-                      onClick={() => goBrowse({ split: k })}
-                      ariaLabel={`Show images in the ${k} split in the dataset grid`} />
+              <ChartCard title="Image size" desc="Click a bar to filter by megapixels.">
+                <ul className="mt-2 space-y-0.5">
+                  {sizeData.map((d) => (
+                    <BarRow key={d.bucket} label={d.bucket} value={d.images} width={(d.images / sizeMax) * 100}
+                      onClick={() => goBrowse(SIZE_FILTERS[d.bucket] ?? {})}
+                      ariaLabel={`Show images in the ${d.bucket} size range in the dataset grid`} />
                   ))}
                 </ul>
-              </div>
-              <div>
-                <h4 className="mb-1 text-xs font-semibold text-muted-foreground">Status</h4>
-                <ul>
-                  {Object.entries(a.statuses).map(([k, v]) => (
-                    <LinkRow key={k} label={k === 'done' ? 'dataset' : k} value={v}
-                      onClick={() => goBrowse({}, k)}
-                      ariaLabel={`Show ${k === 'done' ? 'dataset' : k} images in the dataset grid`} />
+              </ChartCard>
+
+              <ChartCard title="Aspect ratio" desc="Click a bar to filter by width ÷ height.">
+                <ul className="mt-2 space-y-0.5">
+                  {aspectData.map((d) => (
+                    <BarRow key={d.bucket} label={d.bucket} value={d.images} width={(d.images / aspectMax) * 100}
+                      onClick={() => goBrowse(ASPECT_FILTERS[d.bucket] ?? {})}
+                      ariaLabel={`Show ${d.bucket} images in the dataset grid`} />
                   ))}
                 </ul>
-              </div>
+              </ChartCard>
             </div>
-          </Card>
-        </div>
+          </>
+        )}
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-4">
+          <h3 className="mb-3 text-sm font-semibold">Annotation heatmap <span className="font-normal text-muted-foreground">(object centres)</span></h3>
+          <div role="img" aria-label={`Where annotations cluster in the frame; the busiest cell holds ${maxHeat} objects.`}
+            className="mx-auto grid aspect-video max-w-md grid-cols-10 gap-0.5 rounded border bg-muted p-0.5">
+            {(a.heatmap ?? []).flat().map((v, i) => (
+              <div key={i} className="rounded-sm" title={`${v} objects`}
+                style={{ background: 'var(--primary)', opacity: v ? 0.12 + 0.88 * (v / maxHeat) : 0.04 }} />
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-4 text-sm">
+          <h3 className="mb-3 font-semibold">Splits &amp; status</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <h4 className="mb-1 text-xs font-semibold text-muted-foreground">Splits</h4>
+              <ul>
+                {Object.entries(a.splits).map(([k, v]) => (
+                  <LinkRow key={k} label={k} value={v}
+                    onClick={() => goBrowse({ split: k })}
+                    ariaLabel={`Show images in the ${k} split in the dataset grid`} />
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="mb-1 text-xs font-semibold text-muted-foreground">Status</h4>
+              <ul>
+                {Object.entries(a.statuses).map(([k, v]) => (
+                  <LinkRow key={k} label={k === 'done' ? 'dataset' : k} value={v}
+                    onClick={() => goBrowse({}, k)}
+                    ariaLabel={`Show ${k === 'done' ? 'dataset' : k} images in the dataset grid`} />
+                ))}
+              </ul>
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   )

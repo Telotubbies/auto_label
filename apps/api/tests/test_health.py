@@ -390,6 +390,7 @@ def test_analytics_merges_checks_and_recommendations(c, project):
         "label_quality",
         "missing_boxes",
         "leakage_pairs",
+        "quality",
     }
     assert isinstance(body["recommendations"], list)
     assert isinstance(body["checks"]["missing_boxes"], list)

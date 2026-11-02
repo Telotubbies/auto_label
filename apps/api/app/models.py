@@ -249,6 +249,9 @@ class Image(Base):
     path: Mapped[str] = mapped_column(String(1024))       # relative to DATA_DIR
     thumb: Mapped[str] = mapped_column(String(1024))
     size: Mapped[int] = mapped_column(Integer, default=0)
+    # data-quality signals measured once at ingest; NULL means unknown, never "good"
+    sharpness: Mapped[float | None] = mapped_column(Float, nullable=True)   # 0-1 Laplacian-variance score
+    luminance: Mapped[float | None] = mapped_column(Float, nullable=True)   # 0-1 mean grayscale
     split: Mapped[str] = mapped_column(String(8), default="train")
     status: Mapped[str] = mapped_column(String(16), default="unassigned")
     assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -442,6 +445,20 @@ class StreamEvent(Base):
     rule_kind: Mapped[str] = mapped_column(String(16), default="")
     rule_label: Mapped[str] = mapped_column(String(255), default="")
     classes: Mapped[str] = mapped_column(Text, default="")                   # "|person|helmet|"
+
+
+class Dashboard(Base):
+    """Saved Insights Studio dashboard; widget specs are JSON in display order."""
+    __tablename__ = "dashboards"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    widgets: Mapped[list] = mapped_column(JSON, default=list)
+    share_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
 
 
 class Audit(Base):

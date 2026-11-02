@@ -7,7 +7,7 @@ from PIL import Image as PImage
 
 from ..config import DATA_DIR
 from .base import Availability, register
-from .ultralytics_ad import VRAM_MB, _load, _run, caps_for
+from .ultralytics_ad import VRAM_MB, _load, _run, caps_for, lease_key
 
 log = logging.getLogger("labeldesk.tensorrt")
 
@@ -24,6 +24,9 @@ class TensorrtAdapter:
 
     def capabilities(self, variant: str) -> set[str]:
         return caps_for(variant)
+
+    def runtime_key(self, variant: str, weights: str | None) -> str | None:
+        return lease_key(variant, weights) if weights else None
 
     def predict(self, variant, im: PImage.Image, *, classes=None, prompt=None, weights=None,
                 conf=0.4, iou=0.5) -> dict:

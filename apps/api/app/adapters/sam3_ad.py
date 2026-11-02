@@ -27,6 +27,9 @@ class Sam3Adapter:
     def capabilities(self, variant: str) -> set[str]:
         return {"segment", "text-prompt", "box-prompt"}
 
+    def runtime_key(self, variant: str, weights: str | None) -> str:
+        return "sam3"
+
     def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
         t0 = time.time()
         prompts = list(classes) if classes else ([prompt] if prompt else [])

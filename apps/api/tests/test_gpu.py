@@ -324,3 +324,36 @@ def test_get_gpu_reports_state(client, monkeypatch):
 
     body = client.get("/api/gpu").json()
     assert body["label"] == "GPU idle" and body["vlm_sleeping"] is False
+
+
+def test_state_reports_in_flight_loads_without_waiting_for_the_loader():
+    """A cold start holds the ledger lock; the Playground cannot wait for it to ask for state."""
+    import threading
+
+    s = GpuScheduler(100, None)
+    started, release = threading.Event(), threading.Event()
+
+    def loader():
+        started.set()
+        assert release.wait(5)
+        return object()
+
+    t = threading.Thread(target=lambda: s.lease("slow", 10, loader, lambda _obj: None))
+    t.start()
+    assert started.wait(5)
+    box: dict = {}
+
+    def read() -> None:
+        box["inflight"] = s.inflight()
+        box["state"] = s.state()
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    reader.join(2)
+    assert not reader.is_alive(), "state()/inflight() blocked on an in-flight load"
+    assert box["inflight"] == ["slow"]
+    assert box["state"]["leases"] == []          # nothing is leased until the loader returns
+    release.set()
+    t.join(5)
+    state = s.state()
+    assert s.inflight() == [] and [lease["key"] for lease in state["leases"]] == ["slow"]

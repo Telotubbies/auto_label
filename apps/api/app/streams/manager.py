@@ -539,12 +539,14 @@ class _Worker:
         try:
             if adapter.is_sleeping():
                 return
-            answer = adapter.ask(im, rule.get("question", ""))
+            # Only a "yes" is an event: the rule is a question, not a caption.
+            if not adapter.ask_yes_no(im, rule.get("question", "")):
+                return
         except Exception:                         # unreachable/loading VLM: skip silently
             return
         try:
             self._record({"rule": i, "kind": "vlm",
-                          "summary": f"{rule.get('question', '')} → {answer}"}, ts, preds, frame)
+                          "summary": f"{rule.get('question', '')} → yes"}, ts, preds, frame)
         except Exception:
             log.exception("stream %s: could not record VLM event", self.id)
 
@@ -554,6 +556,8 @@ class _Worker:
         rule = self.rules[i] if 0 <= i < len(self.rules) else {}
         kind = ev.get("kind") or rule.get("kind")
         rule_json = {**rule, "index": i, "kind": kind, "label": rule_label(rule, i)}
+        if isinstance(ev.get("seconds"), (int, float)) and not isinstance(ev.get("seconds"), bool):
+            rule_json["seconds"] = float(ev["seconds"])
         payload = [{k: p[k] for k in ("class", "class_id", "track_id", "confidence", "x", "y", "width", "height")
                     if k in p} for p in preds[:50]]
         eid = new_id()

@@ -94,6 +94,15 @@ export interface Job {
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
+
+/** GET /api/ws/{ws}/home — workspace totals plus the caller's own queues. */
+export interface HomeStats { projects: number; images: number; annotations: number; models: number; deployments: number }
+export interface HomeWaiting { project: string; project_name: string; to_annotate: number; to_review: number; unassigned: number }
+export interface WorkspaceHome {
+  stats: HomeStats
+  waiting: HomeWaiting[]
+  totals: { to_annotate: number; to_review: number; unassigned: number }
+}
 export interface Version {
   id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed'
   stats: { images?: number; source_images?: number; splits?: Record<string, number>; classes?: Record<string, number>; class_names?: string[] }
@@ -177,6 +186,9 @@ export interface Member { id: string; name: string; email: string; role: Role; o
 
 export type LabelIssueKind = 'tiny' | 'out_of_bounds' | 'zero_area' | 'duplicate'
 
+/** Stored per image at upload: divergence from a clean, well-exposed photo. */
+export type QualityClass = 'blurry' | 'dark' | 'ok' | 'unknown'
+
 /** Row data for the Health check cards. Pixel thresholds are COCO at `imgsz`. */
 export interface HealthChecks {
   imgsz: number
@@ -185,6 +197,8 @@ export interface HealthChecks {
   /** `box` is normalized [x, y, w, h]. */
   missing_boxes: { image_id: string; box: [number, number, number, number]; class: string }[]
   leakage_pairs: number
+  /** Ingest-time scores, read from the image rows; `samples` holds a capped id list per flagged class. */
+  quality: { counts: Record<QualityClass, number>; samples: { blurry: string[]; dark: string[] } }
 }
 
 export interface HealthRecommendation { key: string; message: string; suggest: Record<string, unknown> }
@@ -231,6 +245,16 @@ export interface PlaygroundPrediction {
 }
 export interface PlaygroundResult {
   ref: string; prediction: PlaygroundPrediction | null; latency_ms: number; error: string | null
+}
+export type PlaygroundRuntimeState = 'ready' | 'cold' | 'loading' | 'sleeping' | 'gpu_busy' | 'unavailable'
+/** One selected model's runtime state, explained by the server preflight (G1 / gap M1). */
+export interface PlaygroundRuntime {
+  ref: string; state: PlaygroundRuntimeState; message: string; retry: boolean
+}
+/** A recent annotated image of this workspace, offered as a Playground starting point. */
+export interface PlaygroundSample {
+  id: string; name: string; thumbnail: string
+  project: { slug: string; name: string }
 }
 
 // --- Insights Studio (Task 20a) ---------------------------------------------
@@ -658,3 +682,59 @@ export interface StreamCreateBody {
 }
 export type StreamPatchBody = Partial<StreamCreateBody>
 export interface StreamVideoUpload { source: string }
+
+// --- Insights Studio (Task 20c): lineage, widget queries, dashboards -----------
+
+export type LineageKind = 'batch' | 'version' | 'run' | 'model' | 'stream'
+
+export interface LineageNode {
+  id: string; kind: LineageKind; label: string; sub: string; created: number
+  counts: Record<string, number>
+  metrics: Record<string, number | null>
+  detail: Record<string, unknown>
+  artifacts: { label: string }[]
+  log: string
+}
+export interface LineageEdge { source: string; target: string; kind: 'images' | 'training' | 'deployment' }
+export interface Lineage { nodes: LineageNode[]; edges: LineageEdge[]; generated: number }
+
+export interface BreakdownRow { key: string; value: number }
+export interface TimelineSeries { name: string; values: number[] }
+export interface StreamAnalytics {
+  window: { days: number; since: number; tz_offset: number }
+  totals: { events: number; reviewed: number; cameras: number; dwell_seconds: number; last_event: number }
+  top_cameras: { id: string; name: string; events: number; reviewed: number; last_event: number }[]
+  breakdown: { rule: BreakdownRow[]; zone: BreakdownRow[]; class: BreakdownRow[]; stream: BreakdownRow[] }
+  dwell: { buckets: string[]; counts: number[]; samples: number; max: number }
+  hourly: { days: string[]; hours: string[]; values: [number, number, number][] }
+  over_time: {
+    dates: string[]
+    /** One increment per event, independent of class, so the daily total never double-counts. */
+    total: number[]
+    by_rule: TimelineSeries[]
+    by_zone: TimelineSeries[]
+    by_class: TimelineSeries[]
+  }
+}
+
+export type WidgetSource = 'dataset' | 'version' | 'model' | 'streams'
+export type ChartKind = 'bar' | 'line' | 'scatter' | 'heatmap' | 'pie' | 'donut' | 'table' | 'kpi'
+export type WidgetWidth = 3 | 4 | 6 | 12
+
+export interface WidgetFilters { [key: string]: string | number | undefined }
+
+export interface DashboardWidget {
+  id: string; title: string; source: WidgetSource; measure: string; dimension: string
+  dimension2: string | null; chart: ChartKind; filters: WidgetFilters; w: WidgetWidth
+}
+
+export interface WidgetRow { key: string; group: string | null; value: number }
+export interface WidgetData {
+  source: WidgetSource; measure: string; dimension: string; dimension2: string | null
+  unit: string; rows: WidgetRow[]; total: number; filters: WidgetFilters
+}
+
+export interface DashboardSummary {
+  id: string; name: string; widgets: DashboardWidget[]; share_token: string
+  created_by: string | null; created: number; updated: number
+}

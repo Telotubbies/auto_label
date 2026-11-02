@@ -38,6 +38,7 @@ from .services import (
     insights_jobs,
     metering,
     ml,
+    quality,
     segment,
     track,
     versioning,
@@ -520,10 +521,12 @@ def run_extract_frames(job: Job):
                 known.add(digest)
                 im = imaging.open_image(data)
                 out_w, out_h = out_w or im.width, out_h or im.height
+                # frames bypass ingest(); score them here, where the pixels are already decoded
+                sharpness, luminance = quality.analyze(im)
                 img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, video_id=v.id, frame_index=index,
                             name=f"{stem}_f{index:06d}.jpg", sha256=digest, width=im.width, height=im.height,
                             size=len(data), path="", thumb="", split="train", status="unassigned", tags=[],
-                            assignee_id=P.get("created_by"))
+                            assignee_id=P.get("created_by"), sharpness=sharpness, luminance=luminance)
                 img.path, img.thumb = imaging.store(f"projects/{p.id}/images", img.id, im)
                 db.add(img)
                 set_annotations(db, img, [])
