@@ -17,7 +17,7 @@ import { Glass } from '@/components/glass'
 import { cn } from '@/lib/utils'
 import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, SourceChip, type EditorComment, type LogEntry } from './Panels'
 import { ShortcutModal } from './ShortcutModal'
-import { classListQuery, classResultText, hotkeyClass, visibleClasses } from './classFilter'
+import { classListQuery, classResultText, hotkeyClass, isClassListVisible, visibleClasses } from './classFilter'
 import {
   keyLabel, loadShortcuts, resolveShortcut,
   type ShortcutId, type ShortcutMap,
@@ -651,8 +651,8 @@ export default function Editor() {
     try { await post(`/images/${imageId}/comments`, { text }); qc.invalidateQueries({ queryKey: ['comments', imageId] }) } catch (e) { toast.err(e as Error) }
   }
 
-  const classListVisible = tab === 'classes' && panelsOpen
-  const classSearch = classListQuery(classQuery, classListVisible)
+  const classRowsVisible = isClassListVisible({ rail, tab, panelsOpen })
+  const classSearch = classListQuery(classQuery, classRowsVisible)
   const classHotkeys = useMemo(() => visibleClasses(classes, classSearch), [classes, classSearch])
   const focusClassSearch = () => {
     setRail('labels'); setTab('classes'); setPanelsOpen(true)

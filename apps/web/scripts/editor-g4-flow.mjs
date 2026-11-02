@@ -150,6 +150,19 @@ try {
   assert.doesNotMatch(hiddenList, /harness/)
   check('hotkeys ignore a hidden filter', true)
 
+  // 5c) Switching the side rail away from Labels also unmounts the list: no stale filter may relabel.
+  await page.getByRole('button', { name: 'Classes' }).click()
+  await setQuery('h')
+  await waitRows(2)
+  await page.getByRole('button', { name: 'Attributes' }).click()   // rail leaves 'labels'
+  await page.keyboard.press('2')                          // project order again -> still helmet
+  await page.getByRole('button', { name: 'Labels' }).click()
+  await page.getByRole('button', { name: 'Objects' }).click()
+  const afterRail = await rows.first().innerText()
+  assert.match(afterRail, /helmet/, 'a filter on a closed rail must not relabel')
+  assert.doesNotMatch(afterRail, /harness/)
+  check('hotkeys ignore a hidden rail', true)
+
   // 6) Light screenshot with the filter applied.
   await page.getByRole('button', { name: 'Classes' }).click()
   await setQuery('h')

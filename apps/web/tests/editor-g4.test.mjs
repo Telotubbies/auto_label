@@ -2,7 +2,7 @@
 //   node --test tests/editor-g4.test.mjs   (from apps/web)
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { classListQuery, classResultText, hotkeyClass, visibleClasses } from '../src/features/editor/classFilter.ts'
+import { classListQuery, classResultText, hotkeyClass, isClassListVisible, visibleClasses } from '../src/features/editor/classFilter.ts'
 import {
   DEFAULT_SHORTCUTS, captureBinding, duplicateIds, isAcceptedBinding, keyLabel, loadShortcuts,
   resolveShortcut, saveShortcuts, validateBinding,
@@ -53,6 +53,21 @@ test('a filter only narrows the order while the class list is on screen', () => 
   const shown = visibleClasses(classes, classListQuery('h', true))
   assert.deepEqual(shown.map((c) => c.id), ['a', 'd'])
   assert.equal(hotkeyClass(shown, '2')?.id, 'd')        // Helmet liner
+})
+
+test('the class list counts as on screen only on the Labels rail, Classes tab, panel open', () => {
+  const base = { rail: 'labels', tab: 'classes', panelsOpen: true }
+  assert.equal(isClassListVisible(base), true)
+  assert.equal(isClassListVisible({ ...base, rail: 'attrs' }), false)
+  assert.equal(isClassListVisible({ ...base, tab: 'objects' }), false)
+  assert.equal(isClassListVisible({ ...base, panelsOpen: false }), false)
+  // Each hidden path falls back to project order: 2 is the project's second class, not the filter's.
+  for (const hiddenState of [{ ...base, rail: 'attrs' }, { ...base, tab: 'objects' }, { ...base, panelsOpen: false }]) {
+    const query = classListQuery('h', isClassListVisible(hiddenState))
+    assert.equal(hotkeyClass(visibleClasses(classes, query), '2')?.id, 'b', JSON.stringify(hiddenState))
+  }
+  const onScreen = classListQuery('h', isClassListVisible(base))
+  assert.equal(hotkeyClass(visibleClasses(classes, onScreen), '2')?.id, 'd')
 })
 
 test('defaults resolve their own keys', () => {

@@ -23,6 +23,18 @@ export function classListQuery(query: string, listVisible: boolean): string {
   return listVisible ? query : ''
 }
 
+export interface ClassListState {
+  /** Left icon rail; the whole Labels pane (tabs, search, rows) only renders on 'labels'. */
+  rail: string
+  tab: string
+  panelsOpen: boolean
+}
+
+/** True only while the class rows are really rendered: Labels rail, Classes tab, panel not folded. */
+export function isClassListVisible({ rail, tab, panelsOpen }: ClassListState): boolean {
+  return rail === 'labels' && tab === 'classes' && panelsOpen
+}
+
 /** Text for the aria-live status line under the search field. */
 export function classResultText(total: number, shown: number, query: string): string {
   if (!normalizeSearch(query)) return `${total} ${total === 1 ? 'class' : 'classes'}`
