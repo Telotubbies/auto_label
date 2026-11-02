@@ -22,6 +22,7 @@ import AnnotateBoard from '@/features/project/AnnotateBoard'
 import Dataset from '@/features/project/Dataset'
 const Versions = lazy(() => import('@/features/project/Versions'))
 const Analytics = lazy(() => import('@/features/project/Analytics'))
+const Insights = lazy(() => import('@/features/project/Insights'))
 import Classes from '@/features/project/Classes'
 import Train from '@/features/project/Train'
 const Models = lazy(() => import('@/features/project/Models'))
@@ -120,6 +121,7 @@ export default function App() {
             <Route path="browse" element={<Dataset />} />
             <Route path="versions" element={<Gate min="reviewer"><Versions /></Gate>} />
             <Route path="analytics" element={<Gate min="reviewer"><Analytics /></Gate>} />
+            <Route path="insights" element={<Gate min="reviewer"><Insights /></Gate>} />
             <Route path="classes" element={<Gate min="reviewer"><Classes /></Gate>} />
             <Route path="train" element={<Gate min="admin"><Train /></Gate>} />
             <Route path="models" element={<Gate min="reviewer"><Models /></Gate>} />

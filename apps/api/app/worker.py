@@ -21,7 +21,18 @@ from .db import SessionLocal
 from .deps import charge
 from .gpu import scheduler
 from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
-from .services import connectors, exporters, health, imaging, ml, segment, versioning, webhooks
+from .services import (
+    connectors,
+    exporters,
+    health,
+    imaging,
+    insights_embedding,
+    insights_jobs,
+    ml,
+    segment,
+    versioning,
+    webhooks,
+)
 from .services.evaluate import evaluate
 
 log = logging.getLogger("labeldesk.worker")
@@ -354,9 +365,34 @@ def run_health(job: Job):
         return health.scan_health(db, p)
 
 
+def run_insights_images(job: Job):
+    with SessionLocal() as db:
+        return insights_jobs.scan_images(db, db.get(Project, job.project_id))
+
+
+def run_insights_leakage(job: Job):
+    with SessionLocal() as db:
+        version = (job.params or {}).get("version") or None
+        return insights_jobs.scan_leakage(db, db.get(Project, job.project_id), version)
+
+
+def run_insights_embedding(job: Job):
+    with SessionLocal() as db:
+        project = db.get(Project, job.project_id)
+        needs_card = insights_embedding.clip_available()     # false: CV features never touch the GPU
+        try:
+            if needs_card:
+                with scheduler.exclusive("insights embedding"):
+                    return insights_jobs.scan_embedding(db, project)
+            return insights_jobs.scan_embedding(db, project)
+        finally:
+            insights_embedding.release_clip()                # CLIP never outlives the scan
+
+
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
             "train": run_train, "autolabel": run_autolabel, "health": run_health,
-            "connector_sync": connectors.sync_job}
+            "connector_sync": connectors.sync_job, "insights_images": run_insights_images,
+            "insights_leakage": run_insights_leakage, "insights_embedding": run_insights_embedding}
 
 
 def _notify(job: Job, status: str, error: str = ""):

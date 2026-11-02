@@ -46,7 +46,7 @@ export interface Board { columns: Record<Status, BoardCard[]>; members: { id: st
 
 export interface JobStage { status: 'done' | 'running' | 'failed'; t: number; note?: string }
 export interface Job {
-  id: string; kind: 'version' | 'export' | 'export_engine' | 'train' | 'autolabel' | 'health'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
+  id: string; kind: 'version' | 'export' | 'export_engine' | 'train' | 'autolabel' | 'health' | 'insights_images' | 'insights_leakage' | 'insights_embedding'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
@@ -164,4 +164,119 @@ export interface PlaygroundPrediction {
 }
 export interface PlaygroundResult {
   ref: string; prediction: PlaygroundPrediction | null; latency_ms: number; error: string | null
+}
+
+// --- Insights Studio (Task 20a) ---------------------------------------------
+// Shapes mirror the read-only /insights/* endpoints; every field stays snake_case on the wire.
+
+export interface InsightSummary {
+  project: { id: string; name: string; type: ProjectType }
+  version: null | {
+    id: string; number: number; name: string; status: string; version_hash: string | null
+    splits: Record<string, number>; classes: Record<string, number>; leakage_moved: number | null; created: number
+  }
+  images: number; annotations: number; null_images: number
+  splits: Record<Split, number>
+  classes: { id: string; name: string; color: string; count: number; images: number }[]
+  sources: { source: string; annotations: number; share: number }[]
+}
+
+export interface InsightDistribution {
+  split_classes: { class: string; train: number; valid: number; test: number }[]
+  instances_vs_images: { class: string; instances: number; images: number }[]
+  cooccurrence: { classes: string[]; matrix: number[][] }
+  annotations_per_image: { bucket: string; images: number }[]
+}
+
+export interface InsightGeometry {
+  imgsz: number
+  box_scatter: { w: number; h: number; class: string; split: string; area: number }[]
+  area_buckets: { small: number; medium: number; large: number }
+  aspect: { bucket: string; count: number }[]
+  centres: { class: string; cells: number[] }[]
+  /** Number of boxes in the scatter, or true when the server capped it. */
+  sampled: number | boolean
+}
+
+export interface InsightImageStats {
+  imgsz: number
+  resolution: { w: number; h: number }[]
+  brightness: { bin: number | string; count: number }[]
+  blur: { bin: number | string; count: number }[]
+  scanned: number
+  job: Job | null
+  stale: boolean
+}
+
+export interface InsightLeakImage {
+  image_id: string; name: string; split: Split; thumb: string | null; width: number; height: number
+}
+
+export interface InsightLeakage {
+  pairs: { a: InsightLeakImage; b: InsightLeakImage; distance: number }[]
+  split_pairs: { a: string; b: string; count: number }[]
+  total_pairs: number
+  /** Null when no version exists or the build did not record a move count. */
+  leakage_moved: number | null
+  job: Job | null
+  stale: boolean
+}
+
+export interface InsightEmbeddingPoint {
+  image_id: string; name: string; x: number; y: number
+  split: Split; class: string | null; source: string; error: boolean | string | null; thumb: string | null
+}
+
+/** Which features the map was built from: CLIP image embeddings, or colour/layout fallbacks. */
+export type EmbeddingFeatures = 'clip' | 'cv'
+
+export interface InsightEmbedding {
+  points: InsightEmbeddingPoint[]
+  projection: 'umap' | 'pca'
+  features: EmbeddingFeatures
+  /** Images the map was asked to place; `used` is how many points the backend actually returned. */
+  total: number
+  used: number
+  sampled: boolean
+  job: Job | null
+  stale: boolean
+}
+
+/** A short-lived, server-side lasso selection; the token is the only thing that travels in URLs. */
+export interface InsightSelection {
+  token: string
+  image_ids: string[]
+  count: number
+  expires: number
+}
+
+/** What POST /insights/selections returns: the ids stay on the server. */
+export type InsightSelectionRef = Pick<InsightSelection, 'token' | 'count' | 'expires'>
+
+export interface InsightVersionMeta {
+  id: string; number: number; name: string; status: string
+  version_hash?: string | null; created?: number
+  splits?: Record<string, number>; classes?: Record<string, number>; leakage_moved?: number | null
+}
+
+export interface InsightVersionDiff {
+  base: InsightVersionMeta
+  target: InsightVersionMeta
+  added: { image_id: string; name: string; split: Split; thumb: string | null }[]
+  removed: { image_id: string; name: string; split: Split; thumb: string | null }[]
+  class_delta: { class: string; base: number; target: number; delta: number }[]
+  split_moves: { image_id: string; name: string; from: Split; to: Split }[]
+  summary: { added: number; removed: number; moved: number }
+}
+
+export interface InsightLabeling {
+  /** `annotation` = per-annotation author is recorded; `image_assignee` = only the image assignee is known. */
+  throughput_basis: 'annotation' | 'image_assignee'
+  throughput: { date: string; labeler_id: string | null; labeler: string; annotations: number; images: number }[]
+  review: { date: string; approved: number; rejected: number; rate: number }[]
+  ai: {
+    human: number; ai: number; accepted_ai: number; acceptance_rate: number
+    /** `accepted` = AI labels on approved images that nobody has changed since. */
+    by_source: { source: string; count: number; accepted: number }[]
+  }
 }

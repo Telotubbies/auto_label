@@ -39,7 +39,8 @@ export const useApp = create<Session>((set, get) => {
     authed: !!tokens.access,
     me: null,
     role: null,
-    collapsed: false,
+    // narrow screens start with the icon rail so the project page keeps usable width
+    collapsed: typeof window !== 'undefined' && window.innerWidth < 900,
     setMe: (me) => set({ me }),
     setRole: (role) => set({ role }),
     signIn: async (path, body) => {

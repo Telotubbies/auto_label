@@ -1,13 +1,13 @@
 import { useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BrainCircuit, Eye } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import type { Project } from '@/lib/types'
-import { ProjectPanel } from '@/components/shell'
-import { Button, EmptyState, Spinner } from '@/components/ui'
+import { ProjectPanel, projNav } from '@/components/shell'
+import { Button, EmptyState, Select, Spinner } from '@/components/ui'
 
 export function useProject() {
   return useOutletContext<{ project: Project; ws: string }>()
@@ -16,6 +16,7 @@ export function useProject() {
 export default function ProjectLayout() {
   const { ws = '', project: slug = '' } = useParams()
   const nav = useNavigate()
+  const location = useLocation()
   const can = useApp((s) => s.can)
   const q = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug) })
   const [slot, setSlot] = useState<HTMLElement | null>(null)
@@ -24,6 +25,9 @@ export default function ProjectLayout() {
   if (!q.data) return <EmptyState title="Project not found" hint={(q.error as Error)?.message} />
   const project = q.data
   const review = project.statusCounts?.review ?? 0
+  // Below md the project sidebar is hidden; one compact select keeps every section reachable.
+  const items = projNav.flatMap((g) => g.items).filter((i) => can(i.min))
+  const section = location.pathname.split('/').pop() ?? 'browse'
   return (
     <div className="flex h-full">
       <ProjectPanel project={project} />
@@ -39,7 +43,15 @@ export default function ProjectLayout() {
               </Button>
             )}
           </>, slot)}
-        <div data-scroll className="min-h-0 flex-1 overflow-y-auto pt-14"><Outlet context={{ project, ws }} /></div>
+        <div data-scroll className="min-h-0 flex-1 overflow-y-auto pt-14">
+          <div className="px-4 pb-1 md:hidden">
+            <Select aria-label="Project section" value={items.some((i) => i.to === section) ? section : 'browse'}
+              onChange={(e) => nav(`/${ws}/${slug}/${e.target.value}`)}>
+              {items.map((i) => <option key={i.to} value={i.to}>{i.label}</option>)}
+            </Select>
+          </div>
+          <Outlet context={{ project, ws }} />
+        </div>
       </div>
     </div>
   )

@@ -1,8 +1,10 @@
 // Typed API client. VITE_API_URL points at the API origin when web and api are on
 // different hosts (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 import type {
-  Annotation, Analytics, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, Job, LabelClass, LeaderboardRow, Me,
-  Member, ModelItem, PlaygroundResult, Project, RegistryItem, Version, WorkspaceInfo,
+  Annotation, Analytics, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, InsightDistribution, InsightEmbedding,
+  InsightGeometry, InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary,
+  InsightVersionDiff, Job, LabelClass, LeaderboardRow, Me, Member, ModelItem, PlaygroundResult, Project, RegistryItem, Version,
+  WorkspaceInfo,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -106,6 +108,7 @@ export const api = {
   tags: (ws: string, p: string) => get<{ name: string; count: number }[]>(`${P(ws, p)}/tags`),
   batches: (ws: string, p: string) => get<Batch[]>(`${P(ws, p)}/batches`),
   images: (ws: string, p: string, q: Record<string, string | number> = {}) =>
+    // `selection` is a saved lasso token; the ids themselves never go in the URL.
     get<{ total: number; items: ImageItem[] }>(`${P(ws, p)}/images?${new URLSearchParams(q as Record<string, string>)}`),
   image: (id: string) => get<ImageItem & { annotations: Annotation[] }>(`/images/${id}`),
   board: (ws: string, p: string) => get<Board>(`${P(ws, p)}/board`),
@@ -122,5 +125,29 @@ export const api = {
   autolabelPreview: (ws: string, p: string, body: AutoLabelInput & { sample?: number }) =>
     post<AutoLabelPreview>(`${P(ws, p)}/autolabel/preview`, body),
   playgroundPredict: (ws: string, form: FormData) => post<{ results: PlaygroundResult[] }>(`/ws/${ws}/playground/predict`, form),
+  insights: {
+    summary: (ws: string, p: string, version?: string) =>
+      get<InsightSummary>(`${P(ws, p)}/insights/summary${version ? `?version=${encodeURIComponent(version)}` : ''}`),
+    distribution: (ws: string, p: string, version?: string) =>
+      get<InsightDistribution>(`${P(ws, p)}/insights/distribution${version ? `?version=${encodeURIComponent(version)}` : ''}`),
+    geometry: (ws: string, p: string, version?: string) =>
+      get<InsightGeometry>(`${P(ws, p)}/insights/geometry${version ? `?version=${encodeURIComponent(version)}` : ''}`),
+    imageStats: (ws: string, p: string) => get<InsightImageStats>(`${P(ws, p)}/insights/image-stats`),
+    scanImageStats: (ws: string, p: string) => post<Job>(`${P(ws, p)}/insights/image-stats/scan`, {}),
+    leakage: (ws: string, p: string, version?: string) =>
+      get<InsightLeakage>(`${P(ws, p)}/insights/leakage${version ? `?version=${encodeURIComponent(version)}` : ''}`),
+    scanLeakage: (ws: string, p: string, version?: string) =>
+      post<Job>(`${P(ws, p)}/insights/leakage/scan${version ? `?version=${encodeURIComponent(version)}` : ''}`, {}),
+    embedding: (ws: string, p: string) => get<InsightEmbedding>(`${P(ws, p)}/insights/embedding`),
+    scanEmbedding: (ws: string, p: string) => post<Job>(`${P(ws, p)}/insights/embedding/scan`, {}),
+    versionDiff: (ws: string, p: string, base: string, target: string) =>
+      get<InsightVersionDiff>(`${P(ws, p)}/insights/version-diff?base=${encodeURIComponent(base)}&target=${encodeURIComponent(target)}`),
+    labeling: (ws: string, p: string) => get<InsightLabeling>(`${P(ws, p)}/insights/labeling`),
+    /** Persist the lasso's image ids server-side and hand back a short-lived token for the URL. */
+    saveSelection: (ws: string, p: string, imageIds: string[]) =>
+      post<InsightSelectionRef>(`${P(ws, p)}/insights/selections`, { image_ids: imageIds }),
+    selection: (ws: string, p: string, token: string) =>
+      get<InsightSelection>(`${P(ws, p)}/insights/selections/${encodeURIComponent(token)}`),
+  },
   P,
 }

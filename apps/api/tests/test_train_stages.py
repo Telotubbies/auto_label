@@ -365,7 +365,8 @@ def test_eval_failure_keeps_the_model_ready(client, monkeypatch):
     mid, vid, jid = _run_setup()
     monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": HappyAdapter()})
     monkeypatch.setattr(worker, "scheduler", GpuScheduler(4500, None))
-    monkeypatch.setattr(worker, "_first_limit", lambda *_a: 0.05)
+    # This test is about eval failure, not the watchdog: a 0.05 s limit races a normal adapter return.
+    monkeypatch.setattr(worker, "_first_limit", lambda *_a: 5.0)
 
     def boom(*_a, **_kw):
         raise ValueError("bad export")
