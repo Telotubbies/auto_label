@@ -89,6 +89,9 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null)
   const main = groups.filter((g) => g.id !== 'footer')
   const footer = groups.find((g) => g.id === 'footer')?.items ?? []
+  // Active nesting is resolved against what this role renders, so a hidden longer item
+  // (Members / Plan & Usage for a member) never leaves the sidebar with no current entry.
+  const navItems = groups.flatMap((g) => g.items)
   // The icon rail is a desktop affordance; the phone drawer always shows labels.
   const rail = collapsed && !mobileOpen
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -149,7 +152,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
               : <div id={`ws-nav-${g.id}`} className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.label}</div>)}
             {g.items.map((i) => (
               <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
-                active={isWorkspaceNavActive(i, pathname, base)} collapsed={rail} onClick={onClose} />
+                active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
             ))}
           </div>
         ))}
@@ -163,7 +166,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
         )}
         {footer.map((i) => (
           <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
-            active={isWorkspaceNavActive(i, pathname, base)} collapsed={rail} onClick={onClose} />
+            active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
         ))}
         <div className="flex items-center gap-2 px-2.5 py-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>

@@ -189,15 +189,22 @@ export function visibleProjectNav(
 /**
  * NavLink's own active test highlights a prefix item too, so Settings would stay lit on
  * /settings/members. A shorter match loses to a longer one in the same nav.
+ *
+ * `items` is the list the caller actually renders: an item this role cannot see must not
+ * suppress a visible shorter one, or a member on Settings → Members has no current item.
+ * Omit it to test against the full nav (the role matrix's default view).
  */
-export function isWorkspaceNavActive(item: WorkspaceNavItem, pathname: string, base: string): boolean {
+export function isWorkspaceNavActive(
+  item: WorkspaceNavItem, pathname: string, base: string, items?: WorkspaceNavItem[],
+): boolean {
   // React Router keeps the trailing slash the sidebar link renders (`/acme/`), so normalise the
   // pathname once: without it the core Projects entry is never the current item after a click.
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
   const target = `${base}/${item.to}`.replace(/\/+$/, '')
   const matches = item.end ? path === target : path === target || path.startsWith(`${target}/`)
   if (!matches) return false
-  return !workspaceNav.flatMap((g) => g.items).some((other) => {
+  const candidates = items ?? workspaceNav.flatMap((g) => g.items)
+  return !candidates.some((other) => {
     if (other.to.length <= item.to.length) return false
     const t = `${base}/${other.to}`.replace(/\/+$/, '')
     return path === t || path.startsWith(`${t}/`)

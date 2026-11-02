@@ -279,6 +279,22 @@ test('a plain settings tab keeps Settings active', () => {
   assert.equal(active('Members', '/acme/settings/account'), false)
 })
 
+// Fix round 5 (I1): the longer-match loop only walked the full nav, so a role-hidden item
+// suppressed the shorter item the sidebar renders. A member/annotator opening Settings →
+// Members had no current nav item at all; Settings must stay lit there.
+test('a hidden longer item does not un-light the item the sidebar renders', () => {
+  const memberItems = visibleWorkspaceNav('member').flatMap((g) => g.items)
+  const memberSettings = memberItems.find((i) => i.label === 'Settings')
+  assert.ok(memberSettings, 'a member must still see Settings')
+  assert.equal(isWorkspaceNavActive(memberSettings, '/acme/settings/members', '/acme', memberItems), true)
+  assert.equal(isWorkspaceNavActive(memberSettings, '/acme/settings/usage', '/acme', memberItems), true)
+  // An owner does render Members / Plan & Usage, so Settings yields to those specific items.
+  const ownerItems = visibleWorkspaceNav('owner').flatMap((g) => g.items)
+  const ownerSettings = ownerItems.find((i) => i.label === 'Settings')
+  assert.equal(isWorkspaceNavActive(ownerSettings, '/acme/settings/members', '/acme', ownerItems), false)
+  assert.equal(isWorkspaceNavActive(ownerSettings, '/acme/settings/usage', '/acme', ownerItems), false)
+})
+
 test('the workspace root is active only at the root, with or without a trailing slash', () => {
   assert.equal(active('Projects', '/acme'), true)
   // React Router keeps the slash the sidebar link renders (`/acme/`), so clicking Projects must
