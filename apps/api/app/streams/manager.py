@@ -556,6 +556,8 @@ class _Worker:
         rule = self.rules[i] if 0 <= i < len(self.rules) else {}
         kind = ev.get("kind") or rule.get("kind")
         rule_json = {**rule, "index": i, "kind": kind, "label": rule_label(rule, i)}
+        if isinstance(ev.get("seconds"), (int, float)) and not isinstance(ev.get("seconds"), bool):
+            rule_json["seconds"] = float(ev["seconds"])
         payload = [{k: p[k] for k in ("class", "class_id", "track_id", "confidence", "x", "y", "width", "height")
                     if k in p} for p in preds[:50]]
         eid = new_id()

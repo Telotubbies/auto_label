@@ -26,6 +26,10 @@ const Versions = lazy(() => import('@/features/project/Versions'))
 const Insights = lazy(() => import('@/features/project/Insights'))
 const ModelInsights = lazy(() => import('@/features/insights/Insights'))
 const QA = lazy(() => import('@/features/project/QA'))
+const Lineage = lazy(() => import('@/features/lineage/Lineage'))
+const Dashboards = lazy(() => import('@/features/dashboards/Dashboards'))
+const DashboardEditor = lazy(() => import('@/features/dashboards/DashboardEditor'))
+const StreamAnalytics = lazy(() => import('@/features/streams/StreamAnalytics'))
 import Classes from '@/features/project/Classes'
 import Train from '@/features/project/Train'
 const Models = lazy(() => import('@/features/project/Models'))
@@ -162,6 +166,12 @@ export default function App() {
             <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />
             <Route path="insights" element={<PermGate perm="project.review"><Insights /></PermGate>} />
             <Route path="model-insights" element={<PermGate perm="project.review"><ModelInsights /></PermGate>} />
+            <Route path="lineage" element={<PermGate perm="project.review"><Lineage /></PermGate>} />
+            <Route path="dashboards" element={<PermGate perm="project.review"><Dashboards /></PermGate>} />
+            {/* A shared dashboard is a read-only link for every project member, matching the API. */}
+            <Route path="dashboards/shared/:token" element={<PermGate perm="project.read"><DashboardEditor /></PermGate>} />
+            <Route path="dashboards/:id" element={<PermGate perm="project.review"><DashboardEditor /></PermGate>} />
+            <Route path="stream-analytics" element={<PermGate perm="project.review"><StreamAnalytics /></PermGate>} />
             <Route path="classes" element={<PermGate perm="project.classes"><Classes /></PermGate>} />
             <Route path="train" element={<PermGate perm="project.train"><Train /></PermGate>} />
             <Route path="models" element={<PermGate perm="project.models"><Models /></PermGate>} />

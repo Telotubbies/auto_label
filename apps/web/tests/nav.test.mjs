@@ -96,8 +96,8 @@ test('the platform admin console entry appears only for superadmins', () => {
   assert.equal(superadmin.some((g) => g.items.some((i) => i.label === 'Admin')), true)
 })
 
-test('project nav has the five v2 groups in lifecycle order', () => {
-  assert.deepEqual(projectNav.map((g) => g.label), ['DATA', 'LABEL', 'MODELS', 'DEPLOY', 'SETTINGS'])
+test('project nav has the six v2 groups in lifecycle order', () => {
+  assert.deepEqual(projectNav.map((g) => g.label), ['DATA', 'LABEL', 'MODELS', 'STUDIO', 'DEPLOY', 'SETTINGS'])
 })
 
 test('a manager sees every project group', () => {
@@ -105,6 +105,7 @@ test('a manager sees every project group', () => {
     ['DATA', ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights']],
     ['LABEL', ['Annotate', 'Review & Quality']],
     ['MODELS', ['Train', 'Model insights', 'Models']],
+    ['STUDIO', ['Lineage', 'Dashboards', 'Stream analytics']],
     ['DEPLOY', ['Deploy & Test', 'Streams']],
     ['SETTINGS', ['Project Settings']],
   ])
@@ -112,11 +113,12 @@ test('a manager sees every project group', () => {
 
 test('a reviewer loses Train and the settings group', () => {
   const groups = visibleProjectNav(REVIEWER, 'reviewer')
-  assert.deepEqual(groups.map((g) => g.id), ['data', 'label', 'models', 'deploy'])
+  assert.deepEqual(groups.map((g) => g.id), ['data', 'label', 'models', 'studio', 'deploy'])
   assert.deepEqual(itemLabels(groups, 'data'),
     ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights'])
   assert.deepEqual(itemLabels(groups, 'label'), ['Annotate', 'Review & Quality'])
   assert.deepEqual(itemLabels(groups, 'models'), ['Model insights', 'Models'])
+  assert.deepEqual(itemLabels(groups, 'studio'), ['Lineage', 'Dashboards', 'Stream analytics'])
   assert.deepEqual(itemLabels(groups, 'deploy'), ['Deploy & Test', 'Streams'])
   assert.deepEqual(itemLabels(groups, 'settings'), [])
 })

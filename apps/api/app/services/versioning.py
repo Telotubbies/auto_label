@@ -116,7 +116,8 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
                 tgt = "train" if "train" in vals else "valid" if "valid" in vals else "test"
                 for i in ids:
                     if splits[i] != tgt:
-                        splits[i] = tgt; leakage_moved += 1
+                        splits[i] = tgt
+                        leakage_moved += 1
 
     out = version_dir(v)
     if out.exists():
@@ -147,7 +148,8 @@ def generate(db: Session, v: Version, progress=lambda f: None) -> dict:
             (out / split).mkdir(parents=True, exist_ok=True)
             vim.save(out / rel, "JPEG", quality=92)
             items.append({"file": rel, "split": split, "width": vim.width, "height": vim.height, "source": r.id,
-                          "anns": [{"cls": cls_idx[a["classId"]], "shape": a["shape"]} for a in vanns]})
+                          "anns": [{"cls": cls_idx[a["classId"]], "shape": a["shape"],
+                                    "source": a.get("source") or "human"} for a in vanns]})
             per_split[split] += 1
             for a in vanns:
                 per_class[classes[cls_idx[a["classId"]]].name] += 1

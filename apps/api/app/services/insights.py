@@ -136,6 +136,16 @@ def source_splits(manifest: dict) -> dict:
     return out
 
 
+def version_manifest(version: Version) -> dict | None:
+    """Parsed manifest.json (cached): lineage and frozen-split readers share one parse."""
+    return _manifest(version)
+
+
+def dataset_rows(db: Session, project: Project, version: Version | None = None) -> tuple[list[Image], dict | None]:
+    """Live images plus the frozen source-id -> split map when a version scopes the read."""
+    return _scoped(db, project, version)
+
+
 def version_scope(db: Session, project: Project, version_id: str | None) -> tuple[Version | None, dict | None]:
     """(version, frozen split_of) for a version of this project; (None, None) when it is not ours.
 

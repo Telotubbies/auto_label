@@ -15,6 +15,7 @@ export type NavIcon =
   | 'integrations' | 'activity' | 'settings' | 'admin'
   | 'upload' | 'annotate' | 'dataset' | 'video' | 'versions' | 'classes' | 'insights' | 'train'
   | 'modelInsights' | 'deploy' | 'qa' | 'streams' | 'access' | 'projectSettings'
+  | 'lineage' | 'dashboards' | 'streamAnalytics'
 
 /** The roles that can hold a workspace: `rbac.WORKSPACE_PERMISSIONS` uses these names. */
 const STAFF: Role[] = ['owner', 'admin', 'member', 'reviewer', 'annotator']
@@ -98,6 +99,12 @@ export const projectNav: NavGroup<ProjectNavItem>[] = [
     { to: 'train', label: 'Train', icon: 'train', perm: 'project.train' },
     { to: 'model-insights', label: 'Model insights', icon: 'modelInsights', perm: 'project.review' },
     { to: 'models', label: 'Models', icon: 'models', perm: 'project.models' },
+  ]},
+  // Task 20c's analysis studio: lineage, dashboard builder and stream analytics.
+  { id: 'studio', label: 'STUDIO', items: [
+    { to: 'lineage', label: 'Lineage', icon: 'lineage', perm: 'project.review' },
+    { to: 'dashboards', label: 'Dashboards', icon: 'dashboards', perm: 'project.review' },
+    { to: 'stream-analytics', label: 'Stream analytics', icon: 'streamAnalytics', perm: 'project.review' },
   ]},
   { id: 'deploy', label: 'DEPLOY', items: [
     { to: 'deploy', label: 'Deploy & Test', icon: 'deploy', perm: 'project.models' },

@@ -162,5 +162,7 @@ class Engine:
                 start = ts
             self._timer[key] = (start, ts)
             if ts - start > r["seconds"] and self._fire(ts, key):
-                events.append(self._ev(i, "dwell", f"{r['class']} #{tid} dwelled {ts - start:.0f}s in zone {r['zone_id']}", p))
+                ev = self._ev(i, "dwell", f"{r['class']} #{tid} dwelled {ts - start:.0f}s in zone {r['zone_id']}", p)
+                ev["seconds"] = round(ts - start, 1)
+                events.append(ev)
         self._expire(ts, i, seen)

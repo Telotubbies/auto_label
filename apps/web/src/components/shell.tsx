@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, Bell, Boxes, BrainCircuit, Cctv, Check, ChevronDown, ChevronRight, ChevronsLeft, ClipboardCheck,
-  CreditCard, Cpu, Database, Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor,
-  Moon, Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User, Users, Wrench, X, Zap,
+import {
+  Activity, BarChart3, Bell, Boxes, BrainCircuit, Cctv, Check, ChevronDown, ChevronRight, ChevronsLeft,
+  ClipboardCheck, CreditCard, Cpu, Database, Film, FlaskConical, FolderGit2, GitBranch, KeyRound, Layers,
+  LayoutDashboard, LineChart, LogOut, Menu, Monitor, Moon, Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun,
+  Tag, Tags, Upload, User, Users, Wrench, X, Zap,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -26,6 +28,7 @@ const ICONS: Record<NavIcon, typeof Layers> = {
   upload: Upload, annotate: Tag, dataset: Database, video: Film, versions: FolderGit2, classes: Tags,
   insights: LineChart, train: BrainCircuit, modelInsights: BarChart3, deploy: Rocket, qa: ClipboardCheck,
   streams: Cctv, access: KeyRound, projectSettings: Wrench,
+  lineage: GitBranch, dashboards: LayoutDashboard, streamAnalytics: Activity,
 }
 
 /** Elements the drawer's Tab trap cycles through, in DOM order. */

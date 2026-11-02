@@ -3,14 +3,14 @@
 import type {
   AdminJobsHealth, AdminOverview, AdminStatus, AdminWorkspace, Analytics, Annotation, AuditFilters,
   AuditRow, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, ConsensusJob,
-  ConsensusJobDetail, ConsensusSubmitResult, CustomRole, DeploymentAlias, DeploymentOverview, DpaDoc, HoneypotItem,
-  HoneypotList, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry, InsightImageStats, InsightLabeling,
-  InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff, Job, LabelClass,
-  LabelingDashboard, LeaderboardRow, Me, Member, ModelDetections, ModelInsights, ModelItem,
-  MyTask, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
-  ProjectRole, RegistryItem, ReviewQueueItem, RoleLevel, StreamCreateBody, StreamEventItem, StreamEventPage,
-  StreamItem, StreamPatchBody, StreamVideoUpload, TrainingInsights, Version, VideoFrame, VideoItem,
-  WorkerRow, WorkspaceFlags, WorkspaceHome, WorkspaceInfo, WorkspacePrivacy,
+  ConsensusJobDetail, ConsensusSubmitResult, CustomRole, DashboardSummary, DeploymentAlias, DeploymentOverview,
+  DpaDoc, HoneypotItem, HoneypotList, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry,
+  InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary,
+  InsightVersionDiff, Job, LabelClass, LabelingDashboard, LeaderboardRow, Lineage, Me, Member, ModelDetections,
+  ModelInsights, ModelItem, MyTask, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy,
+  ProjectPrivacyInput, ProjectRole, RegistryItem, ReviewQueueItem, RoleLevel, StreamAnalytics, StreamCreateBody,
+  StreamEventItem, StreamEventPage, StreamItem, StreamPatchBody, StreamVideoUpload, TrainingInsights, Version,
+  VideoFrame, VideoItem, WidgetData, WorkerRow, WorkspaceFlags, WorkspaceHome, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -216,6 +216,25 @@ export const api = {
     selection: (ws: string, p: string, token: string) =>
       get<InsightSelection>(`${P(ws, p)}/insights/selections/${encodeURIComponent(token)}`),
   },
+
+  // --- Insights Studio (Task 20c): lineage, stream analytics, dashboard builder ---
+  lineage: (ws: string, p: string) => get<Lineage>(`${P(ws, p)}/insights/lineage`),
+  streamAnalytics: (ws: string, p: string, days = 30, tzOffset = 0) =>
+    get<StreamAnalytics>(`${P(ws, p)}/insights/streams?days=${days}&tz_offset=${tzOffset}`),
+  widgetQuery: (ws: string, p: string,
+    body: { source: string; measure: string; dimension: string; dimension2?: string | null; filters?: Record<string, string | number | undefined> }) =>
+    post<WidgetData>(`${P(ws, p)}/insights/query`, body),
+  dashboards: (ws: string, p: string) => get<DashboardSummary[]>(`${P(ws, p)}/dashboards`),
+  dashboard: (ws: string, p: string, id: string) => get<DashboardSummary>(`${P(ws, p)}/dashboards/${id}`),
+  createDashboard: (ws: string, p: string, body: { name: string; widgets: unknown[] }) =>
+    post<DashboardSummary>(`${P(ws, p)}/dashboards`, body),
+  updateDashboard: (ws: string, p: string, id: string, body: { name?: string; widgets?: unknown[] }) =>
+    patch<DashboardSummary>(`${P(ws, p)}/dashboards/${id}`, body),
+  deleteDashboard: (ws: string, p: string, id: string) => del<{ ok: boolean }>(`${P(ws, p)}/dashboards/${id}`),
+  shareDashboard: (ws: string, p: string, id: string) =>
+    post<{ token: string; path: string }>(`${P(ws, p)}/dashboards/${id}/share`, {}),
+  sharedDashboard: (ws: string, p: string, token: string) =>
+    get<DashboardSummary>(`${P(ws, p)}/dashboards/shared/${encodeURIComponent(token)}`),
 
   // --- RBAC ---
   permissions: (ws: string, project?: string) => get<Permissions>(`/ws/${ws}/permissions${qs({ project })}`),

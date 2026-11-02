@@ -444,6 +444,20 @@ class StreamEvent(Base):
     classes: Mapped[str] = mapped_column(Text, default="")                   # "|person|helmet|"
 
 
+class Dashboard(Base):
+    """Saved Insights Studio dashboard; widget specs are JSON in display order."""
+    __tablename__ = "dashboards"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    widgets: Mapped[list] = mapped_column(JSON, default=list)
+    share_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
 class Audit(Base):
     __tablename__ = "audit"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
