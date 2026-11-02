@@ -11,9 +11,10 @@ Usage::
 
 It exercises, in order, the six checks the demo depends on: vLLM ``/v1/models``; VLM grounding
 refined by SAM 3.1 on five seed images; SAM text auto-label; vLLM sleep → yolo26s training →
-wake (sleep and wake times recorded); a gate-camera stream at ≥ 5 FPS for 60 s; and the peak
-GPU memory sampled every second for the whole run (< 11 500 MiB). Every line prints PASS or
-FAIL, and the exit code is 1 if any check failed. Nothing outside the demo workspace is touched.
+wake (sleep and wake times recorded); a gate-camera stream at ≥ 5 FPS for 60 s that also captured
+frames and produced detections; and the peak GPU memory sampled every second for the whole run
+(< 11 500 MiB). Every line prints PASS or FAIL, and the exit code is 1 if any check failed.
+Nothing outside the demo workspace is touched.
 
 The SAM auto-label check is scoped to the images the preview looked at (or the newest five when
 the preview fails) and each image's annotations and status are snapshotted and restored around
@@ -621,6 +622,7 @@ def step_sleep_train_wake(
 def step_stream(cfg: Config, api: Api, clock: Callable[[], float], sleep: Callable[[float], None]) -> tuple[bool, str]:
     stream_id: str | None = None
     samples: list[float] = []
+    final: dict[str, Any] = {}
     problem = ""
     try:
         gauge = next((s for s in api.streams() if s.get("name") == STREAM_NAME), None)
@@ -632,6 +634,7 @@ def step_stream(cfg: Config, api: Api, clock: Callable[[], float], sleep: Callab
         deadline = clock() + cfg.stream_seconds
         while clock() < deadline:
             state = api.stream(stream_id)
+            final = state
             status = state.get("status")
             samples.append(float(state.get("fps") or 0.0))
             if status in BAD_STREAM_STATUSES and not problem:
@@ -648,11 +651,24 @@ def step_stream(cfg: Config, api: Api, clock: Callable[[], float], sleep: Callab
             except Exception as exc:
                 problem = problem or f"stop: {_err(exc)}"
 
-    detail = (
+    # FPS counts captured frames, not inferences: a dead model still looks live. The final state
+    # must also show a clean error slot and that frames were actually captured and detected on.
+    frames = int(final.get("frames") or 0)
+    detections = int(final.get("detections") or 0)
+    last_error = str(final.get("lastError") or "")
+    if last_error:
+        problem = problem or f"lastError: {last_error}"
+    if frames <= 0:
+        problem = problem or "no frames captured"
+    if detections <= 0:
+        problem = problem or f"0 detections after {frames} frame(s)"
+
+    fps_detail = (
         f"min {min(samples):.1f}, avg {sum(samples) / len(samples):.1f} FPS over {len(samples)} sample(s)"
         if samples
         else "no FPS samples"
     )
+    detail = f"{fps_detail}, frames {frames}, detections {detections}"
     if problem:
         detail += f"; {problem}"
     return not problem and fps_ok(samples), detail

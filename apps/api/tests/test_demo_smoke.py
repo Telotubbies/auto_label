@@ -124,7 +124,17 @@ def _api_handler(state: dict, calls: list[tuple[str, str]]):
             state["stops"] += 1
             return httpx.Response(200, json={"id": "s1", "status": "stopped"})
         if path == f"{PREFIX}/streams/s1":
-            return httpx.Response(200, json={"id": "s1", "status": "live", "fps": state["fps"]})
+            return httpx.Response(
+                200,
+                json={
+                    "id": "s1",
+                    "status": state["stream_status"],
+                    "fps": state["fps"],
+                    "frames": state["frames"],
+                    "detections": state["detections"],
+                    "lastError": state["last_error"],
+                },
+            )
         raise AssertionError(f"unexpected API call {method} {path}")
 
     return handle
@@ -158,6 +168,10 @@ def _run(state: dict, *, fps: float = 6.0) -> tuple[int, list[tuple[str, str]], 
     state = {
         **state,
         "fps": fps,
+        "stream_status": state.get("stream_status", "live"),
+        "frames": state.get("frames", 600),
+        "detections": state.get("detections", 12),
+        "last_error": state.get("last_error", ""),
         "stops": 0,
         "images": {image_id: {"annotations": anns, "status": "done"} for image_id, anns in images.items()},
         "restored": [],
@@ -203,6 +217,8 @@ def test_all_six_steps_pass_in_order_with_sleep_and_wake_times(capsys):
         assert marker in line, (marker, line)
     assert re.search(r"sleep \d+\.\d+ s", passes[3]), passes[3]
     assert re.search(r"wake \d+\.\d+ s", passes[3]), passes[3]
+    assert "frames 600" in passes[4], passes[4]
+    assert "detections 12" in passes[4], passes[4]
     assert state["stops"] == 1
     assert ("POST", "/wake_up") in calls
     assert state["preview_timeout"]["read"] == demo_smoke.DEFAULT_PREVIEW_TIMEOUT
@@ -281,6 +297,29 @@ def test_stream_is_stopped_even_when_fps_is_below_the_floor(capsys):
     assert "FPS" in stream_fail
     assert state["stops"] == 1, "stop must run in a finally block"
     assert ("POST", f"{PREFIX}/streams/s1/stop") in calls
+
+
+def test_stream_fails_when_inference_fails_despite_a_healthy_source_rate(capsys):
+    code, _, _ = _run(
+        {"models": [{"id": "qwen"}], "sleeping": False, "last_error": "inference failed", "detections": 0},
+        fps=10.0,
+    )
+
+    assert code == 1, "a live source with dead inference must not report PASS"
+    lines = capsys.readouterr().out.splitlines()
+    stream_fail = next(line for line in lines if line.startswith("FAIL  stream"))
+    assert "inference failed" in stream_fail
+    assert "detections 0" in stream_fail
+
+
+def test_stream_fails_when_the_window_produced_no_detections(capsys):
+    code, _, _ = _run({"models": [{"id": "qwen"}], "sleeping": False, "detections": 0}, fps=10.0)
+
+    assert code == 1, "10 FPS from the source is not proof that the model ran"
+    lines = capsys.readouterr().out.splitlines()
+    stream_fail = next(line for line in lines if line.startswith("FAIL  stream"))
+    assert "frames 600" in stream_fail
+    assert "detections 0" in stream_fail
 
 
 def test_vram_and_fps_decisions_are_pure():
