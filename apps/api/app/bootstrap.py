@@ -45,6 +45,13 @@ def init_db():
     # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
     _encrypt_secrets()
     _seal_stream_sources()
+    ensure_columns(engine, "stream_events", {
+        "clean_path": "VARCHAR(1024) DEFAULT ''",
+        "rule_index": "INTEGER", "rule_kind": "VARCHAR(16) DEFAULT ''",
+        "rule_label": "VARCHAR(255) DEFAULT ''", "classes": "TEXT DEFAULT ''"})
+    with engine.begin() as cn:
+        cn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_stream_events_stream_ts ON stream_events (stream_id, ts)")
+    _backfill_event_fields()
     _backfill_image_classes()
     if SEED_DEMO:
         seed()
@@ -73,6 +80,19 @@ def _widen_totp_secret():
     if engine.dialect.name == "postgresql":
         with engine.begin() as cn:
             cn.exec_driver_sql("ALTER TABLE users ALTER COLUMN totp_secret TYPE VARCHAR(255)")
+
+
+def _backfill_event_fields() -> None:
+    """Events recorded before the SQL-filter fix carry these fields only inside their JSON snapshots."""
+    from .models import StreamEvent
+    from .streams.event_fields import filter_fields
+
+    with SessionLocal() as db:
+        rows = db.scalars(select(StreamEvent).where(StreamEvent.rule_kind == "")).all()
+        for ev in rows:
+            for name, value in filter_fields(ev.rule or {}, ev.predictions or []).items():
+                setattr(ev, name, value)
+        db.commit()
 
 
 def ensure_columns(eng, table: str, cols: dict[str, str]) -> None:

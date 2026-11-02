@@ -37,6 +37,8 @@ const Playground = lazy(() => import('@/features/playground/Playground'))
 const AuditLog = lazy(() => import('@/features/governance/AuditLog'))
 const Dpa = lazy(() => import('@/features/governance/Dpa'))
 const AdminConsole = lazy(() => import('@/features/admin/AdminConsole'))
+const Streams = lazy(() => import('@/features/streams/Streams'))
+const StreamDetail = lazy(() => import('@/features/streams/StreamDetail'))
 
 function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
