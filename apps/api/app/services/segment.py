@@ -126,7 +126,8 @@ def _load_sam():
 
 
 def sam_status() -> dict:
-    return {"loaded": _sam["proc"] is not None,
+    return {"enabled": SAM_ENABLED != "0",
+            "loaded": _sam["proc"] is not None,
             "error": "SAM is not available on this server" if _sam["err"] else ""}
 
 

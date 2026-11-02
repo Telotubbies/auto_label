@@ -9,11 +9,11 @@ os.environ["LD_SAM_ENABLED"] = "0"
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Image, LabelClass, Project, User, Video, Workspace, new_id, set_annotations
+from app.models import Image, LabelClass, Project, User, Video, Workspace, WorkspaceFlag, new_id, set_annotations
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -169,3 +169,16 @@ def test_upload_video_requires_reviewer(client, fx):
     files = {"file": ("clip.mp4", b"not really a video", "video/mp4")}
     r = client.post(f"{BASE}/videos", files=files, headers=_login(client, "labeler@labeldesk.dev"))
     assert r.status_code == 403, r.text
+
+
+def test_track_forward_is_hidden_when_the_video_flag_is_off(client, fx, monkeypatch):
+    """I13: task_22 names track-forward, so its route must honour the flag too."""
+    monkeypatch.delenv("LD_FLAGS_ON", raising=False)
+    with SessionLocal() as db:
+        db.execute(delete(WorkspaceFlag).where(WorkspaceFlag.key == "task_22"))
+        db.commit()
+    seeded = _frame_annotations(fx["frames"][0])[0]["id"]
+    r = client.post(f"/api/images/{fx['frames'][0]}/track-forward",
+                    json={"annotation_id": seeded, "frames": 1},
+                    headers=_login(client, "labeler@labeldesk.dev"))
+    assert r.status_code == 404, r.text

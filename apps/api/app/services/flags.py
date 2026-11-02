@@ -12,7 +12,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db import get_db
+from ..db import SessionLocal
 from ..deps import Ctx, ws_ctx
 from ..models import Workspace, WorkspaceFlag, now
 
@@ -73,10 +73,14 @@ def require_workspace_flag(key: str) -> Callable[..., None]:
     """Like :func:`require_flag`, for routers that also serve signature-only URLs.
 
     The workspace comes from the path instead of a session, so a signed ``frame``/``mjpeg``
-    URL is gated by the same flag without demanding a bearer token.
+    URL is gated by the same flag without demanding a bearer token. This dependency opens and
+    closes its own session: a ``Depends(get_db)`` session would stay checked out for the whole
+    endless MJPEG body and pin one pooled connection per viewer.
     """
-    def dependency(ws: str, db: Session = Depends(get_db)) -> None:
-        workspace_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
-        if workspace_id is None or not is_enabled(key, db, workspace_id):
+    def dependency(ws: str) -> None:
+        with SessionLocal() as db:
+            workspace_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+            ok = workspace_id is not None and is_enabled(key, db, workspace_id)
+        if not ok:
             raise HTTPException(404, "not found")
     return dependency

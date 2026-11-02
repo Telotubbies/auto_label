@@ -11,7 +11,7 @@ from ..db import get_db
 from ..deps import Ctx, current_user, image_ctx, project_ctx
 from ..models import Image, Job, User, Video, new_id, set_annotations
 from ..security import sign_path
-from ..services import metering, video as video_svc
+from ..services import flags, metering, video as video_svc
 from ..services.flags import require_flag
 from ..services.video import MAX_INTERPOLATION_SPAN
 from .images import _assigned, _visible
@@ -192,6 +192,9 @@ class TrackIn(BaseModel):
 @router.post("/api/images/{image_id}/track-forward")
 def track_forward(image_id: str, body: TrackIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     c, img = _assigned(*image_ctx(db, u, image_id))
+    # No {ws} path segment on this legacy route, so gate it here; task_22 names track-forward.
+    if not flags.is_enabled("task_22", db, c.ws.id):
+        raise HTTPException(404, "not found")
     if not img.video_id:
         raise HTTPException(400, "this image is not part of a video")
     if not any(a.get("id") == body.annotation_id for a in img.annotations or []):

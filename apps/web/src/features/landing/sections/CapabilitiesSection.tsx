@@ -135,8 +135,8 @@ function CapabilityCard({ tone, icon: Icon, title, lead, detail, href, linkLabel
 }
 
 export default function CapabilitiesSection() {
-  const { samAvailable } = useCapabilities()
-  const addon = landingAddonState(samAvailable)
+  const { addonsAvailable } = useCapabilities()
+  const addon = landingAddonState(addonsAvailable)
   return (
     <SectionShell id="capabilities" aria-labelledby="capabilities-title" className="py-20 sm:py-28 lg:py-32">
       <SectionHeading

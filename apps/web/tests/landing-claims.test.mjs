@@ -6,6 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { landingAddonState } from '../src/features/landing/addons.ts'
+import { addonsAvailable } from '../src/lib/capability.ts'
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 
@@ -20,6 +21,17 @@ test('a provisioned deployment may describe the connected add-on', () => {
   const on = landingAddonState(true)
   assert.match(on.label, /connected/i)
   assert.match(on.detail, /SAM 3\.1/)
+})
+
+test('a loaded SAM alone does not prove the VLM is connected', () => {
+  assert.equal(addonsAvailable({ sam: { enabled: true, loaded: true } }), false)
+  assert.equal(addonsAvailable({ sam: { enabled: true, loaded: true }, vlm: { configured: false } }), false)
+})
+
+test('the add-on needs both SAM enabled and an explicitly configured VLM', () => {
+  assert.equal(addonsAvailable({ sam: { enabled: true, loaded: false }, vlm: { configured: true } }), true)
+  assert.equal(addonsAvailable({ sam: { enabled: false, loaded: true }, vlm: { configured: true } }), false)
+  assert.equal(addonsAvailable(undefined), false)
 })
 
 test('every cited claim reads the same capability state', () => {

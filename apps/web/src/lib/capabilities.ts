@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { addonsAvailable as computeAddonsAvailable } from './capability'
 import { api } from './api'
 
 /**
@@ -8,7 +9,7 @@ import { api } from './api'
 export function useCapabilities() {
   const q = useQuery({ queryKey: ['public-config'], queryFn: api.config, staleTime: 5 * 60_000 })
   return {
-    samAvailable: q.data?.sam.loaded === true,
+    addonsAvailable: computeAddonsAvailable(q.data),
     loaded: q.isSuccess,
   }
 }

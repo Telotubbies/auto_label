@@ -9,8 +9,8 @@ export interface LandingAddonState {
   detail: string
 }
 
-export function landingAddonState(samAvailable: boolean): LandingAddonState {
-  if (samAvailable) {
+export function landingAddonState(addonsAvailable: boolean): LandingAddonState {
+  if (addonsAvailable) {
     return {
       available: true,
       label: 'SAM 3.1 and VLM connected',

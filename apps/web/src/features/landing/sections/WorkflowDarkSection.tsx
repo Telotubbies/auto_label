@@ -41,8 +41,8 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 export default function WorkflowDarkSection() {
   const bandRef = useRef<HTMLElement>(null)
   const [activeStep, setActiveStep] = useState(0)
-  const { samAvailable } = useCapabilities()
-  const addon = landingAddonState(samAvailable)
+  const { addonsAvailable } = useCapabilities()
+  const addon = landingAddonState(addonsAvailable)
 
   // Scroll progress through the band drives the current step. One passive listener, one rAF, one state
   // update per index change (React bails out when the value is unchanged).

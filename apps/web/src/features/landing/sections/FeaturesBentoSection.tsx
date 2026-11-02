@@ -74,8 +74,8 @@ function ConfidenceMeter({ value }: { value: number }) {
 }
 
 function AutoLabelCard() {
-  const { samAvailable } = useCapabilities()
-  const addon = landingAddonState(samAvailable)
+  const { addonsAvailable } = useCapabilities()
+  const addon = landingAddonState(addonsAvailable)
   return (
     <Reveal delay={0} className="flex min-w-0 lg:col-span-2">
       <article className={cn(CARD, 'w-full min-w-0')}>

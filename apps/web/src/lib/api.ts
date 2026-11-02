@@ -140,7 +140,12 @@ export async function download(path: string, fallbackName: string, retry = true)
 }
 
 export const api = {
-  config: () => get<{ signup_enabled: boolean; sam: { loaded: boolean; error: string | null } }>('/config'),
+  config: () => get<{
+    signup_enabled: boolean
+    sam: { enabled: boolean; loaded: boolean; error: string | null }
+    vlm: { configured: boolean }
+    addons: { available: boolean }
+  }>('/config'),
   me: () => get<Me>('/me'),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
   home: (ws: string) => get<WorkspaceHome>(`/ws/${ws}/home`),
