@@ -13,6 +13,7 @@ const TYPES = [
   { id: 'object-detection', icon: Box, desc: 'Identify objects and their positions with bounding boxes.', tags: ['Bounding Boxes', 'Counts'] },
   { id: 'instance-segmentation', icon: Shapes, desc: 'Detect objects and their exact shape with polygons.', tags: ['Polygons', 'Measuring'] },
   { id: 'classification', icon: Scan, desc: 'Assign a label to the whole image.', tags: ['Image Labels', 'Filtering'] },
+  { id: 'keypoint-detection', icon: Scan, desc: 'Place named joints and draw skeletons for pose, faces or products.', tags: ['Keypoints', 'Skeletons'] },
 ]
 
 type Folder = { id: string; name: string; projectCount: number }

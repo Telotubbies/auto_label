@@ -4,6 +4,8 @@ const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'V', action: 'Pan / move canvas' },
   { keys: 'B', action: 'Bounding box tool' },
   { keys: 'P', action: 'Polygon tool' },
+  { keys: 'O', action: 'Rotated box tool' },
+  { keys: 'K', action: 'Keypoints tool' },
   { keys: 'S', action: 'Smart Polygon (SAM)' },
   { keys: '← / →', action: 'Previous / next image' },
   { keys: 'Delete / Backspace', action: 'Delete selected annotation' },

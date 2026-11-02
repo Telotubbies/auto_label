@@ -7,6 +7,7 @@ Recognised annotation sources, matched to images by file name / stem:
 """
 import io
 import json
+import math
 import re
 import zipfile
 from pathlib import PurePosixPath
@@ -26,6 +27,8 @@ class Bundle:
         self.cvat: dict[str, list[tuple[str, dict]]] = {}   # image basename -> [(class name, shape)]
         self.ls: dict[str, list[tuple[str, dict]]] = {}     # image basename -> [(class name, shape)]
         self.names: list[str] = []
+        self.task: str = ""                      # data.yaml task: e.g. obb
+        self.skeletons: dict[str, dict] = {}     # class name -> {"names": [...], "edges": [[i, j], ...]} (0-based)
 
     @property
     def has_annotations(self) -> bool:
@@ -79,14 +82,18 @@ def collect(files: list[tuple[str, bytes]]) -> Bundle:
         elif low.endswith(".labels"):
             b.names = [l.strip() for l in data.decode(errors="ignore").splitlines() if l.strip()]
         elif low.endswith((".yaml", ".yml")):
-            m = re.search(r"names:\s*(\[.*?\])", data.decode(errors="ignore"), re.S)
+            text = data.decode(errors="ignore")
+            task = re.search(r"^task:\s*(\w+)", text, re.M)
+            if task:
+                b.task = task.group(1).lower()
+            m = re.search(r"names:\s*(\[.*?\])", text, re.S)
             if m:
                 try:
                     b.names = json.loads(m.group(1).replace("'", '"'))
                 except json.JSONDecodeError:
                     pass
             else:   # block list:  names:\n  0: person\n  1: helmet   or  - person
-                block = re.search(r"names:\s*\n((?:\s+.+\n?)+)", data.decode(errors="ignore"))
+                block = re.search(r"names:\s*\n((?:\s+.+\n?)+)", text)
                 if block:
                     b.names = [re.sub(r"^\s*(?:-|\d+:)\s*", "", l).strip().strip("'\"")
                                for l in block.group(1).splitlines() if l.strip()]
@@ -95,7 +102,19 @@ def collect(files: list[tuple[str, bytes]]) -> Bundle:
                 continue
             if not _cvat(b, data):
                 b.voc[PurePosixPath(name).stem] = data.decode(errors="ignore")
+    if not b.task:
+        b.task = _infer_obb_task(b.yolo)
     return b
+
+
+def _infer_obb_task(yolo: dict[str, str]) -> str:
+    """Task-less YOLO sets whose labels are all eight-value lines are OBB (ultralytics DOTA layout).
+
+    Polygon segmentation labels are six or more values; a mixed set stays a polygon dataset.
+    """
+    lengths = {len(line.split()) - 1 for text in yolo.values() for line in text.splitlines()
+               if len(line.split()) >= 5}
+    return "obb" if lengths == {8} else ""
 
 
 def _coco(b: Bundle, data: bytes) -> bool:
@@ -106,7 +125,24 @@ def _coco(b: Bundle, data: bytes) -> bool:
         return False
     if not isinstance(d, dict) or "images" not in d or "annotations" not in d:
         return False
-    cats = {c["id"]: c["name"] for c in d.get("categories", [])}
+    cats = {c["id"]: c["name"] for c in d.get("categories", []) if isinstance(c, dict) and "id" in c}
+    for c in d.get("categories", []):
+        if not isinstance(c, dict) or not isinstance(c.get("name"), str):
+            continue
+        names = c.get("keypoints")
+        if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+            continue
+        edges = []
+        for pair in c.get("skeleton") or []:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                continue
+            a, e = pair
+            if not all(isinstance(v, int) and not isinstance(v, bool) for v in (a, e)):
+                continue
+            a, e = a - 1, e - 1                       # COCO is 1-based, our contract is 0-based
+            if 0 <= a < len(names) and 0 <= e < len(names) and a != e and [a, e] not in edges:
+                edges.append([a, e])
+        b.skeletons[c["name"]] = {"names": names, "edges": edges}
     imgs = {i["id"]: i for i in d["images"]}
     for i in d["images"]:
         b.coco_size[PurePosixPath(i["file_name"]).name] = (i.get("width", 0), i.get("height", 0))
@@ -115,14 +151,21 @@ def _coco(b: Bundle, data: bytes) -> bool:
         if not im or a.get("category_id") not in cats:
             continue
         fname = PurePosixPath(im["file_name"]).name
-        seg = a.get("segmentation")
-        if isinstance(seg, list) and seg and isinstance(seg[0], list) and len(seg[0]) >= 6:
-            shape = {"kind": "polygon", "points_px": seg[0]}
-        elif a.get("bbox"):
-            x, y, w, h = a["bbox"]
-            shape = {"kind": "bbox", "px": [x, y, w, h]}
+        kp = a.get("keypoints")
+        if isinstance(kp, list) and len(kp) >= 3 and len(kp) % 3 == 0:
+            try:
+                shape = {"kind": "keypoints", "points_px": [float(v) for v in kp]}
+            except (TypeError, ValueError):
+                continue
         else:
-            continue
+            seg = a.get("segmentation")
+            if isinstance(seg, list) and seg and isinstance(seg[0], list) and len(seg[0]) >= 6:
+                shape = {"kind": "polygon", "points_px": seg[0]}
+            elif a.get("bbox"):
+                x, y, w, h = a["bbox"]
+                shape = {"kind": "bbox", "px": [x, y, w, h]}
+            else:
+                continue
         b.coco.setdefault(fname, []).append((cats[a["category_id"]], shape))
     return True
 
@@ -265,6 +308,24 @@ def _normalize(shape: dict, W: int, H: int) -> dict:
     return shape
 
 
+def _obb_from_corners(vals: list[float], W: int, H: int) -> dict:
+    """YOLO-OBB's eight normalized corner values -> normalized obb (angles derived in pixel space)."""
+    pts = [(vals[i] * W, vals[i + 1] * H) for i in range(0, 8, 2)]
+    cx = sum(p[0] for p in pts) / 4
+    cy = sum(p[1] for p in pts) / 4
+    w = math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
+    h = math.hypot(pts[2][0] - pts[1][0], pts[2][1] - pts[1][1])
+    angle = math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])
+    return {"kind": "obb", "cx": cx / W, "cy": cy / H, "w": w / W, "h": h / H, "angle": angle}
+
+
+def _normalized_keypoints(points_px: list[float], cw: int, ch: int) -> list[float]:
+    out: list[float] = []
+    for i in range(0, len(points_px) - 2, 3):
+        out.extend((points_px[i] / cw, points_px[i + 1] / ch, int(points_px[i + 2])))
+    return out
+
+
 def annotations_for(b: Bundle, path: str, W: int, H: int) -> list[tuple[str, dict]]:
     """-> [(class name, normalized shape)] for one image (coco, then cvat, then label studio)."""
     name, stem = PurePosixPath(path).name, PurePosixPath(path).stem
@@ -276,6 +337,8 @@ def annotations_for(b: Bundle, path: str, W: int, H: int) -> list[tuple[str, dic
             if s["kind"] == "bbox":
                 x, y, w, h = s["px"]
                 out.append((cls, {"kind": "bbox", "x": x / cw, "y": y / ch, "w": w / cw, "h": h / ch}))
+            elif s["kind"] == "keypoints":
+                out.append((cls, {"kind": "keypoints", "points": _normalized_keypoints(s["points_px"], cw, ch)}))
             else:
                 out.append((cls, {"kind": "polygon", "points": [v / (cw if i % 2 == 0 else ch) for i, v in enumerate(s["points_px"])]}))
     for source in (b.cvat, b.ls):
@@ -288,7 +351,9 @@ def annotations_for(b: Bundle, path: str, W: int, H: int) -> list[tuple[str, dic
                 continue
             ci = int(float(parts[0])); vals = [float(v) for v in parts[1:]]
             cls = b.names[ci] if ci < len(b.names) else f"class_{ci}"
-            if len(vals) == 4:
+            if b.task == "obb" and len(vals) == 8:
+                out.append((cls, _obb_from_corners(vals, W, H)))
+            elif len(vals) == 4:
                 cx, cy, w, h = vals
                 out.append((cls, {"kind": "bbox", "x": cx - w / 2, "y": cy - h / 2, "w": w, "h": h}))
             elif len(vals) >= 6:

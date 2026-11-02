@@ -2,7 +2,7 @@
 export type Role = 'owner' | 'admin' | 'billing' | 'member' | 'reviewer' | 'annotator'
 export type ProjectRole = 'manager' | 'reviewer' | 'labeler' | 'viewer'
 export type RoleLevel = 'workspace' | 'project'
-export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classification'
+export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classification' | 'keypoint-detection' 
 export type Split = 'train' | 'valid' | 'test'
 export type Status = 'unassigned' | 'annotating' | 'review' | 'done'
 
@@ -19,7 +19,9 @@ export interface Usage {
 }
 export interface WorkspaceInfo { id: string; slug: string; name: string; role: Role; owner_id: string; require_mfa: boolean; usage: Usage }
 
-export interface LabelClass { id: string; name: string; color: string; count: number }
+/** Keypoint schema owned by one class: named joints plus the bones drawn between them. */
+export interface Skeleton { names: string[]; edges: [number, number][]; flip_idx?: number[] }
+export interface LabelClass { id: string; name: string; color: string; count: number; skeleton?: Skeleton | null }
 export interface Project {
   id: string; slug: string; name: string; type: ProjectType; visibility: 'public' | 'private'; license: string
   annotationGroup: string; multilabel: boolean; folderId: string | null; images: number; models: number
@@ -31,16 +33,34 @@ export type Shape =
   | { kind: 'bbox'; x: number; y: number; w: number; h: number }
   | { kind: 'polygon'; points: number[] }
   | { kind: 'class' }
+  /** Oriented box: centre/size normalized, angle in radians (clockwise in image space). */
+  | { kind: 'obb'; cx: number; cy: number; w: number; h: number; angle: number }
+  /** Flat [x, y, visibility, …] triples, normalized; visibility 0=absent 1=occluded 2=visible. */
+  | { kind: 'keypoints'; points: number[] }
 export interface Annotation {
   id: string; classId: string; shape: Shape; attributes?: Record<string, boolean>; confidence?: number
-  /** 'human' | 'sam3' | 'vlm+sam3' | 'trained:<id>' | '<family>:<variant>' */
+  /** 'human' | 'sam3' | 'vlm+sam3' | 'trained:<id>' | '<family>:<variant>' | 'interpolated' (derived between video keyframes) */
   source?: string
+  /** Video timeline: this annotation is a keyframe; in-between frames are interpolated. */
+  keyframe?: boolean
+  /** Shared id across frames for one tracked object (track-forward / interpolation). */
+  trackId?: string
 }
 
 export interface ImageItem {
   id: string; name: string; width: number; height: number; split: Split; status: Status; assigneeId: string | null
   review: 'approved' | 'rejected' | null; tags: string[]; batchId: string | null; annotated: boolean
   annotationCount: number; created: number; thumbnail: string; url: string; classIds: string[]
+  videoId?: string | null; frameIndex?: number | null
+}
+export interface VideoItem {
+  id: string; name: string; status: 'queued' | 'extracting' | 'ready' | 'failed'; error: string
+  width: number; height: number; fps: number; duration: number; frameCount: number; batchId: string | null
+  params: Record<string, any>; created: number
+}
+export interface VideoFrame {
+  id: string; name: string; frameIndex: number; time: number; url: string; thumbnail: string
+  status: Status; annotations: Annotation[]
 }
 export interface Batch { id: string; name: string; source: string; created: number; images: number }
 

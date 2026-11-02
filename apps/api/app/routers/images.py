@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import math
 import random
 import re
 import time
@@ -18,7 +19,8 @@ from ..config import MAX_UPLOAD_MB
 from ..db import get_db
 from ..deps import Ctx, audit, current_user, image_ctx, plan, project_ctx
 from ..gpu import GpuBusy
-from ..models import SPLITS, STATUSES, Batch, Comment, Image, ImageClass, Member, Project, TrainedModel, User, new_id, now, set_annotations
+from ..models import (SPLITS, STATUSES, Batch, Comment, Image, ImageClass, LabelClass, Member, Project, TrainedModel, User,
+                      new_id, now, set_annotations)
 from ..ratelimit import limit
 from ..security import sign_path
 from ..services import faceblur, imaging, importers, insights, ml, segment
@@ -90,6 +92,14 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     known = set(db.scalars(select(Image.sha256).where(Image.project_id == p.id, Image.deleted_at.is_(None))))
     rng = random.Random()
     out, dups, annotated, failed = [], 0, 0, []
+
+    def class_for(name: str) -> LabelClass:
+        lc = ensure_class(db, p, name)
+        sk = bundle.skeletons.get(name)
+        if sk and not lc.skeleton:
+            lc.skeleton = sk
+        return lc
+
     for path, data in sorted(bundle.images.items()):
         h = hashlib.sha256(data).hexdigest()
         if h in known:
@@ -109,14 +119,14 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
         if p.type == "classification":
             cls = importers.folder_class(path)
             if cls and bundle.images and "/" in path:
-                anns.append({"id": "a" + h[:10], "classId": ensure_class(db, p, cls).id, "shape": {"kind": "class"},
+                anns.append({"id": "a" + h[:10], "classId": class_for(cls).id, "shape": {"kind": "class"},
                              "source": "human"})
         for k, (cls, shape) in enumerate(importers.annotations_for(bundle, path, im.width, im.height)):
             if p.type == "object-detection" and shape["kind"] == "polygon":
                 pts = shape["points"]
                 xs, ys = pts[0::2], pts[1::2]
                 shape = {"kind": "bbox", "x": min(xs), "y": min(ys), "w": max(xs) - min(xs), "h": max(ys) - min(ys)}
-            anns.append({"id": f"a{h[:8]}{k}", "classId": ensure_class(db, p, cls).id, "shape": shape, "source": "human"})
+            anns.append({"id": f"a{h[:8]}{k}", "classId": class_for(cls).id, "shape": shape, "source": "human"})
         img.split = (importers.split_of(path) if split == "keep" else None) or (
             split if split in SPLITS else ("train" if (r := rng.random()) < 0.7 else "valid" if r < 0.9 else "test"))
         if anns:
@@ -351,8 +361,9 @@ def _check_ann(a: dict) -> dict:
     if not isinstance(a, dict):
         raise HTTPException(400, "annotation must be an object")
     s = a.get("shape") or {}
-    if not a.get("id") or not a.get("classId") or s.get("kind") not in ("bbox", "polygon", "class"):
-        raise HTTPException(400, "each annotation needs id, classId and shape.kind in bbox|polygon|class")
+    kinds = ("bbox", "polygon", "class", "obb", "keypoints")
+    if not a.get("id") or not a.get("classId") or s.get("kind") not in kinds:
+        raise HTTPException(400, "each annotation needs id, classId and shape.kind in bbox|polygon|class|obb|keypoints")
     if not isinstance(a["id"], str) or not isinstance(a["classId"], str) or len(a["id"]) > 64 or len(a["classId"]) > 64:
         raise HTTPException(400, "bad id")
     if s["kind"] == "bbox":
@@ -364,6 +375,22 @@ def _check_ann(a: dict) -> dict:
         if not isinstance(pts, list) or not (6 <= len(pts) <= 20_000) or len(pts) % 2 or not all(_num(v) for v in pts):
             raise HTTPException(400, "polygon needs 3–10,000 normalised points")
         shape = {"kind": "polygon", "points": [float(v) for v in pts]}
+    elif s["kind"] == "obb":
+        if not (_num(s.get("cx")) and _num(s.get("cy")) and _num(s.get("w")) and _num(s.get("h"))):
+            raise HTTPException(400, "obb needs normalised numeric cx,cy,w,h")
+        angle = s.get("angle")
+        if (not isinstance(angle, (int, float)) or isinstance(angle, bool) or not math.isfinite(angle)
+                or not -2 * math.pi <= angle <= 2 * math.pi):
+            raise HTTPException(400, "obb angle must be a finite number of radians within ±2π")
+        shape = {"kind": "obb", **{k: float(s[k]) for k in ("cx", "cy", "w", "h")}, "angle": float(angle)}
+    elif s["kind"] == "keypoints":
+        pts = s.get("points")
+        if (not isinstance(pts, list) or not (3 <= len(pts) <= 3000) or len(pts) % 3
+                or not all(_num(pts[i]) and _num(pts[i + 1]) for i in range(0, len(pts), 3))
+                or not all(isinstance(pts[i], (int, float)) and not isinstance(pts[i], bool) and pts[i] in (0, 1, 2)
+                           for i in range(2, len(pts), 3))):
+            raise HTTPException(400, "keypoints need 3–3000 flat normalised x,y,v values (v in 0,1,2)")
+        shape = {"kind": "keypoints", "points": [float(pts[i]) if i % 3 != 2 else int(pts[i]) for i in range(len(pts))]}
     else:
         shape = {"kind": "class"}
     out = {"id": a["id"], "classId": a["classId"], "shape": shape}
@@ -375,6 +402,11 @@ def _check_ann(a: dict) -> dict:
     # every annotation is attributed; a human edit defaults to "human"
     src = a.get("source")
     out["source"] = src.strip()[:64] if isinstance(src, str) and src.strip() else "human"
+    if isinstance(a.get("keyframe"), bool):
+        out["keyframe"] = a["keyframe"]
+    track = a.get("trackId")
+    if isinstance(track, str) and track.strip():
+        out["trackId"] = track.strip()[:64]
     return out
 
 

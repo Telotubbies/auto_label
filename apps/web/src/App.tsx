@@ -30,6 +30,7 @@ import Train from '@/features/project/Train'
 const Models = lazy(() => import('@/features/project/Models'))
 const Deploy = lazy(() => import('@/features/project/Deploy'))
 import ProjectSettings from '@/features/project/ProjectSettings'
+import VideoTimeline from '@/features/project/VideoTimeline'
 const Editor = lazy(() => import('@/features/editor/Editor'))
 const Playground = lazy(() => import('@/features/playground/Playground'))
 const AuditLog = lazy(() => import('@/features/governance/AuditLog'))
@@ -146,6 +147,7 @@ export default function App() {
             <Route path="upload" element={<PermGate perm="project.upload"><Upload /></PermGate>} />
             <Route path="annotate" element={<AnnotateBoard />} />
             <Route path="browse" element={<Dataset />} />
+            <Route path="videos" element={<PermGate perm="project.annotate"><VideoTimeline /></PermGate>} />
             <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />
             <Route path="analytics" element={<PermGate perm="project.review"><Analytics /></PermGate>} />
             <Route path="insights" element={<PermGate perm="project.review"><Insights /></PermGate>} />

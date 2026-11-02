@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Circle, Image as KImage, Layer, Line, Rect, Stage, Transformer } from 'react-konva'
+import { Circle, Group, Image as KImage, Layer, Line, Rect, Stage, Transformer } from 'react-konva'
 import {
-  ArrowLeft, Ban, Bot, Check, ChevronLeft, ChevronRight, Eye, EyeOff, FileCode, Hand, History, Keyboard, LoaderCircle,
-  Lock, MessageSquare, Plus, Redo2, Send, SlidersHorizontal, Sparkles, SquareDashed, Spline, Tag, TriangleAlert, Undo2,
-  Unlock, X,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, Bot, Check, ChevronLeft, ChevronRight, Eye, EyeOff, FileCode, Hand,
+  History, Keyboard, LoaderCircle, Lock, MessageSquare, Plus, Redo2, RotateCw, Send, SlidersHorizontal, Sparkles,
+  SquareDashed, Spline, Tag, TriangleAlert, Undo2, Unlock, Waypoints, X,
   type LucideIcon,
 } from 'lucide-react'
 import { ApiError, api, fileUrl, get, patch, post, put } from '@/lib/api'
 import { useApp } from '@/lib/store'
-import type { Annotation, LabelClass, Shape } from '@/lib/types'
+import type { Annotation, LabelClass, Shape, Skeleton } from '@/lib/types'
 import { Badge, Button, Input, Select, StatusPill, Tabs, toast } from '@/components/ui'
 import { Glass } from '@/components/glass'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,8 @@ import { ShortcutModal } from './ShortcutModal'
 const W = 1000                      // canvas width in stage units; height follows the image aspect
 const SMART = '#7c3aed'             // canvas stroke only — CSS tokens cannot resolve inside Konva
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+// Canvas tool hints stay inside the stage at 375 px and wrap instead of squeezing into a column.
+const HINT = 'pointer-events-none absolute left-1/2 top-3 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-full border bg-card px-3 py-1.5 text-center text-xs shadow'
 const uid = () => 'a' + Math.random().toString(36).slice(2, 12)
 const isAi = (a: Annotation) => !!a.source && a.source !== 'human'
 
@@ -33,11 +35,167 @@ function inPoly(x: number, y: number, pts: number[]) {
   return inside
 }
 
+const fmtNum = (v: number) => String(Math.round(v * 100) / 100)
+/** Locale-tolerant decimal parse; returns null instead of NaN so bad input is ignored. */
+const parseNum = (text: string) => {
+  const n = Number(text.trim().replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+const wrapAngle = (a: number) => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI
+/** Pixel-space corners, matching `imaging.obb_corners` in the API (clockwise at angle 0). */
+function obbCorners(s: { cx: number; cy: number; w: number; h: number; angle: number }, H: number) {
+  const cx = s.cx * W, cy = s.cy * H, hw = (s.w * W) / 2, hh = (s.h * H) / 2
+  const c = Math.cos(s.angle), sn = Math.sin(s.angle)
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].flatMap(([dx, dy]) => [cx + dx * c - dy * sn, cy + dx * sn + dy * c])
+}
+
 interface ClassSuggestion {
   classId: string | null
   name: string | null
   candidates: { classId: string; name: string }[]
   checked: number
+}
+
+/** Numeric field that keeps the raw text while typing and commits clamped values on blur/Enter. */
+function NumberField({ label, value, onCommit, min, max, step = 0.1 }: {
+  label: string
+  value: number
+  onCommit: (v: number) => void
+  min?: number
+  max?: number
+  step?: number
+}) {
+  const id = useId()
+  const [text, setText] = useState(fmtNum(value))
+  useEffect(() => setText(fmtNum(value)), [value])
+  const commit = () => {
+    const n = parseNum(text)
+    if (n === null) { setText(fmtNum(value)); return }
+    const bounded = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n))
+    setText(fmtNum(bounded))
+    onCommit(bounded)
+  }
+  return (
+    <label htmlFor={id} className="flex min-w-0 flex-col gap-0.5 text-[10px] text-muted-foreground">
+      <span className="truncate">{label}</span>
+      <input id={id} type="text" inputMode="decimal" step={step} value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.currentTarget.blur() }
+          if (e.key === 'Escape') { setText(fmtNum(value)); e.currentTarget.blur() }
+        }}
+        className="h-7 w-full rounded-md border border-input bg-card px-1.5 text-xs tabular-nums text-foreground outline-none focus:border-ring" />
+    </label>
+  )
+}
+
+/** Geometry editor for one annotation: boxes, rotated boxes and keypoints. */
+function GeometryPanel({ shape, skeleton, activeJoint, onActiveJoint, onShape }: {
+  shape: Shape
+  skeleton: Skeleton | null
+  activeJoint: number
+  onActiveJoint: (i: number) => void
+  onShape: (shape: Shape) => void
+}) {
+  if (shape.kind === 'bbox') {
+    const s = shape
+    return (
+      <section aria-label="Bounding box geometry" className="mt-2 rounded-lg border bg-card p-2">
+        <h3 className="pb-1.5 text-[11px] font-semibold">Geometry (%)</h3>
+        <div className="grid grid-cols-2 gap-1.5">
+          <NumberField label="X" value={s.x * 100} min={0} max={100} onCommit={(v) => onShape({ ...s, x: clamp01(v / 100) })} />
+          <NumberField label="Y" value={s.y * 100} min={0} max={100} onCommit={(v) => onShape({ ...s, y: clamp01(v / 100) })} />
+          <NumberField label="Width" value={s.w * 100} min={0.1} max={100} onCommit={(v) => onShape({ ...s, w: Math.max(0.001, v / 100) })} />
+          <NumberField label="Height" value={s.h * 100} min={0.1} max={100} onCommit={(v) => onShape({ ...s, h: Math.max(0.001, v / 100) })} />
+        </div>
+      </section>
+    )
+  }
+  if (shape.kind === 'obb') {
+    const s = shape
+    return (
+      <section aria-label="Rotated box geometry" className="mt-2 rounded-lg border bg-card p-2">
+        <h3 className="pb-1.5 text-[11px] font-semibold">Rotated box (%)</h3>
+        <div className="grid grid-cols-2 gap-1.5">
+          <NumberField label="Centre X" value={s.cx * 100} min={0} max={100} onCommit={(v) => onShape({ ...s, cx: clamp01(v / 100) })} />
+          <NumberField label="Centre Y" value={s.cy * 100} min={0} max={100} onCommit={(v) => onShape({ ...s, cy: clamp01(v / 100) })} />
+          <NumberField label="Width" value={s.w * 100} min={0.1} max={100} onCommit={(v) => onShape({ ...s, w: Math.max(0.001, v / 100) })} />
+          <NumberField label="Height" value={s.h * 100} min={0.1} max={100} onCommit={(v) => onShape({ ...s, h: Math.max(0.001, v / 100) })} />
+          <NumberField label="Angle (°)" value={(s.angle * 180) / Math.PI} min={-180} max={180} step={1}
+            onCommit={(v) => onShape({ ...s, angle: wrapAngle((v * Math.PI) / 180) })} />
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <Button size="sm" variant="outline" className="h-7 min-h-6 text-[11px]" aria-label="Rotate −15 degrees"
+            onClick={() => onShape({ ...s, angle: wrapAngle(s.angle - Math.PI / 12) })}>Rotate −15°</Button>
+          <Button size="sm" variant="outline" className="h-7 min-h-6 text-[11px]" aria-label="Rotate +15 degrees"
+            onClick={() => onShape({ ...s, angle: wrapAngle(s.angle + Math.PI / 12) })}>Rotate +15°</Button>
+        </div>
+      </section>
+    )
+  }
+  if (shape.kind === 'keypoints') {
+    const names = skeleton?.names ?? []
+    const count = Math.max(names.length, Math.floor(shape.points.length / 3))
+    const active = count ? Math.min(activeJoint, count - 1) : 0
+    const triples = (): number[] => {
+      const pts = shape.points.slice()
+      while (pts.length < count * 3) pts.push(0.5, 0.5, 0)
+      return pts
+    }
+    const setJoint = (i: number, x: number, y: number, v: number) => {
+      const pts = triples()
+      pts[i * 3] = clamp01(x); pts[i * 3 + 1] = clamp01(y); pts[i * 3 + 2] = v
+      onShape({ kind: 'keypoints', points: pts })
+    }
+    const nudge = (dx: number, dy: number) => {
+      const pts = triples()
+      setJoint(active, (pts[active * 3] ?? 0.5) + dx, (pts[active * 3 + 1] ?? 0.5) + dy, pts[active * 3 + 2] || 2)
+    }
+    const allPts = triples()
+    return (
+      <section aria-label="Keypoint editor" className="mt-2 rounded-lg border bg-card p-2">
+        <div className="flex items-baseline justify-between pb-1.5">
+          <h3 className="text-[11px] font-semibold">Keypoints</h3>
+          <span className="text-[10px] text-muted-foreground">{allPts.filter((_, i) => i % 3 === 2 && allPts[i] > 0).length}/{count || '—'} placed</span>
+        </div>
+        {count > 0 ? (
+          <div role="group" aria-label="Joints" className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto">
+            {Array.from({ length: count }, (_, i) => {
+              const v = allPts[i * 3 + 2] ?? 0
+              const state = v === 2 ? 'visible' : v === 1 ? 'occluded' : 'absent'
+              return (
+                <button key={i} type="button" aria-pressed={active === i} aria-label={`${names[i] ?? `Joint ${i + 1}`} (${state})`}
+                  title={names[i] ?? `Joint ${i + 1}`} onClick={() => onActiveJoint(i)}
+                  className={cn('flex min-h-6 min-w-0 cursor-pointer items-center gap-1 rounded border px-1.5 py-1 text-left text-[10px]',
+                    active === i ? 'border-primary bg-accent font-medium text-accent-foreground' : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                  <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', v > 0 ? 'bg-current' : 'border border-current')} />
+                  <span className="min-w-0 truncate">{names[i] ?? `Joint ${i + 1}`}</span>
+                  <span aria-hidden className="ml-auto shrink-0 opacity-70">{v === 2 ? '●' : v === 1 ? '◐' : '○'}</span>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-[10px] leading-relaxed text-muted-foreground">This class has no skeleton. Add joint names to the class, then start a keypoint annotation.</p>
+        )}
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <Button size="sm" variant="outline" className="h-7 min-h-6 text-[11px]" disabled={!count} onClick={() => setJoint(active, 0.5, 0.5, 2)}>Set at centre</Button>
+          <Button size="sm" variant="outline" className="h-7 min-h-6 text-[11px]" disabled={!count}
+            onClick={() => onShape({ kind: 'keypoints', points: Array.from({ length: count }, () => [0.5, 0.5, 0]).flat() })}>Clear keypoints</Button>
+        </div>
+        <div className="mt-1.5 grid grid-cols-3 gap-1" role="group" aria-label="Nudge active joint">
+          <span aria-hidden />
+          <Button size="sm" variant="outline" className="h-7 min-h-6 p-0" aria-label="Nudge up" disabled={!count} onClick={() => nudge(0, -0.01)}><ArrowUp className="h-3.5 w-3.5" /></Button>
+          <span aria-hidden />
+          <Button size="sm" variant="outline" className="h-7 min-h-6 p-0" aria-label="Nudge left" disabled={!count} onClick={() => nudge(-0.01, 0)}><ArrowLeft className="h-3.5 w-3.5" /></Button>
+          <Button size="sm" variant="outline" className="h-7 min-h-6 p-0" aria-label="Nudge down" disabled={!count} onClick={() => nudge(0, 0.01)}><ArrowDown className="h-3.5 w-3.5" /></Button>
+          <Button size="sm" variant="outline" className="h-7 min-h-6 p-0" aria-label="Nudge right" disabled={!count} onClick={() => nudge(0.01, 0)}><ArrowRight className="h-3.5 w-3.5" /></Button>
+        </div>
+      </section>
+    )
+  }
+  return null
 }
 
 function useHtmlImage(src: string) {
@@ -73,7 +231,10 @@ export default function Editor() {
   const commentsQ = useQuery({ queryKey: ['comments', imageId], queryFn: () => get<EditorComment[]>(`/images/${imageId}/comments`) })
   const img = imgQ.data
   const classes: LabelClass[] = classesQ.data ?? []
-  const isCls = proj.data?.type === 'classification'
+  const projectType = proj.data?.type
+  const isCls = projectType === 'classification'
+  const isKp = projectType === 'keypoint-detection'
+  const obbEnabled = projectType === 'object-detection' || projectType === 'instance-segmentation'
   const H = img ? Math.round((W * img.height) / img.width) : 600
   const htmlImg = useHtmlImage(fileUrl(img?.url))
   const items = list.data?.items ?? []
@@ -96,7 +257,10 @@ export default function Editor() {
     const ro = new ResizeObserver(fit); ro.observe(el)
     return () => ro.disconnect()
   }, [fit])
-  useEffect(() => { if (isCls) setTool('pan') }, [isCls])
+  useEffect(() => {
+    if (isCls) setTool('pan')
+    else if (isKp) setTool('keypoints')
+  }, [isCls, isKp])
 
   const [anns, setAnns] = useState<Annotation[]>([])
   const [loadedFor, setLoadedFor] = useState('')
@@ -104,6 +268,7 @@ export default function Editor() {
   const [saving, setSaving] = useState(false)
   const [selId, setSelId] = useState<string | null>(null)
   const [selClass, setSelClass] = useState('')
+  const [activeJoint, setActiveJoint] = useState(0)
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [boxAnchor, setBoxAnchor] = useState<{ x: number; y: number } | null>(null)
   const [polyPts, setPolyPts] = useState<number[]>([])
@@ -129,6 +294,8 @@ export default function Editor() {
   const [future, setFuture] = useState<Annotation[][]>([])
   const [log, setLog] = useState<LogEntry[]>([])
   const [shortcuts, setShortcuts] = useState(false)
+  // Below md the annotation side panels become a drawer so the canvas keeps the full width.
+  const [panelsOpen, setPanelsOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768)
   const [newClass, setNewClass] = useState('')
   const [tagInput, setTagInput] = useState('')
   const stageRef = useRef<any>(null)
@@ -171,6 +338,9 @@ export default function Editor() {
   }, [dirty, anns, save])
 
   const sel = anns.find((a) => a.id === selId) ?? null
+  const selCls = classes.find((c) => c.id === selClass) ?? null
+  const skelOf = (classId: string) => classes.find((c) => c.id === classId)?.skeleton ?? null
+  const keypointsEnabled = isKp || !!selCls?.skeleton
   const transformable = !!sel && sel.shape.kind === 'bbox' && !locked.has(sel.id)
   useEffect(() => {
     if (trRef.current && selId && transformable) {
@@ -241,24 +411,54 @@ export default function Editor() {
     addShape(shape, `Smart polygon (${smartSource || 'sam3'})`)
     resetSmart()
   }
+  const lockedMsg = () => toast.err('This annotation is locked — unlock it in Objects first')
   /** Finalize a box from two stage-space corners, clamped to the image and ignoring slivers. */
-  const finishBox = (x1: number, y1: number, x2: number, y2: number) => {
+  const finishBox = (x1: number, y1: number, x2: number, y2: number, kind: 'bbox' | 'obb' = 'bbox') => {
     const nx = clamp01(Math.min(x1, x2) / W), ny = clamp01(Math.min(y1, y2) / H)
     const nx2 = clamp01(Math.max(x1, x2) / W), ny2 = clamp01(Math.max(y1, y2) / H)
     if (nx2 - nx < 0.005 || ny2 - ny < 0.005) return
+    if (kind === 'obb') {
+      addShape({ kind: 'obb', cx: nx + (nx2 - nx) / 2, cy: ny + (ny2 - ny) / 2, w: nx2 - nx, h: ny2 - ny, angle: 0 }, 'Add rotated box')
+      return
+    }
     addShape({ kind: 'bbox', x: nx, y: ny, w: nx2 - nx, h: ny2 - ny }, 'Add bounding box')
+  }
+  /** The annotation the keypoint tool edits: the selection, else the newest one for the active class. */
+  const keypointTarget = () => {
+    if (sel && sel.shape.kind === 'keypoints') return sel
+    return [...anns].reverse().find((a) => a.shape.kind === 'keypoints' && a.classId === selClass) ?? null
+  }
+  /** Place the next missing joint in skeleton order at a stage point. */
+  const addKeypoint = (x: number, y: number) => {
+    const target = keypointTarget()
+    if (!target || target.shape.kind !== 'keypoints') { toast.err('Start a keypoint annotation first — use the Objects panel'); return }
+    if (locked.has(target.id)) return lockedMsg()
+    const names = skelOf(target.classId)?.names ?? []
+    const count = names.length || Math.floor(target.shape.points.length / 3)
+    if (!count) { toast.err('This class has no skeleton'); return }
+    const pts = target.shape.points.slice()
+    while (pts.length < count * 3) pts.push(0.5, 0.5, 0)
+    let next = -1
+    for (let i = 0; i < count; i++) if ((pts[i * 3 + 2] ?? 0) === 0) { next = i; break }
+    if (next < 0) { toast.ok('All joints placed — nudge them in Objects'); return }
+    pts[next * 3] = clamp01(x / W); pts[next * 3 + 1] = clamp01(y / H); pts[next * 3 + 2] = 2
+    editShape(target.id, { kind: 'keypoints', points: pts })
+    if (!sel || sel.id !== target.id) setSelId(target.id)
+    for (let i = next + 1; i < count; i++) if ((pts[i * 3 + 2] ?? 0) === 0) { setActiveJoint(i); return }
+    setActiveJoint(next)
   }
   const onDown = (e: any) => {
     const name = e?.target?.name?.()
     if (name === 'smart-pt' || name === 'smart-neg') return
     if (tool === 'pan' || isCls) return
     const p = pointer()
-    if (tool === 'bbox') {
+    if (tool === 'bbox' || tool === 'obb') {
       // Two-click drawing: the first press anchors, the next press (or a real drag) completes.
-      if (boxAnchor) { finishBox(boxAnchor.x, boxAnchor.y, p.x, p.y); setBoxAnchor(null); setDrawing(null) }
+      if (boxAnchor) { finishBox(boxAnchor.x, boxAnchor.y, p.x, p.y, tool); setBoxAnchor(null); setDrawing(null) }
       else { setSelId(null); setBoxAnchor({ x: p.x, y: p.y }); setDrawing({ x: p.x, y: p.y, w: 0, h: 0 }) }
       return
     }
+    if (tool === 'keypoints') { addKeypoint(p.x, p.y); return }
     setSelId(null)
     if (tool === 'polygon') setPolyPts((pts) => [...pts, p.x, p.y])
     else if (tool === 'smart') addSmartPoint(p.x, p.y, !!e.evt?.altKey || e.evt?.button === 2)
@@ -268,7 +468,7 @@ export default function Editor() {
   }
   const onUp = () => {
     if (drawing && boxAnchor && Math.abs(drawing.w) > 4 && Math.abs(drawing.h) > 4) {
-      finishBox(boxAnchor.x, boxAnchor.y, boxAnchor.x + drawing.w, boxAnchor.y + drawing.h)
+      finishBox(boxAnchor.x, boxAnchor.y, boxAnchor.x + drawing.w, boxAnchor.y + drawing.h, tool === 'obb' ? 'obb' : 'bbox')
       setBoxAnchor(null); setDrawing(null)
     }
   }
@@ -276,7 +476,6 @@ export default function Editor() {
     if (polyPts.length >= 6) addShape({ kind: 'polygon', points: polyPts.map((v, i) => v / (i % 2 ? H : W)) }, 'Add polygon')
     setPolyPts([])
   }
-  const lockedMsg = () => toast.err('This annotation is locked — unlock it in Objects first')
   const remove = (id: string) => {
     if (locked.has(id)) return lockedMsg()
     push(anns.filter((a) => a.id !== id), 'Delete annotation')
@@ -284,7 +483,29 @@ export default function Editor() {
   }
   const editShape = (id: string, shape: Shape) => {
     if (locked.has(id)) return lockedMsg()
-    push(anns.map((a) => (a.id === id ? { ...a, shape, source: 'human' } : a)), 'Edit annotation')
+    // A hand edit to a tracked box becomes a keyframe: interpolation/tracking never overwrites it.
+    push(anns.map((a) => (a.id === id ? { ...a, shape, source: 'human', ...(a.trackId ? { keyframe: true } : {}) } : a)),
+      'Edit annotation')
+  }
+  /** Click-only alternative to two-click drawing (WCAG 2.5.7). */
+  const addCentredBox = () => {
+    if (tool === 'obb' || sel?.shape.kind === 'obb') {
+      addShape({ kind: 'obb', cx: 0.5, cy: 0.5, w: 0.3, h: 0.3, angle: 0 }, 'Add centred rotated box')
+    } else {
+      addShape({ kind: 'bbox', x: 0.35, y: 0.35, w: 0.3, h: 0.3 }, 'Add centred box')
+    }
+  }
+  /** Create the empty keypoint annotation for the active class's skeleton. */
+  const startKeypoints = () => {
+    if (!selClass) { toast.err('Pick a class first'); return }
+    const skeleton = skelOf(selClass)
+    if (!skeleton?.names.length) { toast.err('This class has no skeleton'); return }
+    const ann: Annotation = {
+      id: uid(), classId: selClass, source: 'human',
+      shape: { kind: 'keypoints', points: skeleton.names.flatMap(() => [0.5, 0.5, 0]) },
+    }
+    push([...anns, ann], 'Start keypoints', cls(selClass).name)
+    setSelId(ann.id); setActiveJoint(0)
   }
   const relabel = (id: string, classId: string) => {
     if (locked.has(id)) return lockedMsg()
@@ -379,8 +600,13 @@ export default function Editor() {
       if (e.key === '?') setShortcuts((o) => !o)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo() }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save() }
-      const t = { v: 'pan', b: 'bbox', p: 'polygon', s: 'smart' } as Record<string, string>
-      if (!e.ctrlKey && !e.metaKey && t[e.key] && !isCls) setTool(t[e.key])
+      const t = { v: 'pan', b: 'bbox', p: 'polygon', s: 'smart', o: 'obb', k: 'keypoints' } as Record<string, string>
+      const nextTool = t[e.key]
+      const available = nextTool === 'polygon' ? projectType === 'instance-segmentation'
+        : nextTool === 'obb' ? obbEnabled
+        : nextTool === 'keypoints' ? keypointsEnabled
+        : true
+      if (!e.ctrlKey && !e.metaKey && nextTool && available && !isCls) setTool(nextTool)
       const n = Number(e.key)
       if (n >= 1 && n <= 9 && classes[n - 1]) { if (isCls) toggleClassLabel(classes[n - 1].id); else if (selId) relabel(selId, classes[n - 1].id); else setSelClass(classes[n - 1].id) }
     }
@@ -391,7 +617,9 @@ export default function Editor() {
   const tools: { id: string; icon: LucideIcon; label: string }[] = isCls ? [{ id: 'pan', icon: Hand, label: 'Pan (V)' }] : [
     { id: 'pan', icon: Hand, label: 'Pan (V)' },
     { id: 'bbox', icon: SquareDashed, label: 'Bounding Box (B)' },
-    ...(proj.data?.type === 'instance-segmentation' ? [{ id: 'polygon', icon: Spline, label: 'Polygon (P)' }] : []),
+    ...(projectType === 'instance-segmentation' ? [{ id: 'polygon', icon: Spline, label: 'Polygon (P)' }] : []),
+    ...(obbEnabled ? [{ id: 'obb', icon: RotateCw, label: 'Rotated Box (O)' }] : []),
+    ...(keypointsEnabled ? [{ id: 'keypoints', icon: Waypoints, label: 'Keypoints (K)' }] : []),
     { id: 'smart', icon: Sparkles, label: 'Smart Polygon (S) — click an object' },
   ]
   const ready = (models.data ?? []).filter((m) => m.status === 'ready')
@@ -422,19 +650,20 @@ export default function Editor() {
             <Button size="sm" className="h-7 bg-success text-xs text-background hover:bg-success/90" onClick={() => review(true)}><Check className="h-3.5 w-3.5" /> Approve</Button>
             <Button size="sm" variant="outline" className="h-7 border-destructive/50 text-xs text-destructive hover:bg-destructive/10" onClick={() => review(false)}><Ban className="h-3.5 w-3.5" /> Reject</Button>
           </>}
+          <Button variant="ghost" size="icon" className="md:hidden" aria-pressed={panelsOpen} aria-label="Toggle annotation panels" onClick={() => setPanelsOpen((o) => !o)}><SlidersHorizontal className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" onClick={() => setShortcuts(true)} title="Shortcuts (?)"><Keyboard className="h-4 w-4" /></Button>
         </div>
       </div>
       {reviewMode && <div className="flex items-center gap-2 border-b border-warning/50 bg-warning/15 px-4 py-1.5 text-xs font-medium text-foreground"><TriangleAlert className="h-3.5 w-3.5" /> Review mode — approve to add to the dataset, reject to send back.</div>}
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-16 flex-col items-center border-r py-2">
+        <div className={cn('w-16 flex-col items-center border-r py-2 md:flex', panelsOpen ? 'flex' : 'hidden')}>
           {[{ id: 'labels', label: 'Labels', icon: Tag }, { id: 'attrs', label: 'Attributes', icon: SlidersHorizontal }, { id: 'comments', label: 'Comments', icon: MessageSquare }, { id: 'history', label: 'History', icon: History }, { id: 'raw', label: 'Raw', icon: FileCode }].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setRail(id)} className={cn('flex w-full cursor-pointer flex-col items-center gap-1 px-1 py-2.5 text-[10px]', rail === id ? 'text-accent-foreground' : 'text-muted-foreground hover:text-foreground')}>
               <span className={cn('rounded-lg p-1.5', rail === id && 'bg-accent')}><Icon className="h-4 w-4" /></span>{label}
             </button>
           ))}
         </div>
-        <div className="flex w-64 flex-col overflow-hidden border-r">
+        <div className={cn('w-64 flex-col overflow-hidden border-r md:flex', panelsOpen ? 'flex' : 'hidden')}>
           {rail === 'labels' && (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               <div className="px-4 pt-4"><h2 className="text-sm font-semibold">{isCls ? 'Image label' : 'Annotations'} <Badge>{anns.length}</Badge></h2>
@@ -543,6 +772,26 @@ export default function Editor() {
                       )}
                     </div>
                   )}
+                  {!sel && !isCls && !!selCls?.skeleton?.names.length && (
+                    <div className="mt-2 rounded-lg border border-dashed p-2.5 text-center">
+                      <p className="pb-1.5 text-[11px] text-muted-foreground">
+                        {selCls.name} — {selCls.skeleton.names.length} joints
+                      </p>
+                      <Button size="sm" variant="outline" className="h-7 min-h-6 w-full text-xs" data-testid="start-keypoints" onClick={startKeypoints}>
+                        <Waypoints className="h-3.5 w-3.5" /> Start keypoints
+                      </Button>
+                    </div>
+                  )}
+                  {sel && !isCls && sel.shape.kind !== 'class' && (
+                    <GeometryPanel key={sel.id} shape={sel.shape} skeleton={skelOf(sel.classId)}
+                      activeJoint={activeJoint} onActiveJoint={setActiveJoint}
+                      onShape={(shape) => editShape(sel.id, shape)} />
+                  )}
+                  {!isCls && (tool === 'bbox' || tool === 'obb' || sel?.shape.kind === 'bbox' || sel?.shape.kind === 'obb') && (
+                    <Button size="sm" variant="outline" className="mt-2 h-7 min-h-6 w-full text-xs" data-testid="add-centred-box" onClick={addCentredBox}>
+                      <SquareDashed className="h-3.5 w-3.5" /> Add centred box
+                    </Button>
+                  )}
                   {sel && (
                     <p className="px-1 pt-2 text-[11px] leading-relaxed text-muted-foreground">
                       Selected: Delete removes it, 1–9 relabels it.
@@ -597,7 +846,7 @@ export default function Editor() {
                     return <Rect key={a.id} id={a.id} x={s.x * W} y={s.y * H} width={s.w * W} height={s.h * H} stroke={color} strokeWidth={2 / zoom}
                       dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined}
                       fill={selId === a.id ? color + '22' : undefined} draggable={tool !== 'pan' && selId === a.id && !locked.has(a.id)}
-                      onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon') return; e.cancelBubble = true; setSelId(a.id) }}
+                      onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon' || tool === 'keypoints') return; e.cancelBubble = true; setSelId(a.id) }}
                       onDragEnd={(e) => editShape(a.id, { ...s, x: e.target.x() / W, y: e.target.y() / H })}
                       onTransformEnd={(e) => { const n = e.target; const sx = n.scaleX(), sy = n.scaleY(); n.scaleX(1); n.scaleY(1); editShape(a.id, { ...s, x: n.x() / W, y: n.y() / H, w: (s.w * sx), h: (s.h * sy) }) }} />
                   }
@@ -606,8 +855,50 @@ export default function Editor() {
                     return <Line key={a.id} id={a.id} points={s.points.map((v, i) => v * (i % 2 ? H : W))} closed stroke={color} strokeWidth={2 / zoom}
                       dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined} fill={color + (selId === a.id ? '55' : '33')}
                       draggable={tool !== 'pan' && selId === a.id && !locked.has(a.id)}
-                      onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon') return; e.cancelBubble = true; setSelId(a.id) }}
+                      onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon' || tool === 'keypoints') return; e.cancelBubble = true; setSelId(a.id) }}
                       onDragEnd={(e) => { const dx = e.target.x(), dy = e.target.y(); e.target.position({ x: 0, y: 0 }); editShape(a.id, { ...s, points: s.points.map((v, i) => v + (i % 2 ? dy / H : dx / W)) }) }} />
+                  }
+                  if (a.shape.kind === 'obb') {
+                    const s = a.shape
+                    return <Line key={a.id} id={a.id} points={obbCorners(s, H)} closed stroke={color} strokeWidth={2 / zoom}
+                      dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined} fill={selId === a.id ? color + '22' : undefined}
+                      draggable={tool !== 'pan' && selId === a.id && !locked.has(a.id)}
+                      onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon' || tool === 'keypoints') return; e.cancelBubble = true; setSelId(a.id) }}
+                      onDragEnd={(e) => {
+                        const dx = e.target.x(), dy = e.target.y()
+                        e.target.position({ x: 0, y: 0 })
+                        editShape(a.id, { ...s, cx: clamp01(s.cx + dx / W), cy: clamp01(s.cy + dy / H) })
+                      }} />
+                  }
+                  if (a.shape.kind === 'keypoints') {
+                    const s = a.shape
+                    const n = Math.floor(s.points.length / 3)
+                    const sk = skelOf(a.classId)
+                    const jx = (i: number) => s.points[i * 3] * W
+                    const jy = (i: number) => s.points[i * 3 + 1] * H
+                    return (
+                      <Group key={a.id} id={a.id}>
+                        {(sk?.edges ?? []).filter(([i, j]) => i < n && j < n && s.points[i * 3 + 2] > 0 && s.points[j * 3 + 2] > 0)
+                          .map(([i, j], k) => (
+                            <Line key={`b${k}`} points={[jx(i), jy(i), jx(j), jy(j)]} stroke={color} strokeWidth={1.5 / zoom} opacity={0.8}
+                              dash={isAi(a) ? [6 / zoom, 4 / zoom] : undefined} listening={false} />
+                          ))}
+                        {Array.from({ length: n }, (_, i) => {
+                          const v = s.points[i * 3 + 2]
+                          const r = v === 2 ? 5 : v === 1 ? 4.5 : 3
+                          return (
+                            <Circle key={i} x={jx(i)} y={jy(i)} radius={r / zoom} fill={v === 2 ? color : undefined} stroke={color}
+                              strokeWidth={(v === 0 ? 1.5 : 2) / zoom} opacity={v === 0 ? 0.55 : 1} hitStrokeWidth={12 / zoom}
+                              dash={isAi(a) ? [3 / zoom, 2 / zoom] : undefined}
+                              onMouseDown={(e) => { if (locked.has(a.id)) return; e.cancelBubble = true; setSelId(a.id); setActiveJoint(i) }} />
+                          )
+                        })}
+                        {selId === a.id && activeJoint < n && (
+                          <Circle x={jx(activeJoint)} y={jy(activeJoint)} radius={9 / zoom} stroke={color}
+                            strokeWidth={1 / zoom} dash={[2 / zoom, 2 / zoom]} listening={false} />
+                        )}
+                      </Group>
+                    )
                   }
                   return null
                 })}
@@ -627,12 +918,22 @@ export default function Editor() {
             </Stage>
           </div>
           {!isCls && tool === 'bbox' && !boxAnchor && !anns.length && (
-            <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border bg-card px-3 py-1.5 text-xs shadow">
+            <div className={HINT}>
               Click two corners to draw a box — no dragging needed
             </div>
           )}
+          {!isCls && tool === 'obb' && !boxAnchor && (
+            <div className={HINT}>
+              Click two corners for the rotated box · set the angle in Objects
+            </div>
+          )}
+          {!isCls && tool === 'keypoints' && (
+            <div className={HINT}>
+              Click the image to place the next joint · pick a joint in Objects to place it at the centre
+            </div>
+          )}
           {!isCls && tool === 'smart' && !smartPts.length && !smartBusy && !smartErr && (
-            <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border bg-card px-3 py-1.5 text-xs shadow">
+            <div className={HINT}>
               Click the object to segment · click inside it to shrink · Alt-click or right-click a spot to exclude it · Enter commits
             </div>
           )}
@@ -693,7 +994,7 @@ export default function Editor() {
           </div>
         </div>
 
-        <div className="flex w-48 flex-col border-l">
+        <div className="hidden w-48 flex-col border-l lg:flex">
           <div className="flex items-center justify-between border-b px-3 py-2.5">
             <span className="text-xs font-semibold">Images</span>
             <div className="flex items-center gap-1 text-xs text-muted-foreground">

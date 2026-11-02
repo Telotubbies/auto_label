@@ -13,11 +13,13 @@ import uuid
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from .imaging import bbox_of
+from .imaging import bbox_of, obb_corners
 
 FORMATS = {
     "coco":            {"label": "COCO JSON",             "tasks": ["object-detection", "instance-segmentation"]},
     "yolo":            {"label": "YOLOv8 / v11 / 26",     "tasks": ["object-detection", "instance-segmentation"]},
+    "yolo_obb":        {"label": "YOLO OBB (v8/v11/v26)", "tasks": ["object-detection"]},
+    "coco_keypoints":  {"label": "COCO Keypoints",        "tasks": ["keypoint-detection"]},
     "voc":             {"label": "Pascal VOC XML",         "tasks": ["object-detection"]},
     "createml":        {"label": "CreateML JSON",          "tasks": ["object-detection"]},
     "tf_csv":          {"label": "TensorFlow Object Detection CSV", "tasks": ["object-detection"]},
@@ -35,11 +37,37 @@ def _copy(src_root: Path, out: Path, item: dict, sub: str = "images") -> Path:
 
 
 def _abs_box(ann, W, H):
-    b = bbox_of(ann)
+    b = bbox_of(ann, W, H)
     if not b:
         return None
     x, y, w, h = b
     return x * W, y * H, w * W, h * H
+
+
+def _obb_corners_px(ann: dict, W: float, H: float) -> list[tuple[float, float]] | None:
+    """Pixel corners for an obb, or the axis-aligned corners of a bbox/polygon annotation."""
+    s = ann["shape"]
+    if s["kind"] == "obb":
+        return obb_corners(s, W, H)
+    box = bbox_of(ann, W, H)
+    if not box:
+        return None
+    x, y, w, h = box
+    return [(x * W, y * H), ((x + w) * W, y * H), ((x + w) * W, (y + h) * H), (x * W, (y + h) * H)]
+
+
+def _yolo_yaml(m: dict, out: Path, task: str = ""):
+    splits = {it["split"] for it in m["items"]}
+    yaml = []   # no `path:` — ultralytics then resolves splits relative to this yaml's folder
+    for s in ("train", "valid", "test"):
+        # ultralytics requires train+val keys; fall back to train when a split is empty
+        key = "val" if s == "valid" else s
+        yaml.append(f"{key}: {(s if s in splits else 'train')}/images")
+    yaml.append(f"nc: {len(m['classes'])}")
+    yaml.append("names: " + json.dumps(m["classes"]))
+    if task:
+        yaml.append(f"task: {task}")
+    (out / "data.yaml").write_text("\n".join(yaml) + "\n")
 
 
 def export_coco(m: dict, src: Path, out: Path):
@@ -84,15 +112,65 @@ def export_yolo(m: dict, src: Path, out: Path):
         lbl = out / it["split"] / "labels" / (img.stem + ".txt")
         lbl.parent.mkdir(parents=True, exist_ok=True)
         lbl.write_text("\n".join(lines))
-    splits = {s for s in (it["split"] for it in m["items"])}
-    yaml = []   # no `path:` — ultralytics then resolves splits relative to this yaml's folder
-    for s in ("train", "valid", "test"):
-        # ultralytics requires train+val keys; fall back to train when a split is empty
-        key = "val" if s == "valid" else s
-        yaml.append(f"{key}: {(s if s in splits else 'train')}/images")
-    yaml.append(f"nc: {len(m['classes'])}")
-    yaml.append("names: " + json.dumps(m["classes"]))
-    (out / "data.yaml").write_text("\n".join(yaml) + "\n")
+    _yolo_yaml(m, out)
+
+
+def export_yolo_obb(m: dict, src: Path, out: Path):
+    for it in m["items"]:
+        img = _copy(src, out, it)
+        W, H = it["width"], it["height"]
+        lines = []
+        for a in it["anns"]:
+            pts = _obb_corners_px(a, W, H)
+            if not pts:
+                continue
+            flat = [v for x, y in pts for v in (x / W, y / H)]
+            lines.append(f"{a['cls']} " + " ".join(f"{v:.6f}" for v in flat))
+        lbl = out / it["split"] / "labels" / (img.stem + ".txt")
+        lbl.parent.mkdir(parents=True, exist_ok=True)
+        lbl.write_text("\n".join(lines))
+    _yolo_yaml(m, out, task="obb")
+
+
+def export_coco_keypoints(m: dict, src: Path, out: Path):
+    skeletons = m.get("skeletons") or []
+    cats = []
+    for i, name in enumerate(m["classes"]):
+        cat = {"id": i, "name": name, "supercategory": "none"}
+        sk = skeletons[i] if i < len(skeletons) else None
+        if sk and sk.get("names"):
+            cat["keypoints"] = sk["names"]
+            if sk.get("edges"):
+                cat["skeleton"] = [[a + 1, b + 1] for a, b in sk["edges"]]   # COCO is 1-based
+        cats.append(cat)
+    for split in ("train", "valid", "test"):
+        items = [it for it in m["items"] if it["split"] == split]
+        if not items:
+            continue
+        imgs, anns, aid = [], [], 0
+        for iid, it in enumerate(items):
+            _copy(src, out, it, sub="")
+            W, H = it["width"], it["height"]
+            imgs.append({"id": iid, "file_name": Path(it["file"]).name, "width": W, "height": H})
+            for a in it["anns"]:
+                s = a["shape"]
+                if s["kind"] != "keypoints":
+                    continue
+                box = bbox_of(a)
+                if not box:
+                    continue
+                x, y, w, h = box
+                pts = s["points"]
+                flat = [round(v * (W if i % 3 == 0 else H), 2) if i % 3 != 2 else int(v)
+                        for i, v in enumerate(pts)]
+                anns.append({"id": aid, "image_id": iid, "category_id": a["cls"],
+                             "bbox": [round(x * W, 2), round(y * H, 2), round(w * W, 2), round(h * H, 2)],
+                             "area": round(w * W * h * H, 2), "iscrowd": 0, "keypoints": flat,
+                             "num_keypoints": sum(1 for i in range(2, len(pts), 3) if int(pts[i]) > 0)})
+                aid += 1
+        (out / split).mkdir(parents=True, exist_ok=True)
+        (out / split / "_annotations.coco.json").write_text(json.dumps(
+            {"info": {"description": "LabelDesk export"}, "images": imgs, "annotations": anns, "categories": cats}))
 
 
 def export_voc(m: dict, src: Path, out: Path):
@@ -175,8 +253,9 @@ def export_multiclass_csv(m: dict, src: Path, out: Path):
 
 
 EXPORTERS = {
-    "coco": export_coco, "yolo": export_yolo, "voc": export_voc, "createml": export_createml,
-    "tf_csv": export_tf_csv, "folder": export_folder, "multiclass_csv": export_multiclass_csv,
+    "coco": export_coco, "yolo": export_yolo, "yolo_obb": export_yolo_obb, "coco_keypoints": export_coco_keypoints,
+    "voc": export_voc, "createml": export_createml, "tf_csv": export_tf_csv, "folder": export_folder,
+    "multiclass_csv": export_multiclass_csv,
 }
 
 

@@ -4,13 +4,18 @@ Run standalone (`python -m app.worker`) on the GPU host, or embedded in the api
 process (LD_EMBEDDED_WORKER=1, the dev default).
 """
 import gc
+import hashlib
+import io
 import logging
 import shutil
 import statistics
 import threading
 import time
 import traceback
+from pathlib import Path
 
+import cv2
+from PIL import Image as PImage
 from sqlalchemy import select, update
 
 from .adapters import ADAPTERS, Cancelled
@@ -20,7 +25,8 @@ from .config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
 from .db import SessionLocal
 from .deps import charge
 from .gpu import scheduler
-from .models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
+from .models import (Batch, Image, Job, LabelClass, Project, TrainedModel, Version, Video, Workspace, new_id, now,
+                     set_annotations)
 from .services import (
     connectors,
     exporters,
@@ -30,10 +36,12 @@ from .services import (
     insights_jobs,
     ml,
     segment,
+    track,
     versioning,
     webhooks,
 )
 from .services.evaluate import evaluate
+from .services.video import DEFAULT_SCENE_THRESHOLD, is_scene_change, plan_frames
 
 log = logging.getLogger("labeldesk.worker")
 POLL = 1.5
@@ -371,6 +379,168 @@ def run_health(job: Job):
         return health.scan_health(db, p)
 
 
+def run_extract_frames(job: Job):
+    """Sample a video into a batch of JPEG frames (fps / every N seconds / scene cuts)."""
+    P = job.params
+    with SessionLocal() as db:
+        v = db.get(Video, P["video_id"])
+        if v is None or v.deleted_at:
+            raise RuntimeError("video not found")
+        p = db.get(Project, v.project_id)
+        db.get(Workspace, v.workspace_id)
+        v.status, v.error = "extracting", ""
+        db.commit()
+
+        cap = cv2.VideoCapture(str(DATA_DIR / v.path))
+        out_w = out_h = 0
+        try:
+            if not cap.isOpened():
+                v.status, v.error = "failed", "video could not be opened"
+                db.commit()
+                raise RuntimeError("video could not be opened")
+
+            # Trust the row when an earlier probe filled it; otherwise read it from the container.
+            frame_count = v.frame_count or int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = v.fps or float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            width = v.width or int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            height = v.height or int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            mode = P.get("mode", "fps")
+            target_fps = float(P.get("target_fps") or 1.0)
+            every_s = float(P.get("every_s") or 1.0)
+            threshold = float(P.get("scene_threshold") or DEFAULT_SCENE_THRESHOLD)
+            planned = set(plan_frames(frame_count, fps, mode, target_fps, every_s)) if (
+                mode != "scene" and frame_count > 0 and fps > 0) else None
+            step = max(1, round(fps * every_s) if mode == "every" else round(fps / target_fps)) if fps > 0 else 1
+
+            batch = Batch(project_id=p.id, name=f"Video · {v.name}", source="video", created_by=P.get("created_by"))
+            db.add(batch)
+            db.flush()
+            known = set(db.scalars(select(Image.sha256).where(Image.project_id == p.id, Image.deleted_at.is_(None))))
+            stem = Path(v.name).stem or "video"
+            kept = read = 0
+            last_kept_time = -1.0
+            prev_hist = None
+            while True:
+                if _cancelled(job.id):
+                    break
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                index = read
+                read += 1
+                if mode == "scene":
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    hist = cv2.calcHist([gray], [0], None, [64], [0, 256])
+                    cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                    at = index / fps if fps > 0 else float(index)
+                    keep = prev_hist is None or (at - last_kept_time >= 0.5
+                                                 and is_scene_change(prev_hist, hist, threshold))
+                    prev_hist = hist
+                elif planned is not None:
+                    keep = index in planned
+                else:
+                    keep = index % step == 0           # container did not report a frame count
+                if not keep or kept >= 2000:
+                    continue
+
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                im = PImage.fromarray(rgb)
+                buf = io.BytesIO()
+                im.save(buf, "JPEG", quality=92)
+                data = buf.getvalue()
+                digest = hashlib.sha256(data).hexdigest()
+                if digest in known:                     # identical frame (long still, duplicate upload)
+                    continue
+                known.add(digest)
+                im = imaging.open_image(data)
+                out_w, out_h = out_w or im.width, out_h or im.height
+                img = Image(id=new_id(), project_id=p.id, batch_id=batch.id, video_id=v.id, frame_index=index,
+                            name=f"{stem}_f{index:06d}.jpg", sha256=digest, width=im.width, height=im.height,
+                            size=len(data), path="", thumb="", split="train", status="unassigned", tags=[],
+                            assignee_id=P.get("created_by"))
+                img.path, img.thumb = imaging.store(f"projects/{p.id}/images", img.id, im)
+                db.add(img)
+                set_annotations(db, img, [])
+                kept += 1
+                if mode == "scene" and fps > 0:
+                    last_kept_time = index / fps
+                if kept % 10 == 0:                    # commit + report progress in one pause
+                    db.commit()
+                    _set(job.id, progress=round(min(99.0, (index + 1) / frame_count * 100), 1)
+                         if frame_count else 0.0)
+
+            v.status = "ready"
+            v.error = ""
+            v.frame_count = frame_count or read
+            v.fps = fps
+            v.duration = v.frame_count / fps if fps > 0 else 0.0
+            v.width, v.height = width or out_w, height or out_h
+            v.batch_id = batch.id
+            db.commit()
+            return {"video_id": v.id, "frames": kept, "batch_id": batch.id}
+        except Exception as exc:
+            if v.status != "failed":
+                v.status, v.error = "failed", f"{type(exc).__name__}: {exc}"[:500]
+                db.commit()
+            raise
+        finally:
+            cap.release()
+
+
+def run_track_forward(job: Job):
+    """SAM box-prompt tracking: copy one annotation onto the next N frames of its video."""
+    P = job.params
+    with SessionLocal() as db:
+        src = db.get(Image, P["image_id"])
+        if src is None or src.deleted_at:
+            raise RuntimeError("image not found")
+        ann = next((a for a in src.annotations or [] if a.get("id") == P["annotation_id"]), None)
+        if ann is None:
+            raise RuntimeError("annotation not found")
+        v = db.get(Video, src.video_id) if src.video_id else None
+        if v is None:
+            raise RuntimeError("image is not part of a video")
+        p = db.get(Project, src.project_id)
+        limit = max(1, min(int(P.get("frames") or 30), 120))
+        start = src.frame_index if src.frame_index is not None else -1
+        targets = db.scalars(select(Image).where(
+            Image.project_id == p.id, Image.video_id == v.id, Image.frame_index > start,
+            Image.deleted_at.is_(None)).order_by(Image.frame_index.asc()).limit(120)).all()[:limit]
+        pairs = []
+        for target in targets:
+            try:
+                pairs.append((target, imaging.load(target.path)))
+            except Exception as e:                      # a missing file must not stop the whole track
+                log.warning("track-forward skipped unreadable frame %s: %s", target.id, e)
+        adapter = ADAPTERS.get("sam3")
+        sam_box = adapter.segment_box if adapter is not None else None
+        shapes = track.track_forward([im for _, im in pairs], ann.get("shape") or {}, sam_box=sam_box,
+                                     project_type=p.type)
+        track_id = ann.get("trackId") or f"t{new_id()}"
+        # The seed joins its own track as a keyframe, so a later "Set start" is a real interpolation start.
+        seed_anns = [{**a, "trackId": track_id, "keyframe": True} if a.get("id") == ann.get("id") else a
+                     for a in src.annotations or []]
+        set_annotations(db, src, seed_anns)
+        db.commit()
+        written = 0
+        for (target, _im), shape in zip(pairs, shapes):
+            anns, keep = track.merge_track(target.annotations or [], {
+                "id": "a" + new_id(), "classId": ann["classId"], "shape": shape, "source": "sam3",
+                "trackId": track_id, "keyframe": False}, track_id)
+            if keep:
+                set_annotations(db, target, anns)
+                db.commit()
+                written += 1
+            _set(job.id, progress=round((written + 1) / max(1, len(pairs)) * 100, 1))
+        return {"image_id": src.id, "tracked": written, "track_id": track_id}
+
+
+HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
+            "train": run_train, "autolabel": run_autolabel, "health": run_health,
+            "connector_sync": connectors.sync_job, "extract_frames": run_extract_frames,
+            "track_forward": run_track_forward}
+
+
 def run_insights_images(job: Job):
     with SessionLocal() as db:
         return insights_jobs.scan_images(db, db.get(Project, job.project_id))
@@ -402,6 +572,7 @@ def run_retention(job: Job):
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,
             "train": run_train, "autolabel": run_autolabel, "health": run_health,
             "connector_sync": connectors.sync_job, "retention": run_retention,
+            "extract_frames": run_extract_frames, "track_forward": run_track_forward,
             "insights_images": run_insights_images, "insights_leakage": run_insights_leakage,
             "insights_embedding": run_insights_embedding}
 

@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3, Bell, Boxes, BrainCircuit, Check, ChevronDown, ChevronRight, ChevronsLeft, Cpu, Database,
-  FlaskConical, FolderGit2, Layers, LineChart, LogOut, Monitor, Moon, Plus, Rocket, Settings,
-  Sun, Tag, Tags, Upload, User, X, Zap, Wrench, KeyRound, ScrollText,
-  ShieldCheck,
+  Film, FlaskConical, FolderGit2, KeyRound, Layers, LineChart, LogOut, Menu, Monitor, Moon,
+  Plus, Rocket, ScrollText, Settings, ShieldCheck, Sun, Tag, Tags, Upload, User,
+  X, Zap, Wrench,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -43,7 +43,7 @@ function NewWorkspace({ open, onClose }: { open: boolean; onClose: () => void })
   )
 }
 
-export function AppSidebar() {
+export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean; onClose?: () => void }) {
   const { collapsed, toggleSidebar, logout, me } = useApp()
   const role = useApp((s) => s.role)
   const superadmin = useApp((s) => s.superadmin)
@@ -56,7 +56,21 @@ export function AppSidebar() {
   const u = info.data?.usage
   const pct = u ? (u.credits_used / u.limits.credits) * 100 : 0
   return (
-    <Glass as="aside" className={cn('glass-sidebar relative m-2 mr-0 flex h-[calc(100vh-1rem)] shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width] print:hidden', collapsed ? 'w-14' : 'w-56')}>
+    <Glass as="aside" className={cn(
+      'glass-sidebar relative m-2 mr-0 shrink-0 flex-col rounded-2xl text-sidebar-foreground transition-[width]',
+      mobileOpen ? 'fixed inset-y-0 left-0 z-50 flex w-64' : 'hidden',
+      'md:relative md:inset-auto md:z-auto md:flex md:h-[calc(100vh-1rem)]',
+      collapsed ? 'md:w-14' : 'md:w-56',
+    )}>
+      {mobileOpen && (
+        <div className="flex items-center justify-between px-3 pt-2 md:hidden">
+          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">Navigation</span>
+          <button type="button" onClick={onClose} aria-label="Close navigation"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-sidebar-accent">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       <div className="p-2">
         <Dropdown
           trigger={
@@ -77,7 +91,7 @@ export function AppSidebar() {
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
         {mainNav.map(({ to, label, icon: Icon, end }) => (
-          <NavLink key={label} to={`/${ws}/${to}`} end={end}
+          <NavLink key={label} to={`/${ws}/${to}`} end={end} onClick={onClose}
             className={({ isActive }) => cn(
               'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-all duration-150',
               isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
@@ -94,20 +108,20 @@ export function AppSidebar() {
             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', pct > 80 ? 'bg-destructive' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, pct)}%` }} /></div>
           </Link>
         )}
-        <NavLink to={`/${ws}/activity`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
+        <NavLink to={`/${ws}/activity`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
           <Bell className="h-4 w-4" />{!collapsed && 'Activity'}
         </NavLink>
         {isAdmin && (
-          <NavLink to={`/${ws}/audit`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
+          <NavLink to={`/${ws}/audit`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
             <ScrollText className="h-4 w-4" />{!collapsed && 'Audit log'}
           </NavLink>
         )}
         {superadmin && (
-          <NavLink to={`/${ws}/admin`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
+          <NavLink to={`/${ws}/admin`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
             <ShieldCheck className="h-4 w-4" />{!collapsed && 'Admin'}
           </NavLink>
         )}
-        <NavLink to={`/${ws}/settings`} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
+        <NavLink to={`/${ws}/settings`} onClick={onClose} className={cn('flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent/60', collapsed && 'justify-center px-0')}>
           <Settings className="h-4 w-4" />{!collapsed && 'Settings'}
         </NavLink>
         <div className="flex items-center gap-2 px-2.5 py-2">
@@ -120,7 +134,7 @@ export function AppSidebar() {
           )}
         </div>
       </div>
-      <button onClick={toggleSidebar} aria-label="Toggle sidebar" className="absolute -right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border bg-card p-1 text-muted-foreground shadow hover:text-foreground">
+      <button onClick={toggleSidebar} aria-label="Toggle sidebar" className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 rounded-full border bg-card p-1 text-muted-foreground shadow hover:text-foreground md:block">
         <ChevronsLeft className={cn('h-3.5 w-3.5 transition-transform', collapsed && 'rotate-180')} />
       </button>
       <NewWorkspace open={newWs} onClose={() => setNewWs(false)} />
@@ -133,6 +147,7 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
     { to: 'upload', label: 'Upload Data', icon: Upload, perm: 'project.upload' },
     { to: 'annotate', label: 'Annotate', icon: Tag, perm: 'project.annotate' },
     { to: 'browse', label: 'Dataset', icon: Database, perm: 'project.read', count: true },
+    { to: 'videos', label: 'Video', icon: Film, perm: 'project.annotate' },
     { to: 'versions', label: 'Versions', icon: FolderGit2, perm: 'project.export' },
     { to: 'analytics', label: 'Analytics', icon: BarChart3, perm: 'project.review' },
     { to: 'insights', label: 'Insights', icon: LineChart, perm: 'project.review' },
@@ -151,7 +166,7 @@ export const projNav: { group: string; items: { to: string; label: string; icon:
 ]
 
 export const typeLabel = (t: string) =>
-  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification' } as Record<string, string>)[t] ?? t
+  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection' } as Record<string, string>)[t] ?? t
 
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()
@@ -215,7 +230,7 @@ const pageLabels: Record<string, string> = {
   settings: 'Settings', legal: 'Legal',
 }
 
-export function TopBar() {
+export function TopBar({ onMenu }: { onMenu?: () => void }) {
   const { ws = '' } = useParams()
   const me = useApp((s) => s.me)
   const m = useMatch('/:ws/:project/*')
@@ -237,6 +252,10 @@ export function TopBar() {
     : page ? [{ label: page, to: '' }] : []
   return (
     <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4 print:hidden">
+      <button type="button" onClick={onMenu} aria-label="Open navigation menu"
+        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground md:hidden">
+        <Menu className="h-4 w-4" />
+      </button>
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
         {crumbs.map((c, i) => (
           <span key={i} className="flex min-w-0 items-center gap-1.5">
@@ -303,11 +322,22 @@ export function JobTray() {
 export function AppLayout() {
   const m = useMatch('/:ws/:project/*')
   const isProject = !!m?.params.project && !RESERVED.has(m.params.project)
+  const [navOpen, setNavOpen] = useState(false)
+  useEffect(() => {
+    if (!navOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOpen])
   return (
     <div className="app-bg flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
-      <AppSidebar />
+      {navOpen && (
+        <button type="button" aria-label="Close navigation" onClick={() => setNavOpen(false)}
+          className="fixed inset-0 z-40 cursor-pointer bg-scrim/50 md:hidden" />
+      )}
+      <AppSidebar mobileOpen={navOpen} onClose={() => setNavOpen(false)} />
       <div className="relative min-w-0 flex-1 print:min-w-full">
-        <TopBar />
+        <TopBar onMenu={() => setNavOpen(true)} />
         {/* Content scrolls underneath the floating glass bar, so the blur has something to blur. Project pages scroll inside ProjectLayout. */}
         <main data-scroll className={cn('h-full print:h-auto print:overflow-visible print:pt-0', isProject ? 'overflow-hidden' : 'overflow-y-auto pt-14')}><Outlet /></main>
       </div>
