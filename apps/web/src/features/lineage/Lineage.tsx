@@ -10,6 +10,7 @@ import {
   useChartTheme, type ChartOption, type ChartTheme,
 } from '../insights/charts'
 import { useProject } from '../project/ProjectLayout'
+import { edgeRows, nodeConnections, type EdgeRow } from './lineageModel'
 
 const KINDS: LineageKind[] = ['batch', 'version', 'run', 'model', 'stream']
 const KIND_ONE: Record<LineageKind, string> = {
@@ -94,11 +95,32 @@ function SectionTitle({ children }: { children: ReactNode }) {
   return <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{children}</h3>
 }
 
-function NodePanel({ node, onClose }: { node: LineageNode; onClose: () => void }) {
+function ConnectionList({ title, rows, other }: { title: string; rows: EdgeRow[]; other: 'source' | 'target' }) {
+  if (!rows.length) return null
+  return (
+    <div>
+      <h4 className="text-[11px] text-muted-foreground">{title}</h4>
+      <ul className="mt-1 space-y-1">
+        {rows.map((row, index) => (
+          <li key={`${row.source}-${row.target}-${index}`}
+            className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/30 px-2 py-1">
+            <span className="min-w-0 break-words text-xs">{row[other]}</span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">{row.kind}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function NodePanel({ node, nodes, edges, onClose }: {
+  node: LineageNode; nodes: LineageNode[]; edges: LineageEdge[]; onClose: () => void
+}) {
   const theme = useChartTheme()
   const counts = Object.entries(node.counts)
   const metrics = Object.entries(node.metrics)
   const detail = Object.entries(node.detail)
+  const { incoming, outgoing } = nodeConnections(nodes, edges, node.id)
   const tone = kindTone(node.kind, theme)
 
   return (
@@ -168,6 +190,16 @@ function NodePanel({ node, onClose }: { node: LineageNode; onClose: () => void }
                 </div>
               ))}
             </dl>
+          </>
+        ) : null}
+
+        {incoming.length || outgoing.length ? (
+          <>
+            <SectionTitle>Connections</SectionTitle>
+            <div className="mt-1.5 space-y-2">
+              <ConnectionList title="Incoming" rows={incoming} other="source" />
+              <ConnectionList title="Outgoing" rows={outgoing} other="target" />
+            </div>
           </>
         ) : null}
 
@@ -270,6 +302,7 @@ export default function Lineage() {
   const rows = Math.max(1, ...KINDS.map((nodeKind) => visible.filter((node) => node.kind === nodeKind).length))
   const graphHeight = HEADER_H + rows * (NODE_H + NODE_GAP) - NODE_GAP
   const shownEdges = edges.filter((edge) => position.has(edge.source) && position.has(edge.target))
+  const connectionRows = edgeRows(visible, shownEdges)
   const filters: (LineageKind | 'all')[] = ['all', ...KINDS]
 
   const pickKind = (next: LineageKind | 'all') => {
@@ -372,11 +405,41 @@ export default function Lineage() {
                 </div>
               </div>
               <p className="sr-only">The graph shows {visible.length} nodes and {shownEdges.length} connections.</p>
+              {connectionRows.length ? (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                    View {connectionRows.length} connections as a table
+                  </summary>
+                  <div className="mt-2 max-h-72 overflow-auto">
+                    <table className="w-full text-sm">
+                      <caption className="pb-2 text-left text-xs text-muted-foreground">
+                        Every connection drawn in the graph above.
+                      </caption>
+                      <thead>
+                        <tr className="border-b text-left text-xs text-muted-foreground">
+                          <th scope="col" className="px-2 py-1.5 font-medium">From</th>
+                          <th scope="col" className="px-2 py-1.5 font-medium">To</th>
+                          <th scope="col" className="px-2 py-1.5 font-medium">Edge</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {connectionRows.map((row, index) => (
+                          <tr key={`${row.source}-${row.target}-${row.kind}-${index}`} className="border-b last:border-0">
+                            <th scope="row" className="break-words px-2 py-1.5 text-left font-normal">{row.source}</th>
+                            <td className="break-words px-2 py-1.5">{row.target}</td>
+                            <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground">{row.kind}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ) : null}
             </Card>
           </div>
           {selected ? (
             <div className="min-w-0 lg:col-span-4">
-              <NodePanel node={selected} onClose={() => setSelectedId(null)} />
+              <NodePanel node={selected} nodes={nodes} edges={edges} onClose={() => setSelectedId(null)} />
             </div>
           ) : null}
         </div>
