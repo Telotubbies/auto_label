@@ -40,6 +40,7 @@ def init_db():
     # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
     _encrypt_secrets()
     _seal_stream_sources()
+    ensure_columns(engine, "stream_events", {"clean_path": "VARCHAR(1024) DEFAULT ''"})
     _backfill_image_classes()
     if SEED_DEMO:
         seed()

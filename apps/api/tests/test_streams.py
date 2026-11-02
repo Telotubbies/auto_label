@@ -269,6 +269,12 @@ def test_stream_end_to_end_line_crossing(c, monkeypatch, video):
     assert ev["snapshot"]
     shot = c.get(ev["snapshot"])
     assert shot.status_code == 200 and shot.content[:2] == b"\xff\xd8"
+    from app.db import SessionLocal
+    from app.models import StreamEvent
+    with SessionLocal() as db:
+        row = db.get(StreamEvent, ev["id"])
+        assert row.clean_path and (DATA_DIR / row.clean_path).is_file()
+        assert row.clean_path != row.snapshot_path
     # the status panel must show the demo video at its real rate (the window needs a couple of seconds)
     _poll(lambda: (j if (j := c.get(f"{BASE}/{sid}").json())["fps"] >= 5 else None), timeout=10)
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
@@ -363,12 +369,9 @@ def test_rtsp_credentials_are_masked(c):
 
 
 def test_file_source_cannot_escape_data_dir(c):
-    sid = create_stream(c, source="file:../../outside.mp4")
-    assert c.post(f"{BASE}/{sid}/start").status_code == 200
-    j = _poll(_status_is(c, sid, "error"), timeout=10)
-    assert "outside.mp4" in j["lastError"]
-    assert str(DATA_DIR) not in j["lastError"]          # no server paths in user-facing errors
-    c.post(f"{BASE}/{sid}/stop")
+    r = c.post(BASE, json={"name": "Escape", "source": "file:../../outside.mp4",
+                           "model_ref": "ultralytics:yolo11n"})
+    assert r.status_code == 400 and "file:videos" in r.json()["detail"]
 
 
 def test_frame_is_scoped_and_token_bound(c):
@@ -381,6 +384,124 @@ def test_frame_is_scoped_and_token_bound(c):
     assert c.get(wrong_project).status_code == 404
     other_path = f"{BASE}/{other}/frame?token={token}"
     assert c.get(other_path).status_code == 403         # token bound to its stream
+
+
+@pytest.mark.parametrize("source", [
+    "rtsp://cam.local/stream", "rtsps://cam.local/stream", "http://cam.local/s.mjpg",
+    "https://cam.local/s.mjpg", "file:videos/demo.mp4", "RTSP://cam.local/stream",
+    "FILE:VIDEOS/demo.mp4",
+])
+def test_allows_allowlisted_sources(c, source):
+    sid = create_stream(c, source=source)
+    stored = c.get(f"{BASE}/{sid}").json()["source"]
+    assert stored.split(":")[0] in ("rtsp", "rtsps", "http", "https", "file")
+    if source.lower().startswith("file:"):
+        assert stored == "file:videos/demo.mp4"
+
+
+@pytest.mark.parametrize("source", [
+    "gopher://cam.local/x",                       # not a stream protocol
+    "ftp://cam.local/x",
+    "file:///etc/passwd",                         # local file outside the videos dir
+    "file:../../outside.mp4",
+    "file:videos/../outside.mp4",
+    "file:videos/%2e%2e/outside.mp4",             # encoded traversal
+    "file:videos/sub/outside.mp4",                # nested path
+    "file:videos/C:outside.mp4",                  # drive colon
+    "file:videos/ outside.mp4",
+    "file:videos/a|concat:b",                     # pipe/ffmpeg metacharacters
+    "data:text/plain,hi",
+    "concat:/tmp/a|/tmp/b",                       # ffmpeg protocol chaining
+    "//cam.local/x",                              # scheme-relative
+    "rtsp:///no-host",
+    "http://",
+    "rtsp://cam.local/x\nfile:///etc/passwd",     # control characters
+])
+def test_rejects_unallowlisted_sources(c, source):
+    r = c.post(BASE, json={"name": "Bad source", "source": source, "model_ref": "ultralytics:yolo11n"})
+    assert r.status_code == 400, (source, r.text)
+
+
+def test_manager_rejects_a_source_that_bypassed_the_router(c, monkeypatch):
+    """Defence in depth: every path into OpenCV goes through the allowlist, not just the router."""
+    import app.streams.manager as mgr
+    from app.db import SessionLocal
+    from app.models import Project, Stream
+    from sqlalchemy import select
+
+    def boom(*_a, **_k):
+        raise AssertionError("OpenCV must never see a rejected source")
+    monkeypatch.setattr(mgr.cv2, "VideoCapture", boom)
+    with SessionLocal() as db:
+        p = db.scalar(select(Project).where(Project.slug == PR))
+        row = Stream(workspace_id=p.workspace_id, project_id=p.id, name="bypass",
+                     source="gopher://cam.local/x", model_ref="ultralytics:yolo11n")
+        db.add(row)
+        db.commit()
+        sid = row.id
+    try:
+        mgr.manager.start(sid)
+        j = _poll(_status_is(c, sid, "error"), timeout=5)
+        assert "invalid source" in j["lastError"].lower()
+    finally:
+        mgr.manager.stop(sid)
+
+
+def test_capture_is_released_only_by_its_own_grabber(c, monkeypatch, video):
+    import app.streams.manager as mgr
+    released: list[str] = []
+
+    class FakeCap:
+        def __init__(self, *_a, **_k):
+            self.n = 0
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            self.n += 1
+            return True, np.zeros((48, 64, 3), np.uint8)
+
+        def get(self, _prop):
+            return 10.0
+
+        def set(self, *_a):
+            return True
+
+        def release(self):
+            released.append(threading.current_thread().name)
+
+    monkeypatch.setattr(mgr.cv2, "VideoCapture", FakeCap)
+    monkeypatch.setattr(mgr, "resolve", _fake_resolve)
+    sid = create_stream(c, source=video, sample_fps=10)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(lambda: (mgr.manager.status(sid) or {}).get("frames", 0) > 0, timeout=10)
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+    assert released and all("grabber" in name for name in released), released
+
+
+def test_to_dataset_ingests_the_clean_frame(c):
+    """Finding 1: the annotated snapshot is for review; the dataset gets the untouched frame."""
+    sid = create_stream(c, name="Clean frame")
+    folder = DATA_DIR / "streams" / sid
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "ann.jpg").write_bytes(jpeg((220, 20, 20)))       # snapshot with red overlays
+    (folder / "clean.jpg").write_bytes(jpeg((20, 20, 220)))     # clean blue frame
+    from app.db import SessionLocal
+    from app.models import StreamEvent
+    with SessionLocal() as db:
+        ev = StreamEvent(stream_id=sid, ts=time.time(), rule={"index": 0, "kind": "zone"},
+                         summary="person in zone", snapshot_path=f"streams/{sid}/ann.jpg",
+                         clean_path=f"streams/{sid}/clean.jpg", predictions=[])
+        db.add(ev)
+        db.commit()
+        eid = ev.id
+    r = c.post(f"{BASE}/{sid}/events/{eid}/to-dataset")
+    assert r.status_code == 200 and r.json()["uploaded"] == 1, r.text
+    img = c.get(f"{PROJECT}/images", params={"tag": "stream"}).json()["items"][0]   # newest
+    body = c.get(img["url"]).content
+    pixel = PImage.open(io.BytesIO(body)).convert("RGB").getpixel((32, 24))
+    assert pixel[2] > pixel[0] + 50, pixel      # blue clean frame, not the red snapshot
 
 
 def test_uploaded_video_is_removed_with_the_stream(c):

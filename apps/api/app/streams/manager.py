@@ -18,6 +18,7 @@ import re
 import threading
 import time
 from collections import deque
+from urllib.parse import urlsplit
 
 import cv2
 import numpy as np
@@ -46,6 +47,44 @@ _CREDENTIALS = re.compile(r"(://)[^/@\s]+@")
 def display_source(source: str) -> str:
     """Never leak camera credentials into an API response, an error string or a log line."""
     return _CREDENTIALS.sub(r"\1***@", source)
+
+
+ALLOWED_SCHEMES = ("rtsp", "rtsps", "http", "https")
+
+
+def check_source(source: str) -> str:
+    """Allowlist every string that may reach OpenCV/FFmpeg (PM ruling, 2026-11-02).
+
+    Remote sources must be rtsp/rtsps/http/https with a host; local files are limited to a flat
+    name under the uploaded `videos/` folder. FFmpeg accepts far more protocols (concat:, data:,
+    subfile:, …), so this runs in the router *and* again in the worker before `VideoCapture`.
+    Returns the canonical source (lower-case scheme, canonical file prefix).
+    """
+    if not isinstance(source, str):
+        raise ValueError("invalid source")
+    s = source.strip()
+    if not s:
+        raise ValueError("invalid source: a URL or an uploaded video is required")
+    if len(s) > 1024:
+        raise ValueError("invalid source: longer than 1024 characters")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in s):
+        raise ValueError("invalid source: control characters are not allowed")
+    if s.lower().startswith("file:"):
+        rest = s[len("file:"):]
+        if not rest.lower().startswith("videos/"):
+            raise ValueError("invalid source: local files must be uploaded videos (file:videos/<name>)")
+        name = rest[len("videos/"):]
+        if (not name or name in (".", "..") or name != name.strip()
+                or any(ch in name for ch in '/\\:%?#|*<>"')):
+            raise ValueError("invalid source: local files must be uploaded videos (file:videos/<name>)")
+        return "file:videos/" + name
+    parts = urlsplit(s)
+    scheme = parts.scheme.lower()
+    if scheme not in ALLOWED_SCHEMES:
+        raise ValueError("invalid source: use rtsp, rtsps, http, https or an uploaded video")
+    if not parts.netloc:
+        raise ValueError("invalid source: the URL needs a host")
+    return scheme + s[len(parts.scheme):]
 
 
 def rule_label(rule: dict, index: int) -> str:
@@ -133,6 +172,7 @@ class _Worker:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._paused = threading.Event()
+        self._reopen = threading.Event()        # processor asks the grabber to reopen; it owns the capture
         self._stopped = False
         self._frame = None
         self._jpeg = None
@@ -141,7 +181,6 @@ class _Worker:
         self._inferences = 0
         self._detections = 0
         self._fps_times: deque[float] = deque()
-        self._cap = None
         self._threads: list[threading.Thread] = []
 
     # ---- lifecycle ---------------------------------------------------------
@@ -163,16 +202,16 @@ class _Worker:
             self._set("error", f"stream worker failed: {e}")
 
     def stop(self) -> None:
+        """Signal both threads and wait; the grabber releases its own VideoCapture when it exits.
+
+        VideoCapture is not thread-safe: releasing it here while the grabber sits in read() races
+        the decoder and can crash the process. A blocking read returns through its 3 s timeout, and
+        the grabber's finally clause then releases the handle on the thread that opened it.
+        """
         self._stopped = True
         self._stop.set()
         for t in reversed(self._threads):      # processor leaves first, the grabber may be in a read timeout
             t.join(2.0)
-        cap, self._cap = self._cap, None
-        if cap is not None and any(t.is_alive() for t in self._threads):
-            try:
-                cap.release()                  # unblock a capture stuck in open()/read()
-            except Exception:
-                log.exception("stream %s: capture release failed", self.id)
         self._threads.clear()
 
     def running(self) -> bool:
@@ -238,13 +277,14 @@ class _Worker:
         return path if base in path.parents else None
 
     def _open(self):
-        if self._is_file:
+        source = check_source(self.source)     # second gate: nothing unlisted reaches FFmpeg
+        if source.startswith("file:"):
             path = self._file_path()
             if path is None:
                 return None
             cap = cv2.VideoCapture(str(path))
         else:
-            cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG,
+            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG,
                                    [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
                                     cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
         if not cap.isOpened():
@@ -280,6 +320,12 @@ class _Worker:
         return f"video file not found: {path.name if path is not None else display_source(self.source)}"
 
     def _grab(self) -> None:
+        try:
+            self.source = check_source(self.source)
+        except ValueError as e:
+            self.fatal = True
+            self._set("error", str(e))
+            return
         missing = self._missing_file()
         if missing:
             self._set("error", missing)
@@ -294,6 +340,7 @@ class _Worker:
                 self._set("error", missing)
                 self.fatal = True
                 return
+            self._reopen.clear()
             cap = self._open()
             if cap is None:
                 self._set("reconnecting", f"cannot open source: {display_source(self.source)}")
@@ -301,51 +348,53 @@ class _Worker:
                     return
                 backoff = min(backoff * 2, _MAX_BACKOFF)
                 continue
-            self._cap = cap
             backoff = 1
             interval = 1.0 / self._pacing_fps(cap) if self._is_file else 0.0
             last_hash, last_change = None, time.time()
-            while not self._stop.is_set():
-                if self.fatal:
-                    return
-                t0 = time.monotonic()
-                ok, frame = cap.read()
-                if not ok:
-                    if not self._is_file:
-                        break
-                    try:                          # file sources loop forever at EOF
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    except Exception:
-                        pass
+            try:
+                while not self._stop.is_set():
+                    if self.fatal:
+                        return
+                    t0 = time.monotonic()
                     ok, frame = cap.read()
                     if not ok:
+                        if not self._is_file:
+                            break
+                        try:                      # file sources loop forever at EOF
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        except Exception:
+                            pass
+                        ok, frame = cap.read()
+                        if not ok:
+                            break
+                    if self._reopen.is_set():     # processor watchdog asked for a fresh capture
                         break
-                ts = time.time()
-                # A paused / GPU-busy stream keeps capturing so its live view stays warm; do not let the
-                # grabber overwrite the status the scheduler asked for. A fatal processor exit (e.g. an
-                # unknown model) must never be turned back into a healthy "live".
-                if (not self.fatal and self.status not in ("live", "error")
-                        and not self.paused and not self.gpu_busy):
-                    self._set("live", "")
-                self._publish(frame, ts)
-                with self._lock:
-                    self._frames += 1
-                digest = hashlib.blake2b(frame[::8, ::8].tobytes(), digest_size=16).hexdigest()
-                if digest != last_hash:
-                    last_hash, last_change = digest, ts
-                elif ts - last_change > _REOPEN_AFTER:
-                    self._set("reconnecting", f"watchdog: no new frame from {display_source(self.source)}")
-                    break
-                if interval:
-                    left = interval - (time.monotonic() - t0)
-                    if left > 0 and self._stop.wait(left):
+                    ts = time.time()
+                    # A paused / GPU-busy stream keeps capturing so its live view stays warm; do not let the
+                    # grabber overwrite the status the scheduler asked for. A fatal processor exit (e.g. an
+                    # unknown model) must never be turned back into a healthy "live".
+                    if (not self.fatal and self.status not in ("live", "error")
+                            and not self.paused and not self.gpu_busy):
+                        self._set("live", "")
+                    self._publish(frame, ts)
+                    with self._lock:
+                        self._frames += 1
+                    digest = hashlib.blake2b(frame[::8, ::8].tobytes(), digest_size=16).hexdigest()
+                    if digest != last_hash:
+                        last_hash, last_change = digest, ts
+                    elif ts - last_change > _REOPEN_AFTER:
+                        self._set("reconnecting", f"watchdog: no new frame from {display_source(self.source)}")
                         break
-            try:
-                cap.release()
-            except Exception:
-                log.exception("stream %s: capture release failed", self.id)
-            if self._cap is cap:
-                self._cap = None
+                    if interval:
+                        left = interval - (time.monotonic() - t0)
+                        if left > 0 and self._stop.wait(left):
+                            break
+            finally:
+                # only this thread ever touches the capture: cross-thread release races the decoder
+                try:
+                    cap.release()
+                except Exception:
+                    log.exception("stream %s: capture release failed", self.id)
             if self._stop.is_set():
                 return
             if self._is_file:
@@ -390,16 +439,12 @@ class _Worker:
                 frame, seq, ts = self._frame, self._frames, self._frame_ts
                 has_frame = self._frame_ts > 0
             now = time.time()
-            # No-new-frame watchdog: a capture stack can hang inside read() without raising, so the
-            # processor releases the handle and lets the grabber reopen it.
+            # No-new-frame watchdog: a capture stack can hang inside read() without raising. The
+            # processor cannot release the handle (the grabber owns it), so it asks the grabber to
+            # reopen; a blocked read returns through its own timeout and the grabber then recycles it.
             if has_frame and not self._paused.is_set() and now - self._frame_ts > _REOPEN_AFTER:
+                self._reopen.set()
                 self._set("reconnecting", f"watchdog: no new frame from {display_source(self.source)}")
-                cap = self._cap
-                if cap is not None:
-                    try:
-                        cap.release()
-                    except Exception:
-                        log.exception("stream %s: could not release a frozen capture", self.id)
                 self._stop.wait(0.5)
                 continue
             if frame is None or seq == last_seq or now - last_proc < period:
@@ -487,16 +532,19 @@ class _Worker:
         payload = [{k: p[k] for k in ("class", "class_id", "track_id", "confidence", "x", "y", "width", "height")
                     if k in p} for p in preds[:50]]
         eid = new_id()
-        snapshot = ""
+        snapshot, clean = "", ""
         try:
-            snapshot = self._snapshot(frame, preds, ev, eid) if frame is not None else ""
+            if frame is not None:
+                snapshot, clean = self._save_frames(frame, preds, ev, eid)
         except Exception:
             log.exception("stream %s: could not draw event snapshot", self.id)
         with session_scope() as db:
             db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
-                               summary=ev.get("summary", ""), snapshot_path=snapshot, predictions=payload))
+                               summary=ev.get("summary", ""), snapshot_path=snapshot,
+                               clean_path=clean, predictions=payload))
 
-    def _snapshot(self, frame, preds: list[dict], ev: dict, eid: str) -> str:
+    def _save_frames(self, frame, preds: list[dict], ev: dict, eid: str) -> tuple[str, str]:
+        """Write the annotated review snapshot and the untouched frame for dataset ingest."""
         img = frame.copy()
         h, w = img.shape[:2]
         for z in self.zones:
@@ -520,7 +568,8 @@ class _Worker:
         folder = DATA_DIR / "streams" / self.id
         folder.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(folder / f"{eid}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
-        return f"streams/{self.id}/{eid}.jpg"
+        cv2.imwrite(str(folder / f"{eid}.src.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        return f"streams/{self.id}/{eid}.jpg", f"streams/{self.id}/{eid}.src.jpg"
 
 
 class StreamManager:
