@@ -337,14 +337,14 @@ export interface InsightVersionDiff {
 }
 
 export interface InsightLabeling {
-  /** `annotation` = per-annotation author is recorded; `image_assignee` = only the image assignee is known. */
-  throughput_basis: 'annotation' | 'image_assignee'
+  /** Rows come from the same LabelEvent throughput definition the QA workforce page reads. */
+  throughput_basis: 'label_event'
   throughput: { date: string; labeler_id: string | null; labeler: string; annotations: number; images: number }[]
   review: { date: string; approved: number; rejected: number; rate: number }[]
   ai: {
-    human: number; ai: number; accepted_ai: number; acceptance_rate: number
-    /** `accepted` = AI labels on approved images that nobody has changed since. */
-    by_source: { source: string; count: number; accepted: number }[]
+    human: number; ai: number; accepted_ai: number; acceptance_rate: number | null
+    /** AI-sourced annotations currently on the images. */
+    by_source: { source: string; count: number }[]
   }
 }
 

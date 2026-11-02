@@ -7,8 +7,8 @@ from collections import Counter
 
 Box = tuple[float, float, float, float]
 MIN_K, MAX_K = 2, 10
-MAX_DRAFT_ANNOTATIONS = 1000      # keeps the synchronous merge pass bounded (API runs as one process)
-_MERGE_GRID = 16                  # coarse spatial buckets; overlapping boxes always share a cell
+MAX_DRAFT_ANNOTATIONS = 1000      # keeps one draft's synchronous pass bounded (API runs as one process)
+MAX_IMAGE_ANNOTATIONS = 2000      # sum across the submitted drafts of one image: the agreement/merge bound
 
 
 def _clamp(box: Box) -> Box:
@@ -20,8 +20,13 @@ def _clamp(box: Box) -> Box:
 
 
 def bbox_iou(a: Box, b: Box) -> float:
-    ax, ay, aw, ah = _clamp(a)
-    bx, by, bw, bh = _clamp(b)
+    return _clamped_iou(_clamp(a), _clamp(b))
+
+
+def _clamped_iou(a: Box, b: Box) -> float:
+    """IoU of two already-clamped boxes; the hot path of every candidate pair."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
     if aw <= 0 or ah <= 0 or bw <= 0 or bh <= 0:
         return 0.0
     ix = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
@@ -60,18 +65,83 @@ def annotation_iou(a: dict, b: dict, iou_threshold: float = 0.5) -> float:
     return iou if iou >= iou_threshold else 0.0
 
 
+def _prepared(anns: list[dict]) -> list[tuple[dict, str | None, str | None, Box | None]]:
+    """(annotation, class, kind, clamped bounds) computed once per annotation, never per pair."""
+    out: list[tuple[dict, str | None, str | None, Box | None]] = []
+    for ann in anns or []:
+        shape = ann.get("shape") or {}
+        kind = shape.get("kind")
+        box = None
+        if kind != "class":
+            raw = shape_box(shape)
+            if raw is not None:
+                box = _clamp(raw)
+                if box[2] <= 0 or box[3] <= 0:
+                    box = None
+        out.append((ann, ann.get("classId"), kind, box))
+    return out
+
+
+def _overlap_pairs(items: list[tuple[int, str | None, Box]]):
+    """Yield (i, j) for different-group, same-class boxes whose bounds overlap.
+
+    One x-interval sweep over precomputed boxes: candidates are ordered by their left edge and the
+    scan stops at the first box starting past the current right edge, so boxes that cannot overlap
+    are never compared and each pair is yielded once.
+    """
+    order = sorted(range(len(items)), key=lambda i: items[i][2][0])
+    for pos, i in enumerate(order):
+        group_i, class_i, (x1, y1, w, h) = items[i]
+        x2, y2 = x1 + w, y1 + h
+        for q in range(pos + 1, len(order)):
+            j = order[q]
+            group_j, class_j, (bx1, by1, bw, bh) = items[j]
+            if bx1 >= x2:
+                break
+            if group_i == group_j or class_i != class_j:
+                continue
+            if by1 >= y2 or by1 + bh <= y1:
+                continue
+            yield i, j
+
+
 def sets_agreement(a: list[dict], b: list[dict], iou_threshold: float = 0.5) -> float:
-    """1:1 greedy match by descending IoU; 2 * matches / (|a| + |b|)."""
-    if not a and not b:
+    """1:1 greedy match by descending IoU; 2 * matches / (|a| + |b|).
+
+    Boxes are prepared once and candidate pairs come from a class-bucketed x-interval sweep, so the
+    score is identical to the all-pairs definition without enumerating non-overlapping pairs.
+    """
+    return _sets_agreement(_prepared(a), _prepared(b), iou_threshold)
+
+
+def _sets_agreement(left: list, right: list, iou_threshold: float = 0.5) -> float:
+    """`sets_agreement` over already-prepared drafts, so a group comparison prepares each one once."""
+    if not left and not right:
         return 1.0
-    if not a or not b:
+    if not left or not right:
         return 0.0
-    pairs = []
-    for i, x in enumerate(a):
-        for j, y in enumerate(b):
-            iou = annotation_iou(x, y, iou_threshold)
-            if iou > 0:
-                pairs.append((iou, i, j))
+    pairs: list[tuple[float, int, int]] = []
+    # class labels have no geometry: every same-class pair from the two sides matches
+    for i, (_, cls_a, kind_a, _) in enumerate(left):
+        if kind_a != "class":
+            continue
+        for j, (_, cls_b, kind_b, _) in enumerate(right):
+            if kind_b == "class" and cls_a == cls_b:
+                pairs.append((1.0, i, j))
+    owners: list[tuple[int, int]] = []
+    items: list[tuple[int, str | None, Box]] = []
+    for group, prepared in ((0, left), (1, right)):
+        for index, (_, cls, kind, box) in enumerate(prepared):
+            if kind != "class" and box is not None:
+                owners.append((group, index))
+                items.append((group, cls, box))
+    for u, v in _overlap_pairs(items):
+        group_u, index_u = owners[u]
+        group_v, index_v = owners[v]
+        i, j = (index_u, index_v) if group_u == 0 else (index_v, index_u)
+        iou = _clamped_iou(items[u][2], items[v][2])
+        if iou > 0 and iou >= iou_threshold:
+            pairs.append((iou, i, j))
     pairs.sort(key=lambda p: (-p[0], p[1], p[2]))
     used_a: set[int] = set()
     used_b: set[int] = set()
@@ -79,14 +149,15 @@ def sets_agreement(a: list[dict], b: list[dict], iou_threshold: float = 0.5) -> 
         if i not in used_a and j not in used_b:
             used_a.add(i)
             used_b.add(j)
-    return 2 * len(used_a) / (len(a) + len(b))
+    return 2 * len(used_a) / (len(left) + len(right))
 
 
 def group_agreement(sets: list[list[dict]], iou_threshold: float = 0.5) -> float:
     """Mean pairwise agreement; a single set (or none) is trivially in agreement with itself."""
     if len(sets) < 2:
         return 1.0
-    scores = [sets_agreement(sets[i], sets[j], iou_threshold)
+    prepared = [_prepared(anns) for anns in sets]
+    scores = [_sets_agreement(prepared[i], prepared[j], iou_threshold)
               for i in range(len(sets)) for j in range(i + 1, len(sets))]
     return sum(scores) / len(scores)
 
@@ -109,39 +180,16 @@ def _merged_annotation(members: list[dict]) -> dict:
     return {"id": "m" + secrets.token_hex(4), "classId": class_id, "shape": shape, "source": "human"}
 
 
-def _node_iou(kind_a: str | None, box_a: Box | None, kind_b: str | None, box_b: Box | None,
-              iou_threshold: float) -> float:
-    """IoU of two precomputed nodes: class labels only match class labels; geometry uses bounds."""
-    if kind_a == "class" or kind_b == "class":
-        return 1.0 if kind_a == kind_b == "class" else 0.0
-    if box_a is None or box_b is None:
-        return 0.0
-    iou = bbox_iou(box_a, box_b)
-    return iou if iou >= iou_threshold else 0.0
-
-
-def _cells(box: Box) -> list[tuple[int, int]]:
-    """Grid cells a normalised box covers; two overlapping boxes always share at least one."""
-    x, y, w, h = _clamp(box)
-    if w <= 0 or h <= 0:
-        return []
-    c1, c2 = int(x * _MERGE_GRID), int(y * _MERGE_GRID)
-    c3 = min(_MERGE_GRID - 1, int((x + w) * _MERGE_GRID))
-    c4 = min(_MERGE_GRID - 1, int((y + h) * _MERGE_GRID))
-    return [(cx, cy) for cx in range(c1, c3 + 1) for cy in range(c2, c4 + 1)]
-
-
 def merge_sets(sets: list[list[dict]], iou_threshold: float = 0.5) -> list[dict]:
     """Cluster same-class annotations across sets; keep clusters backed by a strict majority of sets.
 
-    Geometry and class buckets are precomputed once, and candidates are pruned by a coarse spatial
-    grid, so the pairwise pass never compares boxes that cannot overlap.
+    Boxes are prepared once and candidate pairs come from the same class-bucketed x-interval sweep
+    as `sets_agreement`, so large or dense drafts never trigger the full pairwise scan.
     """
     nodes: list[tuple[int, dict, str | None, str | None, Box | None]] = []
     for si, anns in enumerate(sets):
-        for ann in anns or []:
-            shape = ann.get("shape") or {}
-            nodes.append((si, ann, ann.get("classId"), shape.get("kind"), shape_box(shape)))
+        for ann, cls, kind, box in _prepared(anns):
+            nodes.append((si, ann, cls, kind, box))
     parent = list(range(len(nodes)))
 
     def find(i: int) -> int:
@@ -161,24 +209,17 @@ def merge_sets(sets: list[list[dict]], iou_threshold: float = 0.5) -> list[dict]
             for j in class_like[pos + 1:]:
                 if nodes[i][0] != nodes[j][0]:
                     parent[find(i)] = find(j)
-        # geometry: bucket by class + grid cell, then compare each candidate pair exactly once
-        grid: dict[tuple[int, int], list[int]] = {}
-        seen: set[tuple[int, int]] = set()
+        # geometry: sweep by x, compare only boxes whose bounds can overlap (once per pair)
+        owners: list[int] = []
+        items: list[tuple[int, str | None, Box]] = []
         for i in indices:
             if nodes[i][3] == "class" or nodes[i][4] is None:
                 continue
-            for cell in _cells(nodes[i][4]):
-                bucket = grid.setdefault(cell, [])
-                for j in bucket:
-                    if nodes[i][0] == nodes[j][0]:
-                        continue
-                    pair = (j, i) if j < i else (i, j)
-                    if pair in seen:
-                        continue
-                    seen.add(pair)
-                    if _node_iou(nodes[i][3], nodes[i][4], nodes[j][3], nodes[j][4], iou_threshold) > 0:
-                        parent[find(pair[0])] = find(pair[1])
-                bucket.append(i)
+            owners.append(i)
+            items.append((nodes[i][0], nodes[i][2], nodes[i][4]))
+        for u, v in _overlap_pairs(items):
+            if _clamped_iou(items[u][2], items[v][2]) >= iou_threshold:
+                parent[find(owners[u])] = find(owners[v])
 
     clusters: dict[int, list[tuple[int, dict]]] = {}
     for i in range(len(nodes)):

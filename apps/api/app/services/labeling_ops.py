@@ -4,11 +4,29 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..deps import Ctx, audit
-from ..models import (ConsensusAssignment, ConsensusJob, Honeypot, HoneypotAttempt, Image, LabelEvent, Member, User,
-                      now, set_annotations)
+from ..models import (
+    ConsensusAssignment,
+    ConsensusJob,
+    Honeypot,
+    HoneypotAttempt,
+    Image,
+    LabelEvent,
+    Member,
+    User,
+    now,
+    set_annotations,
+)
 from ..security import sign_path
 from . import labeler_stats
-from .labeling import MAX_DRAFT_ANNOTATIONS, MAX_K, MIN_K, group_agreement, honeypot_score, merge_sets
+from .labeling import (
+    MAX_DRAFT_ANNOTATIONS,
+    MAX_IMAGE_ANNOTATIONS,
+    MAX_K,
+    MIN_K,
+    group_agreement,
+    honeypot_score,
+    merge_sets,
+)
 
 MAX_JOB_IMAGES = 100
 PROJECT_STATES = ("collecting", "ready", "merged")
@@ -16,6 +34,32 @@ PROJECT_STATES = ("collecting", "ready", "merged")
 
 def _is_ai(ann: dict) -> bool:
     return ann.get("source") not in (None, "human")
+
+
+def _image_metrics(sets: list[list[dict]], iou_threshold: float) -> dict:
+    """Agreement and tie flag for one image's submitted drafts, computed by the bounded per-image pass.
+
+    The stored result is what every later read uses; only the image whose draft changed is recomputed.
+    Rows over `MAX_IMAGE_ANNOTATIONS` can only be legacy data, so they are left unscored instead of
+    blocking the single API process on a quadratic scan.
+    """
+    if len(sets) < 2:
+        return {"agreement": None, "no_consensus": False}
+    if sum(len(anns) for anns in sets) > MAX_IMAGE_ANNOTATIONS:
+        return {"agreement": None, "no_consensus": False, "oversized": True}
+    return {"agreement": round(group_agreement(sets, iou_threshold), 4),
+            "no_consensus": not merge_sets(sets, iou_threshold)}
+
+
+def check_image_cap(db: Session, job_id: str, image_id: str, user_id: str, count: int) -> None:
+    """Reject a draft that would push one image's submitted annotations past the supported bound."""
+    rows = db.scalars(select(ConsensusAssignment).where(ConsensusAssignment.job_id == job_id,
+                                                        ConsensusAssignment.image_id == image_id)).all()
+    others = sum(len(row.annotations or []) for row in rows if row.user_id != user_id and row.submitted is not None)
+    if others + count > MAX_IMAGE_ANNOTATIONS:
+        raise HTTPException(413, f"at most {MAX_IMAGE_ANNOTATIONS} annotations across the submitted drafts "
+                                 "of one image")
+
 
 
 def create_job(db: Session, c: Ctx, image_ids: list[str], count: int, k: int,
@@ -117,7 +161,7 @@ def record_save(db: Session, ws_id: str, img: Image, user_id: str, before: list[
         assignment.annotations = list(after or [])
         job = db.get(ConsensusJob, assignment.job_id)
         if job is not None and assignment.submitted is not None:
-            refresh_job(db, job)
+            refresh_job(db, job, image_id=img.id)
     if honeypot is not None:
         score = honeypot_score(honeypot.annotations or [], after or [])
         attempt = db.scalar(select(HoneypotAttempt).where(HoneypotAttempt.honeypot_id == honeypot.id,
@@ -131,14 +175,23 @@ def record_save(db: Session, ws_id: str, img: Image, user_id: str, before: list[
     return event
 
 
-def refresh_job(db: Session, job: ConsensusJob) -> ConsensusJob:
-    """Recompute the job agreement and move it to ready once every assigned labeler has submitted."""
+def refresh_job(db: Session, job: ConsensusJob, image_id: str | None = None) -> ConsensusJob:
+    """Recompute one image's agreement (or all of them) and move the job to ready once everyone submitted.
+
+    Only the image whose draft just changed is recomputed; the job mean comes from the cached
+    per-image metrics, so a submit/autosave costs one bounded pass instead of one per image.
+    """
     rows = db.scalars(select(ConsensusAssignment).where(ConsensusAssignment.job_id == job.id)).all()
     per_image: dict[str, list[list[dict]]] = {}
     for row in rows:
         if row.submitted is not None:
             per_image.setdefault(row.image_id, []).append(row.annotations or [])
-    scores = [group_agreement(sets, job.iou_threshold) for sets in per_image.values() if len(sets) >= 2]
+    metrics = dict(job.image_metrics or {})
+    targets = [image_id] if image_id is not None else list(per_image)
+    for target in targets:
+        metrics[target] = _image_metrics(per_image.get(target, []), job.iou_threshold)
+    job.image_metrics = metrics
+    scores = [m["agreement"] for m in metrics.values() if m.get("agreement") is not None]
     job.agreement = round(sum(scores) / len(scores), 4) if scores else None
     if job.status != "merged":
         job.status = "ready" if rows and all(row.submitted is not None for row in rows) else "collecting"
@@ -163,10 +216,11 @@ def submit_consensus(db: Session, c: Ctx, job: ConsensusJob, image_id: str,
     raw = annotations if annotations is not None else assignment.annotations or []
     if len(raw) > MAX_DRAFT_ANNOTATIONS:          # the merge runs synchronously in the API process
         raise HTTPException(413, f"at most {MAX_DRAFT_ANNOTATIONS} annotations per consensus draft")
+    check_image_cap(db, job.id, image_id, c.user.id, len(raw))
     checked = [_check_ann(a) for a in raw]
     assignment.annotations = checked
     assignment.submitted = now()
-    refresh_job(db, job)
+    refresh_job(db, job, image_id=image_id)
     total, submitted = db.execute(select(func.count(ConsensusAssignment.id), func.count(ConsensusAssignment.submitted))
                                   .where(ConsensusAssignment.job_id == job.id)).one()
     return {"submitted": int(submitted or 0), "total": int(total or 0), "agreement": job.agreement,
@@ -190,6 +244,11 @@ def merge_job(db: Session, c: Ctx, job: ConsensusJob) -> dict:
     for row in rows:
         if row.submitted is not None:
             per_image.setdefault(row.image_id, []).append(row.annotations or [])
+    oversized = [image_id for image_id, sets in per_image.items()
+                 if sum(len(anns) for anns in sets) > MAX_IMAGE_ANNOTATIONS]
+    if oversized:                     # legacy data beyond the write cap: fail closed before writing anything
+        raise HTTPException(409, f"{len(oversized)} image(s) exceed the supported {MAX_IMAGE_ANNOTATIONS}"
+                                 "-annotation consensus limit")
     merged = skipped = eligible = 0
     no_consensus: list[str] = []
     for image_id in job.image_ids or []:
@@ -233,20 +292,24 @@ def job_detail(db: Session, job: ConsensusJob) -> dict:
     rows = list(db.scalars(select(ConsensusAssignment).where(ConsensusAssignment.job_id == job.id)
                            .order_by(ConsensusAssignment.created, ConsensusAssignment.id)).all())
     users = {u.id: u for u in db.scalars(select(User).where(User.id.in_({r.user_id for r in rows})))} if rows else {}
+    metrics = dict(job.image_metrics or {})
     images = []
     for image_id in job.image_ids or []:
         img = db.get(Image, image_id)
         mine = [r for r in rows if r.image_id == image_id]
         submitted_rows = [r for r in mine if r.submitted is not None]
         submitted = [r.annotations or [] for r in submitted_rows]
-        consensus = merge_sets(submitted, job.iou_threshold) if len(submitted) >= 2 else []
+        cached = metrics.get(image_id)
+        if cached is None and len(submitted) >= 2:
+            cached = _image_metrics(submitted, job.iou_threshold)       # legacy job: score once, in memory
+        cached = cached or {}
         images.append({
             "image_id": image_id, "name": img.name if img else "",
             "thumbnail": sign_path(img.thumb) if img else "",
-            "agreement": round(group_agreement(submitted, job.iou_threshold), 4) if len(submitted) >= 2 else None,
+            "agreement": cached.get("agreement"),
             "submissions": len(submitted),
             # a tie must stay visible (and adjudicable) instead of looking like a clean merge
-            "no_consensus": len(submitted) >= 2 and not consensus,
+            "no_consensus": bool(cached.get("no_consensus")),
             "drafts": [{"user_id": r.user_id, "name": users[r.user_id].name if r.user_id in users else "",
                         "submitted": r.submitted, "annotations": list(r.annotations or [])}
                        for r in submitted_rows],
@@ -284,12 +347,19 @@ def review_queue(db: Session, c: Ctx, limit: int = 50) -> list[dict]:
         thresholds[job_id] = threshold
         if image_id not in latest or (created, job_id) > latest[image_id]:
             latest[image_id] = (created, job_id)
+    # The per-image scores were cached when each draft was saved; a review-page read never re-runs
+    # the pairwise pass. Legacy jobs without a cache are scored once, in memory.
+    jobs = {job_id: db.get(ConsensusJob, job_id) for _, job_id in latest.values()}
     items = []
     for img in rows:
         picked = latest.get(img.id)
         sets = by_job.get((picked[1], img.id), []) if picked else []
-        disagreement = (round(1 - group_agreement(sets, thresholds.get(picked[1], 0.5)), 4)
-                        if picked and len(sets) >= 2 else 0.0)
+        job = jobs.get(picked[1]) if picked else None
+        cached = (job.image_metrics or {}).get(img.id) if job is not None else None
+        if cached is None and picked and len(sets) >= 2:
+            cached = _image_metrics(sets, thresholds.get(picked[1], 0.5))
+        agreement = (cached or {}).get("agreement")
+        disagreement = round(1 - agreement, 4) if agreement is not None else 0.0
         items.append({"image_id": img.id, "name": img.name, "thumbnail": sign_path(img.thumb),
                       "disagreement": disagreement, "submissions": len(sets), "status": img.status,
                       "updated": img.updated, "annotations": img.n_annotations})
@@ -321,6 +391,12 @@ def my_tasks(db: Session, c: Ctx) -> list[dict]:
              "created": row.created} for row, img in rows]
 
 
+def _annotator_ids(db: Session, ws_id: str) -> list[str]:
+    """Workspace members who can actually open an image in the editor."""
+    return list(db.scalars(select(Member.user_id).where(Member.workspace_id == ws_id, Member.role == "annotator")
+                           .order_by(Member.created, Member.user_id)).all())
+
+
 def create_honeypot(db: Session, c: Ctx, image_id: str, annotations: list[dict] | None = None) -> Honeypot:
     """Pin an image's labels as ground truth; a labeler is scored once per honeypot."""
     # local import: routers/images imports this module
@@ -334,20 +410,17 @@ def create_honeypot(db: Session, c: Ctx, image_id: str, annotations: list[dict] 
         raise HTTPException(400, "honeypot needs at least one ground-truth annotation")
     if db.scalar(select(Honeypot.id).where(Honeypot.image_id == img.id)):
         raise HTTPException(409, "image is already a honeypot")
-    # A honeypot nobody can open never records an attempt: deliver an unassigned image to a
-    # labeler round-robin so the accuracy feature actually gets data.
-    if img.assignee_id is None:
-        labelers = db.scalars(select(Member.user_id).where(
-            Member.workspace_id == c.ws.id, Member.role == "annotator")
-            .order_by(Member.created, Member.user_id)).all()
-        if labelers:
-            offset = int(db.scalar(select(func.count(Honeypot.id)).where(
-                Honeypot.project_id == c.project.id)) or 0)
-            img.assignee_id = labelers[offset % len(labelers)]
-            if img.status == "unassigned":
-                img.status = "annotating"
-            img.updated = now()
-            db.flush()
+    # A honeypot nobody can open never records an attempt: deliver it to a labeler round-robin so the
+    # accuracy feature gets data. An assignee who is not an annotator (reviewer/admin) cannot open it.
+    labelers = _annotator_ids(db, c.ws.id)
+    if labelers and img.assignee_id not in set(labelers):
+        offset = int(db.scalar(select(func.count(Honeypot.id)).where(
+            Honeypot.project_id == c.project.id)) or 0)
+        img.assignee_id = labelers[offset % len(labelers)]
+        if img.status == "unassigned":
+            img.status = "annotating"
+        img.updated = now()
+        db.flush()
     honeypot = Honeypot(workspace_id=c.ws.id, project_id=c.project.id, image_id=img.id, annotations=checked,
                         created_by=c.user.id)
     db.add(honeypot)
@@ -364,6 +437,7 @@ def honeypots_out(db: Session, c: Ctx) -> dict:
         select(HoneypotAttempt.honeypot_id, func.count(HoneypotAttempt.id), func.avg(HoneypotAttempt.score))
         .where(HoneypotAttempt.project_id == c.project.id).group_by(HoneypotAttempt.honeypot_id))}
     items = []
+    labelers = set(_annotator_ids(db, c.ws.id))
     for honeypot in rows:
         img = db.get(Image, honeypot.image_id)
         attempts, accuracy = stats.get(honeypot.id, (0, None))
@@ -371,7 +445,7 @@ def honeypots_out(db: Session, c: Ctx) -> dict:
                       "thumbnail": sign_path(img.thumb) if img else "",
                       "annotations": len(honeypot.annotations or []), "attempts": attempts,
                       "accuracy": round(float(accuracy), 4) if accuracy is not None else None,
-                      "needs_assignee": bool(img is not None and img.assignee_id is None),
+                      "needs_assignee": bool(img is None or img.assignee_id not in labelers),
                       "created": honeypot.created})
     label_rows = db.execute(select(HoneypotAttempt.user_id, func.count(HoneypotAttempt.id),
                                    func.avg(HoneypotAttempt.score))

@@ -481,6 +481,9 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
     if assignment is not None and len(body.annotations) > labeling.MAX_DRAFT_ANNOTATIONS:
         # the merge runs synchronously; an oversized draft would block every other request
         raise HTTPException(413, f"at most {labeling.MAX_DRAFT_ANNOTATIONS} annotations per consensus draft")
+    if assignment is not None and assignment.submitted is not None:
+        # this draft is already part of the image's consensus total; keep that total bounded too
+        labeling_ops.check_image_cap(db, assignment.job_id, img.id, u.id, len(body.annotations))
     checked = [_check_ann(a) for a in body.annotations]
     if assignment is not None:
         # consensus mode: autosave keeps the draft private and does NOT submit it; the Image row is

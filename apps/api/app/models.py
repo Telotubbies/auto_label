@@ -450,6 +450,8 @@ class ConsensusJob(Base):
     iou_threshold: Mapped[float] = mapped_column(Float, default=0.5)
     image_ids: Mapped[list] = mapped_column(JSON, default=list)
     agreement: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # per-image {agreement, no_consensus} cache: detail/queue reads must not re-run the pairwise pass
+    image_metrics: Mapped[dict] = mapped_column(JSON, default=dict)
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)

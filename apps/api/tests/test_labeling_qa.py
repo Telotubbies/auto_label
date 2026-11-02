@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import random
 import tempfile
 import time
 import uuid
@@ -880,4 +881,248 @@ def test_merge_large_input_is_bounded():
     elapsed = time.perf_counter() - started
     assert len(merged) == 400
     assert elapsed < 5.0
+
+
+# --- fix round 2: bounded agreement loop, shared labeler stats -----------------------------
+
+def _naive_sets_agreement(a: list[dict], b: list[dict], threshold: float = 0.5) -> float:
+    """The pre-fix all-pairs greedy matcher, kept as the differential reference."""
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    pairs = []
+    for i, x in enumerate(a):
+        for j, y in enumerate(b):
+            iou = labeling.annotation_iou(x, y, threshold)
+            if iou > 0:
+                pairs.append((iou, i, j))
+    pairs.sort(key=lambda p: (-p[0], p[1], p[2]))
+    used_a: set[int] = set()
+    used_b: set[int] = set()
+    for _, i, j in pairs:
+        if i not in used_a and j not in used_b:
+            used_a.add(i)
+            used_b.add(j)
+    return 2 * len(used_a) / (len(a) + len(b))
+
+
+def _naive_merge(sets: list[list[dict]], threshold: float = 0.5) -> list[dict]:
+    """The pre-fix all-pairs clustering, kept as the differential reference."""
+    nodes = [(si, ann) for si, anns in enumerate(sets) for ann in anns or []]
+    parent = list(range(len(nodes)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(nodes)):
+        for j in range(i + 1, len(nodes)):
+            if nodes[i][0] == nodes[j][0]:
+                continue
+            if labeling.annotation_iou(nodes[i][1], nodes[j][1], threshold) > 0:
+                parent[find(i)] = find(j)
+    clusters: dict[int, list[tuple[int, dict]]] = {}
+    for i in range(len(nodes)):
+        clusters.setdefault(find(i), []).append(nodes[i])
+    need = len(sets) // 2 + 1
+    merged = [labeling._merged_annotation([ann for _, ann in members])
+              for members in clusters.values() if len({si for si, _ in members}) >= need]
+    merged.sort(key=labeling._sort_key)
+    return merged
+
+
+def _strip_ids(anns: list[dict]) -> list[str]:
+    return sorted(json.dumps({k: v for k, v in ann.items() if k != "id"}, sort_keys=True, default=str)
+                  for ann in anns)
+
+
+def _random_annotation_sets(rnd: random.Random) -> list[list[dict]]:
+    classes = ("person", "helmet", "car")
+    sets = []
+    for s in range(rnd.randint(2, 5)):
+        anns = []
+        for i in range(rnd.randint(0, 6)):
+            cls = rnd.choice(classes)
+            kind = rnd.random()
+            aid = f"{s}-{i}"
+            if kind < 0.1:
+                anns.append({"id": aid, "classId": cls, "shape": {"kind": "class"}, "source": "human"})
+            elif kind < 0.5:
+                count = rnd.choice((4, 6, 8))
+                points = [round(rnd.random() * 1.2 - 0.1, 4) for _ in range(count)]
+                anns.append({"id": aid, "classId": cls, "shape": {"kind": "polygon", "points": points}})
+            else:
+                anns.append(box(cls, round(rnd.random() * 1.2 - 0.1, 4), round(rnd.random() * 1.2 - 0.1, 4),
+                                rnd.choice((0.05, 0.2, 0.5, 1.0)), rnd.choice((0.05, 0.2, 0.5, 1.0)), aid=aid))
+        sets.append(anns)
+    return sets
+
+
+def test_agreement_matches_the_all_pairs_reference():
+    """F1: bucketing must not change the metric, only how candidates are found."""
+    rnd = random.Random(42)
+    for _ in range(120):
+        a, b = _random_annotation_sets(rnd)[:2]
+        for threshold in (0.1, 0.3, 0.5, 0.7, 0.95):
+            assert labeling.sets_agreement(a, b, threshold) == pytest.approx(
+                _naive_sets_agreement(a, b, threshold), abs=1e-12)
+        assert labeling.group_agreement([a, b], 0.5) == _naive_sets_agreement(a, b, 0.5)
+
+
+def test_merge_matches_the_all_pairs_reference():
+    """F1: the merge output is identical to the pre-fix clustering on random jobs."""
+    rnd = random.Random(7)
+    for _ in range(150):
+        sets = _random_annotation_sets(rnd)
+        for threshold in (0.1, 0.5, 0.9):
+            assert _strip_ids(labeling.merge_sets(sets, threshold)) == _strip_ids(
+                _naive_merge(sets, threshold))
+
+
+def _all_pairs_reference_cost(count: int = 200) -> float:
+    """Seconds the old all-pairs matcher needs for one pair of drafts (this machine, right now).
+
+    The timing budgets below are expressed as a multiple of this, so a busy machine slows the
+    reference and the bounded pass together. The old loop costs 45 such pairs at the cap; the
+    bounded pass must beat 22 of them, which is also where the 5 s target lands on a quiet box.
+    """
+    rnd = random.Random(99)
+    a = [box("person", rnd.random(), rnd.random(), 0.5, 0.5, aid=f"cal-a-{i}") for i in range(count)]
+    b = [box("person", rnd.random(), rnd.random(), 0.5, 0.5, aid=f"cal-b-{i}") for i in range(count)]
+    started = time.perf_counter()
+    _naive_sets_agreement(a, b)
+    return time.perf_counter() - started
+
+
+def _bounded_budget() -> float:
+    return max(5.0, 22 * _all_pairs_reference_cost())
+
+
+def test_agreement_and_merge_are_bounded_at_the_image_cap():
+    """F1: the worst accepted image (10 drafts x 200 boxes) stays a second-scale pass."""
+    rnd = random.Random(11)
+    sets = [[box("person", rnd.random(), rnd.random(), 0.5, 0.5, aid=f"cap-{s}-{i}") for i in range(200)]
+            for s in range(10)]
+    budget = _bounded_budget()
+    started = time.perf_counter()
+    score = labeling.group_agreement(sets)
+    agreement_s = time.perf_counter() - started
+    started = time.perf_counter()
+    merged = labeling.merge_sets(sets)
+    merge_s = time.perf_counter() - started
+    assert score is not None and merged
+    assert agreement_s < budget, f"group_agreement took {agreement_s:.2f}s (budget {budget:.2f}s)"
+    assert merge_s < budget, f"merge_sets took {merge_s:.2f}s (budget {budget:.2f}s)"
+
+
+def test_consensus_request_path_is_bounded_at_the_image_cap(client, auth, project):
+    """F1: submit, job detail and the review queue never re-run the old O(n^2) pairwise loop."""
+    from app.deps import Ctx
+    from app.models import Project
+
+    img = upload_image(client, project, "bounded-consensus.jpg", (14, 14, 14))
+    person = project["classes"]["person"]
+    slug = project["base"].split("/projects/")[-1]
+    rnd = random.Random(5)
+    draft = [box(person, rnd.random(), rnd.random(), 0.5, 0.5, aid=f"big-{i}") for i in range(200)]
+    budget = _bounded_budget()
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == project["ws"]))
+        proj = db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == slug))
+        users = [db.get(User, auth[k]["id"]) for k in ("admin", "labeler", "reviewer")]
+        for n in range(7):
+            row = User(email=f"bounded-{uuid.uuid4().hex[:10]}@example.com", name=f"Bounded {n}",
+                       pw_hash="x", email_verified=time.time())
+            db.add(row)
+            users.append(row)
+        db.flush()
+        job = ConsensusJob(workspace_id=ws.id, project_id=proj.id, k=10, iou_threshold=0.5,
+                           image_ids=[img], created_by=auth["admin"]["id"])
+        db.add(job)
+        db.flush()
+        for row in users:
+            db.add(ConsensusAssignment(job_id=job.id, workspace_id=ws.id, project_id=proj.id,
+                                       image_id=img, user_id=row.id))
+        db.commit()
+        try:
+            durations = []
+            for row in users:
+                ctx = Ctx(user=row, ws=ws, role="admin", db=db, project=proj)
+                started = time.perf_counter()
+                body = labeling_ops.submit_consensus(db, ctx, job, img, draft)
+                db.commit()
+                durations.append(time.perf_counter() - started)
+                assert body["jobStatus"] in ("collecting", "ready")
+            assert max(durations) < budget, f"slowest submit took {max(durations):.2f}s (budget {budget:.2f}s)"
+            assert job.status == "ready"
+
+            started = time.perf_counter()
+            detail = labeling_ops.job_detail(db, job)
+            detail_s = time.perf_counter() - started
+            assert detail_s < budget, f"job_detail took {detail_s:.2f}s (budget {budget:.2f}s)"
+            image = next(x for x in detail["images"] if x["image_id"] == img)
+            assert image["submissions"] == 10 and image["agreement"] == 1.0
+            assert image["no_consensus"] is False
+
+            db.get(Image, img).status = "review"
+            db.commit()
+            ctx = Ctx(user=db.get(User, auth["reviewer"]["id"]), ws=ws, role="reviewer", db=db, project=proj)
+            started = time.perf_counter()
+            items = labeling_ops.review_queue(db, ctx, 10)
+            queue_s = time.perf_counter() - started
+            assert queue_s < budget, f"review_queue took {queue_s:.2f}s (budget {budget:.2f}s)"
+            row = next(x for x in items if x["image_id"] == img)
+            assert row["submissions"] == 10 and row["disagreement"] == 0.0
+        finally:
+            db.execute(sa_delete(ConsensusAssignment).where(ConsensusAssignment.job_id == job.id))
+            db.delete(job)
+            db.flush()
+            db.execute(sa_delete(User).where(
+                User.id.in_([row.id for row in users if row.email.startswith("bounded-")])))
+            db.commit()
+
+
+def test_consensus_image_annotations_are_capped(client, auth, project):
+    """F1: k drafts must not add up past the per-image bound the merge/agreement pass supports."""
+    img = upload_image(client, project, "total-cap.jpg", (38, 38, 38))
+    person = project["classes"]["person"]
+    r = client.post(f"{project['labels']}/consensus", json={"image_ids": [img], "k": 3})
+    assert r.status_code == 200, r.text
+    job_id = r.json()["id"]
+    full = [box(person, (i % 40) * 0.02, (i // 40) * 0.04, 0.04, 0.04, aid=f"tot{i}") for i in range(1000)]
+    try:
+        assert save(client, auth, "admin", img, full).status_code == 200
+        assert submit(client, auth, "admin", project["labels"], job_id, img, full).status_code == 200
+        assert save(client, auth, "labeler", img, full).status_code == 200
+        assert submit(client, auth, "labeler", project["labels"], job_id, img, full).status_code == 200
+        r = submit(client, auth, "reviewer", project["labels"], job_id, img, [box(person, 0.9, 0.9, aid="one")])
+        assert r.status_code == 413
+        assert str(labeling.MAX_IMAGE_ANNOTATIONS) in r.json()["detail"]
+    finally:
+        drop_job(job_id, reset=[img])
+
+
+def test_honeypot_reassigned_from_a_non_annotator_is_attemptable(client, auth, project):
+    """N1: an image assigned to a reviewer is still delivered to a labeler, not left unopenable."""
+    img = upload_image(client, project, "honeypot-reviewer.jpg", (39, 39, 39))
+    assign(img, auth["reviewer"]["id"])
+    seed(img, [box(project["classes"]["person"], 0.2, 0.2, aid="hp-rev")])
+    r = client.post(f"{project['labels']}/honeypots", json={"image_id": img}, headers=auth["reviewer"]["h"])
+    assert r.status_code == 200, r.text
+    hid = r.json()["id"]
+    try:
+        with SessionLocal() as db:
+            assert db.get(Image, img).assignee_id == auth["labeler"]["id"]
+        items = client.get(f"{project['labels']}/honeypots", headers=auth["reviewer"]["h"]).json()["items"]
+        item = next(x for x in items if x["id"] == hid)
+        assert item["needs_assignee"] is False
+        view = client.get(f"/api/images/{img}", headers=auth["labeler"]["h"])
+        assert view.status_code == 200 and view.json()["annotations"] == []
+        r = save(client, auth, "labeler", img, [box(project["classes"]["person"], 0.23, 0.2, aid="try2")])
+        assert r.status_code == 200 and r.json()["status"] == "honeypot"
+    finally:
+        client.delete(f"{project['labels']}/honeypots/{hid}", headers=auth["reviewer"]["h"])
 
