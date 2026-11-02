@@ -56,6 +56,8 @@ def init_db():
     _backfill_image_classes()
     if SEED_DEMO:
         seed()
+        from .seed_v2 import seed_demo_v2
+        seed_demo_v2()
 
 
 def _backfill_sessions():

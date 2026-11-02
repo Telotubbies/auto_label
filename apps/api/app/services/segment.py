@@ -9,6 +9,7 @@ import math
 import sys
 import threading
 from collections import OrderedDict
+from contextlib import nullcontext
 
 import cv2
 import numpy as np
@@ -165,6 +166,22 @@ def unload_sam() -> None:
         pass
 
 
+def _autocast():
+    """SAM 3.1 runs in bf16, and a few layers stay fp32 (e.g. newly initialised convs).
+
+    The reference inference path wraps every call in bf16 autocast; without it a linear layer
+    sees a bf16 input and an fp32 weight and raises "mat1 and mat2 must have the same dtype".
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return torch.autocast("cuda", dtype=torch.bfloat16)
+    except Exception:                      # no torch: CPU installs never reach a SAM call
+        pass
+    return nullcontext()
+
+
 def _masks(output) -> list[tuple[np.ndarray, float]]:
     masks, scores = output.get("masks"), output.get("scores")
     if masks is None or len(masks) == 0:
@@ -185,8 +202,9 @@ def _sam_mask(im: PImage.Image, points: list[list[float]], negatives: list[list[
         pad = 0.08
         x1, y1 = max(0, min(xs) - pad), max(0, min(ys) - pad)
         x2, y2 = min(1, max(xs) + pad), min(1, max(ys) + pad)
-        state = proc.set_image(im)
-        out = proc.add_geometric_prompt([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], True, state)
+        with _autocast():
+            state = proc.set_image(im)
+            out = proc.add_geometric_prompt([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], True, state)
         cands = _masks(out)
         sx, sy = int(points[0][0] * im.width), int(points[0][1] * im.height)
         hit = [c for c in cands if c[0].shape == (im.height, im.width) and c[0][sy, sx]]
@@ -260,15 +278,16 @@ def sam_text(im: PImage.Image, prompts: list[str], threshold: float = 0.4) -> li
     proc = lease_sam()
     if proc is None:
         raise RuntimeError(f"SAM 3.1 is not available on this worker ({_sam['err']})")
-    state = proc.set_image(im)
     out = []
-    for i, prompt in enumerate(prompts):
-        proc.reset_all_prompts(state)
-        for mask, score in _masks(proc.set_text_prompt(state=state, prompt=prompt)):
-            if score >= threshold:
-                poly = mask_to_polygon(mask.astype("uint8"))
-                if poly:
-                    out.append((i, poly, score))
+    with _autocast():
+        state = proc.set_image(im)
+        for i, prompt in enumerate(prompts):
+            proc.reset_all_prompts(state)
+            for mask, score in _masks(proc.set_text_prompt(state=state, prompt=prompt)):
+                if score >= threshold:
+                    poly = mask_to_polygon(mask.astype("uint8"))
+                    if poly:
+                        out.append((i, poly, score))
     return out
 
 
@@ -280,8 +299,11 @@ def sam_box(im: PImage.Image, box_xyxy_px: tuple[float, float, float, float]) ->
     try:
         x1, y1, x2, y2 = box_xyxy_px
         W, H = im.width, im.height
-        state = proc.set_image(im)
-        out = proc.add_geometric_prompt([(x1 + x2) / 2 / W, (y1 + y2) / 2 / H, (x2 - x1) / W, (y2 - y1) / H], True, state)
+        with _autocast():
+            state = proc.set_image(im)
+            out = proc.add_geometric_prompt(
+                [(x1 + x2) / 2 / W, (y1 + y2) / 2 / H, (x2 - x1) / W, (y2 - y1) / H], True, state
+            )
         best = max(_masks(out), key=lambda c: c[1], default=None)
         if best is not None:
             poly = mask_to_polygon(best[0].astype("uint8"))
