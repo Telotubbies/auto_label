@@ -93,12 +93,23 @@ def test_seed_leaves_a_stopped_gate_camera_with_zone_and_rules():
 
 
 def test_seed_is_idempotent():
+    # The suite shares one demo DB and other modules add versions to it, so count the rows the
+    # seed owns: the first call may reuse a version another module created, the second must add none.
+    with SessionLocal() as db:
+        _, p = _demo(db)
+        before = db.scalar(select(func.count(Version.id)).where(Version.project_id == p.id))
     first = seed_v2.seed_demo_v2()
+    with SessionLocal() as db:
+        _, p = _demo(db)
+        after_first = db.scalar(select(func.count(Version.id)).where(Version.project_id == p.id))
+    assert after_first in (before, before + 1), "the seed reuses or creates exactly one version"
     second = seed_v2.seed_demo_v2()
     assert first == second and first, "a restart must reuse the same demo rows"
     with SessionLocal() as db:
         _, p = _demo(db)
-        assert db.scalar(select(func.count(Version.id)).where(Version.project_id == p.id)) == 1
+        after_second = db.scalar(select(func.count(Version.id)).where(Version.project_id == p.id))
+        assert after_second == after_first, "a restart must not add another demo version"
+        assert first["version"] is not None and db.get(Version, first["version"]) is not None
         assert (
             db.scalar(
                 select(func.count(TrainedModel.id)).where(
