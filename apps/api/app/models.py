@@ -283,7 +283,8 @@ def set_annotations(db, img: "Image", anns: list[dict]):
     if img.id is None:
         img.id = new_id()
     db.execute(delete(ImageClass).where(ImageClass.image_id == img.id))
-    for cid, n in Counter(a.get("classId") for a in anns if a.get("classId")).items():
+    for cid, n in Counter(a.get("classId") for a in anns
+                          if isinstance(a, dict) and a.get("classId")).items():
         db.add(ImageClass(image_id=img.id, class_id=cid, project_id=img.project_id, n=n))
 
 
@@ -385,7 +386,7 @@ class Webhook(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     url: Mapped[str] = mapped_column(String(1024))
-    secret: Mapped[str] = mapped_column(String(64))
+    secret: Mapped[str] = mapped_column(Text)          # enc:v1:… is longer than the old 64-char column
     events: Mapped[list] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -415,7 +416,7 @@ class Audit(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     action: Mapped[str] = mapped_column(String(64))
-    target: Mapped[str] = mapped_column(String(255), default="")
+    target: Mapped[str] = mapped_column(Text, default="")   # webhook URLs reach 1024 chars
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[float] = mapped_column(Float, default=now, index=True)
 
