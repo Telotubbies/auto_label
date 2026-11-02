@@ -160,6 +160,31 @@ def share(db: Session, project: Project, dashboard_id: str, base_path: str) -> d
     return {"token": dash.share_token, "path": f"{base_path}{dash.share_token}"}
 
 
+QUERY_KEYS = ("source", "measure", "dimension", "dimension2")
+
+
+def widget_query(dash: dict, spec) -> dict:
+    """Validate a widget request against the dashboard a share token names.
+
+    The token is the capability: it may read the aggregates of the widgets this dashboard holds,
+    never an arbitrary query. ``tz_offset`` is viewer-local and is not persisted with the widget,
+    so it is ignored when matching.
+    """
+    if not isinstance(spec, dict):
+        raise ValueError("widget must be an object")
+    query = insights_query.validate(spec)
+    wanted = {k: query[k] for k in QUERY_KEYS}
+    wanted_filters = {k: v for k, v in query["filters"].items() if k != "tz_offset"}
+    for widget in dash.get("widgets") or []:
+        if not isinstance(widget, dict):
+            continue
+        if any(widget.get(k) != wanted[k] for k in QUERY_KEYS):
+            continue
+        if {k: v for k, v in (widget.get("filters") or {}).items() if k != "tz_offset"} == wanted_filters:
+            return query
+    raise ValueError("widget is not part of this dashboard")
+
+
 def shared(db: Session, project: Project, token: str) -> dict:
     if not token or len(token) > 64:
         raise LookupError("dashboard not found")

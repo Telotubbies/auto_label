@@ -63,7 +63,7 @@ export default function DashboardEditor() {
   const widgets = local ?? saved
   const name = nameDraft ?? dash.data?.name ?? ''
   const dirty = local !== null || nameDraft !== null
-  const queries = useWidgetQueries(ws, slug, widgets)
+  const queries = useWidgetQueries(ws, slug, widgets, readOnly ? token : undefined)
 
   const save = useMutation({
     mutationFn: () => {
@@ -105,9 +105,10 @@ export default function DashboardEditor() {
   const shareUrl = shareToken ? `${window.location.origin}/${ws}/${slug}/dashboards/shared/${shareToken}` : ''
 
   const gather = async () => {
+    const shareToken = readOnly ? token : undefined
     const datas = await Promise.all(widgets.map((spec) => qc.fetchQuery({
-      queryKey: widgetQueryKey(ws, slug, spec),
-      queryFn: () => fetchWidget(ws, slug, spec),
+      queryKey: widgetQueryKey(ws, slug, spec, shareToken),
+      queryFn: () => fetchWidget(ws, slug, spec, shareToken),
       staleTime: 60_000,
     })))
     return widgets.map((spec, i) => ({ spec, data: datas[i] }))

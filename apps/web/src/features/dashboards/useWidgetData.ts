@@ -16,33 +16,34 @@ export function widgetFilters(spec: WidgetSpec): WidgetFilters {
   return filters
 }
 
-/** Query identity: everything that changes the numbers, including the cleaned filters. */
-export function widgetQueryKey(ws: string, slug: string, spec: WidgetSpec): QueryKey {
-  return ['widget', ws, slug, JSON.stringify({
+function widgetBody(spec: WidgetSpec) {
+  return {
     source: spec.source,
     measure: spec.measure,
     dimension: spec.dimension,
     dimension2: spec.dimension2,
     filters: widgetFilters(spec),
-  })]
+  }
 }
 
-export function fetchWidget(ws: string, slug: string, spec: WidgetSpec): Promise<WidgetData> {
-  return api.widgetQuery(ws, slug, {
-    source: spec.source,
-    measure: spec.measure,
-    dimension: spec.dimension,
-    dimension2: spec.dimension2,
-    filters: widgetFilters(spec),
-  })
+/** Query identity: everything that changes the numbers, including the cleaned filters. */
+export function widgetQueryKey(ws: string, slug: string, spec: WidgetSpec, token?: string): QueryKey {
+  return ['widget', ws, slug, token ?? '', JSON.stringify(widgetBody(spec))]
+}
+
+/** A shared link queries through its token route; the normal editor uses the reviewer route. */
+export function fetchWidget(ws: string, slug: string, spec: WidgetSpec, token?: string): Promise<WidgetData> {
+  return token
+    ? api.sharedWidgetQuery(ws, slug, token, widgetBody(spec))
+    : api.widgetQuery(ws, slug, widgetBody(spec))
 }
 
 /** One aggregate request per widget, in dashboard order. */
-export function useWidgetQueries(ws: string, slug: string, widgets: WidgetSpec[]) {
+export function useWidgetQueries(ws: string, slug: string, widgets: WidgetSpec[], token?: string) {
   return useQueries({
     queries: widgets.map((spec) => ({
-      queryKey: widgetQueryKey(ws, slug, spec),
-      queryFn: () => fetchWidget(ws, slug, spec),
+      queryKey: widgetQueryKey(ws, slug, spec, token),
+      queryFn: () => fetchWidget(ws, slug, spec, token),
       staleTime: 60_000,
       retry: false,
     })),

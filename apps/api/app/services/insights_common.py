@@ -22,9 +22,12 @@ from ..models import Image, TrainedModel
 CACHE_TTL = 1800  # signed file URLs live 6 h; a 30 min cache keeps them fresh
 CACHE_MAX = 256  # hard key ceiling for the process (all scopes together)
 CACHE_MAX_PER_SCOPE = 16  # widget specs one project may keep resident
+MAX_CONCURRENT_BUILDS = 2  # a burst of distinct widget specs must not run a scan per request
 
 _SCOPES: "OrderedDict[str, TTLCache]" = OrderedDict()
 _CACHE_LOCK = threading.Lock()
+_BUILD_LOCKS: dict[str, threading.Lock] = {}
+_BUILD_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_BUILDS)
 _MISSING = object()
 
 
@@ -63,16 +66,36 @@ def _scope_cache(scope: str) -> TTLCache:
     return cache
 
 
+def _build_lock(scope: str) -> threading.Lock:
+    """One build at a time per scope; the process-wide semaphore caps the others."""
+    with _CACHE_LOCK:
+        lock = _BUILD_LOCKS.get(scope)
+        if lock is None:
+            lock = _BUILD_LOCKS[scope] = threading.Lock()
+        return lock
+
+
 def cached(scope: str, key: str, sig: str, build) -> tuple[dict, bool]:
-    """Return (payload, hit) for one key in ``scope``; entries expire after CACHE_TTL."""
+    """Return (payload, hit) for one key in ``scope``; entries expire after CACHE_TTL.
+
+    A miss builds outside the cache lock (so readers keep serving hits), but misses in one scope
+    are serialised and at most ``MAX_CONCURRENT_BUILDS`` run across scopes. The bound on retained
+    entries alone does not stop a burst of distinct specs from scanning the dataset in parallel.
+    """
     entry_key = (key, sig)  # a changed signature is a new key, so a stale payload is never read
     with _CACHE_LOCK:
         hit = _scope_cache(scope).get(entry_key, _MISSING)
         if hit is not _MISSING:
             return hit, True
-    payload = build()
-    with _CACHE_LOCK:
-        _scope_cache(scope)[entry_key] = payload
+    with _build_lock(scope):
+        with _CACHE_LOCK:                       # another thread may have built it while we waited
+            hit = _scope_cache(scope).get(entry_key, _MISSING)
+            if hit is not _MISSING:
+                return hit, True
+        with _BUILD_SLOTS:
+            payload = build()
+        with _CACHE_LOCK:
+            _scope_cache(scope)[entry_key] = payload
     return payload, False
 
 

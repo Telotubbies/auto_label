@@ -19,7 +19,7 @@ def _schema():
     Base.metadata.create_all(engine)
 
 
-def _case(kind="train", status="running", started_age=0.0, result=None):
+def _case(kind="train", status="running", started_age=0.0, result=None, model_status="training"):
     """One workspace/project/version/model/webhook plus a job whose worker is gone."""
     suffix = uuid.uuid4().hex[:8]
     with SessionLocal() as db:
@@ -37,7 +37,7 @@ def _case(kind="train", status="running", started_age=0.0, result=None):
         db.flush()
         model = TrainedModel(workspace_id=ws.id, project_id=project.id, version_id=version.id,
                              name="dead-run", arch="yolo26n", variant="yolo26n", task="detect",
-                             status="training", family="ultralytics", classes=[])
+                             status=model_status, family="ultralytics", classes=[])
         db.add(model)
         db.flush()
         created = now() - (config.REMOTE_JOB_TIMEOUT_S + 60 if started_age is None else started_age + 1)
@@ -106,6 +106,17 @@ def test_abandoned_remote_cancel_reaches_cancelled():
     with SessionLocal() as db:
         job = db.get(Job, ids["job"])
         assert job.status == "cancelled" and job.finished is not None
+
+
+def test_abandoned_remote_train_cancel_finishes_the_model_too():
+    """I9: cancelling a run whose worker is gone must not leave the model non-terminal forever."""
+    ids = _case("train", status="cancelling", started_age=30, model_status="queued",
+                result={"worker": "gpu", "cancel_requested": now() - config.REMOTE_CANCEL_GRACE_S - 5})
+    with SessionLocal() as db:
+        assert remote_reaper.reap(db) == [ids["job"]]
+    with SessionLocal() as db:
+        assert db.get(Job, ids["job"]).status == "cancelled"
+        assert db.get(TrainedModel, ids["model"]).status == "failed"
 
 
 def test_a_live_remote_job_and_a_local_job_are_left_alone():

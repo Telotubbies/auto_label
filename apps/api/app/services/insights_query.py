@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Batch, Image, Project, Version
-from . import insights, insights_stream
+from . import insights, insights_aggregate, insights_stream
 from .insights_common import (
     cached,
     data_stamp,
@@ -160,17 +160,9 @@ def _version(db: Session, project: Project, version_id: str) -> Version | None:
     return version if version and version.project_id == project.id else None
 
 
-def _labeled(row) -> list:
-    return [a for a in (row.annotations or []) if isinstance(a, dict)]
-
-
 def _source(ann: dict) -> str:
     value = ann.get("source")
     return value if isinstance(value, str) and value.strip() else "human"
-
-
-def _row_split(row, split_of: dict | None) -> str:
-    return (split_of or {}).get(row.id, row.split)
 
 
 def _dataset(
@@ -178,140 +170,18 @@ def _dataset(
 ) -> dict:
     if query["source"] == "version":
         return _version_dataset(db, project, query, version)
-    rows, split_of = insights.dataset_rows(db, project, version)
-    classes = {c.id: c.name for c in insights.classes(db, project)}
-    batches = {
-        b.id: b.name for b in db.query(Batch).filter(Batch.project_id == project.id)
-    }
-    filters = query["filters"]
-
-    def row_ok(row) -> bool:
-        if filters.get("split") and _row_split(row, split_of) != filters["split"]:
-            return False
-        if filters.get("tag") and filters["tag"] not in (row.tags or []):
-            return False
-        if filters.get("batch") and row.batch_id != filters["batch"]:
-            return False
-        if filters.get("class") and filters["class"] not in _image_classes(
-            row, classes
-        ):
-            return False
-        return True
-
-    def ann_ok(ann: dict) -> bool:
-        if filters.get("class") and classes.get(ann.get("classId")) != filters["class"]:
-            return False
-        if filters.get("source") and _source(ann) != filters["source"]:
-            return False
-        return True
-
-    counts: Counter = Counter()
-    total = 0
-    for row in rows:
-        if not row_ok(row):
-            continue
-        if query["measure"] == "images":
-            # The label-source filter describes annotations, so an image counts only when at least
-            # one of its annotations matches class and source; the dimensions use that same subset.
-            anns = [a for a in _labeled(row) if ann_ok(a)]
-            if (filters.get("class") or filters.get("source")) and not anns:
-                continue
-            present: list[str] = []
-            sources: list[str] = []
-            for ann in anns:
-                name = classes.get(ann.get("classId"))
-                if name and name not in present:
-                    present.append(name)
-                src = _source(ann)
-                if src not in sources:
-                    sources.append(src)
-            if filters.get("class"):
-                present = [c for c in present if c == filters["class"]]
-            total += 1
-            for key, _unit in _values(
-                query["dimension"],
-                row,
-                None,
-                split_of,
-                classes,
-                batches,
-                present,
-                sources,
-            ):
-                for group, _g in _values(
-                    query["dimension2"],
-                    row,
-                    None,
-                    split_of,
-                    classes,
-                    batches,
-                    present,
-                    sources,
-                ):
-                    counts[(key, group)] += 1
-            continue
-        anns = [a for a in _labeled(row) if ann_ok(a)]
-        total += len(anns)
-        for ann in anns:
-            for key, _unit in _values(
-                query["dimension"], row, ann, split_of, classes, batches
-            ):
-                for group, _g in _values(
-                    query["dimension2"], row, ann, split_of, classes, batches
-                ):
-                    counts[(key, group)] += 1
+    split_of = None
+    if version is not None:
+        manifest = insights.version_manifest(version)
+        if not manifest:
+            # A version that is still generating has no frozen scope yet; read the live dataset.
+            version = None
+        else:
+            split_of = insights.source_splits(manifest)
+    counts, total = insights_aggregate.dataset_counts(
+        db, project, query, version, split_of
+    )
     return _payload(query, counts, total)
-
-
-def _image_classes(row, classes: dict) -> list[str]:
-    seen: list[str] = []
-    for ann in _labeled(row):
-        name = classes.get(ann.get("classId"))
-        if name and name not in seen:
-            seen.append(name)
-    return seen
-
-
-def _values(
-    dim: str | None,
-    row,
-    ann: dict | None,
-    split_of,
-    classes,
-    batches,
-    present=None,
-    sources=None,
-) -> list[tuple]:
-    """One (value, unit-label) pair per dimension member the annotation/image belongs to."""
-    if dim in (None, "none"):
-        return [("Total", "Total")]
-    if dim == "class":
-        if ann is not None:
-            name = classes.get(ann.get("classId"))
-            return [(name, name)] if name else []
-        return [(name, name) for name in (present or [])]
-    if dim == "source":
-        if ann is not None:
-            src = _source(ann)
-            return [(src, src)]
-        if sources is not None:
-            return [(src, src) for src in sources]
-        seen = []
-        for a in _labeled(row):
-            src = _source(a)
-            if src not in seen:
-                seen.append(src)
-        return [(src, src) for src in seen]
-    if dim == "split":
-        value = _row_split(row, split_of)
-        return [(value, value)]
-    if dim == "batch":
-        value = batches.get(row.batch_id) if row.batch_id else None
-        return [(value or "No batch", value or "No batch")]
-    if dim == "tag":
-        tags = [t for t in (row.tags or []) if isinstance(t, str) and t]
-        return [(t, t) for t in tags]
-    return []
 
 
 def _version_dataset(
@@ -330,7 +200,12 @@ def _version_dataset(
     names = [str(n) for n in manifest.get("classes") or []]
     items = [i for i in manifest.get("items") or [] if isinstance(i, dict)]
     images = {
-        i.id: i for i in db.scalars(select(Image).where(Image.project_id == project.id))
+        row.id: row
+        for row in db.execute(
+            select(Image.id, Image.batch_id, Image.tags).where(
+                Image.project_id == project.id
+            )
+        )
     }
     batches = {
         b.id: b.name for b in db.query(Batch).filter(Batch.project_id == project.id)

@@ -32,6 +32,16 @@ def _last_seen(job: Job) -> float:
     return max(float(job.started or 0.0), float(job.created or 0.0), float(heartbeat or 0.0))
 
 
+def _fail_model(db: Session, job: Job) -> None:
+    """Take a train run's model out of queued/training when its worker will never report again."""
+    if job.kind != "train":
+        return
+    model_id = (job.params or {}).get("model_id")
+    model = db.get(TrainedModel, model_id) if model_id else None
+    if model is not None and model.status in ("queued", "training"):
+        model.status = "failed"          # the model page must stop saying "training"
+
+
 def reap(db: Session, now_ts: float | None = None) -> list[str]:
     """Fail stale remote runs and finish abandoned remote cancels; returns the changed job ids.
 
@@ -48,11 +58,7 @@ def reap(db: Session, now_ts: float | None = None) -> list[str]:
         if ts - _last_seen(job) < REMOTE_JOB_TIMEOUT_S:
             continue
         job.status, job.error, job.finished = "failed", STALE_ERROR, ts
-        if job.kind == "train":
-            model_id = (job.params or {}).get("model_id")
-            model = db.get(TrainedModel, model_id) if model_id else None
-            if model is not None and model.status in ("queued", "training"):
-                model.status = "failed"          # the model page must stop saying "training"
+        _fail_model(db, job)
         finalize.job_done(db, job, "failed", STALE_ERROR)
         changed.append(job.id)
 
@@ -64,6 +70,7 @@ def reap(db: Session, now_ts: float | None = None) -> list[str]:
         if ts - float(requested) < REMOTE_CANCEL_GRACE_S:
             continue
         job.status, job.finished = "cancelled", ts
+        _fail_model(db, job)                     # a never-started run must not stay queued forever
         finalize.job_done(db, job, "cancelled")
         changed.append(job.id)
 
