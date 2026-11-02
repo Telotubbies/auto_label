@@ -61,10 +61,27 @@ const PROTECTED = new Set([
   'shift', 'control', 'meta', 'alt', 'capslock',
 ])
 const NAMED_KEYS = new Set(['delete', 'backspace', 'space', 'home', 'end'])
-const BINDING = /^(?:[a-z0-9]|ctrl\+[a-z0-9]|delete|backspace|space|home|end)$/
+/** Owned by the editor itself (focuses the class search), so it can never be an action key. */
+const RESERVED_KEYS = new Set(['/'])
+const PRINTABLE = /^[\x21-\x7e]$/
 
 function normKey(key: string): string {
   return key.length === 1 ? key.toLowerCase() : key.toLowerCase()
+}
+
+function hasBindingShape(binding: string): boolean {
+  if (binding.startsWith('ctrl+')) return /^ctrl\+[a-z0-9]$/.test(binding)
+  return NAMED_KEYS.has(binding) || PRINTABLE.test(binding)
+}
+
+/**
+ * The one accepted set, shared by capture, validation, save and load: a printable single key
+ * (lowercased), `ctrl+<letter|digit>`, or a named key — never a protected/shadowed key.
+ */
+export function isAcceptedBinding(binding: string): boolean {
+  if (!binding || !hasBindingShape(binding)) return false
+  if (PROTECTED.has(binding) || RESERVED_KEYS.has(binding) || binding === 'ctrl+z') return false
+  return !/^[1-9]$/.test(binding)
 }
 
 /** One keypress -> a stored binding, or null when the key must stay fixed / cannot be bound. */
@@ -112,7 +129,8 @@ export function duplicateIds(map: ShortcutMap): ShortcutId[] {
 /** -> null when the binding is acceptable, else the message the panel shows. */
 export function validateBinding(binding: string, map: ShortcutMap, id: ShortcutId): string | null {
   if (/^[1-9]$/.test(binding)) return '1–9 are reserved for class hotkeys'
-  if (PROTECTED.has(binding) || binding === 'ctrl+z') return 'Enter, Esc, ? and the arrow keys stay fixed'
+  if (RESERVED_KEYS.has(binding)) return '“/” focuses the class search — pick another key'
+  if (!isAcceptedBinding(binding)) return 'Enter, Esc, ? and the arrow keys stay fixed'
   const owner = (Object.keys(map) as ShortcutId[]).find((other) => other !== id && map[other] === binding)
   if (owner) return `${keyLabel(binding)} is already used by ${labelOf(owner)}`
   return null
@@ -139,7 +157,7 @@ export function loadShortcuts(storage: StorageLike | null): ShortcutMap {
     if (!keys || typeof keys !== 'object') return map
     for (const id of Object.keys(DEFAULT_SHORTCUTS) as ShortcutId[]) {
       const value = keys[id]
-      if (typeof value === 'string' && BINDING.test(value)) map[id] = value
+      if (typeof value === 'string' && isAcceptedBinding(value)) map[id] = value
     }
     for (const id of duplicateIds(map)) map[id] = DEFAULT_SHORTCUTS[id]   // never load a conflict
   } catch {
@@ -150,6 +168,7 @@ export function loadShortcuts(storage: StorageLike | null): ShortcutMap {
 
 export function saveShortcuts(map: ShortcutMap, storage: StorageLike | null): boolean {
   if (!storage || duplicateIds(map).length) return false
+  if (!Object.values(map).every(isAcceptedBinding)) return false   // never store what the loader would drop
   try {
     storage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify({ v: SHORTCUT_VERSION, keys: map }))
     return true

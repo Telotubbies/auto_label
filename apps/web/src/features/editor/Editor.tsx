@@ -17,7 +17,7 @@ import { Glass } from '@/components/glass'
 import { cn } from '@/lib/utils'
 import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, SourceChip, type EditorComment, type LogEntry } from './Panels'
 import { ShortcutModal } from './ShortcutModal'
-import { classResultText, hotkeyClass, visibleClasses } from './classFilter'
+import { classListQuery, classResultText, hotkeyClass, visibleClasses } from './classFilter'
 import {
   keyLabel, loadShortcuts, resolveShortcut,
   type ShortcutId, type ShortcutMap,
@@ -651,7 +651,9 @@ export default function Editor() {
     try { await post(`/images/${imageId}/comments`, { text }); qc.invalidateQueries({ queryKey: ['comments', imageId] }) } catch (e) { toast.err(e as Error) }
   }
 
-  const classHotkeys = useMemo(() => visibleClasses(classes, classQuery), [classes, classQuery])
+  const classListVisible = tab === 'classes' && panelsOpen
+  const classSearch = classListQuery(classQuery, classListVisible)
+  const classHotkeys = useMemo(() => visibleClasses(classes, classSearch), [classes, classSearch])
   const focusClassSearch = () => {
     setRail('labels'); setTab('classes'); setPanelsOpen(true)
     requestAnimationFrame(() => classSearchRef.current?.focus())
@@ -781,7 +783,7 @@ export default function Editor() {
                       className="h-8 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:border-ring placeholder:text-muted-foreground" />
                     <p id={classCountId} aria-live="polite" data-testid="class-count"
                       className="flex h-5 items-center text-[11px] text-muted-foreground">
-                      {classResultText(classes.length, classHotkeys.length, classQuery)}
+                      {classResultText(classes.length, classHotkeys.length, classSearch)}
                     </p>
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
@@ -1078,7 +1080,7 @@ export default function Editor() {
                   </div>
                   <input type="range" min={EPS_MIN} max={EPS_MAX} step={0.0005} value={epsilon} data-testid="simplify-slider"
                     aria-label="Polygon simplification" aria-valuetext={`${smartPoly.length / 2} points`}
-                    disabled={smartBusy} onChange={(e) => simplify(Number(e.target.value))}
+                    aria-busy={smartBusy || undefined} onChange={(e) => simplify(Number(e.target.value))}
                     onKeyDown={(e) => { if (e.key === 'Enter' && smartFresh && !smartBusy) commitSmart() }}
                     className="mt-1 w-full cursor-pointer accent-primary" />
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground">

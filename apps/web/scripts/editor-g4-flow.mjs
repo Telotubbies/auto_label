@@ -137,6 +137,19 @@ try {
   assert.match(await rows.first().innerText(), /helmet/, '1 must map to the first *visible* row')
   check('numeric hotkey follows the filtered order', true)
 
+  // 5b) The filter must stop driving 1–9 as soon as the filtered rows leave the screen.
+  await page.keyboard.press('1')                          // Objects tab, filter inactive -> person
+  assert.match(await rows.first().innerText(), /person/, 'a hidden filter must not reorder the hotkeys')
+  await page.getByRole('button', { name: 'Classes' }).click()
+  await setQuery('h')
+  await waitRows(2)
+  await page.getByRole('button', { name: 'Objects' }).click()   // rows now hidden, query still in state
+  await page.keyboard.press('2')                          // project order -> helmet (bug: harness)
+  const hiddenList = await rows.first().innerText()
+  assert.match(hiddenList, /helmet/, 'a hidden filter must not reorder the hotkeys')
+  assert.doesNotMatch(hiddenList, /harness/)
+  check('hotkeys ignore a hidden filter', true)
+
   // 6) Light screenshot with the filter applied.
   await page.getByRole('button', { name: 'Classes' }).click()
   await setQuery('h')
@@ -153,21 +166,28 @@ try {
   assert.ok(before > 3, `expected a detailed preview, got ${before} points`)
   const slider = page.getByTestId('simplify-slider')
   assert.equal(await slider.inputValue(), '0.004', 'the slider starts on the default epsilon')
-  await slider.evaluate((el, v) => {
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-    setter.call(el, String(v))
-    el.dispatchEvent(new Event('input', { bubbles: true }))
-  }, 0.02)
+  // Drive the slider from the keyboard so it owns focus, exactly like a real adjustment.
+  await slider.focus()
+  await page.keyboard.press('End')                        // native: jump to 0.02 and fire the request
   await page.waitForFunction((prev) => {
     const el = document.querySelector('[data-testid="simplify-points"]')
     return el && Number(el.textContent.match(/\d+/)[0]) < prev
   }, before, { timeout: 20_000 })
   const after = await pointsText()
   assert.ok(after < before, `a coarser epsilon must simplify (${before} -> ${after})`)
+  // A request must not steal focus: if it did, the next arrow would navigate to another image and
+  // drop the preview being tuned.
+  assert.equal(await slider.evaluate((el) => el === document.activeElement), true, 'the slider must keep focus across a request')
+  const imageUrl = page.url()
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(500)
+  assert.equal(page.url(), imageUrl, 'an arrow on the slider must adjust it, not change image')
+  assert.equal(await slider.evaluate((el) => el === document.activeElement), true, 'focus must still be on the slider')
+  check('slider keeps focus during requests', true)
   await page.waitForFunction(() => {
     const el = document.querySelector('[data-testid="simplify-slider"]')
-    return el && !el.disabled
-  }, null, { timeout: 10_000 })               // the re-request has settled, so Enter commits
+    return el && !el.getAttribute('aria-busy')
+  }, null, { timeout: 10_000 })                           // the second re-request has settled
   await page.screenshot({ path: `${shots}/simplify-light.png` })
   await page.keyboard.press('Enter')
   await page.getByRole('button', { name: 'Objects' }).click()

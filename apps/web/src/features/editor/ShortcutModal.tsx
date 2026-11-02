@@ -3,7 +3,7 @@ import { Button, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_SHORTCUTS, FIXED_SHORTCUTS, MOUSE_SHORTCUTS, SHORTCUT_ACTIONS,
-  captureBinding, duplicateIds, keyLabel, saveShortcuts, validateBinding,
+  captureBinding, duplicateIds, isAcceptedBinding, keyLabel, saveShortcuts, validateBinding,
   type ShortcutId, type ShortcutMap,
 } from './shortcuts'
 
@@ -35,6 +35,10 @@ export function ShortcutModal({ open, onClose, keys, onSave }: {
       const binding = captureBinding(e)
       if (!binding) { setError('That key cannot be assigned — pick a letter, a number or Delete.'); return }
       if (/^[1-9]$/.test(binding)) { setError('1–9 are reserved for class hotkeys'); return }
+      if (!isAcceptedBinding(binding)) {
+        setError(validateBinding(binding, draft, capturing) ?? 'That key is not available')
+        return
+      }
       // A clash is allowed into the draft so the user sees both rows flagged; saving stays blocked.
       const next = { ...draft, [capturing]: binding }
       setDraft(next)

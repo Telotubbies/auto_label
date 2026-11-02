@@ -2,10 +2,10 @@
 //   node --test tests/editor-g4.test.mjs   (from apps/web)
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { classResultText, hotkeyClass, visibleClasses } from '../src/features/editor/classFilter.ts'
+import { classListQuery, classResultText, hotkeyClass, visibleClasses } from '../src/features/editor/classFilter.ts'
 import {
-  DEFAULT_SHORTCUTS, captureBinding, duplicateIds, keyLabel, loadShortcuts, resolveShortcut,
-  saveShortcuts, validateBinding,
+  DEFAULT_SHORTCUTS, captureBinding, duplicateIds, isAcceptedBinding, keyLabel, loadShortcuts,
+  resolveShortcut, saveShortcuts, validateBinding,
 } from '../src/features/editor/shortcuts.ts'
 
 const classes = [
@@ -40,6 +40,19 @@ test('the live status names the count and the empty result', () => {
   assert.equal(classResultText(1, 1, ''), '1 class')
   assert.equal(classResultText(4, 2, 'hel'), '2 of 4 classes')
   assert.equal(classResultText(4, 0, 'zzz'), 'No class matches')
+})
+
+test('a filter only narrows the order while the class list is on screen', () => {
+  assert.equal(classListQuery('h', true), 'h')
+  assert.equal(classListQuery('h', false), '')
+  // Classes tab hidden (Objects tab or a closed drawer): the digits fall back to project order.
+  const hidden = visibleClasses(classes, classListQuery('h', false))
+  assert.equal(hotkeyClass(hidden, '1')?.id, 'a')       // helmet, project index 1
+  assert.equal(hotkeyClass(hidden, '2')?.id, 'b')       // Safety Vest, project index 2
+  // Classes tab visible: the same digits follow the filtered rows.
+  const shown = visibleClasses(classes, classListQuery('h', true))
+  assert.deepEqual(shown.map((c) => c.id), ['a', 'd'])
+  assert.equal(hotkeyClass(shown, '2')?.id, 'd')        // Helmet liner
 })
 
 test('defaults resolve their own keys', () => {
@@ -105,4 +118,34 @@ test('storage round-trips, and damaged storage falls back to defaults', () => {
   assert.equal(loaded.pan, DEFAULT_SHORTCUTS.pan, 'a protected binding must not load')
   assert.equal(loaded.bbox, DEFAULT_SHORTCUTS.bbox)
   assert.deepEqual(loadShortcuts(null), DEFAULT_SHORTCUTS)
+})
+
+test('every symbol the panel accepts survives save -> load', () => {
+  const store = new Map()
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }
+  const symbols = ['.', ',', ';', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '-', '=', '[', ']', '\\', '`', "'", '"', '<', '>', '0']
+  for (const symbol of symbols) {
+    assert.equal(captureBinding({ key: symbol }), symbol, `capture ${symbol}`)
+    assert.equal(isAcceptedBinding(symbol), true, `accepted ${symbol}`)
+    assert.equal(validateBinding(symbol, DEFAULT_SHORTCUTS, 'bbox'), null, `validate ${symbol}`)
+    const map = { ...DEFAULT_SHORTCUTS, bbox: symbol }
+    assert.equal(saveShortcuts(map, storage), true, `save ${symbol}`)
+    assert.equal(loadShortcuts(storage).bbox, symbol, `load ${symbol}`)
+  }
+  // Shifted symbols normalise to the same single character.
+  assert.equal(captureBinding({ key: '?', shiftKey: true }), null)
+  assert.equal(captureBinding({ key: '!', shiftKey: true }), '!')
+})
+
+test('"/" is reserved for the class search and never persists', () => {
+  assert.equal(captureBinding({ key: '/' }), '/')
+  assert.equal(isAcceptedBinding('/'), false)
+  assert.match(validateBinding('/', DEFAULT_SHORTCUTS, 'pan') ?? '', /class search/)
+  const store = new Map()
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }
+  assert.equal(saveShortcuts({ ...DEFAULT_SHORTCUTS, pan: '/' }, storage), false, 'save must refuse "/"')
+  storage.setItem('ld:editor-shortcuts', JSON.stringify({ v: 1, keys: { pan: '/', bbox: '1' } }))
+  const loaded = loadShortcuts(storage)
+  assert.equal(loaded.pan, DEFAULT_SHORTCUTS.pan, 'a stored "/" must not load')
+  assert.equal(loaded.bbox, DEFAULT_SHORTCUTS.bbox, 'a stored digit must not load')
 })

@@ -18,6 +18,11 @@ export function hotkeyClass<T>(visible: T[], key: string): T | null {
   return visible[Number(key) - 1] ?? null
 }
 
+/** The search only narrows the list — and therefore the 1–9 order — while that list is on screen. */
+export function classListQuery(query: string, listVisible: boolean): string {
+  return listVisible ? query : ''
+}
+
 /** Text for the aria-live status line under the search field. */
 export function classResultText(total: number, shown: number, query: string): string {
   if (!normalizeSearch(query)) return `${total} ${total === 1 ? 'class' : 'classes'}`
