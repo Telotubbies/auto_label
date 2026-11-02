@@ -23,6 +23,9 @@ RESERVED = {"models", "deployments", "activity", "settings", "qa"}
 
 
 LEAN_JOB_KEYS = ("id", "kind", "status", "progress", "error", "created", "finished")
+# The Annotate board's running-autolabel banner reads these two for every labeler; every other
+# option (dataset paths, hyper-parameters) still needs project.models.
+LEAN_JOB_PARAMS = ("method", "model_ref")
 
 
 def job_out(j: Job, lean: bool = False) -> dict:
@@ -32,6 +35,7 @@ def job_out(j: Job, lean: bool = False) -> dict:
         # label-assist needs the stage stepper only; training options and the eval report stay
         # behind project.models (I15).
         out = {k: out[k] for k in LEAN_JOB_KEYS}
+        out["params"] = {k: v for k, v in (j.params or {}).items() if k in LEAN_JOB_PARAMS}
         out["result"] = {"stages": (j.result or {}).get("stages")}
     return out
 

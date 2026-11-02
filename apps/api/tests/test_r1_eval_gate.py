@@ -85,7 +85,7 @@ def case():
             for i in range(2):
                 m = TrainedModel(workspace_id=ws.id, project_id=p.id, version_id=v.id, name=f"run-{i}",
                                  arch="yolo26n", variant="yolo26n", task="detect", status="ready",
-                                 family="ultralytics", classes=["person"],
+                                 family="ultralytics", classes=["person"], weights=f"models/run-{i}/best.pt",
                                  metrics={"map50": 0.7, "eval": _eval([HELD_OUT, "second.jpg"])})
                 db.add(m)
                 models.append(m)
@@ -95,8 +95,12 @@ def case():
                       result={"model_id": models[0].id, "eval": _eval([HELD_OUT, "second.jpg"]),
                               "stages": {"train": {"status": "done"}}})
             db.add(job)
+            auto = Job(workspace_id=ws.id, project_id=p.id, kind="autolabel", status="queued",
+                       params={"method": "sam", "model_ref": "yolo26n.pt", "batch_id": "private-batch"},
+                       result={})
+            db.add(auto)
             db.commit()
-            ids = {"project": p.id, "version": v.id, "job": job.id,
+            ids = {"project": p.id, "version": v.id, "job": job.id, "auto": auto.id,
                    "models": [m.id for m in models], "viewer": viewer.email}
         yield {"slug": slug, **ids}
         with SessionLocal() as db:
@@ -155,12 +159,12 @@ def test_project_jobs_hide_the_eval_report_from_labelers(case):
     url = f"/api/ws/{WS}/projects/{case['slug']}/jobs"
     lean = _login("labeler@labeldesk.dev").get(url).json()
     row = next(j for j in lean if j["id"] == case["job"])
-    assert "params" not in row and "eval" not in (row.get("result") or {})
+    assert row["params"] == {} and "eval" not in (row.get("result") or {})
     assert row["kind"] == "train" and row["status"] == "done"
 
     detail = _login("labeler@labeldesk.dev").get(f"{url}/{case['job']}").json()
     assert "eval" not in (detail.get("result") or {})
-    assert "params" not in detail
+    assert detail["params"] == {}
 
     full = _login("reviewer@labeldesk.dev").get(f"{url}/{case['job']}").json()
     assert full["params"]["epochs"] == 3
@@ -171,9 +175,62 @@ def test_workspace_jobs_hide_the_eval_report_from_labelers(case):
     url = f"/api/ws/{WS}/jobs"
     lean = _login("labeler@labeldesk.dev").get(url).json()
     row = next(j for j in lean if j["id"] == case["job"])
-    assert "params" not in row and "eval" not in (row.get("result") or {})
+    assert row["params"] == {} and "eval" not in (row.get("result") or {})
     assert row["project"] == case["slug"]
 
     full = _login("reviewer@labeldesk.dev").get(url).json()
     row = next(j for j in full if j["id"] == case["job"])
     assert row["result"]["eval"]["detections"][0]["file"] == HELD_OUT
+
+
+def test_lean_autolabel_job_keeps_the_banner_params(case):
+    """The Annotate board renders params.model_ref / params.method for every labeler (I2)."""
+    project_url = f"/api/ws/{WS}/projects/{case['slug']}/jobs?kind=autolabel"
+    lean = _login("labeler@labeldesk.dev").get(project_url).json()
+    row = next(j for j in lean if j["id"] == case["auto"])
+    assert row["params"] == {"method": "sam", "model_ref": "yolo26n.pt"}
+
+    ws_lean = _login("labeler@labeldesk.dev").get(f"/api/ws/{WS}/jobs").json()
+    row = next(j for j in ws_lean if j["id"] == case["auto"])
+    assert row["params"] == {"method": "sam", "model_ref": "yolo26n.pt"}
+
+
+def _reader(who, case):
+    email, pw = ("labeler@labeldesk.dev", "demo1234") if who == "labeler" else (case["viewer"], "viewerpass1")
+    return _login(email, pw)
+
+
+@pytest.mark.parametrize("who", ["labeler", "viewer"])
+def test_workspace_models_hide_eval_and_weights_from_readers(case, who):
+    r = _reader(who, case).get(f"/api/ws/{WS}/models")
+    assert r.status_code == 200, r.text
+    row = next(m for m in r.json() if m["project"] == case["slug"])
+    assert row["weightsUrl"] is None
+    assert row["runtimeRefs"] == {}
+    assert "eval" not in row["metrics"]
+    assert HELD_OUT not in r.text
+
+
+def test_reviewer_still_reads_workspace_model_weights(case):
+    r = _login("reviewer@labeldesk.dev").get(f"/api/ws/{WS}/models")
+    assert r.status_code == 200, r.text
+    row = next(m for m in r.json() if m["project"] == case["slug"])
+    assert "sig=" in (row["weightsUrl"] or "")
+    assert row["metrics"]["eval"]["detections"][0]["file"] == HELD_OUT
+
+
+@pytest.mark.parametrize("who", ["labeler", "viewer"])
+def test_project_deployments_hide_eval_from_readers(case, who):
+    r = _reader(who, case).get(f"/api/ws/{WS}/projects/{case['slug']}/deployments")
+    assert r.status_code == 200, r.text
+    models = r.json()["models"]
+    assert models, r.text
+    for m in models:
+        assert m["metrics"] == {}
+    assert HELD_OUT not in r.text
+
+
+def test_reviewer_still_reads_project_deployments(case):
+    r = _login("reviewer@labeldesk.dev").get(f"/api/ws/{WS}/projects/{case['slug']}/deployments")
+    assert r.status_code == 200, r.text
+    assert HELD_OUT in r.text

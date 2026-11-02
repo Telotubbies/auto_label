@@ -336,8 +336,19 @@ def ws_models(c: Ctx = Depends(ws_ctx)):
     rows = c.db.execute(select(TrainedModel, Project.slug, Project.name).join(Project, Project.id == TrainedModel.project_id)
                         .where(TrainedModel.workspace_id == c.ws.id, Project.deleted_at.is_(None))
                         .order_by(TrainedModel.created.desc())).all()
-    from .training import model_out
-    return [{**model_out(m), "project": slug, "project_name": name} for m, slug, name in rows]
+    from .training import visible_model
+    out, ctxs = [], {}
+    for m, slug, name in rows:
+        # project.models is per project, so resolve the caller's role once per project (I1).
+        mc = ctxs.get(m.project_id)
+        if mc is None:
+            mc = replace(c)
+            p = c.db.get(Project, m.project_id)
+            if p is not None:
+                apply_project_role(mc, p)
+            ctxs[m.project_id] = mc
+        out.append({**visible_model(mc, m), "project": slug, "project_name": name})
+    return out
 
 
 # --- folders --------------------------------------------------------------------------

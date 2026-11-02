@@ -204,18 +204,24 @@ def _ready_models(db: Session, project: Project) -> list[TrainedModel]:
     )
 
 
-def state(db: Session, project: Project) -> dict:
-    """Everything the project deployments page renders: aliases, recent history and deployable models."""
+def state(db: Session, project: Project, lean: bool = False) -> dict:
+    """Everything the project deployments page renders: aliases, recent history and deployable models.
+
+    ``lean`` strips the eval report from the ready models for readers without project.models (I1).
+    """
     events = db.scalars(
         select(DeploymentEvent)
         .where(DeploymentEvent.project_id == project.id)
         .order_by(DeploymentEvent.created.desc())
         .limit(20)
     ).all()
+    out = [model_out(m) for m in _ready_models(db, project)]
+    if lean:
+        out = [{**m, "metrics": {}} for m in out]
     return {
         "aliases": _aliases(db, project),
         "events": [_event_out(db, e) for e in events],
-        "models": [model_out(m) for m in _ready_models(db, project)],
+        "models": out,
     }
 
 

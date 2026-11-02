@@ -8,6 +8,7 @@ import { useApp } from '@/lib/store'
 import type { BoardCard, Status } from '@/lib/types'
 import { Button, Card, Dropdown, EmptyState, Input, Modal, PageHeader, Progress, Select, StatusPill, fmtAgo, toast } from '@/components/ui'
 import { AutoLabelDialog } from './AutoLabelDialog'
+import { autolabelLabel } from './autolabelLabel'
 import { useProject } from './ProjectLayout'
 
 const COLS: { id: Status; title: string; hint: string }[] = [
@@ -58,7 +59,7 @@ export default function AnnotateBoard() {
         </>} />
       {running.map((j) => (
         <div key={j.id} className="mx-8 mb-3 flex items-center gap-3 rounded-lg border bg-accent/30 px-4 py-2 text-sm">
-          <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({j.params.model_ref ?? (j.params.method === 'sam' ? 'SAM 3.1' : 'model')}) <StatusPill status={j.status} />
+          <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({autolabelLabel(j.params)}) <StatusPill status={j.status} />
           <Progress className="w-48" value={j.progress} /> <span className="text-xs text-muted-foreground">{Math.round(j.progress)}%</span>
         </div>
       ))}

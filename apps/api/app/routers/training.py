@@ -96,6 +96,18 @@ def model_out(m: TrainedModel) -> dict:
             "created": m.created, "weightsUrl": weights_url}
 
 
+def visible_model(c: Ctx, m: TrainedModel) -> dict:
+    """A model for a workspace reader: weights, runtime artefacts and the eval report need
+    project.models (I1). Headline scalars stay so the workspace list can still show a score."""
+    out = model_out(m)
+    if c.can("project.models"):
+        return out
+    metrics = _lean_metrics(m.metrics)
+    metrics.pop("eval", None)
+    metrics.pop("eval_error", None)
+    return {**out, "metrics": metrics, "weightsUrl": None, "runtimeRefs": {}}
+
+
 def _files_in(obj) -> list[str]:
     """Collect image file names from an eval detail (worst rows, confusion cells, detections)."""
     if isinstance(obj, str):
