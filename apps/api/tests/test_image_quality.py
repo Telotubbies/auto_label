@@ -16,9 +16,14 @@ from PIL import Image as PImage
 from PIL import ImageDraw, ImageFilter
 from sqlalchemy import select
 
+import cv2
+import numpy as np
+
+from app import worker
+from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
-from app.models import Image, Member, Project, User, Workspace, now
+from app.models import Image, Job, Member, Project, User, Video, Workspace, now
 from app.security import issue_access
 from app.services import health, quality
 
@@ -270,3 +275,61 @@ def test_analytics_exposes_the_quality_card(c, project):
     body = r.json()
     assert "quality" in body["checks"]
     assert isinstance(body["checks"]["quality"]["counts"]["blurry"], int)
+
+
+def write_test_video(rel: str, frames: int = 4) -> None:
+    """A tiny MJPG clip whose frames are visibly sharp, so a score must land in `ok`."""
+    path = DATA_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writer = cv2.VideoWriter(
+        str(path), cv2.VideoWriter_fourcc(*"MJPG"), 5.0, (320, 240)
+    )
+    assert writer.isOpened()
+    for i in range(frames):
+        im = textured(seed=20 + i, size=(320, 240))
+        writer.write(cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR))
+    writer.release()
+
+
+def test_video_extracted_frames_get_a_quality_score(c, other_world):
+    """Frames become images outside ingest(); they must still carry a score, never stay 'unknown'."""
+    tag = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == other_world["ws"]))
+        p = Project(
+            workspace_id=ws.id, slug=f"quality-video-{tag}", name="Quality video"
+        )
+        db.add(p)
+        db.flush()
+        rel = f"quality/video-{tag}.avi"
+        write_test_video(rel)
+        v = Video(
+            project_id=p.id,
+            workspace_id=ws.id,
+            name="quality clip",
+            path=rel,
+            status="queued",
+        )
+        db.add(v)
+        db.flush()
+        job = Job(
+            workspace_id=ws.id,
+            project_id=p.id,
+            kind="extract_frames",
+            params={"video_id": v.id, "mode": "fps", "target_fps": 5.0},
+        )
+        db.add(job)
+        db.commit()
+        pid, vid, job_id = p.id, v.id, job.id
+        assert quality.summary(db, p)["counts"]["unknown"] == 0  # no rows yet
+
+    with SessionLocal() as db:
+        worker.run_extract_frames(db.get(Job, job_id))
+
+    with SessionLocal() as db:
+        frames = db.scalars(select(Image).where(Image.video_id == vid)).all()
+        assert len(frames) == 4
+        assert all(f.sharpness is not None and f.luminance is not None for f in frames)
+        assert {quality.classify(f.sharpness, f.luminance) for f in frames} == {"ok"}
+        counts = quality.summary(db, db.get(Project, pid))["counts"]
+    assert counts == {"blurry": 0, "dark": 0, "ok": 4, "unknown": 0}
