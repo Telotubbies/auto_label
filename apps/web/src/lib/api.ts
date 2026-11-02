@@ -10,7 +10,7 @@ import type {
   MyTask, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
   ProjectRole, RegistryItem, ReviewQueueItem, RoleLevel, StreamCreateBody, StreamEventItem, StreamEventPage,
   StreamItem, StreamPatchBody, StreamVideoUpload, TrainingInsights, Version, VideoFrame, VideoItem,
-  WorkerRow, WorkspaceFlags, WorkspaceInfo, WorkspacePrivacy,
+  WorkerRow, WorkspaceFlags, WorkspaceHome, WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -142,6 +142,7 @@ export const api = {
   config: () => get<{ signup_enabled: boolean; sam: { loaded: boolean; error: string | null } }>('/config'),
   me: () => get<Me>('/me'),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
+  home: (ws: string) => get<WorkspaceHome>(`/ws/${ws}/home`),
   flags: (ws: string) => get<WorkspaceFlags>(`/ws/${ws}/flags`),
   setFlag: (ws: string, key: string, enabled: boolean) =>
     put<{ key: string; enabled: boolean }>(`/ws/${ws}/flags/${encodeURIComponent(key)}`, { enabled }),
