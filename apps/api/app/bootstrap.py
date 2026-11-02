@@ -80,7 +80,10 @@ def _init_db():
     ensure_columns(engine, "members", {"custom_role_id": "VARCHAR(32)"})
     ensure_columns(engine, "project_members", {"custom_role_id": "VARCHAR(32)"})
     ensure_columns(engine, "classes", {"skeleton": "JSON"})
-    ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER"})
+    ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER",
+                                      "sharpness": "FLOAT", "luminance": "FLOAT"})
+    ensure_columns(engine, "label_events", {"ai_ids": "JSON"})
+    ensure_columns(engine, "consensus_jobs", {"image_metrics": "JSON"})
     ensure_columns(engine, "refresh_tokens", {
         "created": "FLOAT DEFAULT 0", "last_seen": "FLOAT DEFAULT 0",
         "ip": "VARCHAR(64) DEFAULT ''", "user_agent": "VARCHAR(255) DEFAULT ''"})
@@ -91,6 +94,13 @@ def _init_db():
     # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
     _encrypt_secrets()
     _seal_stream_sources()
+    ensure_columns(engine, "stream_events", {
+        "clean_path": "VARCHAR(1024) DEFAULT ''",
+        "rule_index": "INTEGER", "rule_kind": "VARCHAR(16) DEFAULT ''",
+        "rule_label": "VARCHAR(255) DEFAULT ''", "classes": "TEXT DEFAULT ''"})
+    with engine.begin() as cn:
+        cn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_stream_events_stream_ts ON stream_events (stream_id, ts)")
+    _backfill_event_fields()
     _backfill_image_classes()
     _backfill_storage()
     if _should_seed():
@@ -137,6 +147,19 @@ def _widen_text_columns():
         with engine.begin() as cn:
             cn.exec_driver_sql("ALTER TABLE webhooks ALTER COLUMN secret TYPE TEXT")
             cn.exec_driver_sql("ALTER TABLE audit ALTER COLUMN target TYPE TEXT")
+
+
+def _backfill_event_fields() -> None:
+    """Events recorded before the SQL-filter fix carry these fields only inside their JSON snapshots."""
+    from .models import StreamEvent
+    from .streams.event_fields import filter_fields
+
+    with SessionLocal() as db:
+        rows = db.scalars(select(StreamEvent).where(StreamEvent.rule_kind == "")).all()
+        for ev in rows:
+            for name, value in filter_fields(ev.rule or {}, ev.predictions or []).items():
+                setattr(ev, name, value)
+        db.commit()
 
 
 def ensure_columns(eng, table: str, cols: dict[str, str]) -> None:

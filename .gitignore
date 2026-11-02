@@ -76,7 +76,9 @@ apps/api/data/
 apps/api/.pytest_cache/
 apps/worker/*.egg-info/
 deploy/.env
+deploy/models/
 apps/worker/*.pt
+apps/inference/models/
 
 # Old LabelDesk prototype (superseded by apps/)
 web/node_modules/

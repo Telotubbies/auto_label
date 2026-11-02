@@ -25,7 +25,7 @@ from sqlalchemy import select
 from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
-from app.models import Audit, Image, LabelClass, Project, User, Version, Workspace
+from app.models import Audit, Image, LabelClass, LabelEvent, Project, User, Version, Workspace
 from app.security import issue_access
 from app.services import insights, insights_dataset, insights_embedding
 
@@ -544,6 +544,26 @@ def test_labeling_throughput_review_and_ai_acceptance(c, data):
                     meta={},
                     created=now,
                 ),
+                # Saves are what the workforce definition reads: one row per save, with the AI ids
+                # that save exposed. Acceptance is those ids surviving on an accepted image.
+                LabelEvent(
+                    workspace_id=ws.id,
+                    project_id=data["project"]["id"],
+                    image_id=data["ids"]["both"],
+                    user_id=data["labeler"],
+                    annotations=2,
+                    ai_ids=["a1", "gone"],
+                    created=now,
+                ),
+                LabelEvent(
+                    workspace_id=ws.id,
+                    project_id=data["project"]["id"],
+                    image_id=data["ids"]["car_ai"],
+                    user_id=data["labeler"],
+                    annotations=1,
+                    ai_ids=["c1"],
+                    created=now,
+                ),
             ]
         )
         db.commit()
@@ -553,22 +573,64 @@ def test_labeling_throughput_review_and_ai_acceptance(c, data):
     rows = [x for x in body["throughput"] if x["labeler_id"] == data["labeler"] and x["date"] == today]
     assert len(rows) == 1
     assert rows[0]["labeler"] == "Lee Labeler"
-    assert rows[0]["images"] == 3 and rows[0]["annotations"] == 4
+    assert rows[0]["images"] == 2 and rows[0]["annotations"] == 3
 
     review = next(x for x in body["review"] if x["date"] == today)
     assert review["approved"] >= 2 and review["rejected"] >= 1
     assert review["rate"] == pytest.approx(review["rejected"] / (review["approved"] + review["rejected"]), abs=1e-3)
-    assert body["throughput_basis"] == "image_assignee"
+    assert body["throughput_basis"] == "label_event"
+    # 3 distinct (image, AI id) pairs seen; a1 and c1 are still on accepted images, "gone" is not
     assert body["ai"] == {
         "human": 5,
-        "ai": 2,
-        "accepted_ai": 1,
-        "acceptance_rate": 0.5,
+        "ai": 3,
+        "accepted_ai": 2,
+        "acceptance_rate": pytest.approx(2 / 3, abs=1e-4),
         "by_source": [
-            {"source": "sam3", "count": 1, "accepted": 1},
-            {"source": "vlm+sam3", "count": 1, "accepted": 0},
+            {"source": "sam3", "count": 1},
+            {"source": "vlm+sam3", "count": 1},
         ],
     }
+
+
+def test_insights_and_qa_dashboard_report_the_same_labeler_stats(c, data):
+    """I4: both pages delegate to `labeler_stats`, so the same data yields the same numbers."""
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        db.add(
+            LabelEvent(
+                workspace_id=ws.id,
+                project_id=data["project"]["id"],
+                image_id=data["ids"]["dup_valid"],
+                user_id=data["labeler"],
+                annotations=1,
+                ai_ids=["d2"],
+                created=time.time(),
+            )
+        )
+        db.commit()
+
+    ins = c.get(f"{INS}/labeling").json()
+    qa = c.get(f"{BASE}/labeling/dashboard", params={"days": 90}).json()
+
+    assert ins["ai"]["acceptance_rate"] == qa["totals"]["ai_acceptance"]
+    assert ins["ai"]["ai"] >= 1 and ins["ai"]["accepted_ai"] >= 1
+
+    qa_rows = {row["user_id"]: row for row in qa["labelers"]}
+    by_labeler: dict[str, dict[str, int]] = {}
+    by_date: dict[str, int] = {}
+    for row in ins["throughput"]:
+        bucket = by_labeler.setdefault(row["labeler_id"], {"annotations": 0, "images": 0})
+        bucket["annotations"] += row["annotations"]
+        bucket["images"] += row["images"]
+        by_date[row["date"]] = by_date.get(row["date"], 0) + row["annotations"]
+    assert by_labeler
+    for user_id, want in by_labeler.items():
+        assert qa_rows[user_id]["annotations"] == want["annotations"]
+        assert qa_rows[user_id]["images"] == want["images"]
+    qa_daily = {row["date"]: row for row in qa["daily"]}
+    for date, annotations in by_date.items():
+        assert qa_daily[date]["annotations"] == annotations
+
 
 
 def test_workspace_isolation_401_403_404(c, data):
@@ -698,7 +760,7 @@ def test_sample_images_is_bounded_deterministic_and_keeps_every_split():
     assert len(insights_embedding._sample_images(rows, 3)) == 3
 
 
-def test_labeling_counts_annotation_authors_when_present():
+def test_labeling_counts_throughput_from_label_events():
     ts = time.time()
     rows = [
         SimpleNamespace(
@@ -709,8 +771,8 @@ def test_labeling_counts_annotation_authors_when_present():
             status="done",
             n_annotations=2,
             annotations=[
-                {"classId": "c1", "author": "u1"},
-                {"classId": "c1", "author": "u1"},
+                {"id": "a1", "classId": "c1", "source": "sam3"},
+                {"id": "h1", "classId": "c1", "source": "human"},
             ],
         ),
         SimpleNamespace(
@@ -720,14 +782,26 @@ def test_labeling_counts_annotation_authors_when_present():
             review=None,
             status="done",
             n_annotations=1,
-            annotations=[{"classId": "c1", "author_id": "u2"}],
+            annotations=[{"id": "a2", "classId": "c1", "source": "vlm"}],
         ),
     ]
-    body = insights_dataset.labeling(rows, [], {"u1": "One", "u2": "Two"}, ts)
-    assert body["throughput_basis"] == "annotation"
+    events = [
+        SimpleNamespace(user_id="u1", image_id="i1", annotations=2, ai_ids=["a1", "missing"], created=ts),
+        SimpleNamespace(user_id="u2", image_id="i2", annotations=1, ai_ids=["a2"], created=ts),
+    ]
+    body = insights_dataset.labeling(rows, [], {"u1": "One", "u2": "Two"}, events)
+    assert body["throughput_basis"] == "label_event"
     got = {(r["labeler_id"], r["annotations"], r["images"]) for r in body["throughput"]}
     assert got == {("u1", 2, 1), ("u2", 1, 1)}
     assert {r["labeler"] for r in body["throughput"]} == {"One", "Two"}
+    assert body["ai"] == {
+        "human": 1,
+        "ai": 3,
+        "accepted_ai": 2,
+        "acceptance_rate": pytest.approx(2 / 3, abs=1e-4),
+        "by_source": [{"source": "sam3", "count": 1}, {"source": "vlm", "count": 1}],
+    }
+
 
 
 def test_selection_roundtrip_and_cross_project_isolation(c, data):

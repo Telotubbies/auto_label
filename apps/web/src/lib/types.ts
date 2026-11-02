@@ -69,6 +69,8 @@ export interface ImageItem {
   review: 'approved' | 'rejected' | null; tags: string[]; batchId: string | null; annotated: boolean
   annotationCount: number; created: number; thumbnail: string; url: string; classIds: string[]
   videoId?: string | null; frameIndex?: number | null
+  /** Detail endpoint only: the image is in a collecting consensus job, so annotations are the labeler's private draft. */
+  consensusJob?: string
 }
 export interface VideoItem {
   id: string; name: string; status: 'queued' | 'extracting' | 'ready' | 'failed'; error: string
@@ -78,6 +80,8 @@ export interface VideoItem {
 export interface VideoFrame {
   id: string; name: string; frameIndex: number; time: number; url: string; thumbnail: string
   status: Status; annotations: Annotation[]
+  /** Detail endpoint only: the image is in a collecting consensus job, so annotations are the labeler's private draft. */
+  consensusJob?: string
 }
 export interface Batch { id: string; name: string; source: string; created: number; images: number }
 
@@ -89,6 +93,15 @@ export interface Job {
   id: string; kind: 'version' | 'export' | 'export_engine' | 'train' | 'autolabel' | 'health' | 'insights_images' | 'insights_leakage' | 'insights_embedding'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
+}
+
+/** GET /api/ws/{ws}/home — workspace totals plus the caller's own queues. */
+export interface HomeStats { projects: number; images: number; annotations: number; models: number; deployments: number }
+export interface HomeWaiting { project: string; project_name: string; to_annotate: number; to_review: number; unassigned: number }
+export interface WorkspaceHome {
+  stats: HomeStats
+  waiting: HomeWaiting[]
+  totals: { to_annotate: number; to_review: number; unassigned: number }
 }
 export interface Version {
   id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled'
@@ -173,6 +186,9 @@ export interface Member { id: string; name: string; email: string; role: Role; o
 
 export type LabelIssueKind = 'tiny' | 'out_of_bounds' | 'zero_area' | 'duplicate'
 
+/** Stored per image at upload: divergence from a clean, well-exposed photo. */
+export type QualityClass = 'blurry' | 'dark' | 'ok' | 'unknown'
+
 /** Row data for the Health check cards. Pixel thresholds are COCO at `imgsz`. */
 export interface HealthChecks {
   imgsz: number
@@ -181,6 +197,8 @@ export interface HealthChecks {
   /** `box` is normalized [x, y, w, h]. */
   missing_boxes: { image_id: string; box: [number, number, number, number]; class: string }[]
   leakage_pairs: number
+  /** Ingest-time scores, read from the image rows; `samples` holds a capped id list per flagged class. */
+  quality: { counts: Record<QualityClass, number>; samples: { blurry: string[]; dark: string[] } }
 }
 
 export interface HealthRecommendation { key: string; message: string; suggest: Record<string, unknown> }
@@ -227,6 +245,16 @@ export interface PlaygroundPrediction {
 }
 export interface PlaygroundResult {
   ref: string; prediction: PlaygroundPrediction | null; latency_ms: number; error: string | null
+}
+export type PlaygroundRuntimeState = 'ready' | 'cold' | 'loading' | 'sleeping' | 'gpu_busy' | 'unavailable'
+/** One selected model's runtime state, explained by the server preflight (G1 / gap M1). */
+export interface PlaygroundRuntime {
+  ref: string; state: PlaygroundRuntimeState; message: string; retry: boolean
+}
+/** A recent annotated image of this workspace, offered as a Playground starting point. */
+export interface PlaygroundSample {
+  id: string; name: string; thumbnail: string
+  project: { slug: string; name: string }
 }
 
 // --- Insights Studio (Task 20a) ---------------------------------------------
@@ -333,14 +361,14 @@ export interface InsightVersionDiff {
 }
 
 export interface InsightLabeling {
-  /** `annotation` = per-annotation author is recorded; `image_assignee` = only the image assignee is known. */
-  throughput_basis: 'annotation' | 'image_assignee'
+  /** Rows come from the same LabelEvent throughput definition the QA workforce page reads. */
+  throughput_basis: 'label_event'
   throughput: { date: string; labeler_id: string | null; labeler: string; annotations: number; images: number }[]
   review: { date: string; approved: number; rejected: number; rate: number }[]
   ai: {
-    human: number; ai: number; accepted_ai: number; acceptance_rate: number
-    /** `accepted` = AI labels on approved images that nobody has changed since. */
-    by_source: { source: string; count: number; accepted: number }[]
+    human: number; ai: number; accepted_ai: number; acceptance_rate: number | null
+    /** AI-sourced annotations currently on the images. */
+    by_source: { source: string; count: number }[]
   }
 }
 
@@ -544,3 +572,169 @@ export interface WorkerRow {
 export type ComponentStatus = 'operational' | 'degraded' | 'unknown'
 export interface StatusComponent { name: string; status: ComponentStatus; detail: string }
 export interface AdminStatus { checked: number; components: StatusComponent[] }
+// ---------- labeling QA & workforce (Task 23) ---------------------------------
+export interface LabelingTotals {
+  images: number; annotations: number; ai_acceptance: number | null; consensus_pending: number
+  honeypot_accuracy: number | null; review_queue: number
+}
+
+export interface LabelerStat {
+  user_id: string; name: string; role: Role; images: number; annotations: number; per_day: number
+  ai_acceptance: number | null; honeypot_accuracy: number | null; rejection_rate: number | null
+}
+
+export interface LabelingDashboard {
+  window_days: number
+  totals: LabelingTotals
+  labelers: LabelerStat[]
+  daily: { date: string; images: number; annotations: number }[]
+}
+
+export interface MyTask { job_id: string; image_id: string; name: string; thumbnail: string; created: number }
+
+export interface ReviewQueueItem {
+  image_id: string; name: string; thumbnail: string; disagreement: number
+  submissions: number; status: string; updated: number; annotations: number
+}
+
+export type ConsensusStatus = 'collecting' | 'ready' | 'merged'
+
+export interface ConsensusJob {
+  id: string; status: ConsensusStatus; k: number; iou_threshold: number; images: number
+  assignments: number; submitted: number; agreement: number | null; created_by: string | null; created: number
+}
+
+export interface ConsensusImage {
+  image_id: string; name: string; thumbnail: string; agreement: number | null; submissions: number
+  assignees: { user_id: string; name: string; submitted: boolean; count: number }[]
+}
+
+/** The job object with `images` replaced by the per-image detail rows. */
+export type ConsensusJobDetail = Omit<ConsensusJob, 'images'> & { image_ids: string[]; images: ConsensusImage[] }
+
+/** Result of submitting one labeler's private consensus draft for an image. */
+export interface ConsensusSubmitResult {
+  submitted: number; total: number; agreement: number | null
+  jobStatus: 'collecting' | 'ready'; jobId: string
+}
+
+export interface HoneypotItem {
+  id: string; image_id: string; name: string; thumbnail: string; annotations: number
+  attempts: number; accuracy: number | null; created: number
+}
+
+export interface HoneypotLabeler { user_id: string; name: string; attempts: number; accuracy: number | null }
+
+export interface HoneypotList { items: HoneypotItem[]; labelers: HoneypotLabeler[] }
+// ---------- streams (CCTV) ---------------------------------------------------
+/** Worker lifecycle. `connecting` is the first state, before the first frame arrives. */
+export type StreamStatus = 'stopped' | 'connecting' | 'live' | 'reconnecting' | 'error' | 'paused (GPU busy)'
+export type StreamRuleKind = 'count' | 'zone' | 'line' | 'dwell' | 'vlm'
+export type StreamCountOp = '>=' | '>' | '<=' | '<' | '=='
+
+/** Polygon in the captured frame, normalized 0..1 and flattened as x1,y1,x2,y2,… */
+export interface StreamZone { id: string; points: number[] }
+
+export interface StreamCountRule { kind: 'count'; class: string; op: StreamCountOp; k: number; for_s?: number }
+export interface StreamZoneRule { kind: 'zone'; class: string; zone_id: string }
+export interface StreamLineRule { kind: 'line'; class: string; line: number[]; direction: 'in' | 'out' | 'both' }
+export interface StreamDwellRule { kind: 'dwell'; class: string; zone_id: string; seconds: number }
+export interface StreamVlmRule { kind: 'vlm'; question: string; every_s: number }
+export type StreamRule = StreamCountRule | StreamZoneRule | StreamLineRule | StreamDwellRule | StreamVlmRule
+
+export interface StreamItem {
+  id: string; name: string; source: string; modelRef: string; sampleFps: number
+  zones: StreamZone[]; rules: StreamRule[]
+  status: StreamStatus; lastError: string
+  created: number; mjpeg: string
+  /** One JPEG of the newest frame; 503 until the source has produced one. */
+  frame: string
+  events: number; fps: number; frames: number; detections: number
+}
+
+export interface StreamPrediction {
+  class: string; class_id?: number; confidence: number
+  /** Normalized 0..1; (x, y) is the box centre and the anchor is bottom-centre. */
+  x: number; y: number; width: number; height: number; track_id?: number | null
+}
+
+/** The rule that fired, copied onto the event so history survives later rule edits. */
+export interface StreamEventRule {
+  index: number; kind: StreamRuleKind; class?: string; label: string
+  op?: StreamCountOp; k?: number; for_s?: number; zone_id?: string
+  line?: number[]; direction?: 'in' | 'out' | 'both'; seconds?: number
+  question?: string; every_s?: number
+}
+
+export interface StreamEventItem {
+  id: string; ts: number; rule: StreamEventRule; summary: string
+  /** Signed "/api/files/…" path, or null when no frame was captured. */
+  snapshot: string | null; predictions: StreamPrediction[]; reviewed: boolean
+}
+/** Alias kept for the API client and pages; the server calls these stream events. */
+export type StreamEvent = StreamEventItem
+/** `GET …/events` page; `total` counts every event matching the filters, `items` is newest first. */
+export interface StreamEventPage { total: number; items: StreamEventItem[] }
+
+export interface StreamCreateBody {
+  name: string; source: string; model_ref: string; sample_fps?: number
+  zones?: StreamZone[]; rules?: StreamRule[]
+}
+export type StreamPatchBody = Partial<StreamCreateBody>
+export interface StreamVideoUpload { source: string }
+
+// --- Insights Studio (Task 20c): lineage, widget queries, dashboards -----------
+
+export type LineageKind = 'batch' | 'version' | 'run' | 'model' | 'stream'
+
+export interface LineageNode {
+  id: string; kind: LineageKind; label: string; sub: string; created: number
+  counts: Record<string, number>
+  metrics: Record<string, number | null>
+  detail: Record<string, unknown>
+  artifacts: { label: string }[]
+  log: string
+}
+export interface LineageEdge { source: string; target: string; kind: 'images' | 'training' | 'deployment' }
+export interface Lineage { nodes: LineageNode[]; edges: LineageEdge[]; generated: number }
+
+export interface BreakdownRow { key: string; value: number }
+export interface TimelineSeries { name: string; values: number[] }
+export interface StreamAnalytics {
+  window: { days: number; since: number; tz_offset: number }
+  totals: { events: number; reviewed: number; cameras: number; dwell_seconds: number; last_event: number }
+  top_cameras: { id: string; name: string; events: number; reviewed: number; last_event: number }[]
+  breakdown: { rule: BreakdownRow[]; zone: BreakdownRow[]; class: BreakdownRow[]; stream: BreakdownRow[] }
+  dwell: { buckets: string[]; counts: number[]; samples: number; max: number }
+  hourly: { days: string[]; hours: string[]; values: [number, number, number][] }
+  over_time: {
+    dates: string[]
+    /** One increment per event, independent of class, so the daily total never double-counts. */
+    total: number[]
+    by_rule: TimelineSeries[]
+    by_zone: TimelineSeries[]
+    by_class: TimelineSeries[]
+  }
+}
+
+export type WidgetSource = 'dataset' | 'version' | 'model' | 'streams'
+export type ChartKind = 'bar' | 'line' | 'scatter' | 'heatmap' | 'pie' | 'donut' | 'table' | 'kpi'
+export type WidgetWidth = 3 | 4 | 6 | 12
+
+export interface WidgetFilters { [key: string]: string | number | undefined }
+
+export interface DashboardWidget {
+  id: string; title: string; source: WidgetSource; measure: string; dimension: string
+  dimension2: string | null; chart: ChartKind; filters: WidgetFilters; w: WidgetWidth
+}
+
+export interface WidgetRow { key: string; group: string | null; value: number }
+export interface WidgetData {
+  source: WidgetSource; measure: string; dimension: string; dimension2: string | null
+  unit: string; rows: WidgetRow[]; total: number; filters: WidgetFilters
+}
+
+export interface DashboardSummary {
+  id: string; name: string; widgets: DashboardWidget[]; share_token: string
+  created_by: string | null; created: number; updated: number
+}

@@ -91,6 +91,19 @@ def caps_for(variant: str) -> set[str]:
     return caps
 
 
+def _weights_path(variant: str, weights: str | None) -> str:
+    """The path _load() uses for one variant: a trained checkpoint or the zoo/local pretrained copy."""
+    if weights:                                    # trained model: DATA_DIR-relative path
+        return str(DATA_DIR / weights)
+    local = PRETRAINED_DIR / f"{variant}.pt"
+    return str(local) if local.exists() else f"{variant}.pt"
+
+
+def lease_key(variant: str, weights: str | None) -> str:
+    """The scheduler key this variant occupies; the Playground preflight reads residency from it."""
+    return f"{_cls_name(variant)}|{_weights_path(variant, weights)}"
+
+
 def _load(weights: str, cls_name: str = "YOLO"):
     """Load through the GPU scheduler so its VRAM ledger can evict the LRU model."""
     from ..gpu import scheduler                  # lazy: keeps app.gpu importable before the adapters package
@@ -153,6 +166,9 @@ class UltralyticsAdapter:
 
     def capabilities(self, variant: str) -> set[str]:
         return caps_for(variant)
+
+    def runtime_key(self, variant: str, weights: str | None) -> str:
+        return lease_key(variant, weights)
 
     def train(self, variant, dataset_dir, task, opts, on_epoch, should_stop) -> TrainResult:
         """Train on a generated version dir. opts: model_id, epochs, imgsz, batch, patience, max_minutes, resume_from."""
@@ -250,12 +266,7 @@ class UltralyticsAdapter:
         cls = _cls_name(variant)
         if cls == "YOLOWorld" and not classes:
             raise ValueError("YOLO-World needs classes")
-        if weights:                                    # trained model: DATA_DIR-relative path
-            path = str(DATA_DIR / weights)
-        else:
-            local = PRETRAINED_DIR / f"{variant}.pt"
-            path = str(local) if local.exists() else f"{variant}.pt"
-        m = _load(path, cls)
+        m = _load(_weights_path(variant, weights), cls)
         if cls == "YOLOWorld":
             with _lock:                                # vocabulary lives on the cached model: set + run atomically
                 m.set_classes(list(classes))

@@ -5,8 +5,10 @@ loadable, else OpenCV GrabCut seeded by the clicks — CPU-only, ~100 ms.
 Auto Label uses SAM 3.1 text prompts (one per class name); it has no fallback.
 """
 import logging
+import math
 import sys
 import threading
+from collections import OrderedDict
 
 import cv2
 import numpy as np
@@ -20,10 +22,22 @@ _sam_lock = threading.Lock()
 
 SAM_VRAM_MB = 3000      # spec 3.6 says 3-4 GB; 4 GB could never coexist with a detector in the 4.5 GB budget
 
+DEFAULT_EPS = 0.004     # approxPolyDP tolerance as a fraction of the contour perimeter
+EPS_MIN = 0.0005
+EPS_MAX = 0.02
+
+
+def clamp_epsilon(value: float) -> float:
+    """Keep the Smart Polygon tolerance inside the range the editor slider offers."""
+    eps = float(value)
+    if not math.isfinite(eps):
+        raise ValueError("epsilon must be a finite number")
+    return min(EPS_MAX, max(EPS_MIN, eps))
+
 
 # --- geometry helpers ---------------------------------------------------------
 
-def mask_to_polygon(mask: np.ndarray, seed: tuple[int, int] | None = None, eps: float = 0.004) -> list[float] | None:
+def mask_to_polygon(mask: np.ndarray, seed: tuple[int, int] | None = None, eps: float = DEFAULT_EPS) -> list[float] | None:
     """Largest (or seed-containing) outer contour -> normalized flat polygon."""
     h, w = mask.shape
     m = (mask > 0).astype("uint8")
@@ -42,7 +56,9 @@ def mask_to_polygon(mask: np.ndarray, seed: tuple[int, int] | None = None, eps: 
 
 # --- GrabCut fallback -----------------------------------------------------------
 
-def grabcut(im: PImage.Image, points: list[list[float]], negatives: list[list[float]] | None = None) -> list[float] | None:
+def _grabcut_mask(im: PImage.Image, points: list[list[float]], negatives: list[list[float]] | None = None
+                  ) -> tuple[np.ndarray, tuple[int, int]] | None:
+    """GrabCut foreground mask plus the positive click that seeds the contour pick."""
     scale = min(1.0, 800 / max(im.size))
     small = im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))))
     arr = cv2.cvtColor(np.asarray(small), cv2.COLOR_RGB2BGR)
@@ -69,7 +85,16 @@ def grabcut(im: PImage.Image, points: list[list[float]], negatives: list[list[fl
     cv2.grabCut(arr, mask, None, bgd, fgd, 5, cv2.GC_INIT_WITH_MASK)
     fg = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 1, 0).astype("uint8")
     fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    return mask_to_polygon(fg, seed=px[0])
+    return fg, px[0]
+
+
+def grabcut(im: PImage.Image, points: list[list[float]], negatives: list[list[float]] | None = None,
+            eps: float = DEFAULT_EPS) -> list[float] | None:
+    found = _grabcut_mask(im, points, negatives)
+    if found is None:
+        return None
+    mask, seed = found
+    return mask_to_polygon(mask, seed=seed, eps=eps)
 
 
 # --- SAM 3.1 ----------------------------------------------------------------------
@@ -150,32 +175,85 @@ def _masks(output) -> list[tuple[np.ndarray, float]]:
     return [(mi.squeeze() > 0.5, float(si)) for mi, si in zip(m, s)]
 
 
-def smart_polygon(im: PImage.Image, points: list[list[float]], negatives=None) -> tuple[list[float] | None, str]:
+def _sam_mask(im: PImage.Image, points: list[list[float]], negatives: list[list[float]] | None
+              ) -> tuple[np.ndarray, tuple[int, int]] | None:
+    """Box-prompted SAM mask around the clicks, negatives carved out; None when SAM is unavailable."""
     proc = _try_lease_sam()
-    if proc is not None and len(points) >= 1:
-        try:
-            xs, ys = [p[0] for p in points], [p[1] for p in points]
-            pad = 0.08
-            x1, y1 = max(0, min(xs) - pad), max(0, min(ys) - pad)
-            x2, y2 = min(1, max(xs) + pad), min(1, max(ys) + pad)
-            state = proc.set_image(im)
-            out = proc.add_geometric_prompt([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], True, state)
-            cands = _masks(out)
-            sx, sy = int(points[0][0] * im.width), int(points[0][1] * im.height)
-            hit = [c for c in cands if c[0].shape == (im.height, im.width) and c[0][sy, sx]]
-            best = max(hit or cands, key=lambda c: c[1], default=None)
-            if best is not None:
-                mask = best[0].astype("uint8").copy()
-                if negatives:               # negative clicks carve the same way GrabCut's background seeds do
-                    r = max(3, int(min(im.height, im.width) * 0.012))
-                    for x, y in negatives:
-                        cv2.circle(mask, (int(x * im.width), int(y * im.height)), r, 0, -1)
-                poly = mask_to_polygon(mask, seed=(sx, sy))
-                if poly:
-                    return poly, "sam3.1"
-        except Exception as e:
-            log.warning("SAM smart polygon failed, using GrabCut: %s", e)
-    return grabcut(im, points, negatives), "grabcut"
+    if proc is None or not points:
+        return None
+    try:
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        pad = 0.08
+        x1, y1 = max(0, min(xs) - pad), max(0, min(ys) - pad)
+        x2, y2 = min(1, max(xs) + pad), min(1, max(ys) + pad)
+        state = proc.set_image(im)
+        out = proc.add_geometric_prompt([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], True, state)
+        cands = _masks(out)
+        sx, sy = int(points[0][0] * im.width), int(points[0][1] * im.height)
+        hit = [c for c in cands if c[0].shape == (im.height, im.width) and c[0][sy, sx]]
+        best = max(hit or cands, key=lambda c: c[1], default=None)
+        if best is not None:
+            mask = best[0].astype("uint8").copy()
+            if negatives:               # negative clicks carve the same way GrabCut's background seeds do
+                r = max(3, int(min(im.height, im.width) * 0.012))
+                for x, y in negatives:
+                    cv2.circle(mask, (int(x * im.width), int(y * im.height)), r, 0, -1)
+            return mask, (sx, sy)
+    except Exception as e:
+        log.warning("SAM smart polygon failed, using GrabCut: %s", e)
+    return None
+
+
+def _segment_mask(im: PImage.Image, points: list[list[float]], negatives: list[list[float]] | None
+                  ) -> tuple[np.ndarray, tuple[int, int] | None, str] | None:
+    """SAM first, GrabCut when SAM is unavailable or produced no usable contour."""
+    found = _sam_mask(im, points, negatives)
+    if found is not None and mask_to_polygon(found[0], seed=found[1]) is not None:
+        return found[0], found[1], "sam3.1"
+    fallback = _grabcut_mask(im, points, negatives)
+    if fallback is None:
+        return None
+    return fallback[0], fallback[1], "grabcut"
+
+
+# Moving the simplification slider sends the same clicks again; keep the last few masks so only the
+# Douglas-Peucker pass re-runs instead of SAM or GrabCut.
+_MASKS: OrderedDict[tuple, tuple[np.ndarray, tuple[int, int] | None, str]] = OrderedDict()
+_MASKS_MAX = 4
+_masks_lock = threading.Lock()
+
+
+def _mask_get(key: tuple) -> tuple[np.ndarray, tuple[int, int] | None, str] | None:
+    with _masks_lock:
+        hit = _MASKS.get(key)
+        if hit is not None:
+            _MASKS.move_to_end(key)
+        return hit
+
+
+def _mask_put(key: tuple, value: tuple[np.ndarray, tuple[int, int] | None, str]) -> None:
+    with _masks_lock:
+        _MASKS[key] = value
+        while len(_MASKS) > _MASKS_MAX:
+            _MASKS.popitem(last=False)
+
+
+def smart_polygon(im: PImage.Image, points: list[list[float]], negatives=None, eps: float = DEFAULT_EPS,
+                  cache_key: str | None = None) -> tuple[list[float] | None, str]:
+    """Clicks -> (simplified polygon, source). `eps` re-simplifies a cached mask without re-segmenting."""
+    eps = clamp_epsilon(eps)
+    key = None
+    if cache_key:
+        key = (cache_key, tuple((p[0], p[1]) for p in points), tuple((p[0], p[1]) for p in negatives or []))
+    hit = _mask_get(key) if key else None
+    if hit is None:
+        hit = _segment_mask(im, points, negatives)
+        if hit is None:
+            return None, "grabcut"
+        if key:
+            _mask_put(key, hit)
+    mask, seed, source = hit
+    return mask_to_polygon(mask, seed=seed, eps=eps), source
 
 
 def sam_text(im: PImage.Image, prompts: list[str], threshold: float = 0.4) -> list[tuple[int, list[float], float]]:

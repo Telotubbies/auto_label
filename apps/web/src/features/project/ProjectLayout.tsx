@@ -6,7 +6,7 @@ import { BrainCircuit, Eye } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Project } from '@/lib/types'
-import { ProjectPanel, projNav } from '@/components/shell'
+import { ProjectPanel, projectNavGroups } from '@/components/shell'
 import { cn } from '@/lib/utils'
 import { Button, EmptyState, Spinner } from '@/components/ui'
 
@@ -18,7 +18,7 @@ export default function ProjectLayout() {
   const { ws = '', project: slug = '' } = useParams()
   const nav = useNavigate()
   const location = useLocation()
-  const { can: canProject } = useProjectPermissions(ws, slug)
+  const { can: canProject, role: projectRole } = useProjectPermissions(ws, slug)
   const q = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug) })
   const [slot, setSlot] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => { setSlot(document.getElementById('topbar-actions')) }, [])
@@ -26,8 +26,9 @@ export default function ProjectLayout() {
   if (!q.data) return <EmptyState title="Project not found" hint={(q.error as Error)?.message} />
   const project = q.data
   const review = project.statusCounts?.review ?? 0
-  // Below md the project sidebar is hidden; one compact select keeps every section reachable.
-  const items = projNav.flatMap((g) => g.items).filter((i) => canProject(i.perm))
+  // Below lg the project panel is hidden; one compact strip keeps every section reachable.
+  // Same builder and project role as ProjectPanel, so a role never sees a different IA by width.
+  const items = projectNavGroups(canProject, projectRole).flatMap((g) => g.items)
   const section = location.pathname.split('/').pop() ?? 'browse'
   return (
     <div className="flex h-full">
@@ -47,7 +48,7 @@ export default function ProjectLayout() {
         <div data-scroll className="min-h-0 flex-1 overflow-y-auto pt-14">
           {/* Below lg the project panel is hidden, so navigation lives in a scrollable strip. */}
           <nav aria-label="Project sections" className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-card/95 px-2 py-1.5 backdrop-blur lg:hidden">
-            {projNav.flatMap((g) => g.items).filter((i) => canProject(i.perm)).map(({ to, label, icon: Icon }) => (
+            {items.map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={`/${ws}/${slug}/${to}`}
                 className={({ isActive }) => cn('flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs',
                   isActive ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>

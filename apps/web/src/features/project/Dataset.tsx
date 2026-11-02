@@ -30,6 +30,8 @@ export default function Dataset() {
   const f = {
     q: sp.get('q') ?? '', split: sp.get('split') ?? '', status: sp.get('status') ?? (can('project.review') ? 'done' : 'all'),
     class_id: sp.get('class') ?? '', tag: sp.get('tag') ?? '', batch_id: sp.get('batch') ?? '', annotated: sp.get('annotated') ?? '', sort: sp.get('sort') ?? 'newest',
+    // ingest-time quality flags from the health check's click-through
+    quality: sp.get('quality') ?? '',
     // analytics chart links filter by image size (megapixels), aspect ratio and annotation count
     min_mp: sp.get('min_mp') ?? '', max_mp: sp.get('max_mp') ?? '', min_ar: sp.get('min_ar') ?? '', max_ar: sp.get('max_ar') ?? '',
     min_ann: sp.get('min_ann') ?? '', max_ann: sp.get('max_ann') ?? '',
@@ -104,7 +106,7 @@ export default function Dataset() {
 
   return (
     <div className="anim-page flex h-full flex-col">
-      <PageHeader title="Dataset" desc={`${total ?? '…'} images${f.status === 'done' ? ' in the dataset' : ''}`}
+      <PageHeader title="Dataset" desc={`${total ?? '…'} ${total === 1 ? 'image' : 'images'}${f.status === 'done' ? ' in the dataset' : ''}`}
         actions={can('project.review') && <Button variant="outline" onClick={() => setAuto(true)}><Sparkles className="h-4 w-4" /> Auto Label</Button>} />
       <div className="flex flex-wrap items-center gap-2 px-8 pb-3">
         <div className="relative w-56"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8" placeholder="Search filename" value={f.q} onChange={(e) => setF('q', e.target.value)} /></div>
@@ -116,6 +118,7 @@ export default function Dataset() {
         <Select value={f.tag} onChange={(e) => setF('tag', e.target.value)}><option value="">All tags</option>{tags.data?.map((t) => <option key={t.name} value={t.name}>{t.name} ({t.count})</option>)}</Select>
         <Select value={f.batch_id} onChange={(e) => setF('batch', e.target.value)}><option value="">All batches</option>{batches.data?.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.images})</option>)}</Select>
         <Select value={f.annotated} onChange={(e) => setF('annotated', e.target.value)}><option value="">Any annotations</option><option value="yes">Annotated</option><option value="no">Null (no annotations)</option></Select>
+        <Select value={f.quality} onChange={(e) => setF('quality', e.target.value)}><option value="">Any quality</option><option value="blurry">Blurry</option><option value="dark">Too dark</option><option value="ok">Good quality</option><option value="unknown">Not scored</option></Select>
         <Select value={f.sort} onChange={(e) => setF('sort', e.target.value)}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="name">Filename</option><option value="most">Most annotations</option><option value="least">Fewest annotations</option></Select>
       </div>
       {rangeFilters.length > 0 && (

@@ -85,6 +85,10 @@ class VlmAdapter:
     def capabilities(self, variant: str) -> set[str]:
         return {"detect", "open-vocab", "vqa"}
 
+    def runtime_key(self, variant: str, weights: str | None) -> str | None:
+        """vLLM keeps the weights on its own server; the scheduler ledger has no local lease."""
+        return None
+
     def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
         if prompt:
             t0 = time.time()

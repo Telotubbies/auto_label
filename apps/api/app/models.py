@@ -249,6 +249,9 @@ class Image(Base):
     path: Mapped[str] = mapped_column(String(1024))       # relative to DATA_DIR
     thumb: Mapped[str] = mapped_column(String(1024))
     size: Mapped[int] = mapped_column(Integer, default=0)
+    # data-quality signals measured once at ingest; NULL means unknown, never "good"
+    sharpness: Mapped[float | None] = mapped_column(Float, nullable=True)   # 0-1 Laplacian-variance score
+    luminance: Mapped[float | None] = mapped_column(Float, nullable=True)   # 0-1 mean grayscale
     split: Mapped[str] = mapped_column(String(8), default="train")
     status: Mapped[str] = mapped_column(String(16), default="unassigned")
     assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -408,6 +411,55 @@ class WebhookDelivery(Base):
     last_error: Mapped[str] = mapped_column(Text, default="")
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)
+class Stream(Base):
+    """A live camera / video feed processed by the StreamManager (one grabber + one processor thread)."""
+    __tablename__ = "streams"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(Text)                # rtsp://… or file:videos/<name>
+    model_ref: Mapped[str] = mapped_column(String(255))
+    sample_fps: Mapped[float] = mapped_column(Float, default=5.0)
+    zones: Mapped[list] = mapped_column(JSON, default=list)
+    rules: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="stopped")
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class StreamEvent(Base):
+    """One rule firing, with a JPEG snapshot and the predictions that triggered it."""
+    __tablename__ = "stream_events"
+    __table_args__ = (Index("ix_stream_events_stream_ts", "stream_id", "ts"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    stream_id: Mapped[str] = mapped_column(ForeignKey("streams.id", ondelete="CASCADE"), index=True)
+    ts: Mapped[float] = mapped_column(Float, default=now)
+    rule: Mapped[dict] = mapped_column(JSON, default=dict)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    snapshot_path: Mapped[str] = mapped_column(String(1024), default="")     # annotated, relative to DATA_DIR
+    clean_path: Mapped[str] = mapped_column(String(1024), default="")        # no overlays: the dataset copy
+    predictions: Mapped[list] = mapped_column(JSON, default=list)
+    reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # denormalised from `rule` / `predictions` so the timeline filters and pages in SQL
+    rule_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    rule_kind: Mapped[str] = mapped_column(String(16), default="")
+    rule_label: Mapped[str] = mapped_column(String(255), default="")
+    classes: Mapped[str] = mapped_column(Text, default="")                   # "|person|helmet|"
+
+
+class Dashboard(Base):
+    """Saved Insights Studio dashboard; widget specs are JSON in display order."""
+    __tablename__ = "dashboards"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    widgets: Mapped[list] = mapped_column(JSON, default=list)
+    share_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
 
 
 class Audit(Base):
@@ -430,6 +482,8 @@ class Worker(Base):
     current_job: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started: Mapped[float] = mapped_column(Float, default=now)
     last_seen: Mapped[float] = mapped_column(Float, default=now, index=True)
+
+
 class DeploymentAlias(Base):
     """One inference alias per project (`production`, `staging`) -> a ready trained model."""
     __tablename__ = "deployment_aliases"
@@ -440,6 +494,24 @@ class DeploymentAlias(Base):
     model_id: Mapped[str | None] = mapped_column(ForeignKey("trained_models.id", ondelete="SET NULL"), nullable=True)
     previous_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # rollback target
     updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
+class ConsensusJob(Base):
+    """One image set sent to K labelers; the merge writes the agreed labels back."""
+    __tablename__ = "consensus_jobs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="collecting")   # collecting | ready | merged
+    k: Mapped[int] = mapped_column(Integer)
+    iou_threshold: Mapped[float] = mapped_column(Float, default=0.5)
+    image_ids: Mapped[list] = mapped_column(JSON, default=list)
+    agreement: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # per-image {agreement, no_consensus} cache: detail/queue reads must not re-run the pairwise pass
+    image_metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)
 
@@ -507,3 +579,60 @@ class UsageEvent(Base):
     quantity: Mapped[float] = mapped_column(Float, default=0.0)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created: Mapped[float] = mapped_column(Float, default=now, index=True)
+
+
+class ConsensusAssignment(Base):
+    """A labeler's private draft for one image of a job; the Image row is only written on merge."""
+    __tablename__ = "consensus_assignments"
+    __table_args__ = (UniqueConstraint("job_id", "image_id", "user_id"),
+                      Index("ix_consensus_assignments_project_image", "project_id", "image_id"))
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    job_id: Mapped[str] = mapped_column(ForeignKey("consensus_jobs.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32))
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    annotations: Mapped[list] = mapped_column(JSON, default=list)
+    submitted: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class Honeypot(Base):
+    """An image with known-good ground truth; a labeler's save is scored against it once."""
+    __tablename__ = "honeypots"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), unique=True)
+    annotations: Mapped[list] = mapped_column(JSON, default=list)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class HoneypotAttempt(Base):
+    __tablename__ = "honeypot_attempts"
+    __table_args__ = (UniqueConstraint("honeypot_id", "user_id"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    honeypot_id: Mapped[str] = mapped_column(ForeignKey("honeypots.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class LabelEvent(Base):
+    """One annotation save — throughput, AI-acceptance and consensus-pending live here."""
+    __tablename__ = "label_events"
+    __table_args__ = (Index("ix_label_events_project_user_created", "project_id", "user_id", "created"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32))
+    image_id: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[str] = mapped_column(String(32))
+    annotations: Mapped[int] = mapped_column(Integer, default=0)
+    ai_seen: Mapped[int] = mapped_column(Integer, default=0)
+    ai_kept: Mapped[int] = mapped_column(Integer, default=0)
+    # distinct AI annotation ids this save exposed to the labeler; acceptance is derived from these
+    # plus the image's final annotations, never from the per-save counters above
+    ai_ids: Mapped[list] = mapped_column(JSON, default=list)
+    created: Mapped[float] = mapped_column(Float, default=now)

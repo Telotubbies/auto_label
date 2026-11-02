@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactEChartsCore from 'echarts-for-react/lib/core'
 import * as echarts from 'echarts/core'
-import { BarChart, LineChart, ScatterChart } from 'echarts/charts'
+import { BarChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts'
 import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsType } from 'echarts'
@@ -14,7 +14,7 @@ import { classColor, useThemePrefs, viridis } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 echarts.use([
-  LineChart, BarChart, ScatterChart,
+  LineChart, BarChart, ScatterChart, HeatmapChart, PieChart,
   GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, DataZoomComponent, VisualMapComponent,
   CanvasRenderer,
 ])
@@ -259,7 +259,7 @@ function ViewToggle({ value, onChange, label }: { value: 'chart' | 'table'; onCh
  * Card frame every chart shares: title + description, chart/table toggle, export menu,
  * an sr-only summary, and a real <table> fallback supplied by the caller.
  */
-export function ChartCard({ title, description, summary, exportName, csvRows, jsonData, table, actions, className, children }: {
+export function ChartCard({ title, description, summary, exportName, csvRows, jsonData, table, actions, className, initialView = 'chart', chartView = true, children }: {
   title: string
   description?: ReactNode
   summary: string
@@ -269,9 +269,13 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
   table: ReactNode
   actions?: ReactNode
   className?: string
+  /** Widgets that are tables by definition open on the table; there is no chart to draw. */
+  initialView?: 'chart' | 'table'
+  /** False for table widgets: no chart toggle and no PNG of an empty axes canvas. */
+  chartView?: boolean
   children: ReactNode
 }) {
-  const [view, setView] = useState<'chart' | 'table'>('chart')
+  const [view, setView] = useState<'chart' | 'table'>(initialView)
   const slot = useRef<EChartsType | null>(null)
   const theme = useChartTheme()
 
@@ -297,7 +301,7 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
   }
 
   const items = [
-    ...(view === 'chart' ? [{ label: 'PNG image', onClick: () => download('png') }] : []),
+    ...(view === 'chart' && chartView ? [{ label: 'PNG image', onClick: () => download('png') }] : []),
     ...(csvRows?.length ? [{ label: 'CSV data', onClick: () => download('csv') }] : []),
     ...(jsonData !== undefined ? [{ label: 'JSON data', onClick: () => download('json') }] : []),
   ]
@@ -305,19 +309,19 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
   return (
     <Card className={cn('min-w-0 p-4', className)}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 basis-full sm:flex-1">
           <h3 className="text-sm font-semibold">{title}</h3>
           {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {actions}
-          <ViewToggle value={view} onChange={setView} label={`${title} view`} />
+          {chartView ? <ViewToggle value={view} onChange={setView} label={`${title} view`} /> : null}
           <Dropdown align="right" items={items}
             trigger={<Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Export ${title}`}><Download className="h-4 w-4" /></Button>} />
         </div>
       </div>
       <figure className="mt-3 min-w-0">
-        {view === 'chart'
+        {chartView && view === 'chart'
           ? <ChartSlot.Provider value={slot}>{children}</ChartSlot.Provider>
           : <div className="max-h-80 overflow-auto">{table}</div>}
         <figcaption className="sr-only">{summary}</figcaption>

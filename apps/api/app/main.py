@@ -9,12 +9,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
-from .routers import (admin, audit, auth, connectors, deployments, devapi, devmail, flags, images, insights, insights_models, ops,
-                      playground, privacy, projects, rbac, registry, remote, training, versions, videos, webhooks, workspaces)
+from .routers import (admin, audit, auth, connectors, dashboards, deployments, devapi, devmail, flags, images,
+                      insights, insights_lineage, insights_models, labeling, ops, playground, privacy, projects,
+                      rbac, registry, remote, training, versions, videos, streams, webhooks, workspaces)
 from .security import check_signature
 from .services.streamaudit import StreamViewAuditMiddleware
 
@@ -24,6 +26,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    # streams live in-process: a restart forgets every worker, so their rows must say so
+    from sqlalchemy import update
+
+    from .db import session_scope
+    from .gpu import wire_streams
+    from .models import Stream
+    from .streams.manager import manager
+    with session_scope() as db:
+        db.execute(update(Stream).values(status="stopped", last_error=""))
+    wire_streams(manager)
     stop = None
     if EMBEDDED_WORKER:
         from .worker import assert_handlers_claimed, start_background
@@ -32,6 +44,7 @@ async def lifespan(_app: FastAPI):
         assert_handlers_claimed()
         stop = start_background()
     yield
+    manager.stop_all()
     if stop:
         stop.set()
 
@@ -45,7 +58,9 @@ async def gpu_busy(_request, exc: GpuBusy):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+# MJPEG is an endless stream: compressing it would delay the live view.
+app.add_middleware(GZipMiddleware, minimum_size=1024,
+                   exclude_content_types=(*DEFAULT_EXCLUDED_CONTENT_TYPES, "multipart/x-mixed-replace"))
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                    allow_credentials=CORS_ORIGINS != ["*"])
 
@@ -64,7 +79,8 @@ async def security_headers(request, call_next):
 
 
 for r in (auth, workspaces, projects, images, videos, versions, devapi, training, remote, registry, playground,
-          connectors, webhooks, insights, insights_models, rbac, privacy, admin, audit, deployments, ops, flags):
+          connectors, webhooks, insights, insights_models, insights_lineage, dashboards, labeling, rbac, privacy,
+          admin, audit, deployments, ops, flags, streams):
     app.include_router(r.router)
 app.include_router(registry.gpu_router)
 app.include_router(ops.ws_router)

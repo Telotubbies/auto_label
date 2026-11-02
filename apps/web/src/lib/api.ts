@@ -2,13 +2,16 @@
 // different hosts (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 import type {
   AdminJobsHealth, AdminOverview, AdminStatus, AdminWorkspace, Analytics, Annotation, AuditFilters,
-  AuditRow, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, CustomRole,
-  DeploymentAlias, DeploymentOverview, DpaDoc, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry,
-  InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary, InsightVersionDiff,
-  Job, LabelClass, LeaderboardRow, Me, Member, ModelDetections, ModelInsights,
-  ModelItem, Permissions, PlaygroundResult, Project, ProjectAccess, ProjectPrivacy, ProjectPrivacyInput,
-  ProjectRole, RegistryItem, RoleLevel, TrainingInsights, Version, VideoFrame, VideoItem,
-  WorkerRow, WorkspaceFlags, WorkspaceInfo, WorkspacePrivacy,
+  AuditRow, AutoLabelInput, AutoLabelPreview, Batch, Board, CompareInsights, ConsensusJob,
+  ConsensusJobDetail, ConsensusSubmitResult, CustomRole, DashboardSummary, DeploymentAlias, DeploymentOverview,
+  DpaDoc, HoneypotItem, HoneypotList, ImageItem, InsightDistribution, InsightEmbedding, InsightGeometry,
+  InsightImageStats, InsightLabeling, InsightLeakage, InsightSelection, InsightSelectionRef, InsightSummary,
+  InsightVersionDiff, Job, LabelClass, LabelingDashboard, LeaderboardRow, Lineage, Me, Member, ModelDetections,
+  ModelInsights, ModelItem, MyTask, Permissions, PlaygroundResult, PlaygroundRuntime, PlaygroundSample, Project,
+  ProjectAccess, ProjectPrivacy, ProjectPrivacyInput, ProjectRole, RegistryItem, ReviewQueueItem, RoleLevel,
+  StreamAnalytics, StreamCreateBody, StreamEventItem, StreamEventPage, StreamItem, StreamPatchBody, StreamVideoUpload,
+  TrainingInsights, Version, VideoFrame, VideoItem, WidgetData, WorkerRow, WorkspaceFlags, WorkspaceHome,
+  WorkspaceInfo, WorkspacePrivacy,
 } from './types'
 
 export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -140,6 +143,7 @@ export const api = {
   config: () => get<{ signup_enabled: boolean; sam: { loaded: boolean; error: string | null } }>('/config'),
   me: () => get<Me>('/me'),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
+  home: (ws: string) => get<WorkspaceHome>(`/ws/${ws}/home`),
   flags: (ws: string) => get<WorkspaceFlags>(`/ws/${ws}/flags`),
   setFlag: (ws: string, key: string, enabled: boolean) =>
     put<{ key: string; enabled: boolean }>(`/ws/${ws}/flags/${encodeURIComponent(key)}`, { enabled }),
@@ -189,6 +193,9 @@ export const api = {
   autolabelPreview: (ws: string, p: string, body: AutoLabelInput & { sample?: number }) =>
     post<AutoLabelPreview>(`${P(ws, p)}/autolabel/preview`, body),
   playgroundPredict: (ws: string, form: FormData) => post<{ results: PlaygroundResult[] }>(`/ws/${ws}/playground/predict`, form),
+  playgroundPreflight: (ws: string, refs: string[]) =>
+    post<{ models: PlaygroundRuntime[] }>(`/ws/${ws}/playground/preflight`, { model_refs: refs }),
+  playgroundSamples: (ws: string, limit = 6) => get<{ samples: PlaygroundSample[] }>(`/ws/${ws}/playground/samples?limit=${limit}`),
   insights: {
     summary: (ws: string, p: string, version?: string) =>
       get<InsightSummary>(`${P(ws, p)}/insights/summary${version ? `?version=${encodeURIComponent(version)}` : ''}`),
@@ -213,6 +220,25 @@ export const api = {
     selection: (ws: string, p: string, token: string) =>
       get<InsightSelection>(`${P(ws, p)}/insights/selections/${encodeURIComponent(token)}`),
   },
+
+  // --- Insights Studio (Task 20c): lineage, stream analytics, dashboard builder ---
+  lineage: (ws: string, p: string) => get<Lineage>(`${P(ws, p)}/insights/lineage`),
+  streamAnalytics: (ws: string, p: string, days = 30, tzOffset = 0) =>
+    get<StreamAnalytics>(`${P(ws, p)}/insights/streams?days=${days}&tz_offset=${tzOffset}`),
+  widgetQuery: (ws: string, p: string,
+    body: { source: string; measure: string; dimension: string; dimension2?: string | null; filters?: Record<string, string | number | undefined> }) =>
+    post<WidgetData>(`${P(ws, p)}/insights/query`, body),
+  dashboards: (ws: string, p: string) => get<DashboardSummary[]>(`${P(ws, p)}/dashboards`),
+  dashboard: (ws: string, p: string, id: string) => get<DashboardSummary>(`${P(ws, p)}/dashboards/${id}`),
+  createDashboard: (ws: string, p: string, body: { name: string; widgets: unknown[] }) =>
+    post<DashboardSummary>(`${P(ws, p)}/dashboards`, body),
+  updateDashboard: (ws: string, p: string, id: string, body: { name?: string; widgets?: unknown[] }) =>
+    patch<DashboardSummary>(`${P(ws, p)}/dashboards/${id}`, body),
+  deleteDashboard: (ws: string, p: string, id: string) => del<{ ok: boolean }>(`${P(ws, p)}/dashboards/${id}`),
+  shareDashboard: (ws: string, p: string, id: string) =>
+    post<{ token: string; path: string }>(`${P(ws, p)}/dashboards/${id}/share`, {}),
+  sharedDashboard: (ws: string, p: string, token: string) =>
+    get<DashboardSummary>(`${P(ws, p)}/dashboards/shared/${encodeURIComponent(token)}`),
 
   // --- RBAC ---
   permissions: (ws: string, project?: string) => get<Permissions>(`/ws/${ws}/permissions${qs({ project })}`),
@@ -250,5 +276,49 @@ export const api = {
   adminJobs: (f: { status?: string; kind?: string; limit?: number } = {}) => get<AdminJobsHealth>(`/admin/jobs${qs(f)}`),
   adminWorkers: () => get<{ stale_after: number; workers: WorkerRow[] }>('/admin/workers'),
   adminStatus: () => get<AdminStatus>('/admin/status'),
+  // --- labeling QA & workforce (Task 23) --------------------------------------
+  labelingDashboard: (ws: string, p: string, days = 30) => get<LabelingDashboard>(`${P(ws, p)}/labeling/dashboard?days=${days}`),
+  labelingTasks: (ws: string, p: string) => get<{ tasks: MyTask[] }>(`${P(ws, p)}/labeling/my-tasks`),
+  labelingReviewQueue: (ws: string, p: string, limit = 50) =>
+    get<{ items: ReviewQueueItem[] }>(`${P(ws, p)}/labeling/review-queue?limit=${limit}`),
+  labelingJobs: (ws: string, p: string) => get<{ jobs: ConsensusJob[] }>(`${P(ws, p)}/labeling/consensus`),
+  labelingJob: (ws: string, p: string, id: string) => get<ConsensusJobDetail>(`${P(ws, p)}/labeling/consensus/${id}`),
+  createConsensus: (ws: string, p: string, body: { image_ids?: string[]; count?: number; k?: number; iou_threshold?: number }) =>
+    post<ConsensusJob>(`${P(ws, p)}/labeling/consensus`, body),
+  mergeConsensus: (ws: string, p: string, id: string) =>
+    post<{ merged: number; skipped: number; status: 'merged' }>(`${P(ws, p)}/labeling/consensus/${id}/merge`, {}),
+  // Autosave only writes the caller's private draft; this is the only call that submits it.
+  submitConsensus: (ws: string, p: string, jobId: string, imageId: string, annotations?: Annotation[]) =>
+    post<ConsensusSubmitResult>(`${P(ws, p)}/labeling/consensus/${jobId}/images/${imageId}/submit`, { annotations }),
+  honeypots: (ws: string, p: string) => get<HoneypotList>(`${P(ws, p)}/labeling/honeypots`),
+  createHoneypot: (ws: string, p: string, body: { image_id: string; annotations?: Annotation[] }) =>
+    post<HoneypotItem>(`${P(ws, p)}/labeling/honeypots`, body),
+  deleteHoneypot: (ws: string, p: string, id: string) => del<{ ok: true }>(`${P(ws, p)}/labeling/honeypots/${id}`),
+
+  // ---- streams (CCTV) -------------------------------------------------------
+  streams: (ws: string, p: string) => get<StreamItem[]>(`${P(ws, p)}/streams`),
+  stream: (ws: string, p: string, id: string) => get<StreamItem>(`${P(ws, p)}/streams/${id}`),
+  createStream: (ws: string, p: string, body: StreamCreateBody) => post<StreamItem>(`${P(ws, p)}/streams`, body),
+  updateStream: (ws: string, p: string, id: string, body: StreamPatchBody) => patch<StreamItem>(`${P(ws, p)}/streams/${id}`, body),
+  deleteStream: (ws: string, p: string, id: string) => del<{ ok: boolean }>(`${P(ws, p)}/streams/${id}`),
+  startStream: (ws: string, p: string, id: string) => post<StreamItem>(`${P(ws, p)}/streams/${id}/start`, {}),
+  stopStream: (ws: string, p: string, id: string) => post<StreamItem>(`${P(ws, p)}/streams/${id}/stop`, {}),
+  /** Multipart upload: req() leaves Content-Type to the browser, like Playground's predict. */
+  uploadStreamVideo: (ws: string, p: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return req<StreamVideoUpload>(`${P(ws, p)}/streams/upload-video`, { method: 'POST', body: form })
+  },
+  /** Server-side filters: `rule` is the rule index, `class` a class name, `reviewed` yes|no. */
+  streamEvents: (ws: string, p: string, id: string, q: { rule?: number; class?: string; reviewed?: 'yes' | 'no'; kind?: string; offset?: number; limit?: number } = {}) => {
+    const search = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') search.set(k, String(v))
+    const qs = search.toString()
+    return get<StreamEventPage>(`${P(ws, p)}/streams/${id}/events${qs ? `?${qs}` : ''}`)
+  },
+  patchStreamEvent: (ws: string, p: string, id: string, eid: string, reviewed: boolean) =>
+    patch<StreamEventItem>(`${P(ws, p)}/streams/${id}/events/${eid}`, { reviewed }),
+  eventToDataset: (ws: string, p: string, id: string, eid: string) =>
+    post<{ uploaded: number; duplicates: number }>(`${P(ws, p)}/streams/${id}/events/${eid}/to-dataset`, {}),
   P,
 }

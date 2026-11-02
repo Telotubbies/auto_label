@@ -11,9 +11,10 @@ import threading
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Audit, Image, Job, LabelClass, Member, Project, TrainedModel, User, Version, now
+from ..models import Audit, Image, Job, LabelClass, LabelEvent, Member, Project, TrainedModel, User, Version, now
 from ..security import sign_path
-from . import insights_dataset, insights_eval as agg, versioning
+from . import insights_dataset, versioning
+from . import insights_eval as agg
 from .insights_common import cached, clear_cache, data_stamp, model_in_project
 from .insights_common import signature as model_signature
 from .insights_selection import resolve_selection, save_selection, selection_info  # noqa: F401 re-exported
@@ -62,10 +63,19 @@ def signature(db: Session, project: Project, version: Version | None = None) -> 
         .where(LabelClass.project_id == project.id)
         .order_by(LabelClass.id)
     ).all()
+    # Labeling aggregates read LabelEvent, so a new save must invalidate them even though the image
+    # row itself has not changed yet (a draft save does not touch the Image row).
+    label_count, label_updated = db.execute(
+        select(func.count(LabelEvent.id), func.max(LabelEvent.created)).where(
+            LabelEvent.workspace_id == project.workspace_id, LabelEvent.project_id == project.id
+        )
+    ).one()
     base = (
         int(count or 0),
         float(updated or 0.0),
         int(deleted or 0),
+        int(label_count or 0),
+        float(label_updated or 0.0),
         json.dumps([(cid, name, color) for cid, name, color in class_rows], default=str),
     )
     scope = ""
@@ -124,6 +134,16 @@ def source_splits(manifest: dict) -> dict:
         if source and split and source not in out:
             out[source] = split
     return out
+
+
+def version_manifest(version: Version) -> dict | None:
+    """Parsed manifest.json (cached): lineage and frozen-split readers share one parse."""
+    return _manifest(version)
+
+
+def dataset_rows(db: Session, project: Project, version: Version | None = None) -> tuple[list[Image], dict | None]:
+    """Live images plus the frozen source-id -> split map when a version scopes the read."""
+    return _scoped(db, project, version)
 
 
 def version_scope(db: Session, project: Project, version_id: str | None) -> tuple[Version | None, dict | None]:
@@ -226,7 +246,15 @@ def labeling(db: Session, project: Project) -> dict:
                 select(User).join(Member, Member.user_id == User.id).where(Member.workspace_id == project.workspace_id)
             )
         }
-        return insights_dataset.labeling(rows, audits, users, now())
+        cutoff = now() - insights_dataset.WINDOW_DAYS * insights_dataset.DAY
+        events = db.scalars(
+            select(LabelEvent).where(
+                LabelEvent.workspace_id == project.workspace_id,
+                LabelEvent.project_id == project.id,
+                LabelEvent.created >= cutoff,
+            )
+        ).all()
+        return insights_dataset.labeling(rows, audits, users, events)
 
     return _cached(db, project, None, "labeling", compute)
 

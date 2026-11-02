@@ -63,6 +63,19 @@ services:
     depends_on:
       db: { condition: service_healthy }
 
+  # Self-hosted inference (optional, single tenant). No API keys or workspace settings are passed:
+  # mount exported weights read-only and call http://<host>:${LD_INFERENCE_PORT}/predict.
+  #   docker compose --profile inference up -d --build
+  inference:
+    profiles: ["inference"]
+    build: ../apps/inference
+    restart: unless-stopped
+    ports: ["${LD_INFERENCE_PORT:-8010}:8010"]
+    environment:
+      LD_INFERENCE_MODELS: /models
+    volumes:
+      - ${LD_INFERENCE_MODELS_DIR:-./models}:/models:ro
+
   db:
     image: postgres:16-alpine
     restart: unless-stopped

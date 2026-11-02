@@ -1,8 +1,9 @@
 """Health-check read models and recommendations.
 
-Object-size buckets and geometry flags are cheap and read straight from the image rows. The two
-expensive checks — pHash grouping and model inference for missing boxes — live in `health_scan`, run
-in the `health` worker job, and are cached on the job row; the analytics request only reads that row.
+Object-size buckets, geometry flags and the stored quality scores are cheap and read straight from
+the image rows. The two expensive checks — pHash grouping and model inference for missing boxes —
+live in `health_scan`, run in the `health` worker job, and are cached on the job row; the analytics
+request only reads that row.
 """
 
 from collections import Counter
@@ -11,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Image, Project
-from . import health_scan
+from . import health_scan, quality
 from .health_scan import (  # re-exported for routers/worker/tests
     box,
     cached,
@@ -103,6 +104,7 @@ def compute_checks(db: Session, project: Project, imgsz: int = 640) -> dict:
         "label_quality": flags,
         "missing_boxes": scanned.get("missing_boxes") or [],
         "leakage_pairs": scanned.get("leakage_pairs") or 0,
+        "quality": quality.summary(db, project),
     }
 
 
@@ -121,6 +123,7 @@ def checks(db: Session, project: Project, imgsz: int = 640, *, auto_scan: bool =
         "label_quality": flags,
         "missing_boxes": scanned.get("missing_boxes") or [],
         "leakage_pairs": scanned.get("leakage_pairs") or 0,
+        "quality": quality.summary(db, project),
     }
 
 
@@ -150,6 +153,17 @@ def recommendations(checks: dict) -> list[dict]:
                 "suggest": {"filter": "label_quality"},
             }
         )
+    quality_counts = (checks.get("quality") or {}).get("counts") or {}
+    for kind, label in (("blurry", "blurry"), ("dark", "too dark")):
+        n = quality_counts.get(kind, 0)
+        if n:
+            out.append(
+                {
+                    "key": f"quality_{kind}",
+                    "message": f"{n} {'image is' if n == 1 else 'images are'} {label} — view them",
+                    "suggest": {"quality": kind},
+                }
+            )
     if boxes := checks.get("missing_boxes") or []:
         n = len(boxes)
         out.append(
