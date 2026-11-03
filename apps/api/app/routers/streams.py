@@ -17,11 +17,15 @@ from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, Workspace
 from ..security import check_signature, sign_path, sign_query
 from ..streams.event_fields import class_key
+from ..services.flags import require_workspace_flag
 from ..streams.manager import check_source, display_source, manager
 from .images import ingest, safe_name
 
 P = "/api/ws/{ws}/projects/{project}/streams"
 router = APIRouter(prefix=P, tags=["streams"])
+# Gated per route, not on the router: stop/delete stay reachable while task_10b is off, so the
+# kill switch never goes dark on a camera that is still capturing (I-2).
+_GATE = [Depends(require_workspace_flag("task_10b"))]
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 TOKEN_TTL = 12 * 3600
@@ -201,7 +205,7 @@ class StreamIn(BaseModel):
     rules: list = Field(default_factory=list)
 
 
-@router.post("")
+@router.post("", dependencies=_GATE)
 def create(body: StreamIn, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     name = body.name.strip()
@@ -222,7 +226,7 @@ def create(body: StreamIn, c: Ctx = Depends(project_ctx)):
     return stream_out(c, s)
 
 
-@router.get("")
+@router.get("", dependencies=_GATE)
 def list_streams(c: Ctx = Depends(project_ctx)):
     rows = c.db.scalars(select(Stream).where(Stream.workspace_id == c.ws.id, Stream.project_id == c.project.id)
                         .order_by(Stream.created.desc(), Stream.id)).all()
@@ -238,12 +242,12 @@ class StreamPatch(BaseModel):
     rules: list | None = None
 
 
-@router.get("/{sid}")
+@router.get("/{sid}", dependencies=_GATE)
 def get_stream(sid: str, c: Ctx = Depends(project_ctx)):
     return stream_out(c, _get(c, sid))
 
 
-@router.patch("/{sid}")
+@router.patch("/{sid}", dependencies=_GATE)
 def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     s = _get(c, sid)
@@ -301,7 +305,7 @@ def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
     return {"ok": True}
 
 
-@router.post("/{sid}/start")
+@router.post("/{sid}/start", dependencies=_GATE)
 def start_stream(sid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     s = _get(c, sid)
@@ -325,7 +329,7 @@ def stop_stream(sid: str, c: Ctx = Depends(project_ctx)):
     return stream_out(c, s)
 
 
-@router.post("/upload-video")
+@router.post("/upload-video", dependencies=_GATE)
 async def upload_video(file: UploadFile = File(...), c: Ctx = Depends(project_ctx)):
     c.need("admin")
     original = file.filename or "clip"
@@ -370,7 +374,7 @@ def _live_stream(ws: str, project: str, sid: str) -> None:
             raise HTTPException(404, "stream not found")
 
 
-@router.get("/{sid}/frame")
+@router.get("/{sid}/frame", dependencies=_GATE)
 def frame(ws: str, project: str, sid: str, exp: int = 0, sig: str = "", viewer: str = ""):
     _check_view(ws, project, sid, "frame", exp, sig, viewer)
     _live_stream(ws, project, sid)
@@ -380,7 +384,7 @@ def frame(ws: str, project: str, sid: str, exp: int = 0, sig: str = "", viewer: 
     return Response(data, media_type="image/jpeg")
 
 
-@router.get("/{sid}/mjpeg")
+@router.get("/{sid}/mjpeg", dependencies=_GATE)
 def mjpeg(ws: str, project: str, sid: str, exp: int = 0, sig: str = "", viewer: str = ""):
     _check_view(ws, project, sid, "mjpeg", exp, sig, viewer)
     _live_stream(ws, project, sid)
@@ -407,7 +411,7 @@ def _like(term: str) -> str:
     return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
-@router.get("/{sid}/events")
+@router.get("/{sid}/events", dependencies=_GATE)
 def list_events(sid: str, rule: str = "", klass: str = Query("", alias="class"), reviewed: str = "",
                 kind: str = "", offset: int = 0, limit: int = 100, c: Ctx = Depends(project_ctx)):
     _get(c, sid)
@@ -444,7 +448,7 @@ class ReviewIn(BaseModel):
     reviewed: bool
 
 
-@router.patch("/{sid}/events/{eid}")
+@router.patch("/{sid}/events/{eid}", dependencies=_GATE)
 def patch_event(sid: str, eid: str, body: ReviewIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
     _get(c, sid)
@@ -456,7 +460,7 @@ def patch_event(sid: str, eid: str, body: ReviewIn, c: Ctx = Depends(project_ctx
     return event_out(ev)
 
 
-@router.post("/{sid}/events/{eid}/to-dataset")
+@router.post("/{sid}/events/{eid}/to-dataset", dependencies=_GATE)
 def event_to_dataset(sid: str, eid: str, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
     s = _get(c, sid)

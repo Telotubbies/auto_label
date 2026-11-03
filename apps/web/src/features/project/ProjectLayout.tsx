@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams 
 import { useQuery } from '@tanstack/react-query'
 import { BrainCircuit, Eye } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useWorkspaceFlags } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Project } from '@/lib/types'
 import { ProjectPanel, projectNavGroups } from '@/components/shell'
@@ -19,6 +20,8 @@ export default function ProjectLayout() {
   const nav = useNavigate()
   const location = useLocation()
   const { can: canProject, role: projectRole } = useProjectPermissions(ws, slug)
+  const flagsQuery = useWorkspaceFlags()
+  const flags = flagsQuery.data ? new Set(flagsQuery.data.enabled) : undefined
   const q = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug) })
   const [slot, setSlot] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => { setSlot(document.getElementById('topbar-actions')) }, [])
@@ -28,7 +31,7 @@ export default function ProjectLayout() {
   const review = project.statusCounts?.review ?? 0
   // Below lg the project panel is hidden; one compact strip keeps every section reachable.
   // Same builder and project role as ProjectPanel, so a role never sees a different IA by width.
-  const items = projectNavGroups(canProject, projectRole).flatMap((g) => g.items)
+  const items = projectNavGroups(canProject, projectRole, flags).flatMap((g) => g.items)
   const section = location.pathname.split('/').pop() ?? 'browse'
   return (
     <div className="flex h-full">

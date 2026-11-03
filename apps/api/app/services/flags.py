@@ -12,12 +12,17 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..db import SessionLocal
 from ..deps import Ctx, ws_ctx
-from ..models import WorkspaceFlag, now
+from ..models import Workspace, WorkspaceFlag, now
 
-# Convention: one line per task, keyed `task_<id>`, described in one sentence. Default is off.
+# One line per shipped surface, keyed `task_<id>`, described in one sentence. Default is off;
+# each surface's API router and UI route/nav entry references the same key.
 FLAGS: dict[str, str] = {
-    "task_f1": "Per-workspace feature flags",
+    "task_10b": "CCTV streams: live cameras, zones and event rules",
+    "task_20c": "Analysis studio: lineage, dashboards and stream analytics",
+    "task_22": "Video authoring: frame timeline and track forward",
+    "task_23": "Review & quality: consensus, honeypots and the review queue",
 }
 
 
@@ -60,5 +65,22 @@ def require_flag(key: str) -> Callable[..., None]:
     """FastAPI dependency: 404 for the whole workspace when ``key`` is off."""
     def dependency(c: Ctx = Depends(ws_ctx)) -> None:
         if not is_enabled(key, c.db, c.ws.id):
+            raise HTTPException(404, "not found")
+    return dependency
+
+
+def require_workspace_flag(key: str) -> Callable[..., None]:
+    """Like :func:`require_flag`, for routers that also serve signature-only URLs.
+
+    The workspace comes from the path instead of a session, so a signed ``frame``/``mjpeg``
+    URL is gated by the same flag without demanding a bearer token. This dependency opens and
+    closes its own session: a ``Depends(get_db)`` session would stay checked out for the whole
+    endless MJPEG body and pin one pooled connection per viewer.
+    """
+    def dependency(ws: str) -> None:
+        with SessionLocal() as db:
+            workspace_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+            ok = workspace_id is not None and is_enabled(key, db, workspace_id)
+        if not ok:
             raise HTTPException(404, "not found")
     return dependency

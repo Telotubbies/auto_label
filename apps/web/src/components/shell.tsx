@@ -8,6 +8,7 @@ import {
   Tag, Tags, Upload, User, Users, Wrench, X, Zap,
 } from 'lucide-react'
 import { api, fileUrl, get, post } from '@/lib/api'
+import { useWorkspaceFlags } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
 import type { Job, Project, ProjectRole } from '@/lib/types'
@@ -192,8 +193,10 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
  * Icon-carrying project nav for every renderer. The desktop panel and the compact strip both call
  * this with the same permission check and project role, so a role never sees a different IA by width.
  */
-export function projectNavGroups(can: (perm: string) => boolean, role?: ProjectRole | null) {
-  return visibleProjectNav(can, role).map((g) => ({
+export function projectNavGroups(
+  can: (perm: string) => boolean, role?: ProjectRole | null, flags?: ReadonlySet<string>,
+) {
+  return visibleProjectNav(can, role, flags).map((g) => ({
     group: g.label ?? '',
     items: g.items.map((i) => ({ ...i, icon: ICONS[i.icon] })),
   }))
@@ -211,8 +214,10 @@ export function ProjectPanel({ project }: { project: Project }) {
   // Project routes follow the resolved project role (manager/reviewer may sit on a member workspace
   // account). Until the fetch lands, workspace admins keep seeing the full nav.
   const { can: canProject, ready, role: projectRole } = useProjectPermissions(ws, project.slug)
+  const flagsQuery = useWorkspaceFlags()
+  const flags = flagsQuery.data ? new Set(flagsQuery.data.enabled) : undefined
   const visible = (perm: string) => (ready ? canProject(perm) : can('admin'))
-  const groups = projectNavGroups(visible, projectRole)
+  const groups = projectNavGroups(visible, projectRole, flags)
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">

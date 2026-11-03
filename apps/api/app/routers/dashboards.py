@@ -5,9 +5,11 @@ from pydantic import BaseModel, Field
 
 from ..deps import Ctx, audit, project_ctx
 from ..services import insights_dashboards
+from ..services.flags import require_flag
 
 router = APIRouter(
-    prefix="/api/ws/{ws}/projects/{project}/dashboards", tags=["insights"]
+    prefix="/api/ws/{ws}/projects/{project}/dashboards", tags=["insights"],
+    dependencies=[Depends(require_flag("task_20c"))],
 )
 
 

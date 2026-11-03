@@ -321,12 +321,12 @@ test('every workspace nav link is active at the href the sidebar renders', () =>
 test('the compact project strip and the project panel derive from one role-filtered list', () => {
   assert.ok(shellSrc.includes('export function projectNavGroups('),
     'shell.tsx must expose the shared, role-aware project nav builder')
-  assert.ok(shellSrc.includes('projectNavGroups(visible, projectRole)'),
+  assert.ok(shellSrc.includes('projectNavGroups(visible, projectRole'),
     'the desktop panel must render the shared builder')
-  assert.ok(projectLayoutSrc.includes('projectNavGroups(canProject, projectRole)'),
+  assert.ok(projectLayoutSrc.includes('projectNavGroups(canProject, projectRole'),
     'the compact strip must render the same builder, with the resolved project role')
   assert.ok(!projectLayoutSrc.includes('filter((i) => canProject(i.perm))'),
     'the strip must not filter on permission alone: project.classes is granted to labelers')
-  assert.ok(projectLayoutSrc.includes('const items = projectNavGroups(canProject, projectRole)'),
+  assert.ok(projectLayoutSrc.includes('const items = projectNavGroups(canProject, projectRole'),
     'the strip must reuse its single items list instead of recomputing it')
 })

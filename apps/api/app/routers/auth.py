@@ -21,7 +21,7 @@ from ..security import (hash_password, issue_access, issue_mfa_pending, new_refr
                         token_hash, verify_mfa, verify_password)
 
 _DUMMY_HASH = hash_password('timing-equaliser')
-from ..services import secretbox, segment
+from ..services import capabilities, secretbox, segment
 from ..superadmin import is_superadmin
 
 log = logging.getLogger("labeldesk")
@@ -144,7 +144,9 @@ def _revoke_other_sessions(db: Session, u: User, request: Request):
 @router.get("/config")
 def public_config():
     return {"signup_enabled": SIGNUP_ENABLED, "oidc": {"issuer": oidc.ISSUER or None, "client_id": oidc.CLIENT_ID or None},
-            "sam": segment.sam_status()}
+            "sam": segment.sam_status(),
+            "vlm": {"configured": capabilities.vlm_configured()},
+            "addons": {"available": capabilities.addons_available()}}
 
 
 class SignupIn(BaseModel):

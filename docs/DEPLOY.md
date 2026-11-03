@@ -42,6 +42,10 @@ sudo docker compose up -d --build
 
 5. เปิด `https://labeldesk.example.com` แล้วสมัครบัญชีแรก หลังสมัครควรปิด sign-up โดยตั้ง `LD_SIGNUP_ENABLED=0` แล้วใช้ invite link เชิญคนอื่นแทน
 
+> ฟีเจอร์ที่ยังไม่พร้อมเปิดให้ทุกคน (สตรีม, lineage/dashboards, วิดีโอ, QA) ปิดไว้เป็นค่าเริ่มต้น
+> เปิดได้สองทาง: ให้แอดมินของ workspace เปิดใน Settings → Feature flags หรือใส่ `LD_FLAGS_ON`
+> ใน `.env` ของ API (เช่น `task_10b,task_20c,task_22,task_23`) เพื่อเปิดทุก workspace
+
 > แค่นี้ก็ใช้งานได้ครบแล้ว (เว็บ, API, DB อยู่บน VM ตัวเดียว) ส่วนข้อ 2 ทำเฉพาะเมื่ออยากให้หน้าเว็บอยู่บน Vercel
 
 ## 2. (ไม่บังคับ) Web บน Vercel

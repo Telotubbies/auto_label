@@ -43,6 +43,8 @@ export interface ProjectNavItem {
   perm: string
   /** Narrower audience than the permission, for pages the IA hides from labelers. */
   roles?: ProjectRole[]
+  /** Feature flag that gates both this nav entry and its API surface. */
+  flag?: string
   /** Show the project's image count beside the label. */
   count?: boolean
 }
@@ -82,7 +84,7 @@ export const projectNav: NavGroup<ProjectNavItem>[] = [
     { to: 'upload', label: 'Upload', icon: 'upload', perm: 'project.upload' },
     { to: 'browse', label: 'Dataset', icon: 'dataset', perm: 'project.read', count: true },
     // Video authoring (Task 22) sits with the images it annotates.
-    { to: 'videos', label: 'Video', icon: 'video', perm: 'project.annotate' },
+    { to: 'videos', label: 'Video', icon: 'video', perm: 'project.annotate', flag: 'task_22' },
     { to: 'versions', label: 'Versions', icon: 'versions', perm: 'project.export' },
     // Labelers may edit the ontology through the API, but the IA keeps the page for reviewers+.
     { to: 'classes', label: 'Classes & Tags', icon: 'classes', perm: 'project.classes', roles: ['manager', 'reviewer'] },
@@ -93,7 +95,7 @@ export const projectNav: NavGroup<ProjectNavItem>[] = [
   { id: 'label', label: 'LABEL', items: [
     { to: 'annotate', label: 'Annotate', icon: 'annotate', perm: 'project.annotate' },
     // Task 23's QA hub opens on project.review; labelers reach their queue through Annotate.
-    { to: 'qa', label: 'Review & Quality', icon: 'qa', perm: 'project.review', roles: ['manager', 'reviewer'] },
+    { to: 'qa', label: 'Review & Quality', icon: 'qa', perm: 'project.review', roles: ['manager', 'reviewer'], flag: 'task_23' },
   ]},
   { id: 'models', label: 'MODELS', items: [
     { to: 'train', label: 'Train', icon: 'train', perm: 'project.train' },
@@ -102,14 +104,14 @@ export const projectNav: NavGroup<ProjectNavItem>[] = [
   ]},
   // Task 20c's analysis studio: lineage, dashboard builder and stream analytics.
   { id: 'studio', label: 'STUDIO', items: [
-    { to: 'lineage', label: 'Lineage', icon: 'lineage', perm: 'project.review' },
-    { to: 'dashboards', label: 'Dashboards', icon: 'dashboards', perm: 'project.review' },
-    { to: 'stream-analytics', label: 'Stream analytics', icon: 'streamAnalytics', perm: 'project.review' },
+    { to: 'lineage', label: 'Lineage', icon: 'lineage', perm: 'project.review', flag: 'task_20c' },
+    { to: 'dashboards', label: 'Dashboards', icon: 'dashboards', perm: 'project.review', flag: 'task_20c' },
+    { to: 'stream-analytics', label: 'Stream analytics', icon: 'streamAnalytics', perm: 'project.review', flag: 'task_20c' },
   ]},
   { id: 'deploy', label: 'DEPLOY', items: [
     { to: 'deploy', label: 'Deploy & Test', icon: 'deploy', perm: 'project.models' },
     // Task 10b's CCTV streams are a deploy surface; any project member may view them.
-    { to: 'streams', label: 'Streams', icon: 'streams', perm: 'project.read' },
+    { to: 'streams', label: 'Streams', icon: 'streams', perm: 'project.read', flag: 'task_10b' },
   ]},
   // Access is a tab of Project settings since the v2 tree; the separate /access route redirects.
   { id: 'settings', label: 'SETTINGS', items: [
@@ -180,16 +182,18 @@ export function workspaceIndexPath(role: Role | null): string {
 }
 
 export function canSeeProjectItem(
-  item: Pick<ProjectNavItem, 'perm' | 'roles'>, can: (perm: string) => boolean, role?: ProjectRole | null,
+  item: Pick<ProjectNavItem, 'perm' | 'roles' | 'flag'>, can: (perm: string) => boolean,
+  role?: ProjectRole | null, flags?: ReadonlySet<string>,
 ): boolean {
+  if (item.flag && flags && !flags.has(item.flag)) return false
   return can(item.perm) && inAudience(item.roles, role)
 }
 
 export function visibleProjectNav(
-  can: (perm: string) => boolean, role?: ProjectRole | null,
+  can: (perm: string) => boolean, role?: ProjectRole | null, flags?: ReadonlySet<string>,
 ): NavGroup<ProjectNavItem>[] {
   return projectNav
-    .map((g) => ({ ...g, items: g.items.filter((i) => canSeeProjectItem(i, can, role)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => canSeeProjectItem(i, can, role, flags)) }))
     .filter((g) => g.items.length > 0)
 }
 

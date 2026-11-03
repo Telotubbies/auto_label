@@ -3,7 +3,9 @@ import {
   Boxes, Gauge, Radio, Sparkles, Timer, TriangleAlert, User, UserCheck, type LucideIcon,
 } from 'lucide-react'
 import { classColor } from '@/lib/theme'
+import { useCapabilities } from '@/lib/capabilities'
 import { cn } from '@/lib/utils'
+import { landingAddonState } from '../addons'
 import { DotGrid, Reveal, SectionHeading, SectionShell, TagPill } from '../primitives'
 
 // A precise instrument, not generic SaaS: solid data surfaces, hairline rules,
@@ -72,13 +74,17 @@ function ConfidenceMeter({ value }: { value: number }) {
 }
 
 function AutoLabelCard() {
+  const { addonsAvailable } = useCapabilities()
+  const addon = landingAddonState(addonsAvailable)
   return (
     <Reveal delay={0} className="flex min-w-0 lg:col-span-2">
       <article className={cn(CARD, 'w-full min-w-0')}>
         <TagPill className="self-start" icon={<Sparkles className="size-4" aria-hidden />}>Auto-label</TagPill>
         <CardHeading
-          title="Optional SAM 3.1 and VLM checks."
-          body="Connect SAM 3.1 and a vision model to the worker and masks arrive with a class and a confidence, marked AI until a person touches them."
+          title={addon.available ? 'SAM 3.1 and VLM checks are connected.' : 'Optional SAM 3.1 and VLM checks.'}
+          body={addon.available
+            ? 'Masks arrive with a class and a confidence, marked AI until a person touches them.'
+            : `${addon.label}: ${addon.detail}`}
         />
         <MockPanel tone="bg-accent text-accent-foreground">
           <div className="mb-2 flex items-baseline justify-between gap-2 text-[10px] font-medium">
