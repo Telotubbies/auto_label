@@ -23,9 +23,9 @@ const perms = (...granted) => {
   return (p) => set.has(p)
 }
 const MANAGER = perms('project.read', 'project.annotate', 'project.review', 'project.upload', 'project.export',
-  'project.classes', 'project.train', 'project.models', 'project.infer', 'project.settings')
+  'project.classes', 'project.train', 'project.models', 'project.infer', 'project.settings', 'project.streams')
 const REVIEWER = perms('project.read', 'project.annotate', 'project.review', 'project.upload', 'project.export',
-  'project.classes', 'project.models', 'project.infer')
+  'project.classes', 'project.models', 'project.infer', 'project.streams')
 const LABELER = perms('project.read', 'project.annotate', 'project.classes', 'project.infer')
 const VIEWER = perms('project.read')
 
@@ -127,17 +127,15 @@ test('a labeler sees dataset, video and annotate only — the IA labeler view', 
   assert.deepEqual(groupLabels(visibleProjectNav(LABELER, 'labeler')), [
     ['DATA', ['Dataset', 'Video']],
     ['LABEL', ['Annotate']],
-    // Streams are viewable by any project member (Task 10b), like the deploy surface they feed.
-    ['DEPLOY', ['Streams']],
+    // Streams carry camera footage and predictions: project.streams (manager/reviewer) only.
   ])
   assert.deepEqual(visibleProjectNav(LABELER, 'labeler').flatMap((g) => g.items).map((i) => i.label),
-    ['Dataset', 'Video', 'Annotate', 'Streams'])
+    ['Dataset', 'Video', 'Annotate'])
 })
 
-test('a viewer keeps the dataset and the view-only stream list', () => {
+test('a viewer keeps the dataset and no stream list', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(VIEWER, 'viewer')), [
     ['DATA', ['Dataset']],
-    ['DEPLOY', ['Streams']],
   ])
 })
 
@@ -177,10 +175,11 @@ test('Task 23 QA and Task 10b Streams keep their nav entries and routes', () => 
   assert.deepEqual(qa.roles, ['manager', 'reviewer'])
   const streams = projectNav.flatMap((g) => g.items).find((i) => i.to === 'streams')
   assert.ok(streams, 'the Streams page lost its nav entry')
-  assert.equal(streams.perm, 'project.read')
+  assert.equal(streams.perm, 'project.streams')
   assert.match(appSrc, /path="qa"/, 'the QA route must render the QA page')
   assert.match(appSrc, /path="streams"/, 'the Streams route must render the Streams page')
   assert.match(appSrc, /path="streams\/:sid"/, 'a stream keeps its detail URL')
+  assert.match(appSrc, /<PermGate perm="project\.streams">/, 'the Streams route must use project.streams')
 })
 
 test('roles without a Projects entry land on their first visible surface', () => {

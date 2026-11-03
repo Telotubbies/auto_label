@@ -18,7 +18,7 @@ import re
 import threading
 import time
 from collections import deque
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import cv2
 import numpy as np
@@ -28,19 +28,28 @@ from ..adapters import ADAPTERS, resolve
 from ..config import DATA_DIR
 from ..db import session_scope
 from ..gpu import GpuBusy
-from ..models import Stream, StreamEvent, new_id
+from ..models import Project, Stream, StreamEvent, Workspace, new_id
+from ..services import metering
+from ..services.safefetch import UnresolvableHost, _public_ip
+from .creds import open_source
 from .event_fields import filter_fields
+from .guard import GuardedMediaProxy
 from .rules import Engine
 
 log = logging.getLogger("labeldesk.streams")
 
 # UDP loses H.264 slices under load; TCP plus a finite socket timeout keeps reconnects bounded.
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;3000000")
+# `follow_redirects;0` is defence in depth on OpenCV builds that honour the environment (4.12+);
+# the loopback guard below is what enforces it for HTTP(S) on every build.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS",
+                      "rtsp_transport;tcp|stimeout;3000000|follow_redirects;0")
 
 _MAX_BACKOFF = 30
 _FILE_FAILURES = 3             # consecutive open/read failures on a local file -> fatal, not endless retry
 _REOPEN_AFTER = 10.0           # same frame hash (or no frame) this long -> reopen
 _JPEG_QUALITY = 85
+_METER_EVERY = 300.0           # stream_hours are durable at least every 5 min, not only on a clean stop
+_DEFAULT_PORTS = {"rtsp": 554, "rtsps": 322, "http": 80, "https": 443}
 
 
 # Greedy through the last @ before the path, so a raw @ inside the password is masked too.
@@ -55,13 +64,18 @@ def display_source(source: str) -> str:
 ALLOWED_SCHEMES = ("rtsp", "rtsps", "http", "https")
 
 
-def check_source(source: str) -> str:
+class SourceTransient(ValueError):
+    """The source host could not be resolved; the worker should retry, not fail."""
+
+
+def canonical_source(source: str) -> str:
     """Allowlist every string that may reach OpenCV/FFmpeg (PM ruling, 2026-11-02).
 
     Remote sources must be rtsp/rtsps/http/https with a host; local files are limited to a flat
     name under the uploaded `videos/` folder. FFmpeg accepts far more protocols (concat:, data:,
     subfile:, …), so this runs in the router *and* again in the worker before `VideoCapture`.
-    Returns the canonical source (lower-case scheme, canonical file prefix).
+    Returns the canonical source (lower-case scheme, canonical file prefix). No DNS here: the
+    worker must be able to create its row even when the camera is briefly unresolvable.
     """
     if not isinstance(source, str):
         raise ValueError("invalid source")
@@ -88,6 +102,42 @@ def check_source(source: str) -> str:
     if not parts.netloc:
         raise ValueError("invalid source: the URL needs a host")
     return scheme + s[len(parts.scheme):]
+
+
+def resolve_source(source: str) -> tuple[str, str]:
+    """Canonicalise and resolve a remote source; returns ``(canonical, vetted IP)``.
+
+    The IP is pinned by the caller (loopback guard for HTTP(S), URL rewrite for RTSP) so
+    libavformat cannot re-resolve the name into the internal network. A resolver failure is
+    ``SourceTransient``; a resolved private/loopback/link-local address stays a hard ValueError.
+    """
+    s = canonical_source(source)
+    if s.startswith("file:"):
+        return s, ""
+    parts = urlsplit(s)
+    scheme = parts.scheme.lower()
+    try:
+        ip = _public_ip(parts.hostname, parts.port or _DEFAULT_PORTS[scheme])
+    except UnresolvableHost as e:
+        raise SourceTransient(f"cannot resolve {parts.hostname}") from e
+    except ValueError as e:
+        raise ValueError(f"invalid source: {e}") from e
+    return s, ip
+
+
+def check_source(source: str) -> str:
+    """Validate a source for the router and the worker; returns the canonical string."""
+    return resolve_source(source)[0]
+
+
+def pinned_url(source: str, ip: str) -> str:
+    """Rewrite an RTSP authority to the vetted IP literal (no DNS left for FFmpeg to redo)."""
+    parts = urlsplit(source)
+    host = f"[{ip}]" if ":" in ip else ip
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    if "@" in parts.netloc:
+        netloc = parts.netloc.rpartition("@")[0] + "@" + netloc
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 def rule_label(rule: dict, index: int) -> str:
@@ -161,7 +211,22 @@ class _Worker:
         self.workspace_id = row.workspace_id
         self.project_id = row.project_id
         self.name = row.name
-        self.source = row.source
+        # Stored sources may be sealed (secretbox). Open once, here: every consumer (OpenCV,
+        # status text, logs) must see the real URL, never `enc:v1:...`.
+        self._source_error = ""
+        try:
+            raw_source = open_source(row.source)
+        except ValueError:
+            raw_source = ""
+            self._source_error = "stream credentials cannot be decrypted"
+        if not self._source_error:
+            try:
+                self.source = canonical_source(raw_source)
+            except ValueError as e:
+                self.source = ""
+                self._source_error = str(e)
+        else:
+            self.source = ""
         self.model_ref = row.model_ref
         self.sample_fps = min(30.0, max(0.5, float(row.sample_fps or 5.0)))
         self.zones = list(row.zones or [])
@@ -186,9 +251,16 @@ class _Worker:
         self._detections = 0
         self._fps_times: deque[float] = deque()
         self._threads: list[threading.Thread] = []
+        self._quota_error = ""                  # I8-R: visible when event snapshots are quota-blocked
+        self._metered_until = time.time()
+        self._active_proxy: GuardedMediaProxy | None = None
+        self._open_error = ""
 
     # ---- lifecycle ---------------------------------------------------------
     def start(self) -> None:
+        if self._source_error:
+            self._fail(self._source_error)
+            return
         self._set("connecting")
         for target, name in ((self._grab, "grabber"), (self._process, "processor")):
             t = threading.Thread(target=self._guard, args=(target,),
@@ -222,6 +294,33 @@ class _Worker:
         for t in reversed(self._threads):      # processor leaves first, the grabber may be in a read timeout
             t.join(2.0)
         self._threads.clear()
+        self._close_proxy()
+        self._meter()
+
+    # ---- metering ----------------------------------------------------------
+    def _meter(self, now: float | None = None) -> None:
+        """Record the wall-clock time since the last sample as stream_hours (crash-safe granularity)."""
+        now = time.time() if now is None else now
+        hours = (now - self._metered_until) / 3600.0
+        if hours <= 0:
+            return
+        self._metered_until = now
+        try:
+            with session_scope() as db:
+                metering.record(db, self.workspace_id, "stream_hours", hours,
+                                project_id=self.project_id, stream_id=self.id)
+        except Exception:                      # metering must never kill a worker
+            log.exception("stream %s: could not meter stream hours", self.id)
+
+    def _project_gone(self) -> bool:
+        """True when the owning project was trashed or purged under a still-running worker."""
+        try:
+            with session_scope() as db:
+                project = db.get(Project, self.project_id)
+                return project is None or project.deleted_at is not None
+        except Exception:
+            log.exception("stream %s: could not read the project state", self.id)
+            return False
 
     def running(self) -> bool:
         return not self._stopped and any(t.is_alive() for t in self._threads)
@@ -247,7 +346,7 @@ class _Worker:
             now = time.time()
             times = [t for t in self._fps_times if now - t < 2.0]
             status = "paused (GPU busy)" if (self.paused or self.gpu_busy) else self.status
-            return {"status": status, "last_error": self.last_error,
+            return {"status": status, "last_error": self._quota_error or self.last_error,
                     "fps": round(len(times) / 2.0, 1) if times else 0.0,
                     "frames": self._frames, "inferences": self._inferences,
                     "detections": self._detections, "last_frame": self._frame_ts}
@@ -287,15 +386,52 @@ class _Worker:
         path = (DATA_DIR / rel).resolve()
         return path if base in path.parents else None
 
+    def _close_proxy(self) -> None:
+        proxy, self._active_proxy = self._active_proxy, None
+        if proxy is not None:
+            proxy.stop()
+
     def _open(self):
-        source = check_source(self.source)     # second gate: nothing unlisted reaches FFmpeg
+        self._open_error = ""
+        self._close_proxy()
+        source, ip = resolve_source(self.source)   # second gate: nothing unlisted reaches FFmpeg
+        self.source = source
         if source.startswith("file:"):
             path = self._file_path()
             if path is None:
                 return None
             cap = cv2.VideoCapture(str(path))
         else:
-            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG,
+            parts = urlsplit(source)
+            if parts.scheme in ("http", "https"):
+                # libavformat resolves the host itself and follows redirects; hand it a
+                # loopback guard that pins every hop and refuses non-public redirect targets.
+                proxy = GuardedMediaProxy(source, ip=ip)
+                try:
+                    url = proxy.start()
+                except OSError as e:
+                    raise SourceTransient(f"cannot open source: {display_source(source)}") from e
+                self._active_proxy = proxy
+                try:
+                    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG,
+                                           [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
+                                            cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
+                except Exception:
+                    self._close_proxy()
+                    raise
+                if not cap.isOpened():
+                    cap.release()
+                    reason, transient = proxy.error, proxy.transient
+                    self._close_proxy()
+                    if reason and not transient:
+                        raise ValueError(f"invalid source: {reason}")
+                    self._open_error = reason or f"cannot open source: {display_source(source)}"
+                    return None
+                return cap
+            # RTSP has no proxy support in libavformat: pin the vetted IP so re-resolution
+            # cannot rebind. TLS keeps the hostname so certificate validation still applies.
+            target = source if parts.scheme == "rtsps" else pinned_url(source, ip)
+            cap = cv2.VideoCapture(target, cv2.CAP_FFMPEG,
                                    [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
                                     cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000])
         if not cap.isOpened():
@@ -331,11 +467,6 @@ class _Worker:
         return f"video file not found: {path.name if path is not None else display_source(self.source)}"
 
     def _grab(self) -> None:
-        try:
-            self.source = check_source(self.source)
-        except ValueError as e:
-            self._fail(str(e))
-            return
         missing = self._missing_file()
         if missing:
             self._fail(missing)
@@ -350,13 +481,25 @@ class _Worker:
                 self._fail(missing)
                 return
             self._reopen.clear()
-            cap = self._open()
+            try:
+                cap = self._open()
+            except SourceTransient as e:
+                # A DNS hiccup is not a camera fault: back off and retry, like any lost source.
+                self._set("reconnecting", display_source(str(e)))
+                if self._stop.wait(backoff):
+                    return
+                backoff = min(backoff * 2, _MAX_BACKOFF)
+                continue
+            except ValueError as e:
+                self._fail(str(e))              # an allowlist/policy rejection is fatal
+                return
             if cap is None:
                 failures += 1
                 if self._is_file and failures >= _FILE_FAILURES:
                     self._fail(f"cannot open video file: {display_source(self.source)}")
                     return
-                self._set("reconnecting", f"cannot open source: {display_source(self.source)}")
+                self._set("reconnecting", self._open_error
+                          or f"cannot open source: {display_source(self.source)}")
                 if self._stop.wait(backoff):
                     return
                 backoff = min(backoff * 2, _MAX_BACKOFF)
@@ -411,6 +554,8 @@ class _Worker:
                     cap.release()
                 except Exception:
                     log.exception("stream %s: capture release failed", self.id)
+                finally:
+                    self._close_proxy()
             if self._stop.is_set():
                 return
             if read_failed:
@@ -464,6 +609,8 @@ class _Worker:
                 frame, seq, ts = self._frame, self._frames, self._frame_ts
                 has_frame = self._frame_ts > 0
             now = time.time()
+            if now - self._metered_until >= _METER_EVERY:
+                self._meter(now)
             # No-new-frame watchdog: a capture stack can hang inside read() without raising. The
             # processor cannot release the handle (the grabber owns it), so it asks the grabber to
             # reopen; a blocked read returns through its own timeout and the grabber then recycles it.
@@ -552,6 +699,11 @@ class _Worker:
 
     # ---- events ------------------------------------------------------------
     def _record(self, ev: dict, ts: float, preds: list[dict], frame) -> None:
+        if self._project_gone():
+            # C2: a purge can race a rule firing. Stop the threads here instead of recreating
+            # identifiable footage under a project the operator already deleted.
+            self._stop.set()
+            return
         i = int(ev.get("rule", -1))
         rule = self.rules[i] if 0 <= i < len(self.rules) else {}
         kind = ev.get("kind") or rule.get("kind")
@@ -562,19 +714,42 @@ class _Worker:
                     if k in p} for p in preds[:50]]
         eid = new_id()
         snapshot, clean = "", ""
-        try:
-            if frame is not None:
-                snapshot, clean = self._save_frames(frame, preds, ev, eid)
-        except Exception:
-            log.exception("stream %s: could not draw event snapshot", self.id)
+        snapshot_jpeg = clean_jpeg = b""
+        if frame is not None:
+            try:
+                snapshot_jpeg, clean_jpeg = self._render_frames(frame, preds, ev)
+            except Exception:
+                log.exception("stream %s: could not draw event snapshot", self.id)
+        size = float(len(snapshot_jpeg) + len(clean_jpeg))
         with session_scope() as db:
+            # I8-R: event JPEGs are project storage. Check the same meter as uploads before writing,
+            # and bill the exact bytes with the event row so retention/purge can refund them.
+            project = db.get(Project, self.project_id)
+            if project is None or project.deleted_at is not None:
+                self._stop.set()
+                return
+            ws = db.get(Workspace, self.workspace_id)
+            room = metering.remaining(db, ws, "storage_bytes") if ws is not None else 0.0
+            if size and ws is not None and size <= room:
+                try:
+                    snapshot, clean = self._save_frames(snapshot_jpeg, clean_jpeg, eid)
+                except Exception:
+                    log.exception("stream %s: could not save event snapshot", self.id)
+            if snapshot and ws is not None:
+                metering.record(db, ws.id, "storage_bytes", size, project_id=self.project_id,
+                                stream_event=eid)
+                with self._state_lock:
+                    self._quota_error = ""
+            elif size:
+                with self._state_lock:
+                    self._quota_error = "storage quota reached: event snapshots are not being saved"
             db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
                                summary=ev.get("summary", ""), snapshot_path=snapshot,
                                clean_path=clean, predictions=payload,
                                **filter_fields(rule_json, payload)))
 
-    def _save_frames(self, frame, preds: list[dict], ev: dict, eid: str) -> tuple[str, str]:
-        """Write the annotated review snapshot and the untouched frame for dataset ingest."""
+    def _render_frames(self, frame, preds: list[dict], ev: dict) -> tuple[bytes, bytes]:
+        """Draw the annotated review frame and encode it plus the untouched dataset frame."""
         img = frame.copy()
         h, w = img.shape[:2]
         for z in self.zones:
@@ -595,10 +770,25 @@ class _Worker:
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0) if hot else (150, 150, 150), 3 if hot else 1)
             if hot:
                 cv2.circle(img, (int(p["x"] * w), int((p["y"] + p["height"] / 2) * h)), 6, (0, 0, 255), -1)
+        ok_ann, ann = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        ok_clean, clean = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        if not (ok_ann and ok_clean):
+            raise ValueError("could not encode event snapshot")
+        return ann.tobytes(), clean.tobytes()
+
+    def _save_frames(self, snapshot_jpeg: bytes, clean_jpeg: bytes, eid: str) -> tuple[str, str]:
+        """Persist the two encoded JPEGs; returns their DATA_DIR-relative paths."""
         folder = DATA_DIR / "snapshots" / self.project_id   # project-keyed: retention can attribute it
         folder.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(folder / f"{eid}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
-        cv2.imwrite(str(folder / f"{eid}.src.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        snapshot = folder / f"{eid}.jpg"
+        clean = folder / f"{eid}.src.jpg"
+        try:
+            snapshot.write_bytes(snapshot_jpeg)
+            clean.write_bytes(clean_jpeg)
+        except Exception:
+            snapshot.unlink(missing_ok=True)
+            clean.unlink(missing_ok=True)
+            raise
         return (f"snapshots/{self.project_id}/{eid}.jpg", f"snapshots/{self.project_id}/{eid}.src.jpg")
 
 
@@ -643,6 +833,13 @@ class StreamManager:
             ids = list(self._workers)
         for sid in ids:
             self.stop(sid)
+
+    def active_count(self, workspace_id: str, exclude: str | None = None) -> int:
+        """Live workers of one workspace, for the per-plan stream cap."""
+        with self._lock:
+            workers = list(self._workers.values())
+        return sum(1 for w in workers
+                   if w.workspace_id == workspace_id and w.id != exclude and w.running())
 
     def pause_all(self) -> None:
         with self._lock:

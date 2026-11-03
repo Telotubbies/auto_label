@@ -36,7 +36,7 @@ PROJECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "project.train": ("manager",),
     "project.models": ("manager", "reviewer"),
     "project.infer": ("manager", "reviewer", "labeler"),
-    "project.streams": ("manager",),
+    "project.streams": ("manager", "reviewer"),
     "project.privacy": ("manager",),
     "project.roles": ("manager",),
 }

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ImageOff, Play, Plus, ScanLine, Send, Square, Trash2, TriangleAlert, VideoOff } from 'lucide-react'
 import { api, fileUrl } from '@/lib/api'
-import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import { classColor, dateLocale } from '@/lib/theme'
 import type { StreamCountOp, StreamEvent, StreamEventPage, StreamEventRule, StreamItem, StreamPrediction, StreamRule, StreamRuleKind, StreamZone } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, Switch, Tabs, fmtAgo, toast } from '@/components/ui'
@@ -458,8 +458,9 @@ function RulesSection({ stream, ws, project }: { stream: StreamItem; ws: string;
 // ---------- events ------------------------------------------------------------
 function EventsTimeline({ stream, ws, project, active }: { stream: StreamItem; ws: string; project: string; active: boolean }) {
   const qc = useQueryClient()
-  const can = useApp((s) => s.can)
-  const canReview = can('reviewer')
+  const { can } = useProjectPermissions(ws, project)
+  // Reviewing footage follows the effective project role, not the workspace rank (I12).
+  const canReview = can('project.review')
   const [rule, setRule] = useState('')
   const [cls, setCls] = useState('')
   const [reviewed, setReviewed] = useState('')
@@ -695,8 +696,9 @@ export default function StreamDetail() {
   const { ws = '', project = '', sid = '' } = useParams()
   const nav = useNavigate()
   const qc = useQueryClient()
-  const can = useApp((s) => s.can)
-  const admin = can('admin')
+  const { isManager } = useProjectPermissions(ws, project)
+  // Start/stop/edit/delete are need("admin") on the server: a project manager, not a workspace rank.
+  const admin = isManager
   const [zoneOpen, setZoneOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState('events')

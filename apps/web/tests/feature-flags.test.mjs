@@ -10,6 +10,7 @@ const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 const MANAGER = (p) => [
   'project.read', 'project.annotate', 'project.review', 'project.upload', 'project.export',
   'project.classes', 'project.train', 'project.models', 'project.infer', 'project.settings',
+  'project.streams',
 ].includes(p)
 
 const targets = (groups) => groups.flatMap((g) => g.items.map((i) => i.to))

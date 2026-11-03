@@ -152,6 +152,78 @@ def test_run_retention_deletes_expired_rows_and_files(world):
     assert again["projects"] == 1
 
 
+def test_retention_sweeps_an_upload_never_attached_to_a_stream(world):
+    """I-1: an abandoned camera clip expires with the project and its metered bytes are refunded."""
+    from app.models import UsageEvent
+    from app.services import metering
+
+    name = f"orphan-{uuid.uuid4().hex[:8]}.mp4"
+    path = DATA_DIR / "videos" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * 2048)
+    os.utime(path, (time.time() - 40 * DAY, time.time() - 40 * DAY))
+    with SessionLocal() as db:
+        db.add(UsageEvent(workspace_id=world["ws"], project_id=world["pid"], metric="storage_bytes",
+                          quantity=2048.0, meta={"stream_upload": name}))
+        db.commit()
+        before = metering.used(db, db.get(Workspace, world["ws"]), "storage_bytes")
+
+    result = retention.run_retention(types.SimpleNamespace(params={"project_id": world["pid"]}))
+    assert result["uploads_deleted"] == 1
+    assert not path.exists(), "an upload with no Stream row outlived the retention window"
+    with SessionLocal() as db:
+        after = metering.used(db, db.get(Workspace, world["ws"]), "storage_bytes")
+    assert after == pytest.approx(before - 2048, abs=1)
+
+
+def test_retention_refunds_metered_stream_event_snapshots(world):
+    """I8-R: expiring a metered event refunds the exact snapshot bytes it removes."""
+    from app.models import Stream, StreamEvent, UsageEvent
+    from app.services import metering
+
+    pid = world["pid"]
+    tag = uuid.uuid4().hex[:8]
+    folder = DATA_DIR / "snapshots" / pid
+    folder.mkdir(parents=True, exist_ok=True)
+    snap = folder / f"{tag}.jpg"
+    clean = folder / f"{tag}.src.jpg"
+    snap.write_bytes(jpeg_bytes())
+    clean.write_bytes(jpeg_bytes() + b"clean")
+    old = time.time() - 40 * DAY
+    os.utime(snap, (old, old))
+    os.utime(clean, (old, old))
+
+    with SessionLocal() as db:
+        stream = Stream(workspace_id=world["ws"], project_id=pid, name="Retention cam",
+                        source="file:videos/retention-missing.mp4", model_ref="ultralytics:yolo11n")
+        db.add(stream)
+        db.flush()
+        event = StreamEvent(stream_id=stream.id, ts=old, rule={}, summary="expired",
+                            snapshot_path=f"snapshots/{pid}/{snap.name}",
+                            clean_path=f"snapshots/{pid}/{clean.name}")
+        db.add(event)
+        db.flush()
+        quantity = float(snap.stat().st_size + clean.stat().st_size)
+        db.add(UsageEvent(workspace_id=world["ws"], project_id=pid, metric="storage_bytes",
+                          quantity=quantity, meta={"stream_event": event.id}))
+        db.commit()
+        before = metering.used(db, db.get(Workspace, world["ws"]), "storage_bytes")
+        eid, sid = event.id, stream.id
+
+    result = retention.run_retention(types.SimpleNamespace(params={"project_id": pid}))
+    assert result["events_deleted"] >= 1
+    assert not snap.exists() and not clean.exists()
+    with SessionLocal() as db:
+        assert db.get(StreamEvent, eid) is None
+        after = metering.used(db, db.get(Workspace, world["ws"]), "storage_bytes")
+        assert after == pytest.approx(before - quantity, abs=1), (
+            "the event bytes were refunded but the meter did not move")
+        row = db.get(Stream, sid)
+        if row is not None:
+            db.delete(row)
+            db.commit()
+
+
 def test_unknown_project_raises(world):
     with pytest.raises(RuntimeError):
         retention.run_retention(types.SimpleNamespace(params={"project_id": "does-not-exist"}))

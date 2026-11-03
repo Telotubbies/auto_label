@@ -47,7 +47,7 @@ PROJ_PERMS = {
                 "project.settings", "project.classes", "project.train", "project.models", "project.infer",
                 "project.streams", "project.privacy", "project.roles"},
     "reviewer": {"project.read", "project.annotate", "project.review", "project.upload", "project.export",
-                 "project.classes", "project.models", "project.infer"},
+                 "project.classes", "project.models", "project.infer", "project.streams"},
     "labeler": {"project.read", "project.annotate", "project.classes", "project.infer"},
     "viewer": {"project.read"},
 }

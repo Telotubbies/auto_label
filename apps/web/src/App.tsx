@@ -184,8 +184,8 @@ export default function App() {
             <Route path="train" element={<PermGate perm="project.train"><Train /></PermGate>} />
             <Route path="models" element={<PermGate perm="project.models"><Models /></PermGate>} />
             <Route path="deploy" element={<PermGate perm="project.models"><Deploy /></PermGate>} />
-            <Route path="streams" element={<FlagGate flag="task_10b"><PermGate perm="project.read"><Streams /></PermGate></FlagGate>} />
-            <Route path="streams/:sid" element={<FlagGate flag="task_10b"><PermGate perm="project.read"><StreamDetail /></PermGate></FlagGate>} />
+            <Route path="streams" element={<FlagGate flag="task_10b"><PermGate perm="project.streams"><Streams /></PermGate></FlagGate>} />
+            <Route path="streams/:sid" element={<FlagGate flag="task_10b"><PermGate perm="project.streams"><StreamDetail /></PermGate></FlagGate>} />
             <Route path="qa" element={<FlagGate flag="task_23"><PermGate perm="project.review"><QA /></PermGate></FlagGate>} />
             <Route path="settings" element={<ProjectSettings />} />
             {/* Nav v2 folds Access into Project settings; old deep links keep their tab. */}

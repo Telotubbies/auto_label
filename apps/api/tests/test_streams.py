@@ -135,11 +135,13 @@ def _fake_resolve(ref, db=None, workspace_id=None):
 
 
 def test_stop_returns_when_source_never_opens(c):
-    sid = create_stream(c, source="rtsp://10.255.255.1/none")
+    # A globally routable but unreachable address: the source allowlist resolves and rejects
+    # private/link-local hosts (I2), so tests cannot use an internal address as a bad camera.
+    sid = create_stream(c, source="rtsp://8.8.8.8:554/none")
     assert c.post(f"{BASE}/{sid}/start").status_code == 200
     # Review Focus 4: the bad source must be visible before stop, not just a final "stopped".
     j = _poll(_status_is(c, sid, "reconnecting"), timeout=20)
-    assert "10.255.255.1" in j["lastError"]
+    assert "8.8.8.8" in j["lastError"]
     t = time.time()
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
     assert time.time() - t < 5
@@ -655,14 +657,14 @@ def test_zone_ids_must_be_unique(c):
 
 
 def test_rtsp_credentials_are_masked(c):
-    sid = create_stream(c, source="rtsp://alice:s3cret@cam.local/live")
+    sid = create_stream(c, source="rtsp://alice:s3cret@8.8.8.8/live")
     body = c.get(f"{BASE}/{sid}").json()
     assert "s3cret" not in body["source"] and "***@" in body["source"]
     from app.streams.manager import display_source
-    assert display_source("rtsp://alice:s3cret@cam.local/live") == "rtsp://***@cam.local/live"
+    assert display_source("rtsp://alice:s3cret@8.8.8.8/live") == "rtsp://***@8.8.8.8/live"
     # Finding M1: a raw @ inside the password must not survive the mask either
-    assert display_source("rtsp://user:p@ss@host/live") == "rtsp://***@host/live"
-    assert "ss@" not in c.post(BASE, json={"name": "At sign", "source": "rtsp://user:p@ss@host/live",
+    assert display_source("rtsp://user:p@ss@8.8.8.8/live") == "rtsp://***@8.8.8.8/live"
+    assert "ss@" not in c.post(BASE, json={"name": "At sign", "source": "rtsp://user:p@ss@8.8.8.8/live",
                                            "model_ref": "ultralytics:yolo11n"}).json()["source"]
 
 
@@ -684,8 +686,8 @@ def test_frame_is_scoped_and_token_bound(c):
 
 
 @pytest.mark.parametrize("source", [
-    "rtsp://cam.local/stream", "rtsps://cam.local/stream", "http://cam.local/s.mjpg",
-    "https://cam.local/s.mjpg", "file:videos/demo.mp4", "RTSP://cam.local/stream",
+    "rtsp://8.8.8.8/stream", "rtsps://8.8.8.8/stream", "http://8.8.8.8/s.mjpg",
+    "https://8.8.8.8/s.mjpg", "file:videos/demo.mp4", "RTSP://8.8.8.8/stream",
     "FILE:VIDEOS/demo.mp4",
 ])
 def test_allows_allowlisted_sources(c, source):
@@ -812,3 +814,477 @@ def test_uploaded_video_is_removed_with_the_stream(c):
     sid = create_stream(c, source=up["source"])
     assert c.delete(f"{BASE}/{sid}").status_code == 200
     assert not stored.exists()
+
+
+# --- review 772d0b7 regressions -------------------------------------------------------
+
+def _workspace():
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Workspace
+    with SessionLocal() as db:
+        return db.scalar(select(Workspace).where(Workspace.slug == WS))
+
+
+@pytest.fixture
+def ws_quotas():
+    """Save/restore the demo workspace quotas so a 402 test cannot poison its neighbours."""
+    from sqlalchemy import select
+
+    saved = dict(_workspace().quotas or {})
+    yield saved
+    from app.db import SessionLocal
+    from app.models import Workspace
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        ws.quotas = saved or None
+        db.commit()
+
+
+def _set_quotas(**overrides):
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Workspace
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        ws.quotas = {**(ws.quotas or {}), **overrides}
+        db.commit()
+
+
+def _meter_used(metric: str, ws_slug: str = WS) -> float:
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Workspace
+    from app.services import metering
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == ws_slug))
+        return metering.used(db, ws, metric)
+
+
+def _fresh_project(c, prefix: str) -> tuple[str, str, str]:
+    """An owned workspace+project: purge tests must not consume the demo plan's project cap."""
+    ws = c.post("/api/workspaces", json={"name": f"{prefix} {uuid.uuid4().hex[:8]}"}).json()["slug"]
+    proj = c.post(f"/api/ws/{ws}/projects",
+                  json={"name": f"{prefix} project", "type": "object-detection"}).json()
+    return ws, proj["slug"], proj["id"]
+
+
+def _video_bytes(seconds: float = 1.0) -> bytes:
+    path = _write_video(f"meter-{uuid.uuid4().hex[:8]}", seconds=seconds)
+    try:
+        return path.read_bytes()
+    finally:
+        _unlink(path)
+
+
+class _OpenableCap:
+    """Minimal VideoCapture stand-in: the grabber must see the exact URL it was handed."""
+
+    def __init__(self):
+        self.n = 0
+
+    def isOpened(self):
+        return True
+
+    def read(self):
+        self.n += 1
+        return True, np.zeros((32, 48, 3), np.uint8)
+
+    def get(self, _prop):
+        return 5.0
+
+    def set(self, *_a):
+        return True
+
+    def release(self):
+        pass
+
+
+def test_credentialed_camera_survives_a_restart_and_opens_decrypted(c, monkeypatch):
+    """C1: seal on write, reopen on start; a boot-time seal must never brick the camera."""
+    import app.streams.manager as mgr
+    from app import bootstrap
+    from app.db import SessionLocal
+    from app.models import Stream
+
+    opened: list[str] = []
+    monkeypatch.setattr(mgr.cv2, "VideoCapture",
+                        lambda src, *a, **k: (opened.append(src), _OpenableCap())[1])
+    monkeypatch.setattr(mgr, "resolve", _fake_resolve)
+    source = "rtsp://alice:s3cret@8.8.8.8:554/live"
+    sid = create_stream(c, source=source)
+    with SessionLocal() as db:
+        row = db.get(Stream, sid)
+        assert row.source.startswith("enc:v1:"), row.source
+        assert "s3cret" not in row.source
+    bootstrap.init_db()                       # the documented restart path
+    with SessionLocal() as db:
+        assert db.get(Stream, sid).source.startswith("enc:v1:")
+    assert c.get(f"{BASE}/{sid}").json()["source"] == "rtsp://alice:****@8.8.8.8:554/live"
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(lambda: opened or None, timeout=10)
+    assert opened[0] == source                # OpenCV sees the decrypted URL, not ciphertext
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+
+
+def test_sealed_credentials_without_the_key_fail_loudly(c, monkeypatch):
+    """C1: a rotated-away key must be a readable stream error, never a ciphertext-to-FFmpeg attempt."""
+    from app.services import secretbox
+
+    sid = create_stream(c, source="rtsp://alice:s3cret@8.8.8.8/live")
+
+    def no_key(_value):
+        raise ValueError("cannot decrypt")
+
+    monkeypatch.setattr(secretbox, "decrypt", no_key)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    j = _poll(_status_is(c, sid, "error"), timeout=10)
+    assert "credentials cannot be decrypted" in j["lastError"]
+
+
+def test_secret_rotation_reencrypts_stored_stream_credentials(c, monkeypatch):
+    """I-3: rotating LD_SECRET must rewrite stream ciphertext, or removing the old key bricks it."""
+    from app.db import SessionLocal
+    from app.models import Stream
+    from app.services import secretbox
+
+    url = "rtsp://rotated:s3cret@8.8.8.8:554/live"
+    sid = None
+    try:
+        monkeypatch.setattr(secretbox, "SECRET", "rotation-key-a")
+        monkeypatch.setattr(secretbox, "SECRET_OLD", "")
+        secretbox._fernet.cache_clear()
+        sid = create_stream(c, source=url)
+        with SessionLocal() as db:
+            before = db.get(Stream, sid).source
+        assert before.startswith(secretbox.PREFIX)
+
+        # The documented rotation: new key first, old key still trusted, then a restart.
+        monkeypatch.setattr(secretbox, "SECRET", "rotation-key-b")
+        monkeypatch.setattr(secretbox, "SECRET_OLD", "rotation-key-a")
+        secretbox._fernet.cache_clear()
+        from app.streams import creds
+        with SessionLocal() as db:
+            assert creds.seal_existing(db) == 1
+            after = db.get(Stream, sid).source
+        assert after != before, "the stream ciphertext was not rotated"
+        assert "s3cret" not in after
+        assert creds.open_source(after) == url
+
+        # Once LD_SECRET_OLD is removed the camera must still open: rotation is complete.
+        monkeypatch.setattr(secretbox, "SECRET_OLD", "")
+        secretbox._fernet.cache_clear()
+        assert creds.open_source(after) == url
+        assert creds.mask_source(after) == "rtsp://rotated:****@8.8.8.8:554/live"
+    finally:
+        secretbox._fernet.cache_clear()
+        if sid:
+            c.delete(f"{BASE}/{sid}")
+
+
+def test_purge_erases_an_upload_never_attached_to_a_stream(c):
+    """I-1: a clip uploaded then abandoned is still project bytes; purge erases it and refunds."""
+    ws, slug, pid = _fresh_project(c, "Abandoned clip")
+    before = _meter_used("storage_bytes", ws)
+    base = f"/api/ws/{ws}/projects/{slug}"
+    up = c.post(f"{base}/streams/upload-video",
+                files={"file": ("orphan.avi", _video_bytes(), "video/x-msvideo")}).json()
+    stored = DATA_DIR / up["source"][len("file:"):]
+    assert stored.is_file()
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before + stored.stat().st_size, abs=1)
+
+    assert c.delete(base).status_code == 200                        # trash
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    assert not stored.exists(), "an upload with no Stream row survived the purge"
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1)
+
+
+def test_purge_refunds_the_storage_meter_for_an_attached_clip(c):
+    """I-2: the purge must credit the bytes it freed, or the quota stays consumed forever."""
+    ws, slug, pid = _fresh_project(c, "Refund clip")
+    before = _meter_used("storage_bytes", ws)
+    base = f"/api/ws/{ws}/projects/{slug}"
+    up = c.post(f"{base}/streams/upload-video",
+                files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")}).json()
+    stored = DATA_DIR / up["source"][len("file:"):]
+    sid = c.post(f"{base}/streams", json={"name": "Camera", "source": up["source"],
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5}).json()["id"]
+    assert c.delete(base).status_code == 200
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    assert not stored.exists()
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1), (
+        f"purge freed the clip but left {sid} billed")
+    assert not (DATA_DIR / "streams" / sid).exists()
+
+
+def test_trash_and_purge_stop_the_camera_and_erase_its_bytes(c, monkeypatch):
+    """C2: trashing a project stops capture, kills the signed view and purges the uploaded clip."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    ws, slug, pid = _fresh_project(c, "Trash cam")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    up = c.post(f"{base}/streams/upload-video",
+                files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")}).json()
+    stored = DATA_DIR / up["source"][len("file:"):]
+    sid = c.post(f"{base}/streams", json={"name": "Camera", "source": up["source"],
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5}).json()["id"]
+    assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+    _poll(lambda: (j if (j := c.get(f"{base}/streams/{sid}").json()).get("status") == "live" else None),
+          timeout=15)
+    _poll(lambda: c.get(f"{base}/streams/{sid}").json()["frames"] > 0, timeout=10)
+    frame = c.get(f"{base}/streams/{sid}").json()["frame"]
+    assert c.get(frame).status_code == 200
+
+    assert c.delete(base).status_code == 200          # trash
+    assert manager.status(sid) is None
+    time.sleep(0.3)
+    assert c.get(frame).status_code == 404            # a signed live URL dies with the project
+
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    time.sleep(0.3)
+    assert not stored.exists(), "the uploaded stream video survived the purge"
+    assert not (DATA_DIR / "streams" / sid).exists()
+    assert not (DATA_DIR / "snapshots" / pid).exists()
+
+
+def test_worker_refuses_to_record_into_a_trashed_project(c):
+    """C2: even a thread that outlived the trash call must not write another snapshot."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Project, Stream, StreamEvent
+    from app.streams.manager import _Worker
+
+    sid = create_stream(c, name="Trashed worker")
+    with SessionLocal() as db:
+        row = db.get(Stream, sid)
+        pid = row.project_id
+        project = db.get(Project, pid)
+        project.deleted_at = time.time()
+        db.commit()
+        worker = _Worker(row)
+    folder = DATA_DIR / "snapshots" / pid
+    before = set(folder.glob("*")) if folder.exists() else set()
+    try:
+        worker._record({"rule": 0, "kind": "count"}, time.time(), [], np.zeros((16, 16, 3), np.uint8))
+        after = set(folder.glob("*")) if folder.exists() else set()
+        assert after == before
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count(StreamEvent.id)).where(StreamEvent.stream_id == sid)) == 0
+    finally:
+        with SessionLocal() as db:
+            db.get(Project, pid).deleted_at = None
+            db.commit()
+        c.delete(f"{BASE}/{sid}")
+
+
+@pytest.mark.parametrize("source", [
+    "rtsp://10.0.0.5/live",
+    "rtsp://192.168.1.20:554/stream1",
+    "http://127.0.0.1:8000/admin",
+    "http://169.254.169.254/latest/meta-data/",
+    "rtsp://[::1]:8554/live",
+    "http://[::ffff:169.254.169.254]/latest/meta-data/",
+])
+def test_rejects_non_public_stream_hosts(c, source):
+    """I2: a project manager must not turn the API into a bridge to the internal network."""
+    r = c.post(BASE, json={"name": "SSRF", "source": source, "model_ref": "ultralytics:yolo11n"})
+    assert r.status_code == 400, (source, r.text)
+    assert "private or reserved" in r.json()["detail"]
+
+
+def test_stream_source_rechecks_dns_on_every_connect(monkeypatch):
+    """I2: a name that rebinds to a private address after the first check is refused."""
+    import app.streams.manager as mgr
+    from app.services.safefetch import BlockedURL
+
+    answers = iter(["8.8.8.8", BlockedURL("URL points to a private or reserved address")])
+
+    def rebinding(_host, _port):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(mgr, "_public_ip", rebinding)
+    assert mgr.check_source("rtsp://camera.example.test/live") == "rtsp://camera.example.test/live"
+    with pytest.raises(ValueError, match="private"):
+        mgr.check_source("rtsp://camera.example.test/live")
+
+
+def test_stream_reads_require_project_streams_permission(c):
+    """I3: project.streams is real — a labeler cannot list, open or read a stream's events."""
+    sid = create_stream(c, name="Permissioned")
+    assert c.get(f"{BASE}/{sid}/events").status_code == 200
+    lab = TestClient(app)
+    tok = lab.post("/api/auth/login", json={"email": "labeler@labeldesk.dev",
+                                            "password": "demo1234"}).json()["token"]
+    lab.headers["Authorization"] = f"Bearer {tok}"
+    for url in (BASE, f"{BASE}/{sid}", f"{BASE}/{sid}/events"):
+        assert lab.get(url).status_code == 403, url
+    rev = TestClient(app)
+    tok = rev.post("/api/auth/login", json={"email": "reviewer@labeldesk.dev",
+                                            "password": "demo1234"}).json()["token"]
+    rev.headers["Authorization"] = f"Bearer {tok}"
+    assert rev.get(BASE).status_code == 200
+    assert rev.get(f"{BASE}/{sid}/events").status_code == 200
+
+
+def test_upload_video_meters_storage(c):
+    """I8: a stream upload is billable storage, not invisible bytes."""
+    before = _meter_used("storage_bytes")
+    data = _video_bytes()
+    up = c.post(f"{BASE}/upload-video", files={"file": ("clip.avi", data, "video/x-msvideo")})
+    assert up.status_code == 200, up.text
+    assert _meter_used("storage_bytes") == pytest.approx(before + len(data), abs=1)
+    (DATA_DIR / up.json()["source"][len("file:"):]).unlink(missing_ok=True)
+
+
+def test_upload_video_enforces_the_storage_quota(c, ws_quotas):
+    """I8: an upload that does not fit the plan is refused and leaves no partial file."""
+    _set_quotas(storage_bytes=_meter_used("storage_bytes") + 10)
+    before = set((DATA_DIR / "videos").glob("*"))
+    r = c.post(f"{BASE}/upload-video", files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")})
+    assert r.status_code == 402, r.text
+    assert set((DATA_DIR / "videos").glob("*")) == before
+
+
+def test_start_rejects_when_stream_hours_are_exhausted(c, ws_quotas):
+    """I8: stream_hours gates starting, not only proving."""
+    _set_quotas(stream_hours=0)
+    sid = create_stream(c)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 402
+
+
+def test_stop_records_stream_hours(c, monkeypatch, video):
+    """I8: wall-clock processing time lands in the meter."""
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    before = _meter_used("stream_hours")
+    sid = create_stream(c, source=video, sample_fps=5)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=15)
+    time.sleep(0.4)
+    assert c.post(f"{BASE}/{sid}/stop").status_code == 200
+    assert _meter_used("stream_hours") > before
+
+
+def test_start_enforces_the_plan_stream_cap(c, monkeypatch, video):
+    """I8: starting streams is capped per plan instead of spawning unbounded threads."""
+    from app import config
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    monkeypatch.setitem(config.PLANS["free"], "streams", 1)
+    # test_security's invite test upgrades the shared demo workspace to Pro and leaves it there, so
+    # the plan whose cap this asserts has to be pinned here instead of trusting the seeded value.
+    from app.db import SessionLocal
+    from app.models import Workspace
+
+    with SessionLocal() as db:
+        old_plan = db.query(Workspace).filter_by(slug=WS).one().plan
+        db.query(Workspace).filter_by(slug=WS).update({"plan": "free"})
+        db.commit()
+    first = create_stream(c, name="First cam", source=video)
+    second = create_stream(c, name="Second cam", source=video)
+    try:
+        assert c.post(f"{BASE}/{first}/start").status_code == 200
+        _poll(_status_is(c, first, "live"), timeout=15)
+        assert c.post(f"{BASE}/{second}/start").status_code == 402
+    finally:
+        c.post(f"{BASE}/{first}/stop")
+        c.post(f"{BASE}/{second}/stop")
+        with SessionLocal() as db:
+            db.query(Workspace).filter_by(slug=WS).update({"plan": old_plan})
+            db.commit()
+
+
+def test_event_snapshots_are_metered_and_stop_at_the_storage_quota(c, ws_quotas):
+    """I8-R: event JPEGs are billable storage and no file is written past the quota."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Stream, StreamEvent, UsageEvent
+    from app.streams.manager import _Worker
+
+    sid = create_stream(c, name="Snapshot meter")
+    try:
+        with SessionLocal() as db:
+            worker = _Worker(db.get(Stream, sid))
+            pid = worker.project_id
+        folder = DATA_DIR / "snapshots" / pid
+        with SessionLocal() as db:
+            before_billed = db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0))
+                                      .where(UsageEvent.project_id == pid,
+                                             UsageEvent.metric == "storage_bytes"))
+        before = _meter_used("storage_bytes")
+        frame = np.zeros((240, 320, 3), np.uint8)
+        first_ts = time.time()
+        worker._record({"rule": 0, "kind": "count"}, first_ts, [], frame)
+
+        with SessionLocal() as db:
+            ev = db.scalar(select(StreamEvent).where(StreamEvent.stream_id == sid))
+            paths = [DATA_DIR / ev.snapshot_path, DATA_DIR / ev.clean_path]
+            assert all(path.is_file() for path in paths)
+            size = sum(path.stat().st_size for path in paths)
+            billed = db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0))
+                               .where(UsageEvent.project_id == pid,
+                                      UsageEvent.metric == "storage_bytes"))
+        assert billed == pytest.approx(before_billed + size, abs=1), "the snapshot bytes were not metered"
+        assert _meter_used("storage_bytes") == pytest.approx(before + size, abs=1)
+
+        _set_quotas(storage_bytes=_meter_used("storage_bytes"))
+        files_before = set(folder.glob("*"))
+        worker._record({"rule": 0, "kind": "count"}, first_ts + 1, [], frame)
+        assert set(folder.glob("*")) == files_before, "a snapshot was written past the storage quota"
+        with SessionLocal() as db:
+            events = db.scalars(select(StreamEvent).where(StreamEvent.stream_id == sid)
+                                .order_by(StreamEvent.ts)).all()
+            assert len(events) == 2, "the quota-blocked event row must still be visible"
+            assert events[-1].snapshot_path == "" and events[-1].clean_path == ""
+        assert "quota" in worker.status_out()["last_error"].lower()
+    finally:
+        c.delete(f"{BASE}/{sid}")
+
+
+def test_deleting_a_stream_refunds_its_metered_event_snapshots(c):
+    """I-1: deleting a camera must credit the event bytes it erases, and purge must not re-bill them."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Stream, StreamEvent, UsageEvent
+    from app.streams.manager import _Worker
+
+    ws, slug, pid = _fresh_project(c, "Delete refund")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    sid = c.post(f"{base}/streams", json={"name": "Snapshot delete", "source": "file:videos/none.mp4",
+                                          "model_ref": "ultralytics:yolo11n"}).json()["id"]
+    before = _meter_used("storage_bytes", ws)
+    with SessionLocal() as db:
+        worker = _Worker(db.get(Stream, sid))
+    worker._record({"rule": 0, "kind": "count"}, time.time(), [],
+                   np.zeros((240, 320, 3), np.uint8))
+    with SessionLocal() as db:
+        event = db.scalar(select(StreamEvent).where(StreamEvent.stream_id == sid))
+        paths = [DATA_DIR / event.snapshot_path, DATA_DIR / event.clean_path]
+        usage = db.scalars(select(UsageEvent).where(UsageEvent.project_id == pid,
+                                                    UsageEvent.metric == "storage_bytes")).all()
+        billed = sum(float(row.quantity or 0.0) for row in usage
+                     if (row.meta or {}).get("stream_event") == event.id)
+    assert all(path.is_file() for path in paths)
+    assert billed == pytest.approx(sum(path.stat().st_size for path in paths), abs=1)
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before + billed, abs=1)
+
+    assert c.delete(f"{base}/streams/{sid}").status_code == 200
+    assert all(not path.exists() for path in paths), "the deleted camera's snapshots survived"
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1), (
+        "DELETE /streams erased billed snapshots without refunding the storage meter")
+
+    assert c.delete(base).status_code == 200
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1), (
+        "a later purge re-billed bytes that no longer exist")

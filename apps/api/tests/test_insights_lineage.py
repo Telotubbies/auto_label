@@ -990,3 +990,23 @@ def test_annotator_can_read_but_not_save_dashboards(c, data):
         ).status_code
         == 403
     )
+
+
+def test_stream_insights_need_project_streams(c, data):
+    """I-4: lineage and the widget query must not leak camera data around project.streams."""
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+    headers = {"Authorization": f"Bearer {issue_access(user.id)}"}
+
+    body = c.get(f"{INS}/lineage", headers=headers).json()
+    assert f"model:{data['model']}" in ids(body), "gating must not hide non-stream lineage"
+    assert not [n for n in body["nodes"] if n["kind"] == "stream"]
+    assert not [e for e in body["edges"] if e["target"].startswith("stream:")]
+
+    query = {"source": "streams", "measure": "events", "dimension": "stream"}
+    assert c.post(f"{INS}/query", json=query, headers=headers).status_code == 403
+    dataset = {"source": "dataset", "measure": "images", "dimension": "none"}
+    assert c.post(f"{INS}/query", json=dataset, headers=headers).status_code == 200
+    # A manager keeps the streams surface the permission grants.
+    assert [n for n in c.get(f"{INS}/lineage").json()["nodes"] if n["kind"] == "stream"]
+    assert c.post(f"{INS}/query", json=query).status_code == 200

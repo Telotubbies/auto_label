@@ -421,10 +421,21 @@ def purge(pid: str, c: Ctx = Depends(ws_ctx)):
     p = c.db.get(Project, pid)
     if not p or p.workspace_id != c.ws.id or not p.deleted_at:
         raise HTTPException(404, "project not in trash")
+    from ..models import Stream
+    from ..streams.manager import manager
+    for sid in c.db.scalars(select(Stream.id).where(Stream.project_id == p.id)).all():
+        manager.stop(sid)                       # C2: no thread may outlive its project row
+    from ..services import metering
     from ..services.erasure import delete_project_data
-    _, ok = delete_project_data(c.db, p)        # bytes first; the DB cascade never touches the volume
+    metered = metering.project_used(c.db, p.id)  # what this project was actually charged
+    freed, ok = delete_project_data(c.db, p)     # bytes first; the DB cascade never touches the volume
     if not ok:
         raise HTTPException(409, "some files could not be deleted; retry")
-    audit(c.db, c.ws.id, c.user.id, "project.purge", p.name)
+    # I-2: return the metered bytes to the workspace, bounded by what was charged so unmetered
+    # artifacts (snapshots, models) cannot mint storage credit.
+    refund = max(0.0, min(float(freed), metered))
+    if refund > 0:
+        metering.adjust(c.db, c.ws, "storage_bytes", -refund, project_id=p.id, purge=True)
+    audit(c.db, c.ws.id, c.user.id, "project.purge", p.name, freed=freed, refunded=refund)
     c.db.delete(p); c.db.commit()
     return {"ok": True}

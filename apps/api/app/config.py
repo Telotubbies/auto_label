@@ -55,11 +55,14 @@ GB = 1024 ** 3
 # gpu_seconds / stream_hours / ai_calls are monthly; storage_bytes is current usage.
 PLANS = {
     "free":       {"label": "Free",       "projects": 3,   "images": 10_000,    "seats": 3,   "credits": 30,
-                   "gpu_seconds": 3_600, "stream_hours": 20, "ai_calls": 2_000, "storage_bytes": 5 * GB},
+                   "gpu_seconds": 3_600, "stream_hours": 20, "ai_calls": 2_000, "storage_bytes": 5 * GB,
+                   "streams": 2},
     "pro":        {"label": "Pro",        "projects": 50,  "images": 250_000,   "seats": 20,  "credits": 500,
-                   "gpu_seconds": 36_000, "stream_hours": 200, "ai_calls": 20_000, "storage_bytes": 50 * GB},
+                   "gpu_seconds": 36_000, "stream_hours": 200, "ai_calls": 20_000, "storage_bytes": 50 * GB,
+                   "streams": 10},
     "enterprise": {"label": "Enterprise", "projects": 10_000, "images": 10_000_000, "seats": 10_000, "credits": 100_000,
-                   "gpu_seconds": 360_000, "stream_hours": 2_000, "ai_calls": 200_000, "storage_bytes": 500 * GB},
+                   "gpu_seconds": 360_000, "stream_hours": 2_000, "ai_calls": 200_000, "storage_bytes": 500 * GB,
+                   "streams": 50},
 }
 # Automatic active-learning sampling: per-project daily cap and the uncertainty band (spec 3.3).
 AL_DAILY_CAP = int(_env("LD_AL_DAILY_CAP", "25"))

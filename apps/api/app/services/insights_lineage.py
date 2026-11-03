@@ -71,7 +71,9 @@ def _ap(value) -> float | None:
     return None
 
 
-def build(db: Session, project: Project) -> dict:
+def build(db: Session, project: Project, include_streams: bool = True) -> dict:
+    """The project's lineage. ``include_streams=False`` omits camera nodes for roles without
+    ``project.streams``; the rest of the pipeline stays readable instead of 403-ing the page."""
     batches = _batches(db, project)
     batch_of, batch_counts = _image_nodes(db, project)
     versions = db.scalars(
@@ -89,18 +91,26 @@ def build(db: Session, project: Project) -> dict:
         .where(TrainedModel.project_id == project.id)
         .order_by(TrainedModel.created, TrainedModel.id)
     ).all()
-    streams = db.scalars(
-        select(Stream)
-        .where(Stream.project_id == project.id)
-        .order_by(Stream.created, Stream.id)
-    ).all()
-    event_counts = dict(
-        db.execute(
-            select(StreamEvent.stream_id, func.count(StreamEvent.id))
-            .join(Stream, Stream.id == StreamEvent.stream_id)
+    streams = (
+        db.scalars(
+            select(Stream)
             .where(Stream.project_id == project.id)
-            .group_by(StreamEvent.stream_id)
+            .order_by(Stream.created, Stream.id)
         ).all()
+        if include_streams
+        else []
+    )
+    event_counts = (
+        dict(
+            db.execute(
+                select(StreamEvent.stream_id, func.count(StreamEvent.id))
+                .join(Stream, Stream.id == StreamEvent.stream_id)
+                .where(Stream.project_id == project.id)
+                .group_by(StreamEvent.stream_id)
+            ).all()
+        )
+        if include_streams
+        else {}
     )
 
     nodes: list[dict] = []
