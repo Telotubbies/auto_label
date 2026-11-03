@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from sqlalchemy import and_, case, distinct, exists, func, literal, select, true
+from sqlalchemy import JSON, and_, case, cast, distinct, exists, func, literal, select, true
 from sqlalchemy.orm import Session
 
 from ..models import Batch, Image, LabelClass, Project
@@ -28,7 +28,14 @@ def _dialect(db: Session) -> str:
 def _object_rows(dialect: str, column, alias: str):
     """One row per annotation object; non-dict legacy entries are filtered out."""
     if dialect == "postgresql":
-        tv = func.json_array_elements(column).table_valued("value").alias(alias)
+        # A v1 row can store a dict or scalar instead of a list. The predicate after unnesting
+        # is too late: PostgreSQL evaluates json_array_elements' argument first and raises
+        # "cannot extract elements from an object" (22023). Guard the array itself.
+        array = case(
+            (func.json_typeof(column) == "array", column),
+            else_=func.json_build_array(),
+        )
+        tv = func.json_array_elements(array).table_valued("value").alias(alias)
         is_object = func.json_typeof(tv.c.value) == "object"
     else:
         # json_each exposes its own `type`; json_type(value) would fail on scalar elements.
@@ -75,20 +82,40 @@ def _ann_conditions(dialect, tv, is_object, project, filters):
     return conds
 
 
-def _split_expr(project: Project, version, split_of: dict | None):
-    """A dataset read scoped to a version uses the manifest's frozen split, not today's column."""
-    if version is None or not split_of:
-        return Image.split
-    return case(split_of, value=Image.id, else_=Image.split)
+def _scope_lookup(dialect: str, split_of: dict):
+    """Look up an image's frozen split in one JSON payload.
+
+    A version scope is ``{source_image_id: split}``. Building an ``IN`` list plus a ``CASE`` per
+    image put ~3 bind values per manifest image into the statement and failed on real-size
+    versions; a single JSON bind parameter keeps the query constant-size on both backends.
+    """
+    payload = literal(split_of, type_=JSON)
+    if dialect == "postgresql":
+        return func.json_extract_path_text(cast(payload, JSON), Image.id)
+    # SQLite: "$." || images.id is a path expression; json_extract needs no table function.
+    return func.json_extract(payload, literal("$.").op("||")(Image.id))
 
 
-def _image_where(project, filters, version, split_of, dialect):
+def _scope(dialect: str, version, split_of: dict | None):
+    """(scope predicate, split expression) for an optional version window.
+
+    An empty-but-written manifest is an empty scope, not the live dataset: the lookup finds no
+    image and the predicate rejects every row. Only ``version is None`` (no manifest at all)
+    falls back to today's split column.
+    """
+    if version is None:
+        return None, Image.split
+    lookup = _scope_lookup(dialect, split_of or {})
+    return lookup.is_not(None), func.coalesce(lookup, Image.split)
+
+
+def _image_where(project, filters, scope, split_expr, dialect):
     """Filters on the image row, independent of whether annotations are unnested."""
     where = [Image.project_id == project.id, Image.deleted_at.is_(None)]
-    if version is not None and split_of:
-        where.append(Image.id.in_(list(split_of)))
+    if scope is not None:
+        where.append(scope)
     if filters.get("split"):
-        where.append(_split_expr(project, version, split_of) == filters["split"])
+        where.append(split_expr == filters["split"])
     if filters.get("batch"):
         where.append(Image.batch_id == filters["batch"])
     if filters.get("tag"):
@@ -104,7 +131,7 @@ def _has_annotation_filter(filters) -> bool:
 
 
 def _annotations(
-    db, project, query, where, filters, dialect, version, split_of
+    db, project, query, where, filters, dialect, split_expr
 ) -> tuple[Counter, int]:
     """Annotation count per dimension (or image count) with the annotation-level filters."""
     tv, is_object = _object_rows(dialect, Image.annotations, "fact_ann")
@@ -134,7 +161,6 @@ def _annotations(
             ),
         )
 
-    split_expr = _split_expr(project, version, split_of)
     key = _ann_dim_expr(
         dialect, dim, tv, tag_tv if "tag" in dims else None, split_expr
     )
@@ -209,13 +235,13 @@ def _image_dim(filtered, dim, project, where, filters, dialect):
 
 
 def _images(
-    db, project, query, where, filters, dialect, version, split_of
+    db, project, query, where, filters, dialect, split_expr
 ) -> tuple[Counter, int]:
     columns = (
         Image.id.label("image_id"),
         Image.batch_id.label("batch_id"),
         Image.tags.label("tags"),
-        _split_expr(project, version, split_of).label("split"),
+        split_expr.label("split"),
     )
     filtered_stmt = select(*columns).where(*where)
     if _has_annotation_filter(filters):
@@ -267,7 +293,8 @@ def dataset_counts(
     """Aggregate one dataset widget in SQL; returns (counts, total)."""
     dialect = _dialect(db)
     filters = query["filters"]
-    where = _image_where(project, filters, version, split_of, dialect)
+    scope, split_expr = _scope(dialect, version, split_of)
+    where = _image_where(project, filters, scope, split_expr, dialect)
     if query["measure"] == "annotations":
-        return _annotations(db, project, query, where, filters, dialect, version, split_of)
-    return _images(db, project, query, where, filters, dialect, version, split_of)
+        return _annotations(db, project, query, where, filters, dialect, split_expr)
+    return _images(db, project, query, where, filters, dialect, split_expr)

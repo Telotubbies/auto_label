@@ -10,13 +10,13 @@ from sqlalchemy.orm import Session
 from ..adapters import ADAPTERS, engine_ref, resolve
 from ..adapters.refine import label_image, sam_available
 from ..apikeys import resolve_key
-from ..config import CREDIT_COST, LOCAL_JOB_KINDS, remote_training
+from ..config import CREDIT_COST, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
 from ..errors import safe_error, safe_reason
 from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace
 from ..security import sign_path
-from ..services import active_learning, deployments, drift, imaging, metering, ml, safefetch
+from ..services import active_learning, deployments, drift, imaging, metering, ml, safefetch, topology
 from .projects import job_out
 
 router = APIRouter(tags=["training"])
@@ -247,7 +247,7 @@ def train(body: TrainIn, c: Ctx = Depends(project_ctx)):
         raise HTTPException(400, f"{fam['label']} trains detection projects only")
     if not fam["detect_only"]:
         variant = base + _SUFFIX[task]
-    if remote_training():                   # remote pip worker: v1 cli only understands YOLO + size
+    if topology.remote_training(c.db):      # remote pip worker: v1 cli only understands YOLO + size
         if variant not in {v + _SUFFIX[task] for v in _YOLO26} \
                 or body.max_minutes is not None or body.resume_from:
             raise HTTPException(400, _REMOTE_UNSUPPORTED)
@@ -399,7 +399,7 @@ def _autolabel_target(c: Ctx, body: AutoLabelIn):
     if r.adapter.family in ("sam3", "vlm") and not c.db.scalar(
             select(LabelClass.id).where(LabelClass.project_id == c.project.id)):
         raise HTTPException(400, "add classes first — auto-label attaches results to a project class")
-    if remote_training():
+    if topology.remote_training(c.db):
         # the pip worker only knows trained ultralytics weights and SAM text prompts (Phase 7 ports adapters)
         remote_ok = not (body.prompt or "").strip() and not body.vlm_verify and (
             r.adapter.family == "sam3"

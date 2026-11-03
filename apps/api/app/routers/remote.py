@@ -87,7 +87,8 @@ def claim(body: ClaimIn, db: Session = Depends(get_db)):
     kinds = [k for k in body.kinds if k in REMOTE_JOB_KINDS]
     for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(kinds)).order_by(Job.created).limit(5)):
         if db.execute(update(Job).where(Job.id == jid, Job.status == "queued")
-                      .values(status="running", started=now(), result={"worker": body.name})).rowcount:
+                      .values(status="running", started=now(), executor="remote",
+                              result={"worker": body.name})).rowcount:
             db.commit()
             j = db.get(Job, jid)
             try:

@@ -44,16 +44,12 @@ def runs_locally(kind: str) -> bool:
 
 
 # Which executor runs train/autolabel across the deployment: "remote" is the pip GPU worker,
-# "local" is an `app.worker` process (the compose worker service or this API). The compose API has
-# EMBEDDED_WORKER=0 yet a CPU worker service may still train, so topology needs its own flag (I7).
-TRAIN_WORKER = (_env("LD_TRAIN_WORKER") or ("local" if EMBEDDED_WORKER else "remote")).strip().lower()
-if TRAIN_WORKER not in ("local", "remote"):
-    raise RuntimeError("LD_TRAIN_WORKER must be local or remote")
-
-
-def remote_training() -> bool:
-    """True when train/autolabel run on the pip GPU worker (v1: YOLO + size only)."""
-    return TRAIN_WORKER == "remote"
+# "local" is an `app.worker` process (the compose worker service or this API). Empty means
+# "auto": `services.topology` asks the online workers what they claim, because the API process
+# runs no jobs in compose and an operator flag can disagree with the workers that exist (I7).
+TRAIN_WORKER = _env("LD_TRAIN_WORKER", "").strip().lower()
+if TRAIN_WORKER not in ("", "local", "remote"):
+    raise RuntimeError("LD_TRAIN_WORKER must be local, remote, or empty (auto)")
 
 
 # ML integration — all optional; features degrade with a clear error when missing

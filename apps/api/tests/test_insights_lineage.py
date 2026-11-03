@@ -540,6 +540,159 @@ def test_dataset_widget_with_a_version_filter_uses_the_frozen_scope(c, data, mon
     assert body["total"] == 3                 # i4 is not in the version's manifest
 
 
+def test_dataset_widget_postgres_guards_a_legacy_dict_annotations_row():
+    """Important 1: a v1 dict-shaped annotations row must not make the unnest itself raise.
+
+    PostgreSQL evaluates the set-returning function's argument before the object predicate, so
+    ``json_array_elements('{"label":"cat"}')`` errors. The array expression itself must be
+    guarded by ``json_typeof``, not filtered after unnesting.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    from app.services import insights_aggregate
+
+    class _DB:
+        def __init__(self):
+            self.statements = []
+
+        def get_bind(self):
+            class _Bind:
+                dialect = type("_Dialect", (), {"name": "postgresql"})()
+
+            return _Bind()
+
+        def scalar(self, stmt):
+            self.statements.append(stmt)
+            return 0
+
+        def execute(self, stmt):
+            self.statements.append(stmt)
+            return []
+
+    project = Project(id="p1", workspace_id="w1", slug="p", name="p")
+    # Both paths unnest annotations: the annotation measure and an image dimension/filter.
+    specs = (
+        {"source": "dataset", "measure": "annotations", "dimension": "class",
+         "dimension2": "none", "filters": {}},
+        {"source": "dataset", "measure": "images", "dimension": "class",
+         "dimension2": "none", "filters": {"class": "cat"}},
+    )
+    for spec in specs:
+        db = _DB()
+        insights_aggregate.dataset_counts(db, project, spec)
+        sql = "\n".join(
+            str(stmt.compile(dialect=postgresql.dialect())) for stmt in db.statements
+        )
+        assert "json_array_elements(CASE" in sql
+        assert "json_typeof" in sql
+        assert "json_build_array()" in sql
+
+
+def test_dataset_widget_with_a_large_version_stays_under_the_parameter_limit():
+    """Important 2: a version scope must be one payload, not an IN list plus a CASE per image.
+
+    A 12k-image manifest used to compile ~24k CASE parameters (and expand a 12k-value IN),
+    which exceeds SQLite's 32,766-variable ceiling near 11k images and Postgres' 65,535 near 22k.
+    """
+    from sqlalchemy.dialects import postgresql, sqlite
+
+    from app.services import insights_aggregate
+
+    project = Project(id="p1", workspace_id="w1", slug="p", name="p")
+    split_of = {f"{i:016x}": "train" for i in range(12_000)}
+
+    def statements_for(dialect_name: str) -> list:
+        statements = []
+
+        class _DB:
+            def get_bind(self):
+                class _Bind:
+                    dialect = type("_Dialect", (), {"name": dialect_name})()
+
+                return _Bind()
+
+            def scalar(self, stmt):
+                statements.append(stmt)
+                return 0
+
+            def execute(self, stmt):
+                statements.append(stmt)
+                return []
+
+        insights_aggregate.dataset_counts(
+            _DB(),
+            project,
+            {"source": "dataset", "measure": "images", "dimension": "class",
+             "dimension2": "none", "filters": {}},
+            version=object(),
+            split_of=split_of,
+        )
+        assert statements
+        return statements
+
+    for dialect in (sqlite.dialect(), postgresql.dialect()):
+        statements = statements_for(dialect.name)
+        param_counts = [len(stmt.compile(dialect=dialect).params) for stmt in statements]
+        assert max(param_counts) < 10, (dialect.name, param_counts)
+        sql = "\n".join(str(stmt.compile(dialect=dialect)) for stmt in statements)
+        if dialect.name == "postgresql":
+            assert "json_each" not in sql
+    pg_sql = "\n".join(str(stmt.compile(dialect=postgresql.dialect()))
+                       for stmt in statements_for("postgresql"))
+    assert "json_extract_path_text" in pg_sql
+    assert "|| images.id" not in pg_sql
+
+
+def test_query_version_source_without_batch_or_tag_reads_no_image_rows(c, data):
+    """I11 root: a version widget that needs no image metadata must not hydrate project rows."""
+    from sqlalchemy import event
+
+    from app.db import engine
+    from app.services import insights_common
+
+    seen: list[str] = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _executemany):
+        seen.append(statement)
+
+    insights_common.clear_cache()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        r = query(c, source="version", measure="annotations", dimension="class",
+                  filters={"version": data["version"]})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert r.status_code == 200, r.text
+    assert not [s for s in seen if "images.tags" in s]
+
+
+def test_query_version_source_with_a_batch_dimension_uses_only_manifest_sources(c, data):
+    """The metadata lookup still works when the widget does need batch/tag values."""
+    body = query(c, source="version", measure="images", dimension="batch",
+                 filters={"version": data["version"]}).json()
+    assert {row["key"]: row["value"] for row in body["rows"]} == {
+        "Morning batch": 2,
+        "Night batch": 1,
+    }
+    assert body["total"] == 3
+
+
+def test_dataset_version_filter_with_an_empty_manifest_returns_no_rows(c, data):
+    """Minor 4: a written-but-empty manifest is an empty scope, never the live dataset."""
+    with SessionLocal() as db:
+        version = Version(project_id=data["pid"], number=98, name="empty", status="ready", stats={})
+        db.add(version)
+        db.commit()
+        path = versioning.version_dir(version)
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "manifest.json").write_text(json.dumps({"classes": [], "items": []}))
+        version_id = version.id
+    body = query(c, source="dataset", measure="images", dimension="none",
+                 filters={"version": version_id}).json()
+    assert body["total"] == 0
+    assert body["rows"] == []
+
+
 def test_query_version_source_uses_the_frozen_manifest(c, data):
     body = query(
         c,

@@ -3,9 +3,9 @@
 The pip worker claims a job, reports progress per epoch/image, and reports complete/fail. If its
 session dies (Kaggle closes, the box reboots), the reports stop: nothing else transitions the row,
 so the UI shows a forever-running stepper, `job.done` never fires, and Cancel stays `cancelling`.
-This sweep notices the missing heartbeat and makes that transition. A local `app.worker` owns the
-same kinds when it claims them, so only ``REMOTE_JOB_KINDS`` rows are touched — local recovery
-keeps handling those.
+This sweep notices the missing heartbeat and makes that transition. A local `app.worker` can own
+the same kinds, and it does not heartbeat, so the sweep only considers rows the remote protocol
+claimed (``Job.executor == "remote"``) — local recovery keeps handling the rest.
 
 Not a queue/scheduler: the DB job row is the queue and `worker.loop` is the scheduler, so this
 is the state-machine half of it, not new infrastructure.
@@ -24,6 +24,18 @@ from . import finalize
 
 # A message we wrote, so it may reach the customer (never the worker's internals).
 STALE_ERROR = "the remote worker stopped reporting — see the worker log"
+
+
+def remote_owned(job: Job) -> bool:
+    """True when the remote protocol claimed the row.
+
+    The reaper must not touch a local ``train``/``autolabel`` run: local handlers never write
+    ``result.heartbeat``, so a kind-only sweep would fail a healthy CPU job. Pre-upgrade remote
+    claims have no executor value but carry the claim route's ``worker`` marker.
+    """
+    if job.executor == "remote":
+        return True
+    return not job.executor and bool((job.result or {}).get("worker"))
 
 
 def _last_seen(job: Job) -> float:
@@ -55,7 +67,7 @@ def reap(db: Session, now_ts: float | None = None) -> list[str]:
     for job in db.scalars(
         select(Job).where(Job.kind.in_(REMOTE_JOB_KINDS), Job.status == "running")
     ).all():
-        if ts - _last_seen(job) < REMOTE_JOB_TIMEOUT_S:
+        if not remote_owned(job) or ts - _last_seen(job) < REMOTE_JOB_TIMEOUT_S:
             continue
         job.status, job.error, job.finished = "failed", STALE_ERROR, ts
         _fail_model(db, job)
@@ -65,6 +77,8 @@ def reap(db: Session, now_ts: float | None = None) -> list[str]:
     for job in db.scalars(
         select(Job).where(Job.kind.in_(REMOTE_JOB_KINDS), Job.status == "cancelling")
     ).all():
+        if not remote_owned(job):
+            continue
         # The cancel route stamps `cancel_requested`; pre-upgrade rows fall back to the start time.
         requested = (job.result or {}).get("cancel_requested") or job.started or job.created or ts
         if ts - float(requested) < REMOTE_CANCEL_GRACE_S:

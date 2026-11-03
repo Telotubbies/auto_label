@@ -31,7 +31,7 @@ services:
       LD_CORS_ORIGINS: ${LD_CORS_ORIGINS:-https://${LD_DOMAIN}}
       LD_WORKER_TOKEN: ${LD_WORKER_TOKEN}
       LD_EMBEDDED_WORKER: "0"            # jobs run in the `worker` service so exports never slow requests
-      LD_TRAIN_WORKER: ${LD_TRAIN_WORKER:-remote}   # who runs train/autolabel: remote GPU worker or worker service
+      LD_TRAIN_WORKER: ${LD_TRAIN_WORKER:-}        # optional override; empty = follow the online workers
       LD_SIGNUP_ENABLED: ${LD_SIGNUP_ENABLED:-1}
       LD_SEED_DEMO: ${LD_SEED_DEMO:-0}
       LD_SUPERADMINS: ${LD_SUPERADMINS:-}

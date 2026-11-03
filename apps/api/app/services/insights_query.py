@@ -44,6 +44,7 @@ FILTERS = {
 }
 MAX_DAYS = 365
 MAX_TZ_OFFSET = 840  # UTC−14:00 … UTC+14:00, in minutes
+MANIFEST_IMAGE_CHUNK = 500  # bound the IN list and the rows one version widget hydrates
 UNIT = {
     "annotations": "annotations",
     "images": "images",
@@ -184,6 +185,28 @@ def _dataset(
     return _payload(query, counts, total)
 
 
+def _manifest_images(db: Session, project: Project, items: list[dict]) -> dict:
+    """Batch/tag metadata for the manifest's source images only, in bounded chunks.
+
+    A version widget used to select every image in the project on each cache miss (250k rows
+    for a 250k-image project). The manifest already names its source ids, so read those.
+    """
+    ids = list(dict.fromkeys(
+        str(item["source"]) for item in items
+        if isinstance(item, dict) and item.get("source")
+    ))
+    images: dict = {}
+    for start in range(0, len(ids), MANIFEST_IMAGE_CHUNK):
+        chunk = ids[start:start + MANIFEST_IMAGE_CHUNK]
+        for row in db.execute(
+            select(Image.id, Image.batch_id, Image.tags).where(
+                Image.project_id == project.id, Image.id.in_(chunk)
+            )
+        ):
+            images[row.id] = row
+    return images
+
+
 def _version_dataset(
     db: Session, project: Project, query: dict, version: Version | None
 ) -> dict:
@@ -199,18 +222,15 @@ def _version_dataset(
         raise LookupError("version has no manifest yet")
     names = [str(n) for n in manifest.get("classes") or []]
     items = [i for i in manifest.get("items") or [] if isinstance(i, dict)]
-    images = {
-        row.id: row
-        for row in db.execute(
-            select(Image.id, Image.batch_id, Image.tags).where(
-                Image.project_id == project.id
-            )
-        )
-    }
-    batches = {
-        b.id: b.name for b in db.query(Batch).filter(Batch.project_id == project.id)
-    }
     filters = query["filters"]
+    dims = (query["dimension"], query["dimension2"])
+    needs_images = bool(filters.get("batch") or filters.get("tag")
+                        or "batch" in dims or "tag" in dims)
+    images = _manifest_images(db, project, items) if needs_images else {}
+    batches = (
+        {b.id: b.name for b in db.query(Batch).filter(Batch.project_id == project.id)}
+        if "batch" in dims else {}
+    )
 
     def ann_name(ann: dict) -> str | None:
         idx = ann.get("cls")

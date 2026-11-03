@@ -19,7 +19,8 @@ def _schema():
     Base.metadata.create_all(engine)
 
 
-def _case(kind="train", status="running", started_age=0.0, result=None, model_status="training"):
+def _case(kind="train", status="running", started_age=0.0, result=None, model_status="training",
+          executor="remote"):
     """One workspace/project/version/model/webhook plus a job whose worker is gone."""
     suffix = uuid.uuid4().hex[:8]
     with SessionLocal() as db:
@@ -42,7 +43,7 @@ def _case(kind="train", status="running", started_age=0.0, result=None, model_st
         db.flush()
         created = now() - (config.REMOTE_JOB_TIMEOUT_S + 60 if started_age is None else started_age + 1)
         job = Job(workspace_id=ws.id, project_id=project.id, kind=kind, status=status,
-                  created=created,
+                  created=created, executor=executor,
                   started=None if started_age is None else now() - started_age,
                   result=result or {}, params={"model_id": model.id})
         db.add(job)
@@ -127,6 +128,59 @@ def test_a_live_remote_job_and_a_local_job_are_left_alone():
     with SessionLocal() as db:
         assert db.get(Job, live["job"]).status == "running"
         assert db.get(Job, local["job"]).status == "running"     # local recovery owns these kinds
+
+
+def test_a_local_train_claimed_by_a_local_worker_is_not_reaped():
+    """I9 root: the reaper owns remote claims, not every row whose kind is train/autolabel.
+
+    A local `app.worker` never writes `result.heartbeat`, so a kind-only sweep would fail a
+    healthy multi-hour CPU training run after 30 minutes.
+    """
+    ids = _case("train", started_age=config.REMOTE_JOB_TIMEOUT_S + 600, executor="local")
+    with SessionLocal() as db:
+        assert remote_reaper.reap(db) == []
+    with SessionLocal() as db:
+        assert db.get(Job, ids["job"]).status == "running"
+        assert db.get(TrainedModel, ids["model"]).status == "training"
+
+
+def test_a_pre_upgrade_remote_claim_is_still_reaped():
+    """Rows claimed before the executor column existed carry the claim route's worker marker."""
+    ids = _case("train", started_age=config.REMOTE_JOB_TIMEOUT_S + 60, executor="",
+                result={"worker": "old-gpu"})
+    with SessionLocal() as db:
+        assert remote_reaper.reap(db) == [ids["job"]]
+    with SessionLocal() as db:
+        assert db.get(Job, ids["job"]).status == "failed"
+
+
+def test_local_recovery_does_not_requeue_a_remote_claim():
+    """I9 root: restarting a local worker must not duplicate a job the remote GPU worker owns."""
+    from app import worker
+
+    ids = _case("train", executor="remote")
+    worker.recover()
+    with SessionLocal() as db:
+        assert db.get(Job, ids["job"]).status == "running"
+
+
+def test_the_reaper_runs_on_its_own_thread_independently_of_the_job_loop(monkeypatch):
+    """I9 root: a multi-hour local job must not starve the sweep that reaps dead GPU workers."""
+    import threading
+
+    from app import worker
+
+    seen = threading.Event()
+    monkeypatch.setattr(worker.remote_reaper, "reap", lambda db: seen.set() or [])
+    monkeypatch.setattr(worker, "REAP_S", 0.01)
+    stop = threading.Event()
+    t = threading.Thread(target=worker._reaper_loop, args=(stop,), daemon=True)
+    t.start()
+    try:
+        assert seen.wait(3), "the reaper did not run while the job loop was busy"
+    finally:
+        stop.set()
+        t.join(3)
 
 
 def test_cancel_stamps_when_the_dead_worker_was_asked(monkeypatch):

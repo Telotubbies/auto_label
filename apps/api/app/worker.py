@@ -142,7 +142,7 @@ def _claim():
         for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(LOCAL_JOB_KINDS)).order_by(Job.created).limit(5)):
             # compare-and-set so two workers never run the same job
             n = db.execute(update(Job).where(Job.id == jid, Job.status == "queued")
-                           .values(status="running", started=now())).rowcount
+                           .values(status="running", started=now(), executor="local")).rowcount
             db.commit()
             if n:
                 return jid
@@ -744,27 +744,32 @@ def run_one(jid: str):
 
 
 def recover():
-    """Jobs left 'running' by a crashed process go back to the queue; a cancelled one stays cancelled."""
+    """Jobs left by a crashed *local* process go back to the queue; remote claims are untouched.
+
+    A remote GPU job is owned by the reaper: requeueing it here would run the same train twice
+    when the API (which also handles train in dev) restarts beside a pip worker (I9).
+    """
     with SessionLocal() as db:
-        db.execute(update(Job).where(Job.status == "cancelling", Job.kind.in_(LOCAL_JOB_KINDS))
-                   .values(status="cancelled", finished=now()))
-        db.execute(update(Job).where(Job.status == "running", Job.kind.in_(LOCAL_JOB_KINDS))
-                   .values(status="queued"))
+        jobs = db.scalars(select(Job).where(
+            Job.status.in_(("running", "cancelling")), Job.kind.in_(LOCAL_JOB_KINDS)
+        )).all()
+        for job in jobs:
+            if remote_reaper.remote_owned(job):
+                continue
+            if job.status == "cancelling":
+                job.status, job.finished = "cancelled", now()
+            else:
+                job.status = "queued"
         db.commit()
 
 
 OPS_SCHEDULE_S = 900           # check for due daily drift runs every 15 minutes
 _last_ops_schedule = time.monotonic()
 REAP_S = 60                    # a dead remote worker is noticed within a minute of its timeout
-_last_reap = 0.0
 
 
 def _reap_remote() -> None:
-    """Fail remote jobs whose worker vanished; cheap query, throttled to REAP_S."""
-    global _last_reap
-    if time.monotonic() - _last_reap < REAP_S:
-        return
-    _last_reap = time.monotonic()
+    """Fail remote jobs whose worker vanished; cheap query, safe to call from its own thread."""
     try:
         with SessionLocal() as db:
             changed = remote_reaper.reap(db)
@@ -772,6 +777,13 @@ def _reap_remote() -> None:
             log.warning("failed %d remote job(s) whose worker stopped reporting: %s", len(changed), changed)
     except Exception:                  # a reaper bug must never stop the job loop
         log.exception("could not reap remote jobs")
+
+
+def _reaper_loop(stop: threading.Event) -> None:
+    """Sweep on its own cadence: a multi-hour local job must not delay reaping (I9)."""
+    while not stop.is_set():
+        _reap_remote()
+        stop.wait(REAP_S)
 
 
 def _schedule_ops() -> None:
@@ -802,7 +814,6 @@ def loop(stop: threading.Event | None = None):
                 log.exception("could not enqueue the retention job")
             next_cleanup = time.monotonic() + RETENTION_CHECK_S
         _schedule_ops()           # self-throttled; long jobs must not starve the daily drift check
-        _reap_remote()            # a dead GPU worker must not leave train/autolabel running forever
         jid = _claim()
         if jid:
             heartbeat.beat(LOCAL_JOB_KINDS, current_job=jid)
@@ -818,6 +829,7 @@ def loop(stop: threading.Event | None = None):
 def start_background() -> threading.Event:
     stop = threading.Event()
     threading.Thread(target=loop, args=(stop,), daemon=True, name="labeldesk-worker").start()
+    threading.Thread(target=_reaper_loop, args=(stop,), daemon=True, name="labeldesk-reaper").start()
     threading.Thread(target=webhooks.flush_loop, args=(stop,), daemon=True, name="labeldesk-webhooks").start()
     return stop
 
@@ -829,5 +841,7 @@ if __name__ == "__main__":
     # Production runs the worker as its own process (LD_EMBEDDED_WORKER=0), so retries need a flusher here too.
     threading.Thread(target=webhooks.flush_loop, args=(threading.Event(),), daemon=True,
                      name="labeldesk-webhooks").start()
+    threading.Thread(target=_reaper_loop, args=(threading.Event(),), daemon=True,
+                     name="labeldesk-reaper").start()
     log.info("worker started")
     loop()
