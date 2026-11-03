@@ -29,7 +29,8 @@ from .. import models
 from ..config import DATA_DIR
 from ..db import SessionLocal
 from ..deps import audit
-from ..models import Comment, DriftSample, Image, ImageClass, Job, Project, Version, Workspace, now
+from ..models import (Comment, DriftSample, Image, ImageClass, Job, Project, UsageEvent,
+                      Version, Workspace, now)
 from . import metering
 from .erasure import stream_upload_paths
 
@@ -196,6 +197,15 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
     """Delete one project's expired frames, events, drift samples and snapshot files; caller commits."""
     stats = {"images": 0, "events": 0, "snapshots": 0, "drift": 0, "exports": 0, "uploads": 0,
              "bytes": 0, "failed": 0}
+    ws = db.get(Workspace, project.workspace_id)
+    # I8-R: event JPEGs were billed with `stream_event=<eid>`; refund exactly those bytes when the
+    # event expires. Legacy/unmetered snapshot files find no entry and refund nothing.
+    metered_events: dict[str, float] = {}
+    for usage in db.scalars(select(UsageEvent).where(UsageEvent.project_id == project.id,
+                                                    UsageEvent.metric == "storage_bytes")):
+        eid = (usage.meta or {}).get("stream_event")
+        if isinstance(eid, str) and eid:
+            metered_events[eid] = metered_events.get(eid, 0.0) + float(usage.quantity or 0.0)
     for image in db.scalars(select(Image).where(Image.project_id == project.id, Image.created < cutoff)):
         path_ok, path_bytes = _delete_stored(image.path)
         thumb_ok, thumb_bytes = _delete_stored(image.thumb)
@@ -210,13 +220,21 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
         stats["images"] += 1
 
     for event in event_rows(db, project.id, cutoff):
-        ok, freed = _delete_stored(getattr(event, "snapshot_path", "") or "")
+        freed, ok = 0, True
+        for rel in {getattr(event, "snapshot_path", "") or "", getattr(event, "clean_path", "") or ""}:
+            file_ok, file_bytes = _delete_stored(rel)
+            freed += file_bytes
+            ok = ok and file_ok
         stats["bytes"] += freed
         if not ok:
             stats["failed"] += 1
             continue
         db.delete(event)
         stats["events"] += 1
+        refund = metered_events.pop(event.id, 0.0)
+        if refund and ws is not None:
+            metering.adjust(db, ws, "storage_bytes", -refund, project_id=project.id,
+                            retention=True, stream_event=event.id)
 
     # Drift rows are decided by `created`; their files carry customer footage and expire with them.
     for sample in db.scalars(
@@ -244,7 +262,6 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
 
     # I-1: a clip uploaded for a camera that was never created expires with the project window
     # instead of living forever in the shared videos folder. Its bytes were metered, so refund.
-    ws = db.get(Workspace, project.workspace_id)
     for path in stream_upload_paths(db, project.id):
         if not _older_than(path, cutoff):
             continue

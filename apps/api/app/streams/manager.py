@@ -28,7 +28,7 @@ from ..adapters import ADAPTERS, resolve
 from ..config import DATA_DIR
 from ..db import session_scope
 from ..gpu import GpuBusy
-from ..models import Project, Stream, StreamEvent, new_id
+from ..models import Project, Stream, StreamEvent, Workspace, new_id
 from ..services import metering
 from ..services.safefetch import UnresolvableHost, _public_ip
 from .creds import open_source
@@ -251,6 +251,7 @@ class _Worker:
         self._detections = 0
         self._fps_times: deque[float] = deque()
         self._threads: list[threading.Thread] = []
+        self._quota_error = ""                  # I8-R: visible when event snapshots are quota-blocked
         self._metered_until = time.time()
         self._active_proxy: GuardedMediaProxy | None = None
         self._open_error = ""
@@ -345,7 +346,7 @@ class _Worker:
             now = time.time()
             times = [t for t in self._fps_times if now - t < 2.0]
             status = "paused (GPU busy)" if (self.paused or self.gpu_busy) else self.status
-            return {"status": status, "last_error": self.last_error,
+            return {"status": status, "last_error": self._quota_error or self.last_error,
                     "fps": round(len(times) / 2.0, 1) if times else 0.0,
                     "frames": self._frames, "inferences": self._inferences,
                     "detections": self._detections, "last_frame": self._frame_ts}
@@ -713,21 +714,42 @@ class _Worker:
                     if k in p} for p in preds[:50]]
         eid = new_id()
         snapshot, clean = "", ""
-        try:
-            if frame is not None:
-                snapshot, clean = self._save_frames(frame, preds, ev, eid)
-        except Exception:
-            log.exception("stream %s: could not draw event snapshot", self.id)
+        snapshot_jpeg = clean_jpeg = b""
+        if frame is not None:
+            try:
+                snapshot_jpeg, clean_jpeg = self._render_frames(frame, preds, ev)
+            except Exception:
+                log.exception("stream %s: could not draw event snapshot", self.id)
+        size = float(len(snapshot_jpeg) + len(clean_jpeg))
         with session_scope() as db:
+            # I8-R: event JPEGs are project storage. Check the same meter as uploads before writing,
+            # and bill the exact bytes with the event row so retention/purge can refund them.
+            project = db.get(Project, self.project_id)
+            if project is None or project.deleted_at is not None:
+                self._stop.set()
+                return
+            ws = db.get(Workspace, self.workspace_id)
+            room = metering.remaining(db, ws, "storage_bytes") if ws is not None else 0.0
+            if size and ws is not None and size <= room:
+                try:
+                    snapshot, clean = self._save_frames(snapshot_jpeg, clean_jpeg, eid)
+                except Exception:
+                    log.exception("stream %s: could not save event snapshot", self.id)
+            if snapshot and ws is not None:
+                metering.record(db, ws.id, "storage_bytes", size, project_id=self.project_id,
+                                stream_event=eid)
+                with self._state_lock:
+                    self._quota_error = ""
+            elif size:
+                with self._state_lock:
+                    self._quota_error = "storage quota reached: event snapshots are not being saved"
             db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
                                summary=ev.get("summary", ""), snapshot_path=snapshot,
                                clean_path=clean, predictions=payload,
                                **filter_fields(rule_json, payload)))
 
-    def _save_frames(self, frame, preds: list[dict], ev: dict, eid: str) -> tuple[str, str]:
-        """Write the annotated review snapshot and the untouched frame for dataset ingest."""
-        if self._project_gone():
-            return "", ""
+    def _render_frames(self, frame, preds: list[dict], ev: dict) -> tuple[bytes, bytes]:
+        """Draw the annotated review frame and encode it plus the untouched dataset frame."""
         img = frame.copy()
         h, w = img.shape[:2]
         for z in self.zones:
@@ -748,10 +770,25 @@ class _Worker:
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0) if hot else (150, 150, 150), 3 if hot else 1)
             if hot:
                 cv2.circle(img, (int(p["x"] * w), int((p["y"] + p["height"] / 2) * h)), 6, (0, 0, 255), -1)
+        ok_ann, ann = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        ok_clean, clean = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        if not (ok_ann and ok_clean):
+            raise ValueError("could not encode event snapshot")
+        return ann.tobytes(), clean.tobytes()
+
+    def _save_frames(self, snapshot_jpeg: bytes, clean_jpeg: bytes, eid: str) -> tuple[str, str]:
+        """Persist the two encoded JPEGs; returns their DATA_DIR-relative paths."""
         folder = DATA_DIR / "snapshots" / self.project_id   # project-keyed: retention can attribute it
         folder.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(folder / f"{eid}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
-        cv2.imwrite(str(folder / f"{eid}.src.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
+        snapshot = folder / f"{eid}.jpg"
+        clean = folder / f"{eid}.src.jpg"
+        try:
+            snapshot.write_bytes(snapshot_jpeg)
+            clean.write_bytes(clean_jpeg)
+        except Exception:
+            snapshot.unlink(missing_ok=True)
+            clean.unlink(missing_ok=True)
+            raise
         return (f"snapshots/{self.project_id}/{eid}.jpg", f"snapshots/{self.project_id}/{eid}.src.jpg")
 
 

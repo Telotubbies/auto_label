@@ -1189,3 +1189,51 @@ def test_start_enforces_the_plan_stream_cap(c, monkeypatch, video):
     finally:
         c.post(f"{BASE}/{first}/stop")
         c.post(f"{BASE}/{second}/stop")
+
+
+def test_event_snapshots_are_metered_and_stop_at_the_storage_quota(c, ws_quotas):
+    """I8-R: event JPEGs are billable storage and no file is written past the quota."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Stream, StreamEvent, UsageEvent
+    from app.streams.manager import _Worker
+
+    sid = create_stream(c, name="Snapshot meter")
+    try:
+        with SessionLocal() as db:
+            worker = _Worker(db.get(Stream, sid))
+            pid = worker.project_id
+        folder = DATA_DIR / "snapshots" / pid
+        with SessionLocal() as db:
+            before_billed = db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0))
+                                      .where(UsageEvent.project_id == pid,
+                                             UsageEvent.metric == "storage_bytes"))
+        before = _meter_used("storage_bytes")
+        frame = np.zeros((240, 320, 3), np.uint8)
+        first_ts = time.time()
+        worker._record({"rule": 0, "kind": "count"}, first_ts, [], frame)
+
+        with SessionLocal() as db:
+            ev = db.scalar(select(StreamEvent).where(StreamEvent.stream_id == sid))
+            paths = [DATA_DIR / ev.snapshot_path, DATA_DIR / ev.clean_path]
+            assert all(path.is_file() for path in paths)
+            size = sum(path.stat().st_size for path in paths)
+            billed = db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0))
+                               .where(UsageEvent.project_id == pid,
+                                      UsageEvent.metric == "storage_bytes"))
+        assert billed == pytest.approx(before_billed + size, abs=1), "the snapshot bytes were not metered"
+        assert _meter_used("storage_bytes") == pytest.approx(before + size, abs=1)
+
+        _set_quotas(storage_bytes=_meter_used("storage_bytes"))
+        files_before = set(folder.glob("*"))
+        worker._record({"rule": 0, "kind": "count"}, first_ts + 1, [], frame)
+        assert set(folder.glob("*")) == files_before, "a snapshot was written past the storage quota"
+        with SessionLocal() as db:
+            events = db.scalars(select(StreamEvent).where(StreamEvent.stream_id == sid)
+                                .order_by(StreamEvent.ts)).all()
+            assert len(events) == 2, "the quota-blocked event row must still be visible"
+            assert events[-1].snapshot_path == "" and events[-1].clean_path == ""
+        assert "quota" in worker.status_out()["last_error"].lower()
+    finally:
+        c.delete(f"{BASE}/{sid}")
