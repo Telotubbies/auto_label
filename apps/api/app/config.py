@@ -110,7 +110,9 @@ RETENTION_PRESETS = (7, 30, 90, 180, 365)                    # choices offered b
 WORKER_STALE_S = int(_env("LD_WORKER_STALE_S", "45"))        # a heartbeat older than this shows offline
 # A remote GPU worker (pip `labeldesk-worker`) reports progress every epoch/image; that report is
 # its heartbeat. No report for this long means the worker is gone and the job is failed (I9).
-REMOTE_JOB_TIMEOUT_S = int(_env("LD_REMOTE_JOB_TIMEOUT_S", "1800"))    # 30 min without progress
+# Six hours covers exporting a large version, downloading it and the first epoch; a worker that
+# finishes after the sweep still recovers the run via /complete (Important 1).
+REMOTE_JOB_TIMEOUT_S = int(_env("LD_REMOTE_JOB_TIMEOUT_S", "21600"))   # 6 h without progress
 REMOTE_CANCEL_GRACE_S = int(_env("LD_REMOTE_CANCEL_GRACE_S", "900"))   # 15 min to acknowledge a cancel
 if WORKER_TOKEN and len(WORKER_TOKEN) < 24:
     raise RuntimeError("LD_WORKER_TOKEN must be at least 24 characters")

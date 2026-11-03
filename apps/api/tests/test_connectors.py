@@ -11,7 +11,6 @@ import types
 
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
-os.environ["LD_EMBEDDED_WORKER"] = "0"
 
 import pytest
 from fastapi import HTTPException

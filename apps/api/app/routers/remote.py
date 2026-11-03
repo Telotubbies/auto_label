@@ -88,7 +88,7 @@ def claim(body: ClaimIn, db: Session = Depends(get_db)):
     for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(kinds)).order_by(Job.created).limit(5)):
         if db.execute(update(Job).where(Job.id == jid, Job.status == "queued")
                       .values(status="running", started=now(), executor="remote",
-                              result={"worker": body.name})).rowcount:
+                              result={"worker": body.name, "heartbeat": now()})).rowcount:
             db.commit()
             j = db.get(Job, jid)
             try:
@@ -96,6 +96,9 @@ def claim(body: ClaimIn, db: Session = Depends(get_db)):
             except Exception as e:
                 j.status, j.error, j.finished = "failed", safe_error(e, j.kind), now()
                 db.commit(); continue
+            # Exporting a large version can take longer than the stale timeout; the worker has not
+            # even received the payload yet, so refresh the clock once the payload exists.
+            j.result = {**(j.result or {}), "heartbeat": now()}
             db.commit()
             return {"job": {"id": j.id, "kind": j.kind, "payload": payload}}
     return {"job": None}
@@ -189,15 +192,27 @@ def _finalize_remote_model(model_id: str) -> None:
         db.commit()
 
 
+def _reaped_by_sweep(j: Job) -> bool:
+    """True when the reaper failed this row while its worker was merely slow (Important 1).
+
+    A slow export, download or first epoch can outlast the stale timeout, but the worker is still
+    alive and will report its real outcome. Only rows this sweep failed carry the marker, so a
+    genuine failure is still ignored on a late retry.
+    """
+    return j.status == "failed" and j.kind in REMOTE_JOB_KINDS and bool((j.result or {}).get("reaped"))
+
+
 @router.post("/jobs/{jid}/complete", dependencies=[Depends(worker_auth)])
 async def complete(jid: str, background_tasks: BackgroundTasks, result: str = Form("{}"),
                    weights: UploadFile | None = File(None), db: Session = Depends(get_db)):
     j = db.get(Job, jid)
     if not j:
         raise HTTPException(404, "job not found")
-    if j.status in TERMINAL:        # a retried complete must not re-meter, re-evaluate or re-announce
+    revived = _reaped_by_sweep(j)
+    if j.status in TERMINAL and not revived:   # a retried complete must not re-meter/re-evaluate/re-announce
         _keep_model_id(db, j)
         return {"ok": True}
+    stale_error = j.error if revived else ""
     res = json.loads(result or "{}")
     # Every kind that reaches the remote worker held the GPU; meter it before any kind-specific work.
     elapsed = max(0.0, now() - (j.started or now()))
@@ -218,8 +233,14 @@ async def complete(jid: str, background_tasks: BackgroundTasks, result: str = Fo
         # Eval resolves (loads) the model and runs pycocotools on the test split: never inline here,
         # where it would stall the single uvicorn loop and skip the GPU lease.
         background_tasks.add_task(_finalize_remote_model, tm.id)
+    if revived:
+        # The weights arrived: the run succeeded, but keep the reaper's reason for the operator.
+        res = {**res, "remote_error": stale_error}
+        j.error = ""
     j.status = "cancelled" if j.status == "cancelling" else "done"
-    j.progress, j.result, j.finished = 100.0, {**(j.result or {}), **res}, now()
+    outcome = {**(j.result or {}), **res}
+    outcome.pop("reaped", None)
+    j.progress, j.result, j.finished = 100.0, outcome, now()
     finalize.job_done(db, j, j.status)
     db.commit()
     return {"ok": True}

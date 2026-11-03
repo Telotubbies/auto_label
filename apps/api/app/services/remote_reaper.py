@@ -69,6 +69,9 @@ def reap(db: Session, now_ts: float | None = None) -> list[str]:
     ).all():
         if not remote_owned(job) or ts - _last_seen(job) < REMOTE_JOB_TIMEOUT_S:
             continue
+        # Mark it ours: a worker that was merely slow may still POST /complete with real weights, and
+        # the router revives only rows this sweep failed (Important 1).
+        job.result = {**(job.result or {}), "reaped": True}
         job.status, job.error, job.finished = "failed", STALE_ERROR, ts
         _fail_model(db, job)
         finalize.job_done(db, job, "failed", STALE_ERROR)

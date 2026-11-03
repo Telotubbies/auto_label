@@ -23,6 +23,9 @@ if _OWN_DATA_DIR:
 else:
     TEST_TMP = os.environ["LD_DATA_DIR"]
 os.environ.setdefault("LD_EMBEDDED_WORKER", "1")
+# A test module that rewrites this at import flips the worker off for the whole session (Important 2),
+# so the value is recorded here for the module-level isolation regression test.
+EMBEDDED_WORKER_ENV = os.environ["LD_EMBEDDED_WORKER"]
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ.setdefault("LD_SAM_ENABLED", "0")
 os.environ.setdefault("LD_CLIP", "0")              # optional CLIP: keep the cheap deterministic features

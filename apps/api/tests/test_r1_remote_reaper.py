@@ -2,9 +2,6 @@
 import os
 import uuid
 
-os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
-os.environ["LD_EMBEDDED_WORKER"] = "0"     # the API process runs no jobs; only the reaper acts here
-
 import pytest
 from sqlalchemy import select
 
@@ -97,6 +94,42 @@ def test_a_recent_progress_report_keeps_a_long_run_alive(monkeypatch):
         assert job.result["heartbeat"] > 0
         assert remote_reaper.reap(db) == []                # a 2-hour run with fresh progress survives
         assert job.status == "running"
+
+
+def test_this_module_does_not_flip_the_session_worker_off():
+    """Important 2: a collected-but-unrun module must not rewrite the session's worker flag."""
+    import conftest
+
+    assert os.environ["LD_EMBEDDED_WORKER"] == conftest.EMBEDDED_WORKER_ENV
+
+
+def test_a_reaped_train_run_still_accepts_its_weights(monkeypatch):
+    """Important 1: a slow export/first epoch can trip the timeout; the late complete must not be dropped."""
+    from fastapi.testclient import TestClient
+
+    from app import main
+    from app.main import app
+
+    monkeypatch.setattr(main, "EMBEDDED_WORKER", False)
+    ids = _case("train", started_age=config.REMOTE_JOB_TIMEOUT_S + 60)
+    with SessionLocal() as db:
+        assert remote_reaper.reap(db) == [ids["job"]]
+
+    with TestClient(app) as client:
+        r = client.post(f"/api/worker/jobs/{ids['job']}/complete",
+                        headers={"X-Worker-Token": os.environ["LD_WORKER_TOKEN"]},
+                        data={"result": '{"history": []}'},
+                        files={"weights": ("best.pt", b"not-a-real-checkpoint")})
+    assert r.status_code == 200, r.text
+
+    with SessionLocal() as db:
+        job = db.get(Job, ids["job"])
+        assert job.status == "done"
+        assert job.error == ""
+        assert job.result["remote_error"]            # the reaper's message is kept, not the outcome
+        model = db.get(TrainedModel, ids["model"])
+        assert model.status == "ready"
+        assert model.weights and (config.DATA_DIR / model.weights).is_file()
 
 
 def test_abandoned_remote_cancel_reaches_cancelled():

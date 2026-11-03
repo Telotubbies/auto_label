@@ -3,9 +3,6 @@ import contextlib
 import os
 import uuid
 
-os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
-os.environ["LD_EMBEDDED_WORKER"] = "0"     # no local worker may claim the "running" remote job
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
