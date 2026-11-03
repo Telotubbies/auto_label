@@ -1237,3 +1237,42 @@ def test_event_snapshots_are_metered_and_stop_at_the_storage_quota(c, ws_quotas)
         assert "quota" in worker.status_out()["last_error"].lower()
     finally:
         c.delete(f"{BASE}/{sid}")
+
+
+def test_deleting_a_stream_refunds_its_metered_event_snapshots(c):
+    """I-1: deleting a camera must credit the event bytes it erases, and purge must not re-bill them."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Stream, StreamEvent, UsageEvent
+    from app.streams.manager import _Worker
+
+    ws, slug, pid = _fresh_project(c, "Delete refund")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    sid = c.post(f"{base}/streams", json={"name": "Snapshot delete", "source": "file:videos/none.mp4",
+                                          "model_ref": "ultralytics:yolo11n"}).json()["id"]
+    before = _meter_used("storage_bytes", ws)
+    with SessionLocal() as db:
+        worker = _Worker(db.get(Stream, sid))
+    worker._record({"rule": 0, "kind": "count"}, time.time(), [],
+                   np.zeros((240, 320, 3), np.uint8))
+    with SessionLocal() as db:
+        event = db.scalar(select(StreamEvent).where(StreamEvent.stream_id == sid))
+        paths = [DATA_DIR / event.snapshot_path, DATA_DIR / event.clean_path]
+        usage = db.scalars(select(UsageEvent).where(UsageEvent.project_id == pid,
+                                                    UsageEvent.metric == "storage_bytes")).all()
+        billed = sum(float(row.quantity or 0.0) for row in usage
+                     if (row.meta or {}).get("stream_event") == event.id)
+    assert all(path.is_file() for path in paths)
+    assert billed == pytest.approx(sum(path.stat().st_size for path in paths), abs=1)
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before + billed, abs=1)
+
+    assert c.delete(f"{base}/streams/{sid}").status_code == 200
+    assert all(not path.exists() for path in paths), "the deleted camera's snapshots survived"
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1), (
+        "DELETE /streams erased billed snapshots without refunding the storage meter")
+
+    assert c.delete(base).status_code == 200
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1), (
+        "a later purge re-billed bytes that no longer exist")

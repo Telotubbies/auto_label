@@ -2,7 +2,6 @@
 import secrets
 import shutil
 import time
-from contextlib import suppress
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -14,7 +13,7 @@ from ..adapters import resolve
 from ..config import DATA_DIR, MAX_UPLOAD_MB, PLANS
 from ..db import SessionLocal
 from ..deps import Ctx, audit, project_ctx
-from ..models import Project, Stream, StreamEvent, Workspace
+from ..models import Project, Stream, StreamEvent, UsageEvent, Workspace
 from ..security import check_signature, sign_path, sign_query
 from ..services import metering
 from ..streams import creds
@@ -82,16 +81,24 @@ def _get(c: Ctx, sid: str) -> Stream:
     return s
 
 
-def _unlink_stored(rel_paths: list[str]) -> None:
-    """Delete the event files of a removed stream; anything outside DATA_DIR is left alone.
+def _unlink_stored(rel_paths: list[str]) -> int:
+    """Delete the event files of a removed stream and return the bytes actually freed.
 
-    A file still held open on Windows is left for the retention job instead of failing the delete.
+    Anything outside DATA_DIR is left alone. A file still held open on Windows is left for the
+    retention job instead of failing the delete, and is not credited because it still exists.
     """
-    for rel in rel_paths:
+    freed = 0
+    for rel in dict.fromkeys(rel_paths):
         path = (DATA_DIR / rel).resolve()
-        if DATA_DIR in path.parents:
-            with suppress(OSError):
-                path.unlink(missing_ok=True)
+        if DATA_DIR not in path.parents:
+            continue
+        try:
+            size = path.stat().st_size
+            path.unlink()
+        except OSError:
+            continue
+        freed += size
+    return freed
 
 
 # --- validation ---------------------------------------------------------------
@@ -298,14 +305,28 @@ def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
     except ValueError:
         source = ""
     manager.stop(sid)
+    event_ids = set(c.db.scalars(select(StreamEvent.id)
+                                 .where(StreamEvent.stream_id == sid)).all())
     stored = [p for row in c.db.execute(select(StreamEvent.snapshot_path, StreamEvent.clean_path)
                                         .where(StreamEvent.stream_id == sid)).all() for p in row if p]
     c.db.execute(sa_delete(StreamEvent).where(StreamEvent.stream_id == sid))
     c.db.delete(s)
     audit(c.db, c.ws.id, c.user.id, "stream.delete", s.name)
     c.db.commit()
-    _unlink_stored(stored)
+    freed = _unlink_stored(stored)
     shutil.rmtree(DATA_DIR / "streams" / sid, ignore_errors=True)   # pre-fix footage, keyed by stream
+    if freed and event_ids:
+        # I-1: the event JPEGs were billed with `stream_event=<eid>`; refund exactly what this
+        # delete actually removed, bounded by what the workspace was charged for those events.
+        metered = sum(float(row.quantity or 0.0) for row in c.db.scalars(
+            select(UsageEvent).where(UsageEvent.project_id == c.project.id,
+                                     UsageEvent.metric == "storage_bytes"))
+            if (row.meta or {}).get("stream_event") in event_ids)
+        refund = max(0.0, min(float(freed), metered))
+        if refund:
+            metering.adjust(c.db, c.ws, "storage_bytes", -refund, project_id=c.project.id,
+                            stream="delete")
+            c.db.commit()
     if source.startswith("file:videos/"):
         left = c.db.scalar(select(func.count(Stream.id)).where(Stream.source == source)) or 0
         if not left:                                  # demo uploads must not accumulate
