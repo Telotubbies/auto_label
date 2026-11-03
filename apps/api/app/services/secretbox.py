@@ -49,9 +49,17 @@ def decrypt(value: str) -> str:
         raise ValueError("stored secret cannot be decrypted (LD_SECRET changed?)") from e
 
 
-def _reencrypt(value: str) -> str:
-    """Move a ciphertext to the current key (used while LD_SECRET_OLD is set)."""
-    return PREFIX + _fernet().rotate(value[len(PREFIX):].encode()).decode()
+def reencrypt(value: str) -> str:
+    """Move a ciphertext to the current key (used while LD_SECRET_OLD is set).
+
+    Plaintext is encrypted; an undecryptable ciphertext raises ValueError (``InvalidToken``).
+    """
+    if not is_encrypted(value):
+        return encrypt(value)
+    try:
+        return PREFIX + _fernet().rotate(value[len(PREFIX):].encode()).decode()
+    except InvalidToken as e:
+        raise ValueError("stored secret cannot be decrypted (LD_SECRET changed?)") from e
 
 
 def encrypt_config(config: dict, fields: tuple[str, ...]) -> dict:
@@ -84,7 +92,7 @@ def migrate() -> None:
                     config[field] = encrypt(str(value))
                     changed = True
                 elif SECRET_OLD:
-                    config[field] = _reencrypt(str(value))      # finish a key rotation
+                    config[field] = reencrypt(str(value))      # finish a key rotation
                     changed = True
             if changed:
                 conn.config = config
@@ -94,12 +102,12 @@ def migrate() -> None:
             if not is_encrypted(hook.secret):
                 hook.secret = encrypt(hook.secret)
             elif SECRET_OLD:
-                hook.secret = _reencrypt(hook.secret)
+                hook.secret = reencrypt(hook.secret)
         for user in db.scalars(select(User).where(User.totp_secret.is_not(None))):
             if not user.totp_secret:
                 continue
             if not is_encrypted(user.totp_secret):
                 user.totp_secret = encrypt(user.totp_secret)
             elif SECRET_OLD:
-                user.totp_secret = _reencrypt(user.totp_secret)
+                user.totp_secret = reencrypt(user.totp_secret)
         db.commit()

@@ -152,6 +152,30 @@ def test_run_retention_deletes_expired_rows_and_files(world):
     assert again["projects"] == 1
 
 
+def test_retention_sweeps_an_upload_never_attached_to_a_stream(world):
+    """I-1: an abandoned camera clip expires with the project and its metered bytes are refunded."""
+    from app.models import UsageEvent
+    from app.services import metering
+
+    name = f"orphan-{uuid.uuid4().hex[:8]}.mp4"
+    path = DATA_DIR / "videos" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * 2048)
+    os.utime(path, (time.time() - 40 * DAY, time.time() - 40 * DAY))
+    with SessionLocal() as db:
+        db.add(UsageEvent(workspace_id=world["ws"], project_id=world["pid"], metric="storage_bytes",
+                          quantity=2048.0, meta={"stream_upload": name}))
+        db.commit()
+        before = metering.used(db, db.get(Workspace, world["ws"]), "storage_bytes")
+
+    result = retention.run_retention(types.SimpleNamespace(params={"project_id": world["pid"]}))
+    assert result["uploads_deleted"] == 1
+    assert not path.exists(), "an upload with no Stream row outlived the retention window"
+    with SessionLocal() as db:
+        after = metering.used(db, db.get(Workspace, world["ws"]), "storage_bytes")
+    assert after == pytest.approx(before - 2048, abs=1)
+
+
 def test_unknown_project_raises(world):
     with pytest.raises(RuntimeError):
         retention.run_retention(types.SimpleNamespace(params={"project_id": "does-not-exist"}))

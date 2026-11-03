@@ -79,6 +79,15 @@ def used(db: Session, ws: Workspace, metric: str, since: float | None = None) ->
     return float(db.scalar(q) or 0.0)
 
 
+def project_used(db: Session, project_id: str, metric: str = "storage_bytes") -> float:
+    """Summed quantity metered against one project (all time); used to refund a purge exactly."""
+    _check_metric(metric)
+    q = select(func.coalesce(func.sum(UsageEvent.quantity), 0.0)).where(
+        UsageEvent.project_id == project_id, UsageEvent.metric == metric
+    )
+    return float(db.scalar(q) or 0.0)
+
+
 def quota_for(ws: Workspace, metric: str) -> float:
     """Per-workspace override when set, else the plan allowance (unknown plans fall back to Free)."""
     _check_metric(metric)

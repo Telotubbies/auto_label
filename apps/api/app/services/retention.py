@@ -29,7 +29,9 @@ from .. import models
 from ..config import DATA_DIR
 from ..db import SessionLocal
 from ..deps import audit
-from ..models import Comment, DriftSample, Image, ImageClass, Job, Project, Version, now
+from ..models import Comment, DriftSample, Image, ImageClass, Job, Project, Version, Workspace, now
+from . import metering
+from .erasure import stream_upload_paths
 
 log = logging.getLogger(__name__)
 DAY = 86400.0
@@ -192,7 +194,8 @@ def _invalidate_exports(db: Session, project_id: str) -> tuple[int, int]:
 
 def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
     """Delete one project's expired frames, events, drift samples and snapshot files; caller commits."""
-    stats = {"images": 0, "events": 0, "snapshots": 0, "drift": 0, "exports": 0, "bytes": 0, "failed": 0}
+    stats = {"images": 0, "events": 0, "snapshots": 0, "drift": 0, "exports": 0, "uploads": 0,
+             "bytes": 0, "failed": 0}
     for image in db.scalars(select(Image).where(Image.project_id == project.id, Image.created < cutoff)):
         path_ok, path_bytes = _delete_stored(image.path)
         thumb_ok, thumb_bytes = _delete_stored(image.thumb)
@@ -239,6 +242,22 @@ def _clean_project(db: Session, project: Project, cutoff: float) -> dict:
     stats["drift"] += files
     stats["bytes"] += freed
 
+    # I-1: a clip uploaded for a camera that was never created expires with the project window
+    # instead of living forever in the shared videos folder. Its bytes were metered, so refund.
+    ws = db.get(Workspace, project.workspace_id)
+    for path in stream_upload_paths(db, project.id):
+        if not _older_than(path, cutoff):
+            continue
+        size = _unlink(path)
+        if size is None:
+            if path.exists():
+                stats["failed"] += 1         # locked/unsafe: retried next run
+            continue
+        stats["uploads"] += 1
+        stats["bytes"] += size
+        if size and ws is not None:
+            metering.adjust(db, ws, "storage_bytes", -size, project_id=project.id, retention=True)
+
     # Only project-attributable snapshot folders: the flat shared root has no owner, so it stays.
     for directory in (DATA_DIR / "projects" / project.id / "snapshots", DATA_DIR / "snapshots" / project.id):
         files, freed = _sweep(directory, cutoff)
@@ -257,7 +276,8 @@ def run_retention(job) -> dict:
     """
     params = getattr(job, "params", None) or {}
     result = {"projects": 0, "images_deleted": 0, "events_deleted": 0, "snapshots_deleted": 0,
-              "drift_deleted": 0, "exports_deleted": 0, "bytes_freed": 0, "failed": 0}
+              "drift_deleted": 0, "exports_deleted": 0, "uploads_deleted": 0, "bytes_freed": 0,
+              "failed": 0}
     with SessionLocal() as db:
         project_id = params.get("project_id")
         if project_id:
@@ -283,6 +303,7 @@ def run_retention(job) -> dict:
                 snapshots=stats["snapshots"],
                 drift=stats["drift"],
                 exports=stats["exports"],
+                uploads=stats["uploads"],
                 bytes=stats["bytes"],
                 failed=stats["failed"],
             )
@@ -293,6 +314,7 @@ def run_retention(job) -> dict:
             result["snapshots_deleted"] += stats["snapshots"]
             result["drift_deleted"] += stats["drift"]
             result["exports_deleted"] += stats["exports"]
+            result["uploads_deleted"] += stats["uploads"]
             result["bytes_freed"] += stats["bytes"]
             result["failed"] += stats["failed"]
     return result

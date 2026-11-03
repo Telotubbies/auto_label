@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
-from ..models import Project, Stream, TrainedModel, Version, Video
+from ..models import Project, Stream, TrainedModel, UsageEvent, Version, Video
 from . import versioning
 
 log = logging.getLogger("labeldesk.erasure")
@@ -60,6 +60,28 @@ def _remove_all(paths: list[Path]) -> tuple[int, bool]:
     return freed, ok
 
 
+def stream_upload_paths(db: Session, project_id: str) -> list[Path]:
+    """Uploaded stream clips billed to the project but attached to no ``Stream`` row.
+
+    The upload writes ``videos/<name>`` before the operator creates the stream, so a cancelled
+    dialog or a failed create leaves a file that only the storage meter knows about. The metering
+    event is the ownership record; a clip still referenced by any stream is left alone.
+    """
+    referenced = set(db.scalars(select(Stream.source).where(Stream.source.like("file:videos/%"))))
+    names: list[str] = []
+    seen: set[str] = set()
+    for event in db.scalars(select(UsageEvent).where(UsageEvent.project_id == project_id,
+                                                    UsageEvent.metric == "storage_bytes")):
+        name = (event.meta or {}).get("stream_upload")
+        if (not isinstance(name, str) or not name or name in seen
+                or name != Path(name).name or name in (".", "..") or "\\" in name):
+            continue                             # only flat upload names are ever erased
+        seen.add(name)
+        if f"file:videos/{name}" not in referenced:
+            names.append(name)
+    return [DATA_DIR / "videos" / name for name in names]
+
+
 def project_paths(db: Session, project: Project) -> list[Path]:
     """Every file/directory prefix that belongs to ``project``."""
     paths = [DATA_DIR / "projects" / project.id,
@@ -83,6 +105,8 @@ def project_paths(db: Session, project: Project) -> list[Path]:
                                                        Stream.project_id != project.id).limit(1))
             if shared is None:                  # another project may reuse the same upload
                 paths.append(DATA_DIR / s.source[len("file:"):])
+    # I-1: clips uploaded but never attached to a stream row are still the project's bytes.
+    paths += stream_upload_paths(db, project.id)
     return paths
 
 

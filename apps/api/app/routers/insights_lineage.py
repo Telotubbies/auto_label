@@ -19,8 +19,12 @@ class QueryIn(BaseModel):
 
 @router.get("/lineage")
 def lineage(c: Ctx = Depends(project_ctx)):
-    """Batches → versions → training runs → models → streams, with each node's outputs."""
-    return insights_lineage.build(c.db, c.project)
+    """Batches → versions → training runs → models → streams, with each node's outputs.
+
+    Camera nodes require ``project.streams``; a labeler/viewer still sees the rest of the chain,
+    so the shared dashboard is readable without disclosing stream names or model refs (I-4).
+    """
+    return insights_lineage.build(c.db, c.project, include_streams=c.can("project.streams"))
 
 
 @router.get("/streams")
@@ -40,6 +44,8 @@ def stream_analytics(
 @router.post("/query")
 def widget_query(body: QueryIn, c: Ctx = Depends(project_ctx)):
     """One dashboard widget's aggregate; the dashboard stores the spec, never the numbers."""
+    if body.source == "streams":
+        c.perm("project.streams")       # I-4: the widget is a stream read, not a generic read
     try:
         return insights_query.run(c.db, c.project, body.model_dump())
     except LookupError as exc:

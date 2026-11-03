@@ -8,12 +8,15 @@ Task 10b MUST call ``seal_source()`` on stream create/update and ``mask_source()
 response — never return a stored source verbatim, or the ciphertext (or password) leaks.
 """
 
+import logging
 from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import select
 
 from .. import models
 from ..services import secretbox
+
+log = logging.getLogger("labeldesk.streams.creds")
 
 
 def is_sealed(value) -> bool:
@@ -56,14 +59,25 @@ def mask_source(value: str) -> str:
 
 
 def seal_existing(db) -> int:
-    """Seal every stored stream source in place; returns how many rows changed. No-op without Stream."""
+    """Seal every stored stream source (and finish a key rotation); returns the rows changed.
+
+    When ``LD_SECRET_OLD`` is set, already-sealed rows are re-encrypted under the current key.
+    Without that step the documented rotation would leave every camera under the old key and
+    removing ``LD_SECRET_OLD`` would make the ciphertext permanently unreadable.
+    """
     stream = getattr(models, "Stream", None)
     if stream is None or db is None:
         return 0
     changed = 0
     for row in db.scalars(select(stream)):
-        sealed = seal_source(getattr(row, "source", "") or "")
-        if sealed != row.source:
+        current = getattr(row, "source", "") or ""
+        try:
+            sealed = (secretbox.reencrypt(current)
+                      if secretbox.SECRET_OLD and is_sealed(current) else seal_source(current))
+        except ValueError:                     # a row under an unknown key: never abort startup
+            log.warning("stream %s: stored source cannot be decrypted; leaving it unchanged", row.id)
+            continue
+        if sealed != current:
             row.source = sealed
             changed += 1
     if changed:

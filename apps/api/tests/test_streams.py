@@ -853,11 +853,23 @@ def _set_quotas(**overrides):
         db.commit()
 
 
-def _meter_used(metric: str) -> float:
+def _meter_used(metric: str, ws_slug: str = WS) -> float:
+    from sqlalchemy import select
+
     from app.db import SessionLocal
+    from app.models import Workspace
     from app.services import metering
     with SessionLocal() as db:
-        return metering.used(db, _workspace(), metric)
+        ws = db.scalar(select(Workspace).where(Workspace.slug == ws_slug))
+        return metering.used(db, ws, metric)
+
+
+def _fresh_project(c, prefix: str) -> tuple[str, str, str]:
+    """An owned workspace+project: purge tests must not consume the demo plan's project cap."""
+    ws = c.post("/api/workspaces", json={"name": f"{prefix} {uuid.uuid4().hex[:8]}"}).json()["slug"]
+    proj = c.post(f"/api/ws/{ws}/projects",
+                  json={"name": f"{prefix} project", "type": "object-detection"}).json()
+    return ws, proj["slug"], proj["id"]
 
 
 def _video_bytes(seconds: float = 1.0) -> bytes:
@@ -933,15 +945,89 @@ def test_sealed_credentials_without_the_key_fail_loudly(c, monkeypatch):
     assert "credentials cannot be decrypted" in j["lastError"]
 
 
+def test_secret_rotation_reencrypts_stored_stream_credentials(c, monkeypatch):
+    """I-3: rotating LD_SECRET must rewrite stream ciphertext, or removing the old key bricks it."""
+    from app.db import SessionLocal
+    from app.models import Stream
+    from app.services import secretbox
+
+    url = "rtsp://rotated:s3cret@8.8.8.8:554/live"
+    sid = None
+    try:
+        monkeypatch.setattr(secretbox, "SECRET", "rotation-key-a")
+        monkeypatch.setattr(secretbox, "SECRET_OLD", "")
+        secretbox._fernet.cache_clear()
+        sid = create_stream(c, source=url)
+        with SessionLocal() as db:
+            before = db.get(Stream, sid).source
+        assert before.startswith(secretbox.PREFIX)
+
+        # The documented rotation: new key first, old key still trusted, then a restart.
+        monkeypatch.setattr(secretbox, "SECRET", "rotation-key-b")
+        monkeypatch.setattr(secretbox, "SECRET_OLD", "rotation-key-a")
+        secretbox._fernet.cache_clear()
+        from app.streams import creds
+        with SessionLocal() as db:
+            assert creds.seal_existing(db) == 1
+            after = db.get(Stream, sid).source
+        assert after != before, "the stream ciphertext was not rotated"
+        assert "s3cret" not in after
+        assert creds.open_source(after) == url
+
+        # Once LD_SECRET_OLD is removed the camera must still open: rotation is complete.
+        monkeypatch.setattr(secretbox, "SECRET_OLD", "")
+        secretbox._fernet.cache_clear()
+        assert creds.open_source(after) == url
+        assert creds.mask_source(after) == "rtsp://rotated:****@8.8.8.8:554/live"
+    finally:
+        secretbox._fernet.cache_clear()
+        if sid:
+            c.delete(f"{BASE}/{sid}")
+
+
+def test_purge_erases_an_upload_never_attached_to_a_stream(c):
+    """I-1: a clip uploaded then abandoned is still project bytes; purge erases it and refunds."""
+    ws, slug, pid = _fresh_project(c, "Abandoned clip")
+    before = _meter_used("storage_bytes", ws)
+    base = f"/api/ws/{ws}/projects/{slug}"
+    up = c.post(f"{base}/streams/upload-video",
+                files={"file": ("orphan.avi", _video_bytes(), "video/x-msvideo")}).json()
+    stored = DATA_DIR / up["source"][len("file:"):]
+    assert stored.is_file()
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before + stored.stat().st_size, abs=1)
+
+    assert c.delete(base).status_code == 200                        # trash
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    assert not stored.exists(), "an upload with no Stream row survived the purge"
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1)
+
+
+def test_purge_refunds_the_storage_meter_for_an_attached_clip(c):
+    """I-2: the purge must credit the bytes it freed, or the quota stays consumed forever."""
+    ws, slug, pid = _fresh_project(c, "Refund clip")
+    before = _meter_used("storage_bytes", ws)
+    base = f"/api/ws/{ws}/projects/{slug}"
+    up = c.post(f"{base}/streams/upload-video",
+                files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")}).json()
+    stored = DATA_DIR / up["source"][len("file:"):]
+    sid = c.post(f"{base}/streams", json={"name": "Camera", "source": up["source"],
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5}).json()["id"]
+    assert c.delete(base).status_code == 200
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+    assert not stored.exists()
+    assert _meter_used("storage_bytes", ws) == pytest.approx(before, abs=1), (
+        f"purge freed the clip but left {sid} billed")
+    assert not (DATA_DIR / "streams" / sid).exists()
+
+
 def test_trash_and_purge_stop_the_camera_and_erase_its_bytes(c, monkeypatch):
     """C2: trashing a project stops capture, kills the signed view and purges the uploaded clip."""
     from app.streams.manager import manager
 
     monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
-    proj = c.post(f"/api/ws/{WS}/projects",
-                  json={"name": f"Trash cam {uuid.uuid4().hex[:6]}", "type": "object-detection"}).json()
-    slug, pid = proj["slug"], proj["id"]
-    base = f"/api/ws/{WS}/projects/{slug}"
+    ws, slug, pid = _fresh_project(c, "Trash cam")
+    base = f"/api/ws/{ws}/projects/{slug}"
     up = c.post(f"{base}/streams/upload-video",
                 files={"file": ("clip.avi", _video_bytes(), "video/x-msvideo")}).json()
     stored = DATA_DIR / up["source"][len("file:"):]
@@ -960,7 +1046,7 @@ def test_trash_and_purge_stop_the_camera_and_erase_its_bytes(c, monkeypatch):
     time.sleep(0.3)
     assert c.get(frame).status_code == 404            # a signed live URL dies with the project
 
-    assert c.delete(f"/api/ws/{WS}/trash/{pid}").status_code == 200
+    assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
     time.sleep(0.3)
     assert not stored.exists(), "the uploaded stream video survived the purge"
     assert not (DATA_DIR / "streams" / sid).exists()
