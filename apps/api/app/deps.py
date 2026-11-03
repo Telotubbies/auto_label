@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from . import oidc, rbac
 from .config import PLANS
 from .db import get_db
-from .models import Audit, CustomRole, Image, Member, Project, ProjectMember, User, Workspace
+from .models import Audit, Image, Member, Project, ProjectMember, User, Workspace
 from .security import verify_access
 
 bearer = HTTPBearer(auto_error=False)
@@ -103,13 +103,7 @@ class Ctx:
 
 
 def _custom_permissions(db: Session, role_id: Optional[str], level: str) -> tuple[str, ...]:
-    """Permissions of a custom role, ignoring stale ids and level mismatches."""
-    if not role_id:
-        return ()
-    row = db.get(CustomRole, role_id)
-    if not row or row.level != level:
-        return ()
-    return tuple(row.permissions or ())
+    return rbac.custom_permissions(db, role_id, level)
 
 
 def _ctx_for_member(db: Session, u: User, ws: Workspace, m: Member) -> Ctx:

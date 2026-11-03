@@ -10,7 +10,7 @@ from PIL import Image as PImage
 
 from ..config import DATA_DIR, PRETRAINED_DIR, TRAIN_DEVICE
 from ..services import exporters
-from .base import Availability, TrainResult, register
+from .base import Availability, TrainResult, register, safe_variant
 
 TASK = {"object-detection": "detect", "instance-segmentation": "segment", "classification": "classify"}
 
@@ -95,6 +95,7 @@ def _weights_path(variant: str, weights: str | None) -> str:
     """The path _load() uses for one variant: a trained checkpoint or the zoo/local pretrained copy."""
     if weights:                                    # trained model: DATA_DIR-relative path
         return str(DATA_DIR / weights)
+    variant = safe_variant(variant)                # I1: never let a ref name an arbitrary file
     local = PRETRAINED_DIR / f"{variant}.pt"
     return str(local) if local.exists() else f"{variant}.pt"
 

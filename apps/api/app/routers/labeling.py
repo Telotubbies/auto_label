@@ -20,7 +20,9 @@ def _job(c: Ctx, job_id: str) -> ConsensusJob:
 @router.get("/dashboard")
 def dashboard(days: int = 30, c: Ctx = Depends(project_ctx)):
     c.need("annotator")
-    return labeling_ops.dashboard(c.db, c, days, only_user=c.user.id if c.role == "annotator" else None)
+    # Reviewers see the whole team; everyone else sees only their own numbers (I5).
+    only_user = None if c.can("project.review") else c.user.id
+    return labeling_ops.dashboard(c.db, c, days, only_user=only_user)
 
 
 @router.get("/my-tasks")

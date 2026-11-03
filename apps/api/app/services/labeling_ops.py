@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import rbac
 from ..deps import Ctx, audit
 from ..models import (
     ConsensusAssignment,
@@ -11,7 +12,6 @@ from ..models import (
     HoneypotAttempt,
     Image,
     LabelEvent,
-    Member,
     User,
     now,
     set_annotations,
@@ -67,11 +67,9 @@ def create_job(db: Session, c: Ctx, image_ids: list[str], count: int, k: int,
     """Send up to `count` unlabeled, not-yet-open images to `k` distinct members, round-robin."""
     if not MIN_K <= k <= MAX_K:
         raise HTTPException(400, f"k must be between {MIN_K} and {MAX_K}")
-    members = db.scalars(select(Member).join(User, User.id == Member.user_id)
-                         .where(Member.workspace_id == c.ws.id)
-                         .order_by(Member.created, User.id)).all()
+    members = _annotator_ids(db, c)
     if len(members) < k:
-        raise HTTPException(400, f"need at least k workspace members (have {len(members)})")
+        raise HTTPException(400, f"need at least k members who can annotate this project (have {len(members)})")
     open_images = select(ConsensusAssignment.image_id).join(
         ConsensusJob, ConsensusJob.id == ConsensusAssignment.job_id).where(
         ConsensusAssignment.project_id == c.project.id, ConsensusJob.status.in_(("collecting", "ready")))
@@ -104,7 +102,7 @@ def create_job(db: Session, c: Ctx, image_ids: list[str], count: int, k: int,
     for idx, img in enumerate(images):
         for step in range(k):
             db.add(ConsensusAssignment(job_id=job.id, workspace_id=c.ws.id, project_id=c.project.id,
-                                       image_id=img.id, user_id=members[(idx + step) % len(members)].user_id))
+                                       image_id=img.id, user_id=members[(idx + step) % len(members)]))
     audit(db, c.ws.id, c.user.id, "labeling.consensus.create", c.project.name, images=len(images), k=k)
     db.flush()
     return job
@@ -204,7 +202,7 @@ def submit_consensus(db: Session, c: Ctx, job: ConsensusJob, image_id: str,
                      annotations: list[dict] | None = None) -> dict:
     """Explicitly hand in one draft; the job only becomes ready once every assignment is submitted."""
     # local import: routers/images imports this module
-    from ..routers.images import _check_ann
+    from ..routers.images import _check_ann, _check_class_ids
 
     assignment = db.scalar(select(ConsensusAssignment).where(
         ConsensusAssignment.job_id == job.id, ConsensusAssignment.image_id == image_id,
@@ -218,6 +216,7 @@ def submit_consensus(db: Session, c: Ctx, job: ConsensusJob, image_id: str,
         raise HTTPException(413, f"at most {MAX_DRAFT_ANNOTATIONS} annotations per consensus draft")
     check_image_cap(db, job.id, image_id, c.user.id, len(raw))
     checked = [_check_ann(a) for a in raw]
+    _check_class_ids(c, checked)
     assignment.annotations = checked
     assignment.submitted = now()
     refresh_job(db, job, image_id=image_id)
@@ -251,6 +250,7 @@ def merge_job(db: Session, c: Ctx, job: ConsensusJob) -> dict:
                                  "-annotation consensus limit")
     merged = skipped = eligible = 0
     no_consensus: list[str] = []
+    pending: list[tuple[Image, list[dict]]] = []
     for image_id in job.image_ids or []:
         sets = per_image.get(image_id, [])
         img = db.get(Image, image_id)
@@ -262,6 +262,14 @@ def merge_job(db: Session, c: Ctx, job: ConsensusJob) -> dict:
         if not consensus:
             no_consensus.append(image_id)
             continue
+        pending.append((img, consensus))
+    if pending:
+        # Re-validate every class id before the first write: a stale/foreign draft must not create
+        # an ImageClass row under this project, and a rejected merge must leave every image untouched.
+        from ..routers.images import _check_class_ids
+        for _, consensus in pending:
+            _check_class_ids(c, consensus)
+    for img, consensus in pending:
         set_annotations(db, img, consensus)
         img.status, img.review, img.updated = "review", None, now()
         merged += 1
@@ -391,28 +399,34 @@ def my_tasks(db: Session, c: Ctx) -> list[dict]:
              "created": row.created} for row, img in rows]
 
 
-def _annotator_ids(db: Session, ws_id: str) -> list[str]:
-    """Workspace members who can actually open an image in the editor."""
-    return list(db.scalars(select(Member.user_id).where(Member.workspace_id == ws_id, Member.role == "annotator")
-                           .order_by(Member.created, Member.user_id)).all())
+def _annotator_ids(db: Session, c: Ctx) -> list[str]:
+    """Members whose effective project role grants `project.annotate` (I5: billing/viewers excluded)."""
+    return rbac.project_permission_holders(db, c.ws.id, c.project.id, "project.annotate")
+
+
+def _labeler_ids(db: Session, c: Ctx) -> list[str]:
+    """Annotators the honeypot answer key may be shown to: `project.annotate` without `project.review`."""
+    reviewers = set(rbac.project_permission_holders(db, c.ws.id, c.project.id, "project.review"))
+    return [uid for uid in _annotator_ids(db, c) if uid not in reviewers]
 
 
 def create_honeypot(db: Session, c: Ctx, image_id: str, annotations: list[dict] | None = None) -> Honeypot:
     """Pin an image's labels as ground truth; a labeler is scored once per honeypot."""
     # local import: routers/images imports this module
-    from ..routers.images import _check_ann
+    from ..routers.images import _check_ann, _check_class_ids
 
     img = db.get(Image, image_id)
     if not img or img.deleted_at is not None or img.project_id != c.project.id:
         raise HTTPException(404, "image not found")
     checked = [_check_ann(a) for a in (annotations if annotations is not None else img.annotations or [])]
+    _check_class_ids(c, checked)
     if not checked:
         raise HTTPException(400, "honeypot needs at least one ground-truth annotation")
     if db.scalar(select(Honeypot.id).where(Honeypot.image_id == img.id)):
         raise HTTPException(409, "image is already a honeypot")
     # A honeypot nobody can open never records an attempt: deliver it to a labeler round-robin so the
-    # accuracy feature gets data. An assignee who is not an annotator (reviewer/admin) cannot open it.
-    labelers = _annotator_ids(db, c.ws.id)
+    # accuracy feature gets data. The key never goes to a member who can review it.
+    labelers = _labeler_ids(db, c)
     if labelers and img.assignee_id not in set(labelers):
         offset = int(db.scalar(select(func.count(Honeypot.id)).where(
             Honeypot.project_id == c.project.id)) or 0)
@@ -437,7 +451,7 @@ def honeypots_out(db: Session, c: Ctx) -> dict:
         select(HoneypotAttempt.honeypot_id, func.count(HoneypotAttempt.id), func.avg(HoneypotAttempt.score))
         .where(HoneypotAttempt.project_id == c.project.id).group_by(HoneypotAttempt.honeypot_id))}
     items = []
-    labelers = set(_annotator_ids(db, c.ws.id))
+    labelers = set(_labeler_ids(db, c))
     for honeypot in rows:
         img = db.get(Image, honeypot.image_id)
         attempts, accuracy = stats.get(honeypot.id, (0, None))

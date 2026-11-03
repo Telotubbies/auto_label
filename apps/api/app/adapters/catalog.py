@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
 from ..models import TrainedModel
-from .base import ADAPTERS, Availability, Resolved, parse_ref
+from .base import ADAPTERS, Availability, Resolved, parse_ref, safe_variant
 
 _LICENSE = {"ultralytics": "AGPL-3.0", "sam3": "SAM License", "vlm": "Apache-2.0",
             "rfdetr": "Apache-2.0", "hf": "Apache-2.0"}
 _VLM_CAPS = {"vlm", "detect", "caption"}       # until the vlm adapter registers and reports its own
+# Families whose variant is joined onto a local directory; the variant must be a plain file stem.
+_LOCAL_VARIANT_FAMILIES = ("ultralytics", "tensorrt")
 
 _PROBE_TTL = 15.0                               # a black-holed vLLM probe takes 3 s; don't pay it every request
 _now = time.monotonic
@@ -138,6 +140,8 @@ def resolve(model_ref: str, db: Session, *, workspace_id: str | None = None) -> 
         if engine is not None and "world" not in rest and _engine_usable():
             pt_weights, weights, fam = m.weights, engine, "tensorrt"
         base_fam = m.family or "ultralytics"
+    if fam in _LOCAL_VARIANT_FAMILIES:
+        safe_variant(rest)                         # I1: no absolute path, drive or `..` escape
     if fam not in ADAPTERS:
         raise ValueError(f"no adapter for family {fam!r}")
     fallback = Resolved(ADAPTERS[base_fam], rest, pt_weights, model_ref, conf) \

@@ -1,7 +1,7 @@
 """Adapter contract shared by every model family (ultralytics, sam3, vlm, ...)."""
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Protocol
 
 from PIL import Image as PImage
@@ -54,6 +54,19 @@ def parse_ref(ref: str) -> tuple[str, str]:
     if not sep or not fam or not rest:
         raise ValueError(f"bad model ref {ref!r}; expected '<family>:<variant>' or 'trained:<id>'")
     return fam, rest
+
+
+def safe_variant(variant: str) -> str:
+    """A checkpoint name must be a plain file stem, never a path (I1).
+
+    The Ultralytics/TensorRT loaders join the variant onto a directory, so an absolute path, a
+    drive letter or a `..` segment would escape it — or read another tenant's model.
+    Hugging Face repo ids are exempt: they never become a local path.
+    """
+    if (not isinstance(variant, str) or not variant or variant in (".", "..")
+            or "/" in variant or "\\" in variant or PureWindowsPath(variant).drive):
+        raise ValueError(f"invalid model variant {variant!r}; expected a plain checkpoint name")
+    return variant
 
 
 @dataclass
