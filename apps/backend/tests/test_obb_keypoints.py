@@ -45,7 +45,9 @@ def _ann(shape: dict, **extra) -> dict:
 def test_obb_corners_use_pixel_space():
     s = {"kind": "obb", "cx": 0.5, "cy": 0.5, "w": 0.4, "h": 0.2, "angle": 0.0}
 
-    assert imaging.obb_corners(s, 200, 100) == pytest.approx([(60, 40), (140, 40), (140, 60), (60, 60)])
+    corners = imaging.obb_corners(s, 200, 100)
+    # pytest.approx rejects nested sequences (pytest 9), so compare the flattened corners.
+    assert [v for c in corners for v in c] == pytest.approx([60, 40, 140, 40, 140, 60, 60, 60])
 
     rotated = imaging.obb_corners({**s, "angle": math.pi / 2}, 200, 100)
     assert rotated[0] == pytest.approx((110, 10))
