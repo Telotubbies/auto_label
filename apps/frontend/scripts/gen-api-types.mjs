@@ -2,7 +2,7 @@
 //   node scripts/gen-api-types.mjs           rewrite the generated file
 //   node scripts/gen-api-types.mjs --check   fail when the committed file is stale
 // The check runs before `tsc -b`, so a schema change that skips regeneration breaks the build.
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -89,8 +89,15 @@ export function render(spec) {
 }
 
 function main() {
+  const check = process.argv.includes('--check')
+  if (check && !existsSync(SPEC)) {
+    // The docker image builds apps/frontend alone, so the contract file is not in that context.
+    // The same commit already passed this check in CI; only generation is impossible here.
+    console.warn(`skip: ${fileURLToPath(SPEC)} is outside this build context`)
+    return
+  }
   const text = render(JSON.parse(readFileSync(SPEC, 'utf8')))
-  if (!process.argv.includes('--check')) {
+  if (!check) {
     writeFileSync(OUT, text)
     console.log(`wrote ${fileURLToPath(OUT)}`)
     return
@@ -100,7 +107,6 @@ function main() {
     `${fileURLToPath(OUT)} is stale: apps/backend/openapi.json changed.\n` +
       'Run `npm run gen:api-types` in apps/frontend and commit the result.',
   )
-
   process.exitCode = 1
 }
 

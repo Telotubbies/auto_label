@@ -54,6 +54,8 @@ A separate repository would make this worse. The producer and consumer would rel
 
 The generator is `apps/frontend/scripts/gen-api-types.mjs`: it reads `apps/backend/openapi.json`, writes `apps/frontend/src/lib/api-types.gen.ts`, and runs with `--check` in `npm run build`.
 
+The docker image builds `apps/frontend` as its own context, so the document is absent there; the check prints a skip instead of failing. CI and every developer machine have the whole repository, and that is where the gate runs.
+
 ## Alternatives considered
 
 **Hand-written types with a review checklist.** This is the current state. It fails silently and depends on every reviewer noticing every field.
