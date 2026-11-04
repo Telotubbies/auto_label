@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / "check_large_files.py"
 MB = 1024 * 1024
 

@@ -24,6 +24,8 @@ All IO sits behind three small seams — :class:`Api`, :class:`Vllm` and :class:
 decision helpers are pure, so the whole run can be driven from tests without network or GPU.
 """
 
+# ruff: noqa: BLE001 — every step reports a failure instead of raising, so the broad catch is the design.
+
 from __future__ import annotations
 
 import argparse
@@ -363,7 +365,7 @@ class Vllm:
     def __init__(self, client: httpx.Client, vlm_url: str) -> None:
         self.client = client
         self.url = vlm_url.rstrip("/")
-        self.root = self.url[: -len("/v1")] if self.url.endswith("/v1") else self.url
+        self.root = self.url.removesuffix("/v1")
 
     @staticmethod
     def _json(response: httpx.Response) -> Any:

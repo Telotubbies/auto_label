@@ -21,9 +21,10 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PRETRAINED_DIR = REPO_ROOT / "yolo26_ppe" / "models" / "pretrained"
@@ -203,7 +204,7 @@ def run(
                 continue
             try:
                 _fetch_weights(item.name, dest, loader or _load_ultralytics)
-            except Exception as exc:  # network and hub errors are per-item failures, not crashes
+            except Exception as exc:  # noqa: BLE001 - network and hub errors are per-item failures, not crashes
                 out(f"FAIL {item.name} ({_reason(exc)})")
                 failed += 1
             else:
@@ -226,7 +227,7 @@ def run(
             continue
         try:
             rc = (hf_runner or _run_hf)([command, "download", item.name])
-        except Exception as exc:  # a missing CLI or a broken download must not abort the others
+        except Exception as exc:  # noqa: BLE001 - a missing CLI or a broken download must not abort the others
             out(f"FAIL {item.name} ({_reason(exc)})")
             failed += 1
             continue

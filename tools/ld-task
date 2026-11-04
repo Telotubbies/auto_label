@@ -56,7 +56,7 @@ CACHE_ROOT = _root("LD_CACHE_ROOT", DEFAULT_PROJECTS_ROOT / "ld-cache")
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    result = subprocess.run(["git", "-C", str(repo), *args], check=False, capture_output=True, text=True)
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "git failed"
         raise LdTaskError(detail)
@@ -69,6 +69,7 @@ def _resolve_repo() -> Path:
         return Path(raw).expanduser().resolve()
     result = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
+        check=False,
         capture_output=True,
         text=True,
         cwd=Path.cwd(),
