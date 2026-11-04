@@ -1,3 +1,9 @@
+# Scope: this workflow is a partial gate until the lint chore in progress.md:181 lands.
+#   tools  ruff check + ruff format + the ld-task tests, on tools/ only
+#   api    compileall only: syntax, not ruff and not the API test suite
+#   web    npm build only; skipped when $FRONTEND_APP/package.json is absent
+# Widen the ruff scope here and in .pre-commit-config.yaml in that chore commit;
+# "CI passed" does not mean STANDARDS.md section 2 is met today.
 name: CI
 
 on:
@@ -31,7 +37,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install test tools
-        run: python -m pip install --disable-pip-version-check ruff pytest
+        run: python -m pip install --disable-pip-version-check ruff pytest pyyaml
       - name: Lint tools
         run: ruff check --line-length=120 tools/ld-task tools
       - name: Check formatting
