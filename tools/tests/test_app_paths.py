@@ -39,6 +39,6 @@ def test_ci_env_matches_the_app_folders() -> None:
 
 
 def test_generators_import_the_app_from_apps_backend() -> None:
-    for name in ("gen_sdk",):
+    for name in ("gen_sdk", "export_openapi"):
         module = load_tool(name)
         assert Path(module.BACKEND_DIR) == BACKEND, f"tools/{name}.py points at a stale app folder"
