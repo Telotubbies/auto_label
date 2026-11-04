@@ -12,7 +12,7 @@ This file covers how to prepare a change and hand it back for merge. Operational
 
 ## Naming
 
-The approved names are `apps/frontend` for the web app and `apps/backend` for the API. The directories are still `apps/web` and `apps/api`; the rename is pending. Use the planned names in new prose and give the current path when a reader needs to run a command today. Do not rename the directories as part of an unrelated task.
+The web app lives in `apps/frontend` and the API in `apps/backend`; those are the names to use in prose, commands and new code. The folders were renamed from the earlier layout, so older documents and the frozen plan under `docs/superpowers/plans/` may still use the previous names. Do not rename or move the app folders as part of an unrelated task.
 
 ## Making the change
 
@@ -37,15 +37,15 @@ The approved names are `apps/frontend` for the web app and `apps/backend` for th
 Run the narrowest useful checks while you work, then the full relevant gate before handing off:
 
 ```bash
-# Backend, from apps/backend (today apps/api)
+# Backend, from apps/backend
 pytest -q
 
-# Frontend, from apps/frontend (today apps/web)
+# Frontend, from apps/frontend
 npm run build
 npm test
 ```
 
-The API suite includes a short CPU training run. The frontend test script only covers the tests present in `apps/web/tests`. If a check needs a GPU, a model file, or a network service, mark it and report that it was skipped.
+The API suite includes a short CPU training run. The frontend test script only covers the tests present in `apps/frontend/tests`. If a check needs a GPU, a model file, or a network service, mark it and report that it was skipped.
 
 ## Handoff
 
