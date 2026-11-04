@@ -146,11 +146,7 @@ def _sealed_snapshot(model_dir: Path) -> Path | None:
         config = snapshot / "config.json"
         if not config.is_file() or config.stat().st_size == 0:
             continue
-        weights = [
-            path
-            for path in snapshot.rglob("*")
-            if path.is_file() and path.suffix in WEIGHT_SUFFIXES
-        ]
+        weights = [path for path in snapshot.rglob("*") if path.is_file() and path.suffix in WEIGHT_SUFFIXES]
         if weights and all(path.stat().st_size > 0 for path in weights):
             return snapshot
     return None

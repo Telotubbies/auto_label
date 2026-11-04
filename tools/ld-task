@@ -1,0 +1,549 @@
+#!/usr/bin/env python3
+"""Create, list and retire per-task worktrees.
+
+One task = one branch + one sparse worktree + one private temp tree. Shared
+npm/uv caches and model weights stay outside the worktree so parallel tasks do
+not download them twice.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+# Change these two app paths when apps/web and apps/api are renamed to
+# apps/frontend and apps/backend. Everything else derives from them.
+FRONTEND_APP = "apps/web"
+BACKEND_APP = "apps/api"
+
+# Profiles list only folders that exist in this tree: there is no packages/ and no
+# ml/ here (ML code lives in yolo26_ppe/ and sam3_auto_label/). create_task checks
+# every path against the base commit, so a rename without a matching profile fails
+# loudly instead of producing a worktree that silently checks out nothing.
+SPARSE_PROFILES = {
+    "frontend": [FRONTEND_APP, "docs"],
+    "backend": [BACKEND_APP, "tools", "docs"],
+    "full": ["apps", "tools", "deploy", "docs"],
+    "ml": ["yolo26_ppe", "sam3_auto_label", "tools", "docs"],
+}
+
+TEAMS = ("frontend", "backend", "ml", "platform")
+DEFAULT_BASE_REF = "feat/labeldesk-v2"
+DEFAULT_PROJECTS_ROOT = Path("E:/02_Projects")
+ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+TASK_TAIL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*-[a-z0-9][a-z0-9-]*$")
+
+
+class LdTaskError(RuntimeError):
+    pass
+
+
+def _root(env_name: str, default: Path) -> Path:
+    raw = os.environ.get(env_name)
+    return Path(raw).expanduser() if raw else default
+
+
+WORKTREES_ROOT = _root("LD_WORKTREES_ROOT", DEFAULT_PROJECTS_ROOT / "ld-worktrees")
+TMP_ROOT = _root("LD_TMP_ROOT", DEFAULT_PROJECTS_ROOT / "ld-tmp")
+CACHE_ROOT = _root("LD_CACHE_ROOT", DEFAULT_PROJECTS_ROOT / "ld-cache")
+
+
+def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "git failed"
+        raise LdTaskError(detail)
+    return result
+
+
+def _resolve_repo() -> Path:
+    raw = os.environ.get("LD_REPO_ROOT")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        cwd=Path.cwd(),
+    )
+    if result.returncode != 0:
+        raise LdTaskError(result.stderr.strip() or "not inside a git repository")
+    return Path(result.stdout.strip()).resolve()
+
+
+def _read_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _task_env_files() -> list[Path]:
+    if not WORKTREES_ROOT.is_dir():
+        return []
+    return sorted(WORKTREES_ROOT.rglob(".env.task"))
+
+
+def _used_slots() -> set[int]:
+    used: set[int] = set()
+    for path in _task_env_files():
+        try:
+            used.add(int(_read_env(path).get("LD_TASK_SLOT", "")))
+        except (OSError, ValueError):
+            continue
+    return used
+
+
+def _next_slot() -> int:
+    used = _used_slots()
+    slot = 1
+    while slot in used:
+        slot += 1
+    return slot
+
+
+def _validate(team: str, task_id: str, slug: str, profile: str) -> str:
+    team = team.lower()
+    if team not in TEAMS:
+        raise LdTaskError(f"unknown team '{team}'; expected one of {', '.join(TEAMS)}")
+    if not ID_RE.fullmatch(task_id):
+        raise LdTaskError(f"invalid task id '{task_id}'; use letters, digits, dots, dashes or underscores")
+    if not SLUG_RE.fullmatch(slug):
+        raise LdTaskError(f"invalid slug '{slug}'; use lowercase letters, digits and dashes")
+    if profile not in SPARSE_PROFILES:
+        raise LdTaskError(f"unknown profile '{profile}'; expected one of {', '.join(SPARSE_PROFILES)}")
+    return team
+
+
+def _profile_paths(repo: Path, base_ref: str, base_sha: str, profile: str) -> list[str]:
+    """Return the profile paths, or fail loudly if the tree does not contain them."""
+    paths = SPARSE_PROFILES[profile]
+    if not paths:
+        raise LdTaskError(f"profile '{profile}' is empty")
+    for path in paths:
+        found = _git(repo, "ls-tree", "-d", "--name-only", base_sha, "--", path, check=False)
+        if found.returncode != 0 or not found.stdout.strip():
+            raise LdTaskError(f"profile '{profile}' path '{path}' does not exist in {base_ref}")
+    return paths
+
+
+def _quote(value: object) -> str:
+    text = str(value).replace("\\", "/").replace('"', '\\"')
+    return f'"{text}"'
+
+
+def _write_env(path: Path, values: dict[str, object]) -> None:
+    lines = [
+        "# generated by tools/ld-task; source this file from the task worktree (bash syntax)",
+        '# PowerShell cannot dot-source KEY="value" files; set the keys by hand there.',
+        f'# start the API:   cd {BACKEND_APP} && uvicorn app.main:app --port "$LD_API_PORT"',
+        f'# start the web:   cd {FRONTEND_APP} && npm run dev -- --port "$LD_WEB_PORT"',
+        "# vite.config.ts defaults to 5173 and reads only LD_API_PROXY, hence --port above.",
+    ]
+    lines.extend(f"{key}={_quote(value)}" for key, value in values.items())
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _branch_exists(repo: Path, branch: str) -> bool:
+    return _git(repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}", check=False).returncode == 0
+
+
+def _is_merged(repo: Path, branch: str, base_ref: str) -> bool:
+    base = _git(repo, "rev-parse", "--verify", f"{base_ref}^{{commit}}", check=False)
+    if base.returncode != 0:
+        raise LdTaskError(f"base ref '{base_ref}' not found")
+    base_sha = base.stdout.strip()
+    if _git(repo, "merge-base", "--is-ancestor", branch, base_sha, check=False).returncode == 0:
+        return True
+    # The controller cherry-picks task commits onto the integration branch, and a
+    # cherry-picked commit is never an ancestor. ``git cherry`` marks a commit with
+    # "-" when its patch already exists upstream, so all "-" means "merged".
+    cherry = _git(repo, "cherry", base_sha, branch, check=False)
+    if cherry.returncode != 0:
+        return False
+    lines = [line for line in cherry.stdout.splitlines() if line.strip()]
+    return bool(lines) and not any(line.startswith("+") for line in lines)
+
+
+def _branch_segments(branch: str) -> list[str]:
+    segments = branch.split("/")
+    if (
+        len(segments) != 3
+        or segments[0] != "task"
+        or segments[1] not in TEAMS
+        or not TASK_TAIL_RE.fullmatch(segments[2])
+    ):
+        raise LdTaskError(f"refusing: '{branch}' is not a task branch")
+    return segments
+
+
+def _task_path(values: dict[str, str], key: str, root: Path, expected: Path, label: str) -> Path:
+    """Resolve a path from .env.task and require it to be the expected child of root."""
+    raw = values.get(key, "")
+    if not raw:
+        raise LdTaskError("task env file is incomplete")
+    path = Path(raw).expanduser().resolve()
+    root_resolved = root.resolve()
+    if path == root_resolved or not path.is_relative_to(root_resolved):
+        raise LdTaskError(f"refusing: {label} {path} is outside {root_resolved}")
+    if path != expected.resolve():
+        raise LdTaskError(f"refusing: {label} {path} is not {expected.resolve()}")
+    return path
+
+
+def _force_writable(function, path, _exc_info) -> None:
+    """shutil.rmtree hook: clear the read-only bit git leaves on pack files."""
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
+def _remove_temp(temp: Path) -> None:
+    """Remove a temp tree only when it is a strict child of TMP_ROOT."""
+    root = TMP_ROOT.resolve()
+    resolved = temp.resolve()
+    if resolved == root or not resolved.is_relative_to(root):
+        raise LdTaskError(f"refusing: {resolved} is outside {root}")
+    if resolved.exists():
+        shutil.rmtree(resolved, onerror=_force_writable)
+
+
+def _record_matches_branch(
+    env_path: Path,
+    values: dict[str, str],
+    branch: str,
+    segments: list[str],
+    task_id: str,
+) -> None:
+    """Bind the record's own id/team/slug to the branch it names."""
+    team, tail = segments[1], segments[2]
+    record_id = values.get("LD_TASK_ID", "")
+    record_team = values.get("LD_TASK_TEAM", "")
+    record_slug = values.get("LD_TASK_SLUG", "")
+    if record_team != team or f"{record_id}-{record_slug}" != tail:
+        raise LdTaskError(f"refusing: {env_path} names {record_team}/{record_id}-{record_slug}, not {branch}")
+    if task_id not in (record_id, branch):
+        raise LdTaskError(f"refusing: {env_path} is not the record for '{task_id}'")
+
+
+def _restore_record(env_path: Path, text: str) -> None:
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text(text, encoding="utf-8")
+
+
+def _remove_retired_record(worktree: Path) -> None:
+    """Remove the record restored by a failed retire, and its now-empty directory."""
+    if not worktree.exists():
+        return
+    env_file = worktree / ".env.task"
+    if env_file.is_file():
+        env_file.unlink()
+    try:
+        worktree.rmdir()
+    except OSError as error:
+        raise LdTaskError(f"removed the branch but {worktree} is not empty: {error}") from error
+
+
+def _is_clean(worktree: Path) -> bool:
+    status = _git(worktree, "status", "--porcelain", "--untracked-files=all")
+    # .env.task is ours and may stay untracked when the task branch predates the
+    # .gitignore entry, so only the untracked form is ignored. A tracked or staged
+    # change to it is real work and must block the --force removal below.
+    dirty = [
+        line for line in status.stdout.splitlines() if not (line.startswith("?? ") and line[3:].strip() == ".env.task")
+    ]
+    return not dirty
+
+
+def create_task(team: str, task_id: str, slug: str, profile: str) -> None:
+    team = _validate(team, task_id, slug, profile)
+    repo = _resolve_repo()
+    branch = f"task/{team}/{task_id}-{slug}"
+    worktree = WORKTREES_ROOT.joinpath(*branch.split("/"))
+    temp = TMP_ROOT.joinpath(*branch.split("/"))
+    base_ref = os.environ.get("LD_TASK_BASE_REF", DEFAULT_BASE_REF)
+
+    if worktree.exists():
+        raise LdTaskError(f"worktree already exists: {worktree}")
+    if _branch_exists(repo, branch):
+        raise LdTaskError(f"branch already exists: {branch}")
+    if temp.exists():
+        raise LdTaskError(f"temp tree already exists: {temp}")
+
+    base = _git(repo, "rev-parse", "--verify", f"{base_ref}^{{commit}}", check=False)
+    if base.returncode != 0:
+        raise LdTaskError(f"base ref '{base_ref}' not found")
+    base_sha = base.stdout.strip()
+    profile_paths = _profile_paths(repo, base_ref, base_sha, profile)
+
+    slot = _next_slot()
+    api_port = 8200 + slot
+    web_port = 5400 + slot
+    data_dir = temp / "data"
+    tmp_dir = temp / "tmp"
+    test_dir = temp / "test"
+    npm_cache = CACHE_ROOT / "npm"
+    uv_cache = CACHE_ROOT / "uv"
+    weights_dir = CACHE_ROOT / "weights"
+
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _git(
+            repo,
+            "worktree",
+            "add",
+            "--no-checkout",
+            "-b",
+            branch,
+            str(worktree),
+            base_sha,
+        )
+        _git(worktree, "sparse-checkout", "init", "--cone")
+        _git(worktree, "sparse-checkout", "set", *profile_paths)
+        _git(worktree, "reset", "--hard", "HEAD")
+        for directory in (
+            data_dir,
+            tmp_dir,
+            test_dir,
+            npm_cache,
+            uv_cache,
+            weights_dir,
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
+        _write_env(
+            worktree / ".env.task",
+            {
+                "LD_TASK_REPO": repo,
+                "LD_TASK_BRANCH": branch,
+                "LD_TASK_TEAM": team,
+                "LD_TASK_ID": task_id,
+                "LD_TASK_SLUG": slug,
+                "LD_TASK_PROFILE": profile,
+                "LD_TASK_SLOT": slot,
+                "LD_TASK_BASE_REF": base_ref,
+                "LD_TASK_WORKTREE": worktree,
+                "LD_TASK_TMP": temp,
+                "LD_API_PORT": api_port,
+                "LD_WEB_PORT": web_port,
+                "LD_API_PROXY": f"http://127.0.0.1:{api_port}",
+                "LD_FRONTEND_APP": FRONTEND_APP,
+                "LD_BACKEND_APP": BACKEND_APP,
+                "LD_DATA_DIR": data_dir,
+                "TMP": tmp_dir,
+                "TEMP": tmp_dir,
+                "LD_TEST_TMP": test_dir,
+                "NPM_CONFIG_CACHE": npm_cache,
+                "UV_CACHE_DIR": uv_cache,
+                # apps/api reads this one; yolo26_ppe/ is not in any sparse profile.
+                "LD_PRETRAINED_DIR": weights_dir,
+            },
+        )
+    except Exception:
+        _git(repo, "worktree", "remove", "--force", str(worktree), check=False)
+        _git(repo, "branch", "-D", branch, check=False)
+        raise
+
+    print(f"created {branch}")
+    print(f"  worktree  {worktree}")
+    print(f"  env       {worktree / '.env.task'}")
+    print(f"  slot      {slot} (api {api_port}, web {web_port})")
+    print(f"  temp      {temp}")
+
+
+def find_task(task_id: str) -> tuple[Path, dict[str, str]]:
+    matches: list[tuple[Path, dict[str, str]]] = []
+    for path in _task_env_files():
+        try:
+            values = _read_env(path)
+        except OSError:
+            continue
+        if task_id in (values.get("LD_TASK_ID"), values.get("LD_TASK_BRANCH")):
+            matches.append((path, values))
+    if not matches:
+        raise LdTaskError(f"no task with id '{task_id}'")
+    if len(matches) > 1:
+        branches = ", ".join(values.get("LD_TASK_BRANCH", "?") for _, values in matches)
+        raise LdTaskError(f"id '{task_id}' matches multiple tasks ({branches}); use the branch name")
+    return matches[0]
+
+
+def finish_task(task_id: str) -> None:
+    env_path, values = find_task(task_id)
+    repo = Path(values.get("LD_TASK_REPO") or _resolve_repo()).expanduser()
+    branch = values.get("LD_TASK_BRANCH", "")
+    if not branch:
+        raise LdTaskError("task env file is incomplete")
+    segments = _branch_segments(branch)
+    _record_matches_branch(env_path, values, branch, segments, task_id)
+    # Validate before any destructive step: a corrupted .env.task must never point
+    # rmtree or "git worktree remove" at a path outside this task's own roots.
+    worktree = _task_path(
+        values,
+        "LD_TASK_WORKTREE",
+        WORKTREES_ROOT,
+        WORKTREES_ROOT.joinpath(*segments),
+        "worktree",
+    )
+    # The record must live in the worktree it describes, not in another task's.
+    if env_path.resolve() != (worktree / ".env.task").resolve():
+        raise LdTaskError(f"refusing: {env_path} is not the record of {branch}")
+    temp = _task_path(values, "LD_TASK_TMP", TMP_ROOT, TMP_ROOT.joinpath(*segments), "temp")
+    base_ref = values.get("LD_TASK_BASE_REF") or DEFAULT_BASE_REF
+
+    if not worktree.is_dir():
+        raise LdTaskError(f"worktree is missing: {worktree}")
+    if not _is_merged(repo, branch, base_ref):
+        raise LdTaskError(f"branch {branch} is not merged into {base_ref}")
+    # A record restored by a failed retire has no .git: the tree is already gone,
+    # so there is nothing left to check for cleanliness.
+    if (worktree / ".git").exists() and not _is_clean(worktree):
+        raise LdTaskError(f"worktree is not clean: {worktree}")
+
+    # Keep the record in memory: the worktree removal deletes the only copy.
+    env_text = env_path.read_text(encoding="utf-8")
+
+    # Remove the worktree first: it carries .env.task, so a locked or otherwise
+    # unremovable worktree must fail while the task record is still on disk.
+    # --force is required because .env.task is untracked and _is_clean ignored it;
+    # a locked worktree still needs a second --force, so locks keep failing here.
+    if (worktree / ".git").exists():
+        _git(repo, "worktree", "remove", "--force", str(worktree))
+    # Temp before branch: the branch is the merge witness a retry needs, and it is
+    # cheap to delete once everything else succeeded.
+    try:
+        _remove_temp(temp)
+    except (LdTaskError, OSError) as error:
+        _restore_record(env_path, env_text)
+        raise LdTaskError(
+            f"removed the worktree but not {temp} ({error}); restored {env_path}; clean the temp tree by hand"
+        ) from error
+    try:
+        # -D: patch-equivalent (cherry-picked) branches are merged but not ancestors.
+        _git(repo, "branch", "-D", branch)
+    except LdTaskError as error:
+        _restore_record(env_path, env_text)
+        raise LdTaskError(
+            f"removed the worktree and temp but not branch {branch} ({error}); restored {env_path}"
+        ) from error
+    _remove_retired_record(worktree)
+
+    print(f"removed {branch}")
+    print(f"  worktree  {worktree}")
+    print(f"  temp      {temp}")
+
+
+def list_tasks() -> None:
+    tasks: list[dict[str, str]] = []
+    for path in _task_env_files():
+        try:
+            tasks.append(_read_env(path))
+        except OSError:
+            continue
+
+    if not tasks:
+        print("no tasks")
+        return
+
+    rows = [
+        (
+            "ID",
+            "TEAM",
+            "PROFILE",
+            "SLOT",
+            "API",
+            "WEB",
+            "MERGED",
+            "CLEAN",
+            "BRANCH",
+            "WORKTREE",
+        )
+    ]
+    for values in tasks:
+        branch = values.get("LD_TASK_BRANCH", "?")
+        worktree = Path(values.get("LD_TASK_WORKTREE", "")).expanduser()
+        repo = Path(values.get("LD_TASK_REPO") or _resolve_repo()).expanduser()
+        base_ref = values.get("LD_TASK_BASE_REF") or DEFAULT_BASE_REF
+        try:
+            merged = "yes" if _is_merged(repo, branch, base_ref) else "no"
+        except LdTaskError:
+            merged = "?"
+        try:
+            clean = "yes" if worktree.is_dir() and _is_clean(worktree) else "no"
+        except LdTaskError:
+            clean = "?"
+        rows.append(
+            (
+                values.get("LD_TASK_ID", "?"),
+                values.get("LD_TASK_TEAM", "?"),
+                values.get("LD_TASK_PROFILE", "?"),
+                values.get("LD_TASK_SLOT", "?"),
+                values.get("LD_API_PORT", "?"),
+                values.get("LD_WEB_PORT", "?"),
+                merged,
+                clean,
+                branch,
+                str(worktree),
+            )
+        )
+
+    widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
+    for row in rows:
+        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)).rstrip())
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="ld-task",
+        description="Create, list and retire per-task worktrees, ports and temp trees.",
+        epilog=(
+            "Roots come from LD_WORKTREES_ROOT, LD_TMP_ROOT and LD_CACHE_ROOT; "
+            "the integration tip comes from LD_TASK_BASE_REF (default: feat/labeldesk-v2)."
+        ),
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    new = subparsers.add_parser("new", help="create a task branch, sparse worktree and .env.task")
+    new.add_argument("team", help="frontend, backend, ml or platform")
+    new.add_argument("id", help="short task id, for example Z4")
+    new.add_argument("slug", help="lowercase task slug, for example tooling")
+    new.add_argument("profile", help="sparse profile: frontend, backend, full or ml")
+
+    done = subparsers.add_parser("done", help="remove a merged, clean task worktree and its temp tree")
+    done.add_argument("id", help="task id or full branch name as shown by list")
+
+    subparsers.add_parser("list", help="list tasks with port, merge and clean state")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command == "new":
+            create_task(args.team, args.id, args.slug, args.profile)
+        elif args.command == "done":
+            finish_task(args.id)
+        else:
+            list_tasks()
+    except LdTaskError as error:
+        print(f"ld-task: error: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

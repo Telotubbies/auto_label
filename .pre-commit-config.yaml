@@ -1,0 +1,37 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      # TODO(lint-chore): widen both hooks to apps/(api|worker|inference), tests
+      # and ml once their 196 pre-existing ruff findings are fixed (progress.md:181).
+      # Until then those files are not linted, so this gate cannot red a task for
+      # findings that predate it.
+      - id: ruff
+        args: ["--fix", "--line-length=120"]
+        files: ^tools/
+      - id: ruff-format
+        args: ["--line-length=120"]
+        files: ^tools/
+
+  - repo: local
+    hooks:
+      - id: ld-task-tests
+        name: ld-task throwaway worktree tests
+        entry: python -m pytest tools/tests -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
