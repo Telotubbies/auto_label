@@ -7,6 +7,7 @@ import { projectLabelRoutes } from './label.routes'
 import { projectModelRoutes } from './models.routes'
 import { projectStudioRoutes } from './studio.routes'
 import { projectDeployRoutes } from './deploy.routes'
+import { projectSearchRoutes } from './search.routes'
 import { projectSettingsRoutes } from './settings.routes'
 
 const Editor = lazy(() => import('@/features/editor/Editor'))
@@ -19,6 +20,7 @@ export const projectRoutes = (
   <Route path=":project" element={<ProjectLayout />}>
     <Route index element={<Navigate to="browse" replace />} />
     {projectDataRoutes}
+    {projectSearchRoutes}
     {projectLabelRoutes}
     {projectModelRoutes}
     {projectStudioRoutes}

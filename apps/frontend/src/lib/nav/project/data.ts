@@ -4,6 +4,9 @@ export const dataNav: NavGroup<ProjectNavItem> = {
   id: 'data', label: 'DATA', items: [
     { to: 'upload', label: 'Upload', icon: 'upload', perm: 'project.upload' },
     { to: 'browse', label: 'Dataset', icon: 'dataset', perm: 'project.read', count: true },
+    // Semantic search (Task 27) and event search (Task 38) read the dataset and stream history.
+    { to: 'search', label: 'Search', icon: 'search', perm: 'project.read', flag: 'task_27' },
+    { to: 'events', label: 'Event search', icon: 'eventSearch', perm: 'project.read', flag: 'task_38' },
     // Video authoring (Task 22) sits with the images it annotates.
     { to: 'videos', label: 'Video', icon: 'video', perm: 'project.annotate', flag: 'task_22' },
     { to: 'versions', label: 'Versions', icon: 'versions', perm: 'project.export' },
