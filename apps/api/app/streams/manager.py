@@ -31,7 +31,7 @@ from ..gpu import GpuBusy
 from ..models import Project, Stream, StreamEvent, Workspace, new_id
 from ..services import metering
 from ..services.safefetch import UnresolvableHost, _public_ip
-from .creds import open_source
+from .creds import mask_query, open_source
 from .event_fields import filter_fields
 from .guard import GuardedMediaProxy
 from .rules import Engine
@@ -52,13 +52,15 @@ _METER_EVERY = 300.0           # stream_hours are durable at least every 5 min, 
 _DEFAULT_PORTS = {"rtsp": 554, "rtsps": 322, "http": 80, "https": 443}
 
 
-# Greedy through the last @ before the path, so a raw @ inside the password is masked too.
-_CREDENTIALS = re.compile(r"(://)[^/\s]*@")
+# Greedy through the last @, so a raw @ inside the password is masked too.
+_CREDENTIALS = re.compile(r"[^/\s]*@")
 
 
 def display_source(source: str) -> str:
     """Never leak camera credentials into an API response, an error string or a log line."""
-    return _CREDENTIALS.sub(r"\1***@", source)
+    parts = urlsplit(source)
+    return urlunsplit((parts.scheme, _CREDENTIALS.sub("***@", parts.netloc),
+                       parts.path, mask_query(parts.query), parts.fragment))
 
 
 ALLOWED_SCHEMES = ("rtsp", "rtsps", "http", "https")
