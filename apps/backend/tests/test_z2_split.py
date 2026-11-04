@@ -52,3 +52,40 @@ def test_handlers_are_defined_in_their_feature_module():
     assert worker.run_extract_frames.__module__ == "app.handlers.streams"
     assert worker.run_insights_images.__module__ == "app.handlers.insights"
     assert worker.run_retention.__module__ == "app.handlers.ops"
+
+
+def test_every_router_in_the_package_is_registered():
+    """A feature module that defines a router but never registers it would 404 in production."""
+    import importlib
+    from pathlib import Path
+
+    from fastapi import APIRouter
+
+    from app import routers
+
+    registered = {id(r) for r in (*routers.ROUTERS, *routers.EXTRA_ROUTERS)}
+    missing = []
+    for path in sorted(Path(routers.__file__).parent.glob("*.py")):
+        if path.stem == "__init__":
+            continue
+        module = importlib.import_module(f"app.routers.{path.stem}")
+        for name, obj in vars(module).items():
+            if isinstance(obj, APIRouter) and id(obj) not in registered:
+                missing.append(f"{path.stem}.{name}")
+    assert not missing, f"routers missing from the app.routers registry: {missing}"
+
+
+def test_include_routers_mounts_every_registered_router_in_order():
+    """The registry is the only place main.py looks, and route order is part of the API."""
+    from app.routers import EXTRA_ROUTERS, ROUTERS, include_routers
+
+    class FakeApp:
+        def __init__(self):
+            self.seen = []
+
+        def include_router(self, router):
+            self.seen.append(router)
+
+    app = FakeApp()
+    include_routers(app)
+    assert app.seen == [*ROUTERS, *EXTRA_ROUTERS]
