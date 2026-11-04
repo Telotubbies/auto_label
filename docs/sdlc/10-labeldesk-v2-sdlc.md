@@ -101,10 +101,10 @@ Success = that loop runs live on the demo machine without manual patching.
  Browser (React)
    │  Auto-label · Train · Models · Playground · Streams · Events
    ▼
- API process (FastAPI, apps/api, single uvicorn process, no --reload)
+ API process (FastAPI, apps/backend, single uvicorn process, no --reload)
    ├─ routers (sync playground predict, MJPEG, CRUD)
    ├─ GPU scheduler (VRAM ledger, LRU evict, exclusive training)
-   ├─ Adapter registry  apps/api/app/adapters/
+   ├─ Adapter registry  apps/backend/app/adapters/
    │    ultralytics │ sam3 │ vlm (HTTP→vLLM) │ mmdet │ tensorrt
    ├─ embedded job worker thread (existing): version, export, train, autolabel
    └─ StreamManager: one thread per running stream (not a queued job)
@@ -118,7 +118,7 @@ Success = that loop runs live on the demo machine without manual patching.
 
 ### 3.2 Adapter interface
 
-Every model family implements one class in `apps/api/app/adapters/`; `services/ml.py` and `services/segment.py` become thin wrappers over them so v1 call sites and tests keep working:
+Every model family implements one class in `apps/backend/app/adapters/`; `services/ml.py` and `services/segment.py` become thin wrappers over them so v1 call sites and tests keep working:
 
 ```python
 class Adapter(Protocol):

@@ -50,7 +50,7 @@ sudo docker compose up -d --build
 
 ## 2. (ไม่บังคับ) Web บน Vercel
 
-1. Vercel → New Project → import repo → **Root Directory = `apps/web`** (ระบบตรวจเจอ Vite เอง)
+1. Vercel → New Project → import repo → **Root Directory = `apps/frontend`** (ระบบตรวจเจอ Vite เอง)
 2. Environment Variables: `VITE_API_URL = https://api.labeldesk.example.com`
 3. Deploy แล้วนำ URL ที่ได้ (เช่น `https://labeldesk.vercel.app`) ไปใส่ใน `.env` ของ VM:
    `LD_CORS_ORIGINS=https://labeldesk.vercel.app` และ `LD_PUBLIC_URL` (ลิงก์ invite จะชี้ไปที่ URL นี้)
@@ -120,7 +120,7 @@ Kaggle ต้องเปิด Settings → Internet: On ด้วย worker �
 ## หมุน LD_SECRET (secret rotation)
 
 `LD_SECRET` เข้ารหัส connector credentials และ webhook signing secrets ที่เก็บใน DB
-(ดู `apps/api/app/services/secretbox.py`)
+(ดู `apps/backend/app/services/secretbox.py`)
 
 1. ตั้ง `LD_SECRET` เป็นค่าใหม่ และ `LD_SECRET_OLD` เป็นค่าเก่า (คั่นหลายค่าด้วย `,` ได้)
 2. รีสตาร์ท api/worker — MultiFernet จะถอดรหัสแถวเก่าได้ และ startup migration

@@ -1,5 +1,7 @@
 # LabelDesk v2 Implementation Plan
 
+> **Path mapping (2026-11-04):** this plan is a frozen historical record and keeps its original paths. The folders were renamed afterwards: `apps/api` → `apps/backend`, `apps/web` → `apps/frontend`. Everything else (package name `app`, `tools/`, `deploy/`, `packages/`) is unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn LabelDesk's hard-wired ML (SAM-only auto-label, YOLO-only training) into a pluggable model hub that auto-labels, trains, tests (playground) and runs on CCTV streams, demoable end to end on one RTX 3080 Ti on 2026-11-01.
