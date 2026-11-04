@@ -14,7 +14,7 @@ const sourceTree = (dir) => readdirSync(new URL(`${dir}/`, import.meta.url), { r
   .filter((f) => /\.(ts|tsx)$/.test(f))
   .map((f) => source(`${dir}/${f.replaceAll('\\', '/')}`))
   .join('\n')
-const appSrc = source('../src/App.tsx')
+const appSrc = source('../src/App.tsx') + sourceTree('../src/routes')
 const shellSrc = sourceTree('../src/components/shell')
 const settingsSrc = source('../src/features/settings/Settings.tsx')
 const insightsSrc = source('../src/features/project/Insights.tsx')
@@ -267,6 +267,20 @@ test('every project nav destination has a route', () => {
   assert.match(appSrc, /Object\.entries\(LEGACY_PROJECT_PATHS\)\.map\(/)
   for (const target of Object.values(LEGACY_PROJECT_PATHS)) {
     assert.ok(appSrc.includes(`path="${target.split('?')[0]}"`), `legacy redirect target ${target} has no route`)
+  }
+})
+
+// A new page adds its own `*.routes.tsx`; the registry must import it or the route never renders.
+test('every route module is composed by a registry', () => {
+  const dir = new URL('../src/routes/', import.meta.url)
+  const files = readdirSync(dir, { recursive: true }).map((f) => f.replaceAll('\\', '/'))
+  const registry = files
+    .filter((f) => f.endsWith('index.tsx') || f.endsWith('.routes.tsx'))
+    .map((f) => readFileSync(new URL(f, dir), 'utf8'))
+    .join('\n')
+  for (const file of files.filter((f) => f.endsWith('.routes.tsx'))) {
+    const name = file.split('/').pop().replace(/\.tsx$/, '')
+    assert.ok(registry.includes(`./${name}`), `${file} is not composed by any route registry`)
   }
 })
 

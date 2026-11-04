@@ -2,10 +2,17 @@
 //   node --test tests/feature-flags.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { projectNav, visibleProjectNav } from '../src/lib/nav.ts'
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
+
+// Routes and their guards live in `src/routes/`, one file per feature; read the whole tree.
+const readRoutes = () => readdirSync(new URL('../src/routes/', import.meta.url), { recursive: true })
+  .map((f) => f.replaceAll('\\', '/'))
+  .filter((f) => /\.(ts|tsx)$/.test(f))
+  .map((f) => read(`../src/routes/${f}`))
+  .join('\n')
 
 const MANAGER = (p) => [
   'project.read', 'project.annotate', 'project.review', 'project.upload', 'project.export',
@@ -38,10 +45,9 @@ test('turning a surface flag on restores exactly that surface', () => {
   assert.ok(!on.includes('qa'))
 })
 
-test('App.tsx gates every flagged route with the workspace flag', () => {
-  const app = read('../src/App.tsx')
-  assert.match(app, /function FlagGate/)
+test('the route registry gates every flagged route with the workspace flag', () => {
+  const routes = readRoutes()
+  assert.match(routes, /function FlagGate/)
   for (const flag of ['task_10b', 'task_20c', 'task_22', 'task_23']) {
-    assert.match(app, new RegExp(`<FlagGate flag="${flag}"`), `${flag} must wrap its routes`)
-  }
+    assert.match(routes, new RegExp(`<FlagGate flag="${flag}"`), `${flag} must wrap its routes`)  }
 })
