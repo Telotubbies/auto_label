@@ -23,6 +23,7 @@ import threading
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 from ..services.safefetch import BlockedURL, UnresolvableHost, _host_header, _pinned_connection, _public_ip
+from .allowlist import allowed_stream_ip
 
 _MAX_HOPS = 3
 _CHUNK = 64 * 1024
@@ -77,7 +78,10 @@ class GuardedMediaProxy:
                 raise ValueError("invalid media redirect")
             port = u.port or (443 if u.scheme == "https" else 80)
             try:
-                ip = self._first_ip if (hop == 0 and self._first_ip) else _public_ip(u.hostname, port)
+                if hop == 0 and self._first_ip:
+                    ip = self._first_ip
+                else:
+                    ip = allowed_stream_ip(u.hostname, port) or _public_ip(u.hostname, port)
             except UnresolvableHost as e:
                 self.error, self.transient = str(e), True
                 raise
