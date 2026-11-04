@@ -19,10 +19,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Change these two paths together with tools/ld-task when the app folders move.
+# Keep these two paths in sync with FRONTEND_APP / BACKEND_APP in tools/ld-task.
 env:
-  FRONTEND_APP: apps/web
-  BACKEND_APP: apps/api
+  FRONTEND_APP: apps/frontend
+  BACKEND_APP: apps/backend
 
 jobs:
   tools:

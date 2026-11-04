@@ -4,7 +4,7 @@ Use this after a power loss, a host crash, an out-of-memory kill, or a container
 
 ## Before you touch anything
 
-- Do not delete a database volume, `pgdata`, `labeldesk_data`, or the local `apps/api/data` directory to make startup errors go away.
+- Do not delete a database volume, `pgdata`, `labeldesk_data`, or the local `apps/backend/data` directory to make startup errors go away.
 - Do not rotate or remove `LD_SECRET`. It protects encrypted database values and signed tokens. A lost secret is not recoverable from the application side.
 - Do not force-remove a worktree or delete rows in `jobs` as a first response.
 - Take a backup before any manual repair. For the Compose stack:
@@ -143,15 +143,15 @@ Signed webhook deliveries are stored in the database. The worker's flush loop pi
 If the shutdown was your development machine rather than a server:
 
 1. Close any stale `uvicorn` or Vite process.
-2. Restart the API from `apps/api`. The embedded worker calls `recover()` on start.
-3. Restart Vite from `apps/web`.
+2. Restart the API from `apps/backend`. The embedded worker calls `recover()` on start.
+3. Restart Vite from `apps/frontend`.
 4. Check `http://localhost:8010/api/health` and sign in.
 
-The SQLite file lives in `apps/api/data/labeldesk.db` unless `LD_DATA_DIR` or `DATABASE_URL` says otherwise. If you suspect corruption, stop the API and copy the database before running a check:
+The SQLite file lives in `apps/backend/data/labeldesk.db` unless `LD_DATA_DIR` or `DATABASE_URL` says otherwise. If you suspect corruption, stop the API and copy the database before running a check:
 
 ```bash
-cp apps/api/data/labeldesk.db apps/api/data/labeldesk.db.bak
-sqlite3 apps/api/data/labeldesk.db "PRAGMA integrity_check;"
+cp apps/backend/data/labeldesk.db apps/backend/data/labeldesk.db.bak
+sqlite3 apps/backend/data/labeldesk.db "PRAGMA integrity_check;"
 ```
 
 `ok` is the expected result. Any other output means the database needs recovery from a backup. Do not run `VACUUM` or repair commands against the only copy.

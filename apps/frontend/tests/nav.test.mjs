@@ -1,5 +1,5 @@
 // Nav v2 shell: workspace groups (BUILD / GOVERN) and the five project groups.
-// Runs with the built-in Node test runner: node --test tests/nav.test.mjs  (from apps/web)
+// Runs with the built-in Node test runner: node --test tests/nav.test.mjs  (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

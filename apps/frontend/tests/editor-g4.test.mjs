@@ -1,5 +1,5 @@
 // Class search + editable shortcuts: pure rules for the editor panels.
-//   node --test tests/editor-g4.test.mjs   (from apps/web)
+//   node --test tests/editor-g4.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { classListQuery, classResultText, hotkeyClass, isClassListVisible, visibleClasses } from '../src/features/editor/classFilter.ts'

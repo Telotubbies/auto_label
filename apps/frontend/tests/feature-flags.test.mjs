@@ -1,5 +1,5 @@
 // I13 regression: feature flags must gate the surfaces they name, in the nav and in the router.
-//   node --test tests/feature-flags.test.mjs   (from apps/web)
+//   node --test tests/feature-flags.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

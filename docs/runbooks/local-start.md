@@ -10,14 +10,14 @@ Use this runbook for a development machine. It starts the API and the web app fr
 - Free ports `8010` for the API and `5173` for the web app.
 - No GPU for the default path. Training and auto-labeling need either a CPU fallback or a remote worker.
 
-The planned directory names are `apps/backend` and `apps/frontend`. They are still `apps/api` and `apps/web`. The commands below use the current paths.
+The API lives in `apps/backend` and the web app in `apps/frontend`. Every command below runs from the repository root.
 
 ## Start the backend
 
 From the repository root:
 
 ```bash
-cd apps/api
+cd apps/backend
 python -m venv .venv
 
 # Linux or macOS
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8010
 ```
 
-On first start the API creates the SQLite database under `apps/api/data`, applies the schema, and seeds demo data because `LD_SEED_DEMO` defaults to `1` outside production. The demo account is `demo@labeldesk.dev` with password `demo1234`. Set `LD_SEED_DEMO=0` before the first start if you do not want it.
+On first start the API creates the SQLite database under `apps/backend/data`, applies the schema, and seeds demo data because `LD_SEED_DEMO` defaults to `1` outside production. The demo account is `demo@labeldesk.dev` with password `demo1234`. Set `LD_SEED_DEMO=0` before the first start if you do not want it.
 
 The API process also runs the local job worker by default (`LD_EMBEDDED_WORKER=1`). The default `LD_LOCAL_JOBS` list covers version, export, health, connector sync, retention, video frame extraction, tracking, drift, active learning, and insights scans, and it also includes `train` and `autolabel`. A Train or Auto-label click therefore runs in the API process, on CPU when the machine has no GPU, so it competes with request handling for the length of the run. That is the default path, not a stalled queue. To hand those two kinds to `labeldesk-worker` instead, remove them from `LD_LOCAL_JOBS`, for example `LD_LOCAL_JOBS=version,export,export_engine,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,insights_images,insights_leakage,insights_embedding`; set `LD_EMBEDDED_WORKER=0` as well if the API process should claim no jobs at all. A remote worker can only claim a row that no local worker has taken.
 
@@ -37,7 +37,7 @@ Useful environment variables for a local start:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `LD_DATA_DIR` | `apps/api/data` | Database, uploads, versions, exports, and weights |
+| `LD_DATA_DIR` | `apps/backend/data` | Database, uploads, versions, exports, and weights |
 | `DATABASE_URL` | SQLite in `LD_DATA_DIR` | Point at PostgreSQL when needed |
 | `LD_SECRET` | generated and stored as `LD_DATA_DIR/.secret` | Token signing and secret encryption; at least 32 characters if set |
 | `LD_SEED_DEMO` | `1` in development, `0` in production | Demo account and sample data |
@@ -51,7 +51,7 @@ Changing or deleting `.secret` after first start invalidates sessions and makes 
 In a second terminal, from the repository root:
 
 ```bash
-cd apps/web
+cd apps/frontend
 npm ci
 npm run dev
 ```
@@ -78,9 +78,9 @@ A healthy API returns `{"ok":true,"service":"labeldesk"}`. Then:
 
 ## Stop it
 
-Stop each development server with `Ctrl+C`. The SQLite database and uploads remain under `apps/api/data`.
+Stop each development server with `Ctrl+C`. The SQLite database and uploads remain under `apps/backend/data`.
 
-Do not delete `apps/api/data` to reset the app unless you intend to lose every local account, annotation, model, and export.
+Do not delete `apps/backend/data` to reset the app unless you intend to lose every local account, annotation, model, and export.
 
 ## Compose path
 

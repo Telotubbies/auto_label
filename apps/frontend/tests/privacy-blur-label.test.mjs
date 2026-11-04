@@ -1,13 +1,13 @@
 // Face-blur copy: the switch must name every source the API anonymises, and the DPA must not
 // keep claiming video-only coverage. Runs with the built-in Node test runner:
-//   node --test tests/privacy-blur-label.test.mjs   (from apps/web)
+//   node --test tests/privacy-blur-label.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 const privacyUi = read('../src/features/governance/Privacy.tsx')
-const dpaSource = read('../../api/app/routers/privacy.py')
+const dpaSource = read('../../backend/app/routers/privacy.py')
 
 test('the face-blur switch names uploaded images and video frames', () => {
   assert.match(privacyUi, /Blur faces in uploaded images and video frames of \$\{project\.name\}/)

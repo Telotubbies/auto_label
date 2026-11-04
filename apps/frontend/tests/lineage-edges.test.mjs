@@ -1,5 +1,5 @@
 // The lineage graph draws its edges in an aria-hidden SVG; these rows are the text equivalent.
-//   node --test tests/lineage-edges.test.mjs   (from apps/web)
+//   node --test tests/lineage-edges.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { edgeRows, nodeConnections } from '../src/features/lineage/lineageModel.ts'

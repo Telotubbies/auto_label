@@ -4,15 +4,13 @@
 # The placeholder is not a real owner and will not satisfy a review request.
 # CODEOWNERS only takes effect on the default branch.
 #
-# Planned paths (apps/frontend, apps/backend) are listed before the rename lands.
-# The current paths (apps/web, apps/api) remain covered until then.
+# App folders are apps/frontend and apps/backend; earlier documents may still
+# use the previous names.
 
 *                               @OWNER-PLACEHOLDER
 
 /apps/frontend/                 @OWNER-PLACEHOLDER
 /apps/backend/                  @OWNER-PLACEHOLDER
-/apps/web/                      @OWNER-PLACEHOLDER
-/apps/api/                      @OWNER-PLACEHOLDER
 /apps/worker/                   @OWNER-PLACEHOLDER
 /apps/inference/                @OWNER-PLACEHOLDER
 /apps/sdk/                      @OWNER-PLACEHOLDER

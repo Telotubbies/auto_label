@@ -4,18 +4,18 @@ This repository holds two layers that share one history.
 
 The first is a batch pipeline for turning raw PPE images into verified datasets, training YOLO26 detection and segmentation models, evaluating them, and exporting ONNX artifacts. The second is LabelDesk, a self-hosted labeling application built on that pipeline. LabelDesk covers upload, annotate, review, version, train, and deploy, with a FastAPI backend, a React frontend, a database-backed job queue, and an optional remote GPU worker.
 
-> Naming: the approved layout uses `apps/frontend` for the web app and `apps/backend` for the API. That rename has not landed. The current directories are `apps/web` and `apps/api`. Prose uses the planned names; runnable commands use the current paths, because those are the directories that exist today.
+> Naming: `apps/frontend` holds the web app and `apps/backend` holds the API. Older documents, including the historical plan under `docs/superpowers/plans/`, may still use the previous folder names.
 
 ## Status
 
-| Layer | Current path | Planned path | State |
-|---|---|---|---|
-| LabelDesk backend | `apps/api` | `apps/backend` | Implemented; rename pending |
-| LabelDesk frontend | `apps/web` | `apps/frontend` | Implemented; rename pending |
-| Remote GPU worker | `apps/worker` | `apps/worker` | Implemented |
-| Self-hosted inference | `apps/inference` | `apps/inference` | Implemented, optional |
-| Python SDK and CLI | `apps/sdk` | `apps/sdk` | Implemented |
-| SAM and YOLO batch pipeline | `sam3_auto_label`, `yolo26_ppe` | `ml/` in the target layout | Implemented |
+| Layer | Path | State |
+|---|---|---|
+| LabelDesk backend | `apps/backend` | Implemented |
+| LabelDesk frontend | `apps/frontend` | Implemented |
+| Remote GPU worker | `apps/worker` | Implemented |
+| Self-hosted inference | `apps/inference` | Implemented, optional |
+| Python SDK and CLI | `apps/sdk` | Implemented |
+| SAM and YOLO batch pipeline | `sam3_auto_label`, `yolo26_ppe` | Implemented |
 
 The application has a working self-hosted deployment path. It is not a hardened multi-tenant service. The limits section below lists the known gaps.
 
@@ -29,8 +29,8 @@ The capability table in [apps/README.md](apps/README.md) is the detailed feature
 
 ```text
 apps/
-  frontend/        planned name; today apps/web
-  backend/         planned name; today apps/api
+  frontend/        React web app
+  backend/         FastAPI service, embedded job worker, tests
   worker/          labeldesk-worker package for remote train and auto-label jobs
   inference/       standalone self-hosted inference service
   sdk/             Python client and CLI
@@ -53,19 +53,19 @@ These commands start the development stack on one machine. They assume Python 3.
 ### Backend
 
 ```bash
-cd apps/api                # planned name: apps/backend
+cd apps/backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8010
 ```
 
-Development defaults use SQLite in `apps/api/data`, enable the embedded job worker, and seed demo data, including `demo@labeldesk.dev` with password `demo1234`. Set `LD_SEED_DEMO=0` to skip the seed. The health endpoint is `GET /api/health`.
+Development defaults use SQLite in `apps/backend/data`, enable the embedded job worker, and seed demo data, including `demo@labeldesk.dev` with password `demo1234`. Set `LD_SEED_DEMO=0` to skip the seed. The health endpoint is `GET /api/health`.
 
 ### Frontend
 
 ```bash
-cd apps/web                 # planned name: apps/frontend
+cd apps/frontend
 npm ci
 npm run dev
 ```
@@ -75,10 +75,10 @@ The dev server listens on `http://localhost:5173` and proxies `/api` to `http://
 ### Tests
 
 ```bash
-cd apps/api                # planned name: apps/backend
+cd apps/backend
 pytest -q
 
-cd ../web                  # planned name: apps/frontend
+cd ../frontend
 npm run build
 ```
 
@@ -121,6 +121,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code and [SECURITY.md](S
 - The v3 4-class YOLO26m detection model reaches 0.693 mAP50, below the project target of 0.85. The canonical numbers are in `yolo26_ppe/reports/inputs/final_eval_results.json`.
 - There is no root license file. Redistribution rights are not established by this repository. Third-party notices are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 - The root pipeline CLI has no dependency manifest of its own, so `questionary`, `rich`, `pytest`, `ruff`, and `mypy` must be installed separately for the documented commands.
-- The frontend types in `apps/web/src/lib/types.ts` are written by hand. Generated types from the OpenAPI schema are planned but not in place.
+- The frontend types in `apps/frontend/src/lib/types.ts` are written by hand. Generated types from the OpenAPI schema are planned but not in place.
 - The app has no payment processor and does not require outbound email. Plan changes go through `LD_SUPERADMINS`, and invites are copyable links.
 - The API is designed to run as a single process because rate limits, stream state, and the GPU lease ledger are held in memory.

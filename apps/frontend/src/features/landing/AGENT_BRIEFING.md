@@ -23,7 +23,7 @@ You own **one file**. Never edit `primitives.tsx`, `Landing.tsx`, `App.tsx`, `th
 - Decorative layers get `aria-hidden`.
 
 ## Verify (one fix iteration allowed)
-From `apps/web`, run `npm run dev -- --port <YOUR_PORT> --strictPort` in the background, then
+From `apps/frontend`, run `npm run dev -- --port <YOUR_PORT> --strictPort` in the background, then
 `node scripts/landing-shot.mjs http://localhost:<YOUR_PORT>/__preview/<SECTION> ../../.superpowers/sdd/2026-10-31-labeldesk-v2/task-18-shots/section-<SECTION>-<light|dark>.png 1440 <light|dark>`
 and `node scripts/landing-shot.mjs axe http://localhost:<YOUR_PORT>/__preview/<SECTION> 1440 <light|dark>`.
 Look at both screenshots (1440 and 375). Fix what you see, re-shoot once, stop the server. axe must show 0 violations; colour-contrast incomplete must be hand-sampled and reported.

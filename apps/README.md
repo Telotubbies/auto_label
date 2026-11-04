@@ -34,23 +34,23 @@ Not included: payment processing (plans are switched by `LD_SUPERADMINS`), outbo
 
 ```bash
 # API  (http://localhost:8010, seeds demo@labeldesk.dev / demo1234 + 40 PPE images)
-cd apps/api && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8010
+cd apps/backend && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8010
 
 # Web  (http://localhost:5173, proxies /api to LD_API_PROXY or :8010)
-cd apps/web && npm install && npm run dev
+cd apps/frontend && npm install && npm run dev
 
 # Tests (end-to-end, includes a 1-epoch CPU training run, ~30 s)
-cd apps/api && pytest -q
+cd apps/backend && pytest -q
 ```
 
 Key env vars (all optional in dev): `DATABASE_URL`, `LD_DATA_DIR`, `LD_SECRET`, `LD_LOCAL_JOBS`, `LD_WORKER_TOKEN`,
-`LD_CORS_ORIGINS`, `LD_PUBLIC_URL`, `LD_SAM_ENABLED`, `LD_TRAIN_DEVICE`, `LD_SEED_DEMO` — see `apps/api/app/config.py`.
+`LD_CORS_ORIGINS`, `LD_PUBLIC_URL`, `LD_SAM_ENABLED`, `LD_TRAIN_DEVICE`, `LD_SEED_DEMO` — see `apps/backend/app/config.py`.
 
 Deployment (free hosting, GPU worker on Kaggle/Colab/home PC): [`docs/DEPLOY.md`](../docs/DEPLOY.md).
 
 ## Security & performance
 
-Hardening (each item has an attack-style test in `apps/api/tests/test_security.py`):
+Hardening (each item has an attack-style test in `apps/backend/tests/test_security.py`):
 SSRF-safe image-URL fetch (public IPs only, redirects re-checked, IP pinned) · zip-bomb / upload-size / pixel-bomb limits ·
 filename sanitising · invite links bound to the invited email · per-IP login/signup/refresh/API-key rate limits ·
 constant-time login (no account enumeration) · SHA-256-hashed one-time refresh tokens · labelers limited to assigned images ·

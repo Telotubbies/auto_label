@@ -84,7 +84,7 @@ def classes_out(db: Session, p: Project) -> list[dict]:
              "skeleton": c.skeleton} for c in rows]
 
 
-# project slugs must not shadow workspace pages (mirrors apps/web/src/components/shell.tsx)
+# project slugs must not shadow workspace pages (mirrors apps/frontend/src/components/shell.tsx)
 RESERVED = {"models", "deployments", "activity", "settings", "audit", "admin", "legal", "qa"}
 
 

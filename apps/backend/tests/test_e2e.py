@@ -1,6 +1,6 @@
 """End-to-end: seed → review → version → export → train → predict → hosted API → remote worker.
 
-Run from apps/api:  pytest -q        (training uses 1 epoch @ 160px on CPU, ~1 min)
+Run from apps/backend:  pytest -q        (training uses 1 epoch @ 160px on CPU, ~1 min)
 """
 import io
 import os

@@ -1,5 +1,5 @@
 // The Autolabel banner renders for every labeler, including lean job payloads that strip params.
-//   node --test tests/autolabel-banner.test.mjs   (from apps/web)
+//   node --test tests/autolabel-banner.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { autolabelLabel } from '../src/features/project/autolabelLabel.ts'

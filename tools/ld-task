@@ -17,10 +17,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Change these two app paths when apps/web and apps/api are renamed to
-# apps/frontend and apps/backend. Everything else derives from them.
-FRONTEND_APP = "apps/web"
-BACKEND_APP = "apps/api"
+# These two app paths are also in .github/workflows/ci.yml (FRONTEND_APP /
+# BACKEND_APP). Everything else derives from them.
+FRONTEND_APP = "apps/frontend"
+BACKEND_APP = "apps/backend"
 
 # Profiles list only folders that exist in this tree: there is no packages/ and no
 # ml/ here (ML code lives in yolo26_ppe/ and sam3_auto_label/). create_task checks
@@ -349,7 +349,7 @@ def create_task(team: str, task_id: str, slug: str, profile: str) -> None:
                 "LD_TEST_TMP": test_dir,
                 "NPM_CONFIG_CACHE": npm_cache,
                 "UV_CACHE_DIR": uv_cache,
-                # apps/api reads this one; yolo26_ppe/ is not in any sparse profile.
+                # apps/backend reads this one; yolo26_ppe/ is not in any sparse profile.
                 "LD_PRETRAINED_DIR": weights_dir,
             },
         )

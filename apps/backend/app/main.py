@@ -1,4 +1,4 @@
-"""LabelDesk API.  Dev: `uvicorn app.main:app --reload --port 8010` from apps/api."""
+"""LabelDesk API.  Dev: `uvicorn app.main:app --reload --port 8010` from apps/backend."""
 import logging
 import os
 import time
@@ -106,7 +106,7 @@ def files(rel: str, exp: int, sig: str):
     return FileResponse(f, headers=headers, filename=f.name if f.suffix in (".zip", ".pt") else None)
 
 
-# Single-container deploys: serve the built SPA when LD_WEB_DIST points at apps/web/dist
+# Single-container deploys: serve the built SPA when LD_WEB_DIST points at apps/frontend/dist
 _dist = os.environ.get("LD_WEB_DIST")
 if _dist and Path(_dist).is_dir():
     _dist_path = Path(_dist).resolve()

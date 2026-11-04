@@ -73,4 +73,4 @@ After any `/api/v1` change, regenerate from the repo root and commit the result:
 python tools/gen_sdk.py
 ```
 
-The drift test (`apps/api/tests/test_sdk_cli.py`) fails when `_generated.py` is stale.
+The drift test (`apps/backend/tests/test_sdk_cli.py`) fails when `_generated.py` is stale.
