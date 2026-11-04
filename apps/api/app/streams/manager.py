@@ -265,6 +265,9 @@ class _Worker:
         self._detections = 0
         self._fps_times: deque[float] = deque()
         self._threads: list[threading.Thread] = []
+        self._exit_lock = threading.Lock()
+        self._exits = 0                        # threads that have finished, for the manager callback
+        self.on_exit = None                    # set by StreamManager to drop a finished draining entry
         self._quota_error = ""                  # I8-R: visible when event snapshots are quota-blocked
         self._metered_until = time.time()
         self._active_proxy: GuardedMediaProxy | None = None
@@ -296,6 +299,29 @@ class _Worker:
         finally:
             if meter:
                 self._meter()
+            self._notify_exit()
+
+    def _notify_exit(self) -> None:
+        """Tell the manager when the *last* worker thread has exited, exactly once.
+
+        A drained stop keeps the worker in ``_draining`` so a retry can see it; the callback drops
+        it once the threads are really gone, so ``/start`` is not refused forever (I-1 round 3).
+        """
+        with self._exit_lock:
+            self._exits += 1
+            if self._exits < len(self._threads):
+                return
+            callback, self.on_exit = self.on_exit, None
+        if callback is None:
+            return
+        try:
+            callback()
+        except Exception:
+            log.exception("stream %s: exit callback failed", self.id)
+
+    def threads_alive(self) -> bool:
+        """True while any capture/processor thread is still running."""
+        return any(t.is_alive() for t in self._threads)
 
     def _fail(self, message: str) -> None:
         """Fatal exit. `fatal` is flipped under the state lock: a concurrent grabber `live` write loses."""
@@ -889,8 +915,11 @@ class StreamManager:
         second one would duplicate capture and events under the same stream id (I-1).
         """
         with self._lock:
-            if stream_id in self._draining:
-                raise ValueError("stream is still stopping")
+            draining = self._draining.get(stream_id)
+            if draining is not None:
+                if draining.threads_alive():
+                    raise ValueError("stream is still stopping")
+                self._draining.pop(stream_id, None)     # self-heal a stop whose threads have exited
             worker = self._workers.get(stream_id)
             if worker is not None and not worker.dead():
                 return worker.status_out()
@@ -899,18 +928,20 @@ class StreamManager:
                 if row is None:
                     raise KeyError(stream_id)
                 worker = _Worker(row)
+            worker.on_exit = lambda sid=stream_id, w=worker: self._worker_exited(sid, w)
             self._workers[stream_id] = worker
             # Start under the lock: two concurrent /start calls must not orphan the first worker's
             # capture/processor threads (duplicate RTSP connections and duplicate events).
             worker.start()
         return worker.status_out()
 
-    def stop(self, stream_id: str, budget: float = 4.0) -> bool:
+    def stop(self, stream_id: str, budget: float = 4.0, draining_status: str = "stopped") -> bool:
         """Stop one stream, waiting at most ``budget``; returns False when its threads still drain.
 
-        A draining worker stays in ``_draining`` and the row says ``stopping``, so a retry can
-        finish the stop and restart capture instead of silently leaving the camera off (I-1).
-        ``stop_many`` is the bounded path for trash/purge.
+        A draining worker stays in ``_draining`` (and the row says ``draining_status``) so a retry
+        can finish the stop and restart capture instead of silently leaving the camera off (I-1).
+        The exit callback drops the entry once the threads are gone. ``stop_many`` is the bounded
+        path for trash/purge.
         """
         with self._lock:
             worker = self._workers.pop(stream_id, None)
@@ -928,7 +959,7 @@ class StreamManager:
             with self._lock:
                 if self._draining.get(stream_id) is worker:
                     self._draining.pop(stream_id, None)
-        self._persist_stopped([stream_id], "stopped" if joined else "stopping")
+        self._persist_stopped([stream_id], "stopped" if joined else draining_status)
         return joined
 
     def stop_many(self, stream_ids: list[str], budget: float = 0.25) -> list[str]:
@@ -964,6 +995,12 @@ class StreamManager:
                 if self._draining.get(sid) is worker:
                     self._draining.pop(sid, None)
         return draining
+
+    def _worker_exited(self, stream_id: str, worker: _Worker) -> None:
+        """Drop a finished draining worker so ``status()``/``start()`` stop refusing it (I-1)."""
+        with self._lock:
+            if self._draining.get(stream_id) is worker:
+                self._draining.pop(stream_id, None)
 
     def _persist_stopped(self, stream_ids: list[str], status: str = "stopped") -> None:
         try:
