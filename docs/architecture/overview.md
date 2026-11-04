@@ -51,9 +51,9 @@ The main seams are:
 
 The `jobs` table is the queue. There is no Redis or external broker. A process claims a row with a compare-and-set update from `queued` to `running`, which prevents two workers from running the same job.
 
-Local kinds run in the API process when `LD_EMBEDDED_WORKER=1`, or in the Compose `worker` service when it is `0`. The default local list covers version, export, health scans, connector sync, retention, video frame extraction, tracking, drift, active learning, and insights scans. `train` and `autolabel` are remote kinds: a `labeldesk-worker` claims them over HTTPS using `LD_WORKER_TOKEN`.
+Local kinds run in the API process when `LD_EMBEDDED_WORKER=1`, or in a separate worker process when it is `0`. The default `LD_LOCAL_JOBS` list covers version, export, health scans, connector sync, retention, video frame extraction, tracking, drift, active learning, and insights scans, and it also includes `train` and `autolabel`. With the defaults, a Train or Auto-label job therefore runs in the API process, on CPU when there is no GPU. The remote path is opt-in: remove `train,autolabel` from `LD_LOCAL_JOBS` (the Compose stack already does this for its `worker` service) and a `labeldesk-worker` claims them over HTTPS using `LD_WORKER_TOKEN`.
 
-A crash leaves rows in `running`. When a local worker starts, `worker.recover()` puts running local jobs back to `queued` and turns local `cancelling` rows into `cancelled`. Remote kinds are not covered by that sweep. See the [recovery runbook](../runbooks/recovery-after-shutdown.md) for the operational consequence.
+A crash leaves rows in `running`. When a local worker starts, `worker.recover()` puts running jobs back to `queued` and turns `cancelling` rows into `cancelled`, filtered by the effective `LD_LOCAL_JOBS` list. The development default includes `train` and `autolabel`, so a crashed training row is requeued and starts over. The Compose stack removes both kinds from the list, so there they are left in `running`. See the [recovery runbook](../runbooks/recovery-after-shutdown.md) for the operational consequence.
 
 The GPU lease ledger in `apps/api/app/gpu.py` is process-local. That is why the API image runs one uvicorn worker. Training and other exclusive GPU work take a lease; inference does not load a model outside one.
 

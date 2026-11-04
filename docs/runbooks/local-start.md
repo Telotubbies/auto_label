@@ -31,7 +31,7 @@ uvicorn app.main:app --reload --port 8010
 
 On first start the API creates the SQLite database under `apps/api/data`, applies the schema, and seeds demo data because `LD_SEED_DEMO` defaults to `1` outside production. The demo account is `demo@labeldesk.dev` with password `demo1234`. Set `LD_SEED_DEMO=0` before the first start if you do not want it.
 
-The API process also runs the local job worker by default (`LD_EMBEDDED_WORKER=1`). Version, export, health, retention, drift, active learning, and insights jobs run in that process. Training and auto-labeling are remote kinds and stay queued unless a worker claims them or you add them to `LD_LOCAL_JOBS`.
+The API process also runs the local job worker by default (`LD_EMBEDDED_WORKER=1`). The default `LD_LOCAL_JOBS` list covers version, export, health, connector sync, retention, video frame extraction, tracking, drift, active learning, and insights scans, and it also includes `train` and `autolabel`. A Train or Auto-label click therefore runs in the API process, on CPU when the machine has no GPU, so it competes with request handling for the length of the run. That is the default path, not a stalled queue. To hand those two kinds to `labeldesk-worker` instead, remove them from `LD_LOCAL_JOBS`, for example `LD_LOCAL_JOBS=version,export,export_engine,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,insights_images,insights_leakage,insights_embedding`; set `LD_EMBEDDED_WORKER=0` as well if the API process should claim no jobs at all. A remote worker can only claim a row that no local worker has taken.
 
 Useful environment variables for a local start:
 

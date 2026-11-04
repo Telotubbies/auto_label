@@ -4,7 +4,7 @@ This repository holds two layers that share one history.
 
 The first is a batch pipeline for turning raw PPE images into verified datasets, training YOLO26 detection and segmentation models, evaluating them, and exporting ONNX artifacts. The second is LabelDesk, a self-hosted labeling application built on that pipeline. LabelDesk covers upload, annotate, review, version, train, and deploy, with a FastAPI backend, a React frontend, a database-backed job queue, and an optional remote GPU worker.
 
-> Naming: the approved layout uses `apps/frontend` for the web app and `apps/backend` for the API. That rename has not landed. The current directories are `apps/web` and `apps/api`. This file uses the planned names and gives the current path where it matters.
+> Naming: the approved layout uses `apps/frontend` for the web app and `apps/backend` for the API. That rename has not landed. The current directories are `apps/web` and `apps/api`. Prose uses the planned names; runnable commands use the current paths, because those are the directories that exist today.
 
 ## Status
 
@@ -53,7 +53,7 @@ These commands start the development stack on one machine. They assume Python 3.
 ### Backend
 
 ```bash
-cd apps/backend            # today: apps/api
+cd apps/api                # planned name: apps/backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -65,7 +65,7 @@ Development defaults use SQLite in `apps/api/data`, enable the embedded job work
 ### Frontend
 
 ```bash
-cd apps/frontend           # today: apps/web
+cd apps/web                 # planned name: apps/frontend
 npm ci
 npm run dev
 ```
@@ -75,10 +75,10 @@ The dev server listens on `http://localhost:5173` and proxies `/api` to `http://
 ### Tests
 
 ```bash
-cd apps/backend            # today: apps/api
+cd apps/api                # planned name: apps/backend
 pytest -q
 
-cd ../frontend             # today: apps/web
+cd ../web                  # planned name: apps/frontend
 npm run build
 ```
 
