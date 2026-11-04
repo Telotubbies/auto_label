@@ -37,9 +37,20 @@ def runs_locally(kind: str) -> bool:
 
     ``LOCAL_JOB_KINDS`` only says what the embedded worker may run; a process with
     ``LD_EMBEDDED_WORKER=0`` runs nothing, even though the default list still names train.
-    Remote-worker restrictions key off this answer, never off the list alone.
+    Never key a product decision off this answer: it describes one process, not the deployment
+    topology (see ``remote_training``).
     """
     return EMBEDDED_WORKER and kind in LOCAL_JOB_KINDS
+
+
+# Which executor runs train/autolabel across the deployment: "remote" is the pip GPU worker,
+# "local" is an `app.worker` process (the compose worker service or this API). Empty means
+# "auto": `services.topology` asks the online workers what they claim, because the API process
+# runs no jobs in compose and an operator flag can disagree with the workers that exist (I7).
+TRAIN_WORKER = _env("LD_TRAIN_WORKER", "").strip().lower()
+if TRAIN_WORKER not in ("", "local", "remote"):
+    raise RuntimeError("LD_TRAIN_WORKER must be local, remote, or empty (auto)")
+
 
 # ML integration — all optional; features degrade with a clear error when missing
 SAM_ROOT = Path(_env("LD_SAM_ROOT", str(REPO_ROOT / "sam3_auto_label")))
@@ -100,5 +111,11 @@ MAX_UPLOAD_MB = int(_env("LD_MAX_UPLOAD_MB", "1024"))        # per upload reques
 RETENTION_CHECK_S = int(_env("LD_RETENTION_CHECK_S", "3600"))  # how often the worker looks for due cleanup
 RETENTION_PRESETS = (7, 30, 90, 180, 365)                    # choices offered by the privacy page
 WORKER_STALE_S = int(_env("LD_WORKER_STALE_S", "45"))        # a heartbeat older than this shows offline
+# A remote GPU worker (pip `labeldesk-worker`) reports progress every epoch/image; that report is
+# its heartbeat. No report for this long means the worker is gone and the job is failed (I9).
+# Six hours covers exporting a large version, downloading it and the first epoch; a worker that
+# finishes after the sweep still recovers the run via /complete (Important 1).
+REMOTE_JOB_TIMEOUT_S = int(_env("LD_REMOTE_JOB_TIMEOUT_S", "21600"))   # 6 h without progress
+REMOTE_CANCEL_GRACE_S = int(_env("LD_REMOTE_CANCEL_GRACE_S", "900"))   # 15 min to acknowledge a cancel
 if WORKER_TOKEN and len(WORKER_TOKEN) < 24:
     raise RuntimeError("LD_WORKER_TOKEN must be at least 24 characters")

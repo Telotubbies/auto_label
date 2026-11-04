@@ -66,6 +66,9 @@ def run_train(srv: Server, job: dict, args):
         epochs = int(opts.get("epochs", 30))
         history = []
         model = YOLO(base_weights(task, opts.get("size", "n"), args.pretrained_dir))
+        # Download, extract and model load are silent; report before the first epoch so a slow
+        # start is not mistaken for a dead worker (I9/Important 1).
+        srv.post(f"/api/worker/jobs/{job['id']}/progress", json={"progress": 0})
 
         def cb(trainer):
             m = {k: float(v) for k, v in (trainer.metrics or {}).items() if isinstance(v, (int, float))}
@@ -125,6 +128,8 @@ def run_autolabel(srv: Server, job: dict, args):
             model = YOLO(str(srv.download(p["weights_url"], work / "w.pt")))
         else:
             proc = _sam(args)
+        # The model/SAM load above is silent; report before the first image (I9/Important 1).
+        srv.post(f"/api/worker/jobs/{job['id']}/progress", json={"progress": 0})
         n = len(p["images"])
         for i, it in enumerate(p["images"]):
             im = Image.open(srv.download(it["url"], work / "img.jpg")).convert("RGB")

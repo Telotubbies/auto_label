@@ -1,22 +1,34 @@
-"""Shared plumbing for the Insights Studio aggregations: data signature, TTL cache, model lookup."""
+"""Shared plumbing for the Insights Studio aggregations: data signature, TTL cache, model lookup.
+
+The cache is scoped per project (or per project+model/stream surface) and every scope is bounded,
+so a burst of distinct widget specs from one project can neither grow the process without limit
+nor evict every other project's entries (I11). TTL/LRU bookkeeping comes from ``cachetools``
+(MIT) instead of a hand-rolled dict.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import threading
-import time
+from collections import OrderedDict
 
+from cachetools import TTLCache
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import Image, TrainedModel
 
 CACHE_TTL = 1800  # signed file URLs live 6 h; a 30 min cache keeps them fresh
-CACHE_MAX = 64
+CACHE_MAX = 256  # hard key ceiling for the process (all scopes together)
+CACHE_MAX_PER_SCOPE = 16  # widget specs one project may keep resident
+MAX_CONCURRENT_BUILDS = 2  # a burst of distinct widget specs must not run a scan per request
 
-_CACHE: dict[str, tuple[str, float, dict]] = {}
+_SCOPES: "OrderedDict[str, TTLCache]" = OrderedDict()
 _CACHE_LOCK = threading.Lock()
+_BUILD_LOCKS: dict[str, threading.Lock] = {}
+_BUILD_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_BUILDS)
+_MISSING = object()
 
 
 def signature(m: TrainedModel) -> str:
@@ -41,25 +53,73 @@ def data_stamp(db: Session, project_id: str) -> str:
     return hashlib.sha256(str(updated).encode()).hexdigest()[:8]
 
 
-def cached(key: str, sig: str, build) -> tuple[dict, bool]:
-    """Return (payload, hit). Entries expire after CACHE_TTL and evict in LRU order."""
-    now = time.monotonic()
+def _scope_cache(scope: str) -> TTLCache:
+    """The LRU scope for ``scope``, creating it and trimming the process ceiling when needed."""
+    cache = _SCOPES.pop(scope, None)  # move-to-end keeps recently used scopes
+    if cache is None:
+        cache = TTLCache(maxsize=CACHE_MAX_PER_SCOPE, ttl=CACHE_TTL)
+    _SCOPES[scope] = cache
+    total = sum(len(entry) for entry in _SCOPES.values())
+    while total > CACHE_MAX and len(_SCOPES) > 1:
+        _old_scope, old = _SCOPES.popitem(last=False)
+        total -= len(old)
+    return cache
+
+
+def _build_lock(scope: str) -> threading.Lock:
+    """One build at a time per scope; the process-wide semaphore caps the others."""
     with _CACHE_LOCK:
-        entry = _CACHE.get(key)
-        if entry and entry[0] == sig and now - entry[1] < CACHE_TTL:
-            _CACHE[key] = _CACHE.pop(key)  # refresh LRU order
-            return entry[2], True
-    payload = build()
+        lock = _BUILD_LOCKS.get(scope)
+        if lock is None:
+            lock = _BUILD_LOCKS[scope] = threading.Lock()
+        return lock
+
+
+def cached(scope: str, key: str, sig: str, build) -> tuple[dict, bool]:
+    """Return (payload, hit) for one key in ``scope``; entries expire after CACHE_TTL.
+
+    A miss builds outside the cache lock (so readers keep serving hits), but misses in one scope
+    are serialised and at most ``MAX_CONCURRENT_BUILDS`` run across scopes. The bound on retained
+    entries alone does not stop a burst of distinct specs from scanning the dataset in parallel.
+    """
+    entry_key = (key, sig)  # a changed signature is a new key, so a stale payload is never read
     with _CACHE_LOCK:
-        _CACHE[key] = (sig, now, payload)
-        while len(_CACHE) > CACHE_MAX:
-            _CACHE.pop(next(iter(_CACHE)))
+        hit = _scope_cache(scope).get(entry_key, _MISSING)
+        if hit is not _MISSING:
+            return hit, True
+    with _build_lock(scope):
+        with _CACHE_LOCK:                       # another thread may have built it while we waited
+            hit = _scope_cache(scope).get(entry_key, _MISSING)
+            if hit is not _MISSING:
+                return hit, True
+        with _BUILD_SLOTS:
+            payload = build()
+        with _CACHE_LOCK:
+            _scope_cache(scope)[entry_key] = payload
     return payload, False
+
+
+def cache_size(scope: str) -> int:
+    """Live entries held for one scope (ops and tests)."""
+    with _CACHE_LOCK:
+        cache = _SCOPES.get(scope)
+        if cache is None:
+            return 0
+        cache.expire()
+        return len(cache)
+
+
+def cache_total() -> int:
+    """Live entries held across every scope; never above CACHE_MAX."""
+    with _CACHE_LOCK:
+        for cache in _SCOPES.values():
+            cache.expire()
+        return sum(len(cache) for cache in _SCOPES.values())
 
 
 def clear_cache() -> None:
     with _CACHE_LOCK:
-        _CACHE.clear()
+        _SCOPES.clear()
 
 
 def model_in_project(db: Session, project_id: str, mid: str) -> TrainedModel:

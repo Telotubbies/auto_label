@@ -70,6 +70,12 @@ labeldesk-worker --server https://api.labeldesk.example.com --token <LD_WORKER_T
 ถ้าจะใช้ SAM 3.1 auto-label ให้เพิ่ม `--sam-root sam3_auto_label` (ต้องมี checkpoint อยู่ในเครื่อง)
 ถ้าอยากให้รันทุกครั้งที่เปิดเครื่อง: Linux ใช้ systemd หรือ `tmux`, Windows ใช้ Task Scheduler
 
+worker ส่ง progress ทุก epoch/รูป ซึ่งเป็น heartbeat ของมัน ถ้าไม่มีการรายงานนานเกิน
+`LD_REMOTE_JOB_TIMEOUT_S` (ค่าเริ่มต้น 21600 วินาที = 6 ชม. ครอบคลุม export เวอร์ชัน, ดาวน์โหลด
+และ epoch แรก) API จะทำเครื่องหมายงานและโมเดลเป็น `failed` แต่ถ้า worker ส่ง `/complete`
+พร้อม weights จริงมาทีหลัง ระบบจะกู้งานเป็น `done` และโมเดลเป็น `ready` โดยเก็บเหตุผลเดิมไว้ใน
+`result.remote_error` — ปรับค่านี้ได้ใน `.env` เมื่อชุดข้อมูลใหญ่กว่านั้น
+
 ### Kaggle / Colab (GPU ฟรี)
 สร้าง notebook แล้วเปิด GPU accelerator จากนั้นรัน cell นี้:
 ```python
@@ -81,6 +87,8 @@ Kaggle ต้องเปิด Settings → Internet: On ด้วย worker �
 
 ### ไม่มี GPU เลย
 ตั้ง `LD_LOCAL_JOBS=version,export,export_engine,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,insights_images,insights_leakage,insights_embedding,train,autolabel` ใน `.env` แล้ว VM จะ train ด้วย CPU เอง
+และตั้ง `LD_TRAIN_WORKER=local` ด้วย เพื่อบอก API ว่า `train`/`autolabel` รันบน worker ในเครื่องนี้ ไม่ใช่ `labeldesk-worker` บนเครื่อง GPU
+(ค่าเริ่มต้นคือ `remote` เมื่อ API ไม่ได้รัน worker เอง) มิฉะนั้นตัวเลือกตระกูลโมเดล non-YOLO, `max_minutes` และ `resume_from` จะยังถูกปฏิเสธ
 ช้ากว่า แต่โมเดล n/s ขนาดเล็กที่ 30–50 epochs บนรูปหลักร้อยใบยังพอรับได้
 
 > ค่าเริ่มต้นของ `worker` ใน compose ครอบคลุมงาน CPU ทุกชนิด (`version,export,export_engine,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,insights_*`) — drift monitor จึงทำงานบน VM

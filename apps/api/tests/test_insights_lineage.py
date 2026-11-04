@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -414,6 +415,282 @@ def test_query_images_respects_the_label_source_filter(c, data):
         "human": 1,
         "sam3": 1,
     }
+
+
+def test_dataset_widgets_aggregate_in_sql_without_hydrating_annotations(c, data, monkeypatch):
+    """I11: a widget cache miss must not materialise every Image row (including annotations) in Python."""
+    from app.services import insights, insights_common
+
+    def hydrate(*_args, **_kwargs):
+        raise AssertionError("widget aggregation loaded image rows into Python")
+
+    insights_common.clear_cache()
+    monkeypatch.setattr(insights, "dataset_rows", hydrate)
+    monkeypatch.setattr(insights, "live_images", hydrate)
+    cases = [
+        {"source": "dataset", "measure": "annotations", "dimension": "class"},
+        {"source": "dataset", "measure": "annotations", "dimension": "source",
+         "filters": {"split": "test"}},
+        {"source": "dataset", "measure": "images", "dimension": "class",
+         "filters": {"source": "human", "tag": "day"}},
+        {"source": "dataset", "measure": "images", "dimension": "tag"},
+        {"source": "dataset", "measure": "images", "dimension": "class", "dimension2": "source"},
+        {"source": "dataset", "measure": "annotations", "dimension": "batch", "dimension2": "tag"},
+    ]
+    for body in cases:
+        r = query(c, **body)
+        assert r.status_code == 200, (body, r.text)
+
+    # the SQL path must keep the old image semantics: class × source is a cross product per image
+    heat = query(
+        c, source="dataset", measure="images", dimension="class", dimension2="source"
+    ).json()
+    assert {(row["key"], row["group"]): row["value"] for row in heat["rows"]} == {
+        ("car", "human"): 2,
+        ("person", "human"): 1,
+        ("person", "sam3"): 1,
+        ("car", "sam3"): 1,
+        ("person", "vlm+sam3"): 1,
+    }
+    assert heat["total"] == 4
+    tags = query(c, source="dataset", measure="images", dimension="tag").json()
+    assert {row["key"]: row["value"] for row in tags["rows"]} == {"day": 2, "night": 2}
+    batch_by_tag = query(
+        c, source="dataset", measure="annotations", dimension="batch", dimension2="tag"
+    ).json()
+    assert {
+        (row["key"], row["group"]): row["value"] for row in batch_by_tag["rows"]
+    } == {("Morning batch", "day"): 3, ("Night batch", "night"): 2}
+    assert batch_by_tag["total"] == 6
+
+
+def test_dataset_widget_sql_compiles_for_postgres():
+    """The JSON unnesting has a PostgreSQL branch; the deployed database must not see SQLite names."""
+    from sqlalchemy.dialects import postgresql
+
+    from app.services import insights_aggregate
+
+    statements = []
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _DB:
+        def get_bind(self):
+            return _Bind()
+
+        def scalar(self, stmt):
+            statements.append(stmt)
+            return 0
+
+        def execute(self, stmt):
+            statements.append(stmt)
+            return []
+
+    project = Project(id="p1", workspace_id="w1", slug="p", name="p")
+    for measure, dimension, dimension2 in (
+        ("annotations", "class", "source"),
+        ("annotations", "batch", "tag"),
+        ("images", "class", "source"),
+        ("images", "tag", "none"),
+    ):
+        statements.clear()
+        insights_aggregate.dataset_counts(
+            _DB(),
+            project,
+            {
+                "source": "dataset",
+                "measure": measure,
+                "dimension": dimension,
+                "dimension2": dimension2,
+                "filters": {"source": "human", "tag": "day"},
+            },
+        )
+        sql = "\n".join(
+            str(stmt.compile(dialect=postgresql.dialect())) for stmt in statements
+        )
+        assert "json_array_elements" in sql
+        assert "json_each" not in sql
+
+
+def test_dataset_widget_with_a_version_filter_uses_the_frozen_scope(c, data, monkeypatch):
+    """A dataset read scoped to a version limits the live images and uses the manifest's split."""
+    from app.services import insights, insights_common
+
+    def hydrate(*_args, **_kwargs):
+        raise AssertionError("version-scoped widget aggregation loaded image rows into Python")
+
+    insights_common.clear_cache()
+    monkeypatch.setattr(insights, "dataset_rows", hydrate)
+    body = query(
+        c,
+        source="dataset",
+        measure="images",
+        dimension="split",
+        filters={"version": data["version"]},
+    ).json()
+    assert {row["key"]: row["value"] for row in body["rows"]} == {
+        "train": 1,
+        "valid": 1,
+        "test": 1,
+    }
+    assert body["total"] == 3                 # i4 is not in the version's manifest
+
+
+def test_dataset_widget_postgres_guards_a_legacy_dict_annotations_row():
+    """Important 1: a v1 dict-shaped annotations row must not make the unnest itself raise.
+
+    PostgreSQL evaluates the set-returning function's argument before the object predicate, so
+    ``json_array_elements('{"label":"cat"}')`` errors. The array expression itself must be
+    guarded by ``json_typeof``, not filtered after unnesting.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    from app.services import insights_aggregate
+
+    class _DB:
+        def __init__(self):
+            self.statements = []
+
+        def get_bind(self):
+            class _Bind:
+                dialect = type("_Dialect", (), {"name": "postgresql"})()
+
+            return _Bind()
+
+        def scalar(self, stmt):
+            self.statements.append(stmt)
+            return 0
+
+        def execute(self, stmt):
+            self.statements.append(stmt)
+            return []
+
+    project = Project(id="p1", workspace_id="w1", slug="p", name="p")
+    # Both paths unnest annotations: the annotation measure and an image dimension/filter.
+    specs = (
+        {"source": "dataset", "measure": "annotations", "dimension": "class",
+         "dimension2": "none", "filters": {}},
+        {"source": "dataset", "measure": "images", "dimension": "class",
+         "dimension2": "none", "filters": {"class": "cat"}},
+    )
+    for spec in specs:
+        db = _DB()
+        insights_aggregate.dataset_counts(db, project, spec)
+        sql = "\n".join(
+            str(stmt.compile(dialect=postgresql.dialect())) for stmt in db.statements
+        )
+        assert "json_array_elements(CASE" in sql
+        assert "json_typeof" in sql
+        assert "json_build_array()" in sql
+
+
+def test_dataset_widget_with_a_large_version_stays_under_the_parameter_limit():
+    """Important 2: a version scope must be one payload, not an IN list plus a CASE per image.
+
+    A 12k-image manifest used to compile ~24k CASE parameters (and expand a 12k-value IN),
+    which exceeds SQLite's 32,766-variable ceiling near 11k images and Postgres' 65,535 near 22k.
+    """
+    from sqlalchemy.dialects import postgresql, sqlite
+
+    from app.services import insights_aggregate
+
+    project = Project(id="p1", workspace_id="w1", slug="p", name="p")
+    split_of = {f"{i:016x}": "train" for i in range(12_000)}
+
+    def statements_for(dialect_name: str) -> list:
+        statements = []
+
+        class _DB:
+            def get_bind(self):
+                class _Bind:
+                    dialect = type("_Dialect", (), {"name": dialect_name})()
+
+                return _Bind()
+
+            def scalar(self, stmt):
+                statements.append(stmt)
+                return 0
+
+            def execute(self, stmt):
+                statements.append(stmt)
+                return []
+
+        insights_aggregate.dataset_counts(
+            _DB(),
+            project,
+            {"source": "dataset", "measure": "images", "dimension": "class",
+             "dimension2": "none", "filters": {}},
+            version=object(),
+            split_of=split_of,
+        )
+        assert statements
+        return statements
+
+    for dialect in (sqlite.dialect(), postgresql.dialect()):
+        statements = statements_for(dialect.name)
+        param_counts = [len(stmt.compile(dialect=dialect).params) for stmt in statements]
+        assert max(param_counts) < 10, (dialect.name, param_counts)
+        sql = "\n".join(str(stmt.compile(dialect=dialect)) for stmt in statements)
+        if dialect.name == "postgresql":
+            assert "json_each" not in sql
+    pg_sql = "\n".join(str(stmt.compile(dialect=postgresql.dialect()))
+                       for stmt in statements_for("postgresql"))
+    assert "json_extract_path_text" in pg_sql
+    assert "|| images.id" not in pg_sql
+
+
+def test_query_version_source_without_batch_or_tag_reads_no_image_rows(c, data):
+    """I11 root: a version widget that needs no image metadata must not hydrate project rows."""
+    from sqlalchemy import event
+
+    from app.db import engine
+    from app.services import insights_common
+
+    seen: list[str] = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _executemany):
+        seen.append(statement)
+
+    insights_common.clear_cache()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        r = query(c, source="version", measure="annotations", dimension="class",
+                  filters={"version": data["version"]})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert r.status_code == 200, r.text
+    assert not [s for s in seen if "images.tags" in s]
+
+
+def test_query_version_source_with_a_batch_dimension_uses_only_manifest_sources(c, data):
+    """The metadata lookup still works when the widget does need batch/tag values."""
+    body = query(c, source="version", measure="images", dimension="batch",
+                 filters={"version": data["version"]}).json()
+    assert {row["key"]: row["value"] for row in body["rows"]} == {
+        "Morning batch": 2,
+        "Night batch": 1,
+    }
+    assert body["total"] == 3
+
+
+def test_dataset_version_filter_with_an_empty_manifest_returns_no_rows(c, data):
+    """Minor 4: a written-but-empty manifest is an empty scope, never the live dataset."""
+    with SessionLocal() as db:
+        version = Version(project_id=data["pid"], number=98, name="empty", status="ready", stats={})
+        db.add(version)
+        db.commit()
+        path = versioning.version_dir(version)
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "manifest.json").write_text(json.dumps({"classes": [], "items": []}))
+        version_id = version.id
+    body = query(c, source="dataset", measure="images", dimension="none",
+                 filters={"version": version_id}).json()
+    assert body["total"] == 0
+    assert body["rows"] == []
 
 
 def test_query_version_source_uses_the_frozen_manifest(c, data):
@@ -978,6 +1255,109 @@ def test_dashboard_is_scoped_to_its_project(c, data):
     c.delete(f"{DASH}/{dash['id']}")
 
 
+def test_labeler_cannot_read_lineage_widgets_or_dashboard_specs(c, data):
+    """I11: aggregation reads are a review surface; a labeler must not trigger a full dataset scan."""
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+    headers = {"Authorization": f"Bearer {issue_access(user.id)}"}
+    assert c.get(f"{INS}/lineage", headers=headers).status_code == 403
+    assert c.get(f"{INS}/streams", headers=headers).status_code == 403
+    assert c.get(DASH, headers=headers).status_code == 403
+    widget = {"source": "dataset", "measure": "annotations", "dimension": "class"}
+    assert c.post(f"{INS}/query", json=widget, headers=headers).status_code == 403
+
+    dash = c.post(DASH, json={"name": "Shared", "widgets": WIDGETS}).json()
+    share = c.post(f"{DASH}/{dash['id']}/share").json()
+    try:
+        assert c.get(f"{DASH}/{dash['id']}", headers=headers).status_code == 403
+        # an explicitly shared link is a deliberate read-only exception; it carries specs, not aggregates
+        assert c.get(f"{DASH}/shared/{share['token']}", headers=headers).status_code == 200
+    finally:
+        c.delete(f"{DASH}/{dash['id']}")
+
+
+def test_shared_dashboard_serves_widget_data_to_a_labeler(c, data):
+    """A shared link is a read-only capability: its widgets must return data, not 403."""
+    dash = c.post(DASH, json={"name": "Shared", "widgets": WIDGETS}).json()
+    token = c.post(f"{DASH}/{dash['id']}/share").json()["token"]
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+    headers = {"Authorization": f"Bearer {issue_access(user.id)}"}
+    spec = {key: WIDGETS[0].get(key) for key in
+            ("source", "measure", "dimension", "dimension2", "filters")}
+    try:
+        r = c.post(f"{DASH}/shared/{token}/query", json=spec, headers=headers)
+        assert r.status_code == 200, r.text
+        assert {row["key"]: row["value"] for row in r.json()["rows"]} == {
+            "person": 3,
+            "car": 3,
+        }
+        # the token is a capability for this dashboard's widgets, not an arbitrary query endpoint
+        arbitrary = {"source": "dataset", "measure": "annotations", "dimension": "split"}
+        assert c.post(
+            f"{DASH}/shared/{token}/query", json=arbitrary, headers=headers
+        ).status_code == 400
+        assert c.post(
+            f"{DASH}/shared/{'0' * 12}/query", json=spec, headers=headers
+        ).status_code == 404
+    finally:
+        c.delete(f"{DASH}/{dash['id']}")
+
+
+def test_widget_cache_serialises_concurrent_misses_in_one_project(data):
+    """I11: a burst of distinct specs must not run several full scans at once on one worker."""
+    from app.services import insights_common
+
+    insights_common.clear_cache()
+    scope = f"query:{data['pid']}"
+    active: list[int] = []
+    peak: list[int] = []
+    lock = threading.Lock()
+
+    def build(i):
+        with lock:
+            active.append(i)
+            peak.append(len(active))
+        time.sleep(0.02)
+        with lock:
+            active.pop()
+        return {"rows": []}
+
+    threads = [
+        threading.Thread(
+            target=insights_common.cached,
+            args=(scope, f"spec-{i}", "sig", lambda i=i: build(i)),
+        )
+        for i in range(8)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert max(peak) == 1, peak
+
+
+def test_widget_cache_is_bounded_per_project(data):
+    """I11: distinct tag/class/batch specs must not grow one project's cache without a bound."""
+    from app.services import insights_common
+
+    insights_common.clear_cache()
+    scope = f"query:{data['pid']}"
+    built: list[int] = []
+    for i in range(insights_common.CACHE_MAX_PER_SCOPE * 3):
+        insights_common.cached(scope, f"spec-{i}", "sig", lambda i=i: built.append(i) or {"rows": []})
+
+    assert insights_common.cache_size(scope) == insights_common.CACHE_MAX_PER_SCOPE
+    assert insights_common.cache_total() <= insights_common.CACHE_MAX
+
+    calls = len(built)
+    newest = f"spec-{insights_common.CACHE_MAX_PER_SCOPE * 3 - 1}"
+    payload, hit = insights_common.cached(scope, newest, "sig", lambda: built.append(-1) or {"rows": []})
+    assert hit is True and payload == {"rows": []} and len(built) == calls
+
+    other = f"query:{data['other_id']}"        # one project's keys never evict another's
+    insights_common.cached(other, "spec", "sig", lambda: {"rows": []})
+    assert insights_common.cache_size(other) == 1
 def test_annotator_can_read_but_not_save_dashboards(c, data):
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))

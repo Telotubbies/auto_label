@@ -23,6 +23,9 @@ if _OWN_DATA_DIR:
 else:
     TEST_TMP = os.environ["LD_DATA_DIR"]
 os.environ.setdefault("LD_EMBEDDED_WORKER", "1")
+# A test module that rewrites this at import flips the worker off for the whole session (Important 2),
+# so the value is recorded here for the module-level isolation regression test.
+EMBEDDED_WORKER_ENV = os.environ["LD_EMBEDDED_WORKER"]
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ["LD_SAM_ENABLED"] = "0"                 # pin: a provisioned shell must not change the suite
 os.environ.pop("LD_VLM_URL", None)                 # the reference deployment provisions no vLLM
@@ -63,6 +66,23 @@ def _reset_rate_limiter():
     from app import ratelimit
     ratelimit.ENABLED = os.environ.get("LD_RATE_LIMIT", "1") != "0"
     ratelimit._hits.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_demo_credits():
+    """Every module charges the one shared demo workspace, so a single month's allowance runs out
+    mid-session and later creates return 402 for no product reason (e.g. test_r1_remote_mode).
+    Top up only when nearly exhausted: tests such as test_e2e read the accumulated usage."""
+    from app.db import SessionLocal
+    from app.deps import plan
+    from app.models import Workspace
+
+    with SessionLocal() as db:
+        ws = db.query(Workspace).filter_by(slug="labeldesk-demo").one_or_none()
+        if ws is not None and ws.credits_used >= 0.8 * plan(ws)["credits"]:
+            ws.credits_used = 0
+            db.commit()
+    yield
 
 
 @pytest.fixture(scope="session", autouse=True)

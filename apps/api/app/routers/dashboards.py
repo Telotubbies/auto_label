@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..deps import Ctx, audit, project_ctx
-from ..services import insights_dashboards
+from ..services import insights_dashboards, insights_query
 from ..services.flags import require_flag
 
 router = APIRouter(
@@ -29,6 +29,7 @@ def _bad(exc: ValueError) -> HTTPException:
 
 @router.get("")
 def list_dashboards(c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")               # dashboards are a review surface, not a labeler read (I11)
     return insights_dashboards.list_dashboards(c.db, c.project)
 
 
@@ -57,8 +58,25 @@ def shared_dashboard(token: str, c: Ctx = Depends(project_ctx)):
         raise HTTPException(404, str(exc)) from exc
 
 
+@router.post("/shared/{token}/query")
+def shared_widget_query(token: str, body: dict, c: Ctx = Depends(project_ctx)):
+    """Aggregates for one widget on a shared dashboard; the token is the read capability."""
+    try:
+        dash = insights_dashboards.shared(c.db, c.project, token)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    try:
+        spec = insights_dashboards.widget_query(dash, body)
+        return insights_query.run(c.db, c.project, spec)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/{dashboard_id}")
 def get_dashboard(dashboard_id: str, c: Ctx = Depends(project_ctx)):
+    c.perm("project.review")
     try:
         return insights_dashboards.get(c.db, c.project, dashboard_id)
     except LookupError as exc:

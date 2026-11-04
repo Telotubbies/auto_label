@@ -233,6 +233,9 @@ export const api = {
   widgetQuery: (ws: string, p: string,
     body: { source: string; measure: string; dimension: string; dimension2?: string | null; filters?: Record<string, string | number | undefined> }) =>
     post<WidgetData>(`${P(ws, p)}/insights/query`, body),
+  sharedWidgetQuery: (ws: string, p: string, token: string,
+    body: { source: string; measure: string; dimension: string; dimension2?: string | null; filters?: Record<string, string | number | undefined> }) =>
+    post<WidgetData>(`${P(ws, p)}/dashboards/shared/${encodeURIComponent(token)}/query`, body),
   dashboards: (ws: string, p: string) => get<DashboardSummary[]>(`${P(ws, p)}/dashboards`),
   dashboard: (ws: string, p: string, id: string) => get<DashboardSummary>(`${P(ws, p)}/dashboards/${id}`),
   createDashboard: (ws: string, p: string, body: { name: string; widgets: unknown[] }) =>

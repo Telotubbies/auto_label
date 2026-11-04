@@ -1,5 +1,8 @@
-"""C1: remote-worker restrictions must follow the executor, not the default job list."""
+"""C1/I7: remote-worker restrictions must follow the deployment topology, not *this* process."""
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ["LD_SAM_ENABLED"] = "0"
@@ -11,6 +14,7 @@ from app.main import app
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
+API_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _client() -> TestClient:
@@ -41,10 +45,81 @@ def test_runs_locally_requires_the_embedded_worker(monkeypatch):
     assert config.runs_locally("train") is True
 
 
-def test_remote_mode_rejects_non_ultralytics_and_unsupported_options(monkeypatch):
-    """With the embedded worker off, every restriction must still apply (C1)."""
+def test_train_worker_flag_is_an_explicit_override_only():
+    """I7: an unset LD_TRAIN_WORKER must defer to the workers that are actually online."""
+    code = "from app import config; print(repr(config.TRAIN_WORKER))"
+    env = {**os.environ, "LD_EMBEDDED_WORKER": "0",
+           "LD_LOCAL_JOBS": "train,autolabel,version", "LD_TRAIN_WORKER": "local"}
+    local = subprocess.run([sys.executable, "-c", code], cwd=API_ROOT, env=env,
+                           capture_output=True, text=True, timeout=120)
+    assert local.returncode == 0, local.stderr
+    assert local.stdout.strip() == "'local'"
+
+    env["LD_TRAIN_WORKER"] = "remote"
+    remote = subprocess.run([sys.executable, "-c", code], cwd=API_ROOT, env=env,
+                            capture_output=True, text=True, timeout=120)
+    assert remote.returncode == 0, remote.stderr
+    assert remote.stdout.strip() == "'remote'"
+
+    env.pop("LD_TRAIN_WORKER")                       # auto: topology service decides per request
+    auto = subprocess.run([sys.executable, "-c", code], cwd=API_ROOT, env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert auto.returncode == 0, auto.stderr
+    assert auto.stdout.strip() == "''"
+
+
+def _online_worker(kinds: list[str]) -> str:
+    from app.db import SessionLocal
+    from app.models import Worker, now
+
+    wid = f"i7-test:{os.getpid()}"
+    with SessionLocal() as db:
+        db.query(Worker).delete()                    # this test owns the topology
+        db.add(Worker(id=wid, host="cpu-worker", kinds=kinds, started=now(), last_seen=now()))
+        db.commit()
+    return wid
+
+
+def test_an_online_worker_advertising_train_unlocks_local_family_options(monkeypatch):
+    """I7 root: the API must follow the executor a worker advertises, not a static operator flag."""
     from app import main
 
+    monkeypatch.setattr(config, "TRAIN_WORKER", "")      # auto
+    monkeypatch.setattr(config, "EMBEDDED_WORKER", False)
+    monkeypatch.setattr(config, "LOCAL_JOB_KINDS", ["version", "export"])
+    monkeypatch.setattr(main, "EMBEDDED_WORKER", False)
+    _online_worker(["version", "export", "train", "autolabel"])
+    with TestClient(app):
+        c = _client()
+        vid = _version(c)
+        r = c.post(f"{BASE}/train", json={"version_id": vid, "family": "rtdetr", "variant": "rtdetr-l"})
+        assert r.status_code == 200, r.text
+        r = c.post(f"{BASE}/train", json={"version_id": vid, "variant": "yolo26n", "max_minutes": 5})
+        assert r.status_code == 200, r.text
+
+
+def test_no_online_worker_advertising_train_stays_remote(monkeypatch):
+    """I7 root: a remote-only deployment keeps the pip-worker restrictions without an env assertion."""
+    from app import main
+
+    monkeypatch.setattr(config, "TRAIN_WORKER", "")      # auto
+    monkeypatch.setattr(config, "EMBEDDED_WORKER", False)
+    monkeypatch.setattr(config, "LOCAL_JOB_KINDS", ["version", "export"])
+    monkeypatch.setattr(main, "EMBEDDED_WORKER", False)
+    _online_worker(["version", "export", "insights_images"])
+    with TestClient(app):
+        c = _client()
+        vid = _version(c)
+        r = c.post(f"{BASE}/train", json={"version_id": vid, "family": "rtdetr", "variant": "rtdetr-l"})
+        assert r.status_code == 400, r.text
+        assert "remote GPU workers" in r.json()["detail"]
+
+
+def test_remote_mode_rejects_non_ultralytics_and_unsupported_options(monkeypatch):
+    """With a remote GPU worker, every restriction must still apply (C1)."""
+    from app import main
+
+    monkeypatch.setattr(config, "TRAIN_WORKER", "remote")
     monkeypatch.setattr(config, "EMBEDDED_WORKER", False)
     monkeypatch.setattr(config, "LOCAL_JOB_KINDS", ["train", "autolabel", "export_engine"])
     monkeypatch.setattr(main, "EMBEDDED_WORKER", False)      # no embedded thread in remote mode
@@ -56,3 +131,19 @@ def test_remote_mode_rejects_non_ultralytics_and_unsupported_options(monkeypatch
             r = c.post(f"{BASE}/train", json={"version_id": vid, **body})
             assert r.status_code == 400, (body, r.status_code, r.text)
             assert "remote GPU workers" in r.json()["detail"]
+
+
+def test_local_train_topology_accepts_non_yolo_and_options(monkeypatch):
+    """I7: the documented no-GPU recipe runs train in a local worker, so nothing is remote-restricted."""
+    from app import main
+
+    monkeypatch.setattr(config, "TRAIN_WORKER", "local")
+    monkeypatch.setattr(config, "EMBEDDED_WORKER", False)    # the API itself still runs no jobs
+    monkeypatch.setattr(main, "EMBEDDED_WORKER", False)
+    with TestClient(app):
+        c = _client()
+        vid = _version(c)
+        for body in ({"family": "rtdetr", "variant": "rtdetr-l"},
+                     {"family": "ultralytics", "variant": "yolo26n", "max_minutes": 5}):
+            r = c.post(f"{BASE}/train", json={"version_id": vid, **body})
+            assert r.status_code == 200, (body, r.status_code, r.text)

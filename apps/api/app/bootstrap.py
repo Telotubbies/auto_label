@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 
 from .config import DATA_DIR, ENVIRONMENT, REPO_ROOT, SEED_DEMO
 from .db import Base, SessionLocal, engine
-from .models import Image, ImageClass, Project, UsageEvent, User, Workspace
+from .models import Image, ImageClass, Project, UsageEvent, User, Video, Workspace
 
 log = logging.getLogger("labeldesk")
 DEMO_EMAIL, DEMO_PW = "demo@labeldesk.dev", "demo1234"
@@ -82,6 +82,7 @@ def _init_db():
     ensure_columns(engine, "classes", {"skeleton": "JSON"})
     ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER",
                                       "sharpness": "FLOAT", "luminance": "FLOAT"})
+    ensure_columns(engine, "jobs", {"executor": "VARCHAR(8) DEFAULT ''"})
     ensure_columns(engine, "label_events", {"ai_ids": "JSON"})
     ensure_columns(engine, "consensus_jobs", {"image_metrics": "JSON"})
     ensure_columns(engine, "refresh_tokens", {
@@ -260,10 +261,27 @@ def _backfill_image_classes():
 
 
 def _backfill_storage():
-    """Give every workspace a storage meter from its live images when it has none (I20)."""
+    """Reconcile each workspace's storage meter with every live metered byte (I20, I10).
+
+    ``len(events) == 0`` is not the test for "unmetered": an upgrade after any upload leaves a
+    partial total. The meter also covers video uploads, so topping up to image bytes alone lets
+    a pre-existing video event hide an image under-count. Compute the live image *and* video
+    bytes instead, and add the delta, so repeated boots are no-ops. Never write a negative delta
+    here — deletes are already metered by ``metering.adjust``.
+    """
     with SessionLocal() as db:
         sums = dict(db.execute(select(Image.project_id, func.sum(Image.size))
                                .where(Image.deleted_at.is_(None)).group_by(Image.project_id)).all())
+        # Videos are metered at upload but have no size column; their file is the live total.
+        for pid, rel in db.execute(select(Video.project_id, Video.path)
+                                   .where(Video.deleted_at.is_(None))).all():
+            if not rel:
+                continue
+            try:
+                size = (DATA_DIR / rel).stat().st_size
+            except OSError:
+                continue
+            sums[pid] = float(sums.get(pid) or 0) + size
         projects = db.execute(select(Project.id, Project.workspace_id)).all()
         totals: dict[str, float] = {}
         for pid, ws_id in projects:
@@ -272,9 +290,9 @@ def _backfill_storage():
             total = totals.get(ws.id, 0.0)
             if total <= 0:
                 continue
-            has = db.scalar(select(UsageEvent.id).where(UsageEvent.workspace_id == ws.id,
-                                                        UsageEvent.metric == "storage_bytes").limit(1))
-            if not has:
-                db.add(UsageEvent(workspace_id=ws.id, metric="storage_bytes", quantity=total,
+            metered = float(db.scalar(select(func.coalesce(func.sum(UsageEvent.quantity), 0.0)).where(
+                UsageEvent.workspace_id == ws.id, UsageEvent.metric == "storage_bytes")) or 0.0)
+            if total > metered:
+                db.add(UsageEvent(workspace_id=ws.id, metric="storage_bytes", quantity=total - metered,
                                   meta={"backfill": True}))
         db.commit()

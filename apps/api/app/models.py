@@ -323,6 +323,9 @@ class Job(Base):
     project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(32))     # version | export | export_engine | train | autolabel
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    # Who claimed it: "local" (app.worker) or "remote" (pip GPU worker). The reaper must only
+    # own remote claims; a local train/autolabel job has no progress heartbeat (I9).
+    executor: Mapped[str] = mapped_column(String(8), default="")
     progress: Mapped[float] = mapped_column(Float, default=0.0)
     params: Mapped[dict] = mapped_column(JSON, default=dict)
     result: Mapped[dict] = mapped_column(JSON, default=dict)

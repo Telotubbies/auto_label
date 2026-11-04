@@ -7,8 +7,9 @@ import pytest
 from sqlalchemy import func, select
 
 from app import bootstrap
+from app.config import DATA_DIR
 from app.db import Base, SessionLocal
-from app.models import Image, ImageClass, Project, UsageEvent, User, Workspace
+from app.models import Image, ImageClass, Project, UsageEvent, User, Video, Workspace
 from app.security import hash_password
 
 
@@ -74,6 +75,77 @@ def test_storage_backfill_is_idempotent():
         rows = db.scalars(select(UsageEvent).where(UsageEvent.workspace_id == ws_id,
                                                    UsageEvent.metric == "storage_bytes")).all()
         assert len(rows) == 1
+
+
+def test_storage_backfill_reconciles_a_partial_meter():
+    """I10: a workspace that already metered one upload must still be topped up to its image bytes."""
+    ws_id, _, _ = _workspace_with_images(2, 1000)
+    with SessionLocal() as db:
+        db.add(UsageEvent(workspace_id=ws_id, metric="storage_bytes", quantity=500))
+        db.commit()
+
+    bootstrap._backfill_storage()
+    with SessionLocal() as db:
+        qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+            UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+        assert qty == pytest.approx(2000)
+        rows = db.scalars(select(UsageEvent).where(UsageEvent.workspace_id == ws_id,
+                                                   UsageEvent.metric == "storage_bytes")).all()
+        assert len(rows) == 2                       # the existing event plus one reconciliation delta
+
+    bootstrap._backfill_storage()                   # repeated boots are no-ops
+    with SessionLocal() as db:
+        qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+            UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+        assert qty == pytest.approx(2000)
+        rows = db.scalars(select(UsageEvent).where(UsageEvent.workspace_id == ws_id,
+                                                   UsageEvent.metric == "storage_bytes")).all()
+        assert len(rows) == 2
+
+
+def test_storage_backfill_reconciles_video_bytes_hidden_by_an_image_undercount():
+    """I10 root: the meter covers images *and* videos; topping up to Image.size alone loses bytes.
+
+    A workspace whose only existing event is a video upload (500 B) must still be raised to the
+    live image bytes (2 × 1000) plus that video, not to the image subtotal.
+    """
+    ws_id, p_id, _ = _workspace_with_images(2, 1000)
+    rel = "videos/i10-video.mp4"
+    path = DATA_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"v" * 500)
+    with SessionLocal() as db:
+        db.add(Video(id="i10video", project_id=p_id, workspace_id=ws_id, name="clip",
+                     path=rel, status="ready"))
+        db.add(UsageEvent(workspace_id=ws_id, metric="storage_bytes", quantity=500))
+        db.commit()
+    try:
+        bootstrap._backfill_storage()
+        with SessionLocal() as db:
+            qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+                UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+            assert qty == pytest.approx(2500)
+
+        bootstrap._backfill_storage()               # repeated boots must stay a no-op
+        with SessionLocal() as db:
+            qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+                UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+            assert qty == pytest.approx(2500)
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_storage_backfill_never_reduces_an_over_counted_meter():
+    """Deletes are negative events; the boot reconciler must not invent a second downward delta."""
+    ws_id, _, _ = _workspace_with_images(1, 1000)
+    with SessionLocal() as db:
+        db.add(UsageEvent(workspace_id=ws_id, metric="storage_bytes", quantity=1500))
+        db.commit()
+    bootstrap._backfill_storage()
+    with SessionLocal() as db:
+        qty = db.scalar(select(func.sum(UsageEvent.quantity)).where(
+            UsageEvent.workspace_id == ws_id, UsageEvent.metric == "storage_bytes"))
+        assert qty == pytest.approx(1500)
 
 
 def test_image_class_backfill_repairs_a_partial_index():

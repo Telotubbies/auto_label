@@ -23,9 +23,11 @@ class QueryIn(BaseModel):
 def lineage(c: Ctx = Depends(project_ctx)):
     """Batches → versions → training runs → models → streams, with each node's outputs.
 
-    Camera nodes require ``project.streams``; a labeler/viewer still sees the rest of the chain,
-    so the shared dashboard is readable without disclosing stream names or model refs (I-4).
+    Analytics is a review surface (I11), and camera nodes additionally require
+    ``project.streams``; a reviewer without that grant still sees the rest of the chain, so the
+    shared dashboard is readable without disclosing stream names or model refs (I-4).
     """
+    c.perm("project.review")
     return insights_lineage.build(c.db, c.project, include_streams=c.can("project.streams"))
 
 
@@ -39,6 +41,7 @@ def stream_analytics(
 
     `tz_offset` is the viewer's offset east of UTC in minutes, so days and hours bucket in local time.
     """
+    c.perm("project.review")               # camera analytics is a review surface (I11)
     c.perm("project.streams")
     return insights_stream.analytics(c.db, c.project, days, tz_offset)
 
@@ -46,6 +49,7 @@ def stream_analytics(
 @router.post("/query")
 def widget_query(body: QueryIn, c: Ctx = Depends(project_ctx)):
     """One dashboard widget's aggregate; the dashboard stores the spec, never the numbers."""
+    c.perm("project.review")               # a cache miss scans the whole dataset (I11)
     if body.source == "streams":
         c.perm("project.streams")       # I-4: the widget is a stream read, not a generic read
     try:

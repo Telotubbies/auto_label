@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from PIL import Image as PImage
 from sqlalchemy import func, select
 
-from app import worker
+from app import config, worker
 from app.adapters import ADAPTERS, resolve
 from app.adapters.base import Availability
 from app.config import DATA_DIR, LOCAL_JOB_KINDS, REMOTE_JOB_KINDS
@@ -672,6 +672,7 @@ def test_remote_autolabel_accepts_an_engine_backed_trained_model(client, monkeyp
     engine.write_bytes(b"ENGINE")
     monkeypatch.setattr(training_router, "LOCAL_JOB_KINDS",
                         [k for k in LOCAL_JOB_KINDS if k != "autolabel"])
+    monkeypatch.setattr(config, "TRAIN_WORKER", "remote")     # the pip worker is the executor here
     jid = None
     try:
         r = client.post(f"{BASE}/autolabel", json={"method": "model", "model_ref": f"trained:{mid}"})

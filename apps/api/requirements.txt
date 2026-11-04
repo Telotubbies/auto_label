@@ -15,6 +15,7 @@ cryptography>=42
 defusedxml>=0.7
 pycocotools>=2.0.7
 segno>=1.6
+cachetools>=7.0
 # Optional Insights embeddings (Task 20a): CLIP ViT-B/32 through transformers when installed, and
 # UMAP for the 2-D projection. Without them the job uses cheap CV features + deterministic PCA.
 # transformers>=4.52

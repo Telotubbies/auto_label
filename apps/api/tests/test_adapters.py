@@ -243,7 +243,7 @@ def test_bad_variant_and_max_minutes_rejected(c, version_id):
 
 def test_remote_worker_mode_rejects_unsupported_options(c, version_id, monkeypatch):
     from app import config
-    monkeypatch.setattr(config, "EMBEDDED_WORKER", False)
+    monkeypatch.setattr(config, "TRAIN_WORKER", "remote")
     for body in ({"variant": "rtdetr-l"}, {"variant": "yolov8s-worldv2"}, {"variant": "yolo11s"},
                  {"max_minutes": 5}, {"resume_from": "any-model"}):
         r = c.post(f"{BASE}/train", json={"version_id": version_id, **body})
