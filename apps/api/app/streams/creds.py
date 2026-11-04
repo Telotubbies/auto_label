@@ -26,8 +26,9 @@ def is_sealed(value) -> bool:
 
 
 _CREDENTIAL_KEYS = frozenset({
-    "user", "username", "pass", "password", "pwd", "token",
-    "api_key", "apikey", "key", "auth", "access_token",
+    "user", "username", "pass", "password", "passwd", "pwd", "token",
+    "api_key", "api-key", "apikey", "key", "access_key", "auth", "access_token",
+    "secret", "client_secret",
 })
 
 

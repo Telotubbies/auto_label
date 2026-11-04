@@ -3,6 +3,8 @@
 import os
 import tempfile
 
+import pytest
+
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
@@ -82,6 +84,15 @@ def test_mask_hides_both_credential_shapes():
     assert "S3cretPassw0rd" not in masked and "abc123" not in masked
     assert masked == "rtsp://viewer:****@cam.example.test:554/live?token=****"
     assert creds.open_source(sealed) == BOTH
+
+
+@pytest.mark.parametrize("key", ["passwd", "api-key", "secret", "client_secret", "access_key"])
+def test_extended_credential_query_keys_are_sealed_and_masked(key):
+    url = f"https://cam.example.test/s.mjpg?{key}=hunter2&channel=2"
+    sealed = creds.seal_source(url)
+    assert creds.is_sealed(sealed)
+    assert "hunter2" not in sealed
+    assert creds.mask_source(sealed) == f"https://cam.example.test/s.mjpg?{key}=****&channel=2"
 
 
 def test_credential_free_query_is_untouched():
