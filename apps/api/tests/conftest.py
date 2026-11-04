@@ -69,20 +69,28 @@ def _reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
-def _reset_demo_credits():
-    """Every module charges the one shared demo workspace, so a single month's allowance runs out
-    mid-session and later creates return 402 for no product reason (e.g. test_r1_remote_mode).
-    Top up only when nearly exhausted: tests such as test_e2e read the accumulated usage."""
+def _reset_demo_credits(request):
+    """The remote-worker modules create many versions and train runs on the one shared demo
+    workspace, so the 30-credit Free allowance runs out and later modules get 402 for no product
+    reason. Top up around those modules only: tests such as test_e2e read the accumulated usage,
+    so a global reset would make their assertions meaningless."""
+    if not request.node.path.name.startswith("test_r1_"):
+        yield
+        return
+
     from app.db import SessionLocal
-    from app.deps import plan
     from app.models import Workspace
 
-    with SessionLocal() as db:
-        ws = db.query(Workspace).filter_by(slug="labeldesk-demo").one_or_none()
-        if ws is not None and ws.credits_used >= 0.8 * plan(ws)["credits"]:
-            ws.credits_used = 0
-            db.commit()
+    def top_up():
+        with SessionLocal() as db:
+            ws = db.query(Workspace).filter_by(slug="labeldesk-demo").one_or_none()
+            if ws is not None:
+                ws.credits_used = 0
+                db.commit()
+
+    top_up()
     yield
+    top_up()
 
 
 @pytest.fixture(scope="session", autouse=True)

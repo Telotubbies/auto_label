@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ["LD_SAM_ENABLED"] = "0"
 
@@ -15,6 +17,30 @@ from app.main import app
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
 API_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _no_local_train(monkeypatch):
+    """These tests queue train jobs for the remote worker, but the embedded worker thread runs in
+    this process and reads its claim list from app.worker. A remote deployment does not claim
+    train locally either, so hide it here; otherwise a queued train job runs against a version
+    that only exists as a ready row and starves every later version job."""
+    from app import worker
+
+    monkeypatch.setattr(worker, "LOCAL_JOB_KINDS", ["version", "export", "export_engine"])
+    yield
+    # The tests only assert that the API accepts these requests; the jobs themselves must not
+    # leak into later modules where the embedded worker would claim a real 30-epoch CPU train.
+    from app.db import SessionLocal
+    from app.models import Job, now
+
+    with SessionLocal() as db:
+        db.query(Job).filter(
+            Job.kind.in_(("train", "autolabel", "version")),
+            Job.status.in_(("queued", "running")),
+            Job.executor != "remote",
+        ).update({"status": "cancelled", "finished": now()}, synchronize_session=False)
+        db.commit()
 
 
 def _client() -> TestClient:
