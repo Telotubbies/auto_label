@@ -85,8 +85,8 @@ def sandbox(tmp_path: Path) -> Sandbox:
     git(repo, "config", "user.name", "ld-task test")
 
     files = {
-        "apps/web/index.html": "web",
-        "apps/api/main.py": "api",
+        "apps/frontend/index.html": "web",
+        "apps/backend/main.py": "api",
         "apps/worker/worker.py": "worker",
         "apps/inference/inference.py": "inference",
         "docs/README.md": "docs",
@@ -157,8 +157,8 @@ def heavy_clone(sandbox: Sandbox, tmp_path: Path) -> Sandbox:
 @pytest.mark.parametrize(
     ("profile", "present"),
     [
-        ("frontend", ["apps/web"]),
-        ("backend", ["apps/api", "tools"]),
+        ("frontend", ["apps/frontend"]),
+        ("backend", ["apps/backend", "tools"]),
         ("full", ["apps", "deploy"]),
     ],
 )
@@ -208,10 +208,10 @@ def test_new_creates_sparse_worktree_with_ports_and_temp_paths(
 
     assert result.returncode == 0, result.stderr
     worktree = sandbox.worktree("backend", "B1-ports")
-    assert (worktree / "apps/api/main.py").is_file()
+    assert (worktree / "apps/backend/main.py").is_file()
     assert (worktree / "docs/README.md").is_file()
     assert (worktree / "tools/keep.txt").is_file()
-    assert not (worktree / "apps/web").exists()
+    assert not (worktree / "apps/frontend").exists()
     assert not (worktree / "apps/worker").exists()
     assert not (worktree / "data").exists()
     assert not (worktree / "yolo26_ppe").exists()
@@ -261,8 +261,8 @@ def test_new_allocates_the_next_free_slot(sandbox: Sandbox) -> None:
     assert values["LD_TASK_SLOT"] == "2"
     assert values["LD_API_PORT"] == "8202"
     assert values["LD_WEB_PORT"] == "5402"
-    assert (second / "apps/web/index.html").is_file()
-    assert not (second / "apps/api").exists()
+    assert (second / "apps/frontend/index.html").is_file()
+    assert not (second / "apps/backend").exists()
     assert not (second / "data").exists()
     assert not (second / "yolo26_ppe").exists()
 
@@ -281,20 +281,20 @@ def test_new_ml_profile_checks_out_ml_code_but_not_data(sandbox: Sandbox) -> Non
 
 
 def test_new_rejects_a_profile_path_missing_from_the_tree(sandbox: Sandbox) -> None:
-    git(sandbox.repo, "rm", "-r", "-q", "apps/web")
+    git(sandbox.repo, "rm", "-r", "-q", "apps/frontend")
     git(sandbox.repo, "commit", "-qm", "drop web")
 
     result = sandbox.tool("new", "frontend", "F1", "ui", "frontend")
 
     assert result.returncode != 0
     assert "does not exist" in result.stderr
-    assert "apps/web" in result.stderr
+    assert "apps/frontend" in result.stderr
     assert not sandbox.worktree("frontend", "F1-ui").exists()
     assert not (sandbox.tmp / "task" / "frontend" / "F1-ui").exists()
 
 
 def test_new_rejects_a_profile_that_matches_nothing(sandbox: Sandbox) -> None:
-    git(sandbox.repo, "rm", "-r", "-q", "apps/web", "docs")
+    git(sandbox.repo, "rm", "-r", "-q", "apps/frontend", "docs")
     git(sandbox.repo, "commit", "-qm", "drop every frontend path")
 
     result = sandbox.tool("new", "frontend", "F1", "ui", "frontend")
@@ -332,7 +332,7 @@ def test_new_rejects_an_unknown_profile(sandbox: Sandbox) -> None:
 def test_done_refuses_an_unmerged_branch(sandbox: Sandbox) -> None:
     assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
     worktree = sandbox.worktree("backend", "B1-ports")
-    (worktree / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    (worktree / "apps/backend/extra.py").write_text("x = 1\n", encoding="utf-8")
     git(worktree, "add", "-A")
     git(worktree, "commit", "-qm", "unmerged work")
 
@@ -347,12 +347,12 @@ def test_done_refuses_an_unmerged_branch(sandbox: Sandbox) -> None:
 def test_done_refuses_dirty_then_removes_merged_worktree(sandbox: Sandbox) -> None:
     assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
     worktree = sandbox.worktree("backend", "B1-ports")
-    (worktree / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    (worktree / "apps/backend/extra.py").write_text("x = 1\n", encoding="utf-8")
     git(worktree, "add", "-A")
     git(worktree, "commit", "-qm", "task work")
     git(sandbox.repo, "merge", "--no-ff", "-m", "merge B1", "task/backend/B1-ports")
 
-    junk = worktree / "apps/api/untracked.py"
+    junk = worktree / "apps/backend/untracked.py"
     junk.write_text("junk\n", encoding="utf-8")
     refused = sandbox.tool("done", "B1")
 
@@ -387,7 +387,7 @@ def test_done_tolerates_task_env_when_branch_lacks_gitignore(sandbox: Sandbox) -
 def test_list_reports_task_state(sandbox: Sandbox) -> None:
     assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
     worktree = sandbox.worktree("backend", "B1-ports")
-    (worktree / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    (worktree / "apps/backend/extra.py").write_text("x = 1\n", encoding="utf-8")
     git(worktree, "add", "-A")
     git(worktree, "commit", "-qm", "unmerged work")
 
@@ -401,7 +401,7 @@ def test_list_reports_task_state(sandbox: Sandbox) -> None:
 
 
 def commit_and_merge(sandbox: Sandbox, worktree: Path) -> None:
-    (worktree / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    (worktree / "apps/backend/extra.py").write_text("x = 1\n", encoding="utf-8")
     git(worktree, "add", "-A")
     git(worktree, "commit", "-qm", "task work")
     git(sandbox.repo, "merge", "--no-ff", "-m", "merge task", "task/backend/B1-ports")
@@ -519,7 +519,7 @@ def test_done_refuses_a_consistent_record_for_another_task(sandbox: Sandbox) -> 
     assert sandbox.tool("new", "backend", "B2", "two", "backend").returncode == 0
     first = sandbox.worktree("backend", "B1-ports")
     second = sandbox.worktree("backend", "B2-two")
-    (second / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    (second / "apps/backend/extra.py").write_text("x = 1\n", encoding="utf-8")
     git(second, "add", "-A")
     git(second, "commit", "-qm", "B2 work")
     git(sandbox.repo, "merge", "--no-ff", "-m", "merge B2", "task/backend/B2-two")
@@ -652,7 +652,7 @@ def test_done_refuses_a_tracked_modified_task_env(sandbox: Sandbox) -> None:
 def test_done_accepts_a_cherry_picked_branch(sandbox: Sandbox) -> None:
     assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
     worktree = sandbox.worktree("backend", "B1-ports")
-    (worktree / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    (worktree / "apps/backend/extra.py").write_text("x = 1\n", encoding="utf-8")
     git(worktree, "add", "-A")
     # An older committer date keeps the cherry-picked commit from hashing to the
     # same object when both commits land in the same second.
