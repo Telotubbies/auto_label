@@ -1,5 +1,7 @@
-# Gates: tools (ruff check + format + ld-task tests), api (full pytest suite),
-# web (npm ci, build, node tests), large-files (new data, weights or big blobs).
+# Gates: tools (ruff check + format + ld-task tests), api (full pytest suite,
+# including the committed OpenAPI document), web (npm ci, build and node tests;
+# the build checks the generated API types), large-files (new data, weights or
+# big blobs).
 # API ruff is still the pending lint chore in progress.md:181; until it lands the
 # api job runs tests only and the tools job lints tools/ only.
 name: CI
@@ -82,7 +84,7 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ${{ env.FRONTEND_APP }}
         run: npm ci
-      - name: Build frontend
+      - name: Build frontend and check the generated API types
         working-directory: ${{ env.FRONTEND_APP }}
         run: npm run build
       - name: Test frontend

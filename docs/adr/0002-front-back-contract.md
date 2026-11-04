@@ -1,6 +1,6 @@
 # ADR 0002: The OpenAPI document is the front and back contract
 
-- Status: Accepted; only the SDK half is implemented
+- Status: Accepted; implemented
 - Date: 2026-11-03
 - Related: [Architecture overview](../architecture/overview.md), [ADR 0001](0001-repository-layout.md)
 
@@ -29,11 +29,12 @@ A separate repository would make this worse. The producer and consumer would rel
 | Backend publishes OpenAPI | Implemented. FastAPI serves `/openapi.json`. |
 | SDK operation map generated | Implemented in `tools/gen_sdk.py`. |
 | SDK lockstep test | Implemented in `apps/backend/tests/test_sdk_cli.py`. |
-| Frontend types generated | Not implemented. `apps/frontend/src/lib/types.ts` is hand-written. |
-| Frontend build fails on schema drift | Not implemented. |
+| Committed OpenAPI document | Implemented in `tools/export_openapi.py`; the lockstep test is `apps/backend/tests/test_openapi_contract.py`. |
+| Frontend types generated | Implemented in `apps/frontend/scripts/gen-api-types.mjs`, output `apps/frontend/src/lib/api-types.gen.ts`. |
+| Frontend build fails on schema drift | Implemented. `npm run build` runs the generator with `--check` before `tsc -b`. |
 | Feature flag convention | Implemented. Workspace flags are exposed by the API and read by the frontend. |
 
-Until the generator lands, the contract rule is a process rule on the frontend side. A reviewer should treat an API shape change without a matching `types.ts` change as a finding.
+`apps/frontend/src/lib/types.ts` is still hand-written and is not checked. Moving a screen onto the generated types is per-screen work; until a screen moves, an API shape change to that screen's payload still needs a manual type update, and a reviewer should treat it as a finding.
 
 ## Consequences
 
@@ -43,7 +44,7 @@ Until the generator lands, the contract rule is a process rule on the frontend s
 - Generated types will not cover behavior: status codes with conditional bodies, signed URL formats, or fields the OpenAPI model does not annotate. Those still need tests.
 - The SDK test proves operation drift only. Response model changes need their own tests on the API side.
 
-## What the generator must do when it lands
+## What the generator does
 
 - Read the schema from the app object, not from a running server, so CI does not need a live database.
 - Write to a checked-in file and fail on a dirty diff.
@@ -51,7 +52,7 @@ Until the generator lands, the contract rule is a process rule on the frontend s
 - Run before `tsc -b` in the frontend build script.
 - Cover request and response bodies, not only operation names.
 
-No frontend type generator exists yet. Do not add a build step that calls one until it is merged.
+The generator is `apps/frontend/scripts/gen-api-types.mjs`: it reads `apps/backend/openapi.json`, writes `apps/frontend/src/lib/api-types.gen.ts`, and runs with `--check` in `npm run build`.
 
 ## Alternatives considered
 
