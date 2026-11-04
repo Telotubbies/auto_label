@@ -142,6 +142,30 @@ def set_annotations(db, img: "Image", anns: list[dict]):
         db.add(ImageClass(image_id=img.id, class_id=cid, project_id=img.project_id, n=n))
 
 
+class Collection(Base):
+    """A saved search/browse result set ("curation set"), scoped to one project."""
+    __tablename__ = "collections"
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    query: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
+class CollectionItem(Base):
+    """Membership of an image in a collection; `position` keeps the order the user added them."""
+    __tablename__ = "collection_items"
+    __table_args__ = (Index("ix_collection_items_image", "image_id"),)
+    collection_id: Mapped[str] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(32))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class SuspectFeedback(Base):
     """Reviewer verdict on a suspect-label queue item; survives rescans and feeds the precision stat."""
     __tablename__ = "suspect_feedback"

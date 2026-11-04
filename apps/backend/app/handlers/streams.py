@@ -154,6 +154,18 @@ def run_extract_frames(job: Job):
             cap.release()
 
 
+def run_event_search(job: Job):
+    """Task 38: index the sampled window, then rank it against the stored query words (no model)."""
+    from .. import jobs
+    from ..services import event_search
+
+    jobs.check(job)
+    with SessionLocal() as db:
+        project = db.get(Project, job.project_id)
+        return event_search.run_search(db, project, job.params or {},
+                                       should_stop=lambda: jobs.is_cancelled(job.id))
+
+
 def run_track_forward(job: Job):
     """SAM box-prompt tracking: copy one annotation onto the next N frames of its video."""
     from .. import jobs, worker as w
@@ -206,4 +218,5 @@ def run_track_forward(job: Job):
         return {"image_id": src.id, "tracked": written, "track_id": track_id}
 
 
-HANDLERS = {"extract_frames": run_extract_frames, "track_forward": run_track_forward}
+HANDLERS = {"extract_frames": run_extract_frames, "track_forward": run_track_forward,
+            "event_search": run_event_search}

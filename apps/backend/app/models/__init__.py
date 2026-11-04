@@ -12,9 +12,9 @@ from .identity import (ApiKey, Connector, CustomRole, EmailToken, Invite, LoginE
                        RefreshToken, User, Webhook, WebhookDelivery, Workspace, WorkspaceFlag)
 from .insights import (Audit, ConsensusAssignment, ConsensusJob, Dashboard, Honeypot, HoneypotAttempt,
                        LabelEvent, UsageEvent, Worker)
-from .project import (Batch, Comment, Folder, Image, ImageClass, LabelClass, Project, SuspectFeedback,
-                      Version, Video, Workflow, WorkflowVersion, set_annotations)
-from .streams import OtDelivery, OtOutput, Stream, StreamEvent
+from .project import (Batch, Collection, CollectionItem, Comment, Folder, Image, ImageClass, LabelClass,
+                      Project, SuspectFeedback, Version, Video, Workflow, WorkflowVersion, set_annotations)
+from .streams import EventSearchFrame, OtDelivery, OtOutput, Stream, StreamEvent
 from .training import (AnomalyStation, DeploymentAlias, DeploymentEvent, DriftRun, DriftSample, Job,
                       TrainedModel)
 
