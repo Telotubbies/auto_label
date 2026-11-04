@@ -72,9 +72,14 @@ Streams are different from uploaded video. A stream worker lives in the API proc
 
 ## Front and back contract
 
-The backend publishes the FastAPI OpenAPI document. The SDK operation map is generated from it by `tools/gen_sdk.py`, and `apps/backend/tests/test_sdk_cli.py` keeps the committed map in lockstep.
+The backend publishes the FastAPI OpenAPI document. `tools/export_openapi.py` writes it to the committed `apps/backend/openapi.json` with sorted keys and no host, and `apps/backend/tests/test_openapi_contract.py` fails when that copy drifts from the app.
 
-The frontend does not consume generated types yet. `apps/frontend/src/lib/types.ts` and `apps/frontend/src/lib/api.ts` are maintained by hand. The planned contract, where frontend types are generated from the same schema and a mismatch fails the frontend build, is recorded in [ADR 0002](../adr/0002-front-back-contract.md). Until that lands, an API shape change needs a matching frontend task and a manual type update.
+Two generators read the same document:
+
+- `tools/gen_sdk.py` projects the operations into `apps/sdk/labeldesk/_generated.py`; `apps/backend/tests/test_sdk_cli.py` keeps it in lockstep.
+- `apps/frontend/scripts/gen-api-types.mjs` turns `components.schemas` into `apps/frontend/src/lib/api-types.gen.ts`. `npm run build` runs that generator in `--check` mode before `tsc -b`, so a schema change that was not regenerated into the types fails the frontend build. `apps/frontend/tests/api-types.test.mjs` covers the same rule under `npm test`.
+
+The generated types are additive. `apps/frontend/src/lib/types.ts` and `apps/frontend/src/lib/api.ts` are still maintained by hand, so a screen keeps working while it moves over. See [ADR 0002](../adr/0002-front-back-contract.md).
 
 ## Deployment
 

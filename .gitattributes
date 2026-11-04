@@ -6,3 +6,7 @@
 # Shell scripts must keep LF line endings (they run under bash/WSL2).
 *.sh text eol=lf
 *.bash text eol=lf
+
+# Generated contract artifacts are compared byte-for-byte by the build checks.
+apps/backend/openapi.json text eol=lf
+*.gen.ts text eol=lf
