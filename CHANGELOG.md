@@ -17,7 +17,8 @@ There are no dated release entries for LabelDesk in this file. The API and worke
 
 ### Changed
 
-- The README now uses the planned `apps/frontend` and `apps/backend` names and marks the rename as pending. Commands still point at `apps/web` and `apps/api` because those directories exist today.
+- The README, CONTRIBUTING, runbooks, architecture overview, ADRs and SECURITY now describe the current layout.
+- Renamed the application folders to `apps/frontend` and `apps/backend`; commands, CI, `tools/ld-task`, `.gitignore` and CODEOWNERS use the new paths.
 
 ### Fixed
 
