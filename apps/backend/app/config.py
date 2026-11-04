@@ -5,7 +5,7 @@ import secrets
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]          # auto_label/
-API_ROOT = Path(__file__).resolve().parents[1]           # apps/api/
+API_ROOT = Path(__file__).resolve().parents[1]           # apps/backend/
 
 
 def _env(name: str, default: str = "") -> str:

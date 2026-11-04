@@ -1,6 +1,6 @@
 """Load benchmark: seeds N synthetic images into a fresh DB and times the hot endpoints.
 
-    cd apps/api && python tests/perf_bench.py 20000
+    cd apps/backend && python tests/perf_bench.py 20000
 Rows are inserted directly (no image files) — this measures API/DB cost, not disk I/O.
 """
 import os
