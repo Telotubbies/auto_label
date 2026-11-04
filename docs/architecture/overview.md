@@ -24,19 +24,19 @@ The browser talks only to the frontend origin. In development Vite proxies `/api
 
 | Component | Current path | Responsibility |
 |---|---|---|
-| Backend API | `apps/api` (`apps/backend` planned) | FastAPI application, authentication, workspace and project data, job creation, file serving, hosted inference, remote worker endpoints |
-| Frontend | `apps/web` (`apps/frontend` planned) | React 19 and Vite single-page app, annotation editor, dataset views, training and deployment screens |
-| Local worker | `apps/api/app/worker.py` | Claims queued jobs in the API process (`LD_EMBEDDED_WORKER=1`) or as `python -m app.worker` in the Compose worker service |
+| Backend API | `apps/backend` | FastAPI application, authentication, workspace and project data, job creation, file serving, hosted inference, remote worker endpoints |
+| Frontend | `apps/frontend` | React 19 and Vite single-page app, annotation editor, dataset views, training and deployment screens |
+| Local worker | `apps/backend/app/worker.py` | Claims queued jobs in the API process (`LD_EMBEDDED_WORKER=1`) or as `python -m app.worker` in the Compose worker service |
 | Remote GPU worker | `apps/worker` | Outbound-only worker that claims `train` and `autolabel` jobs, runs them on its own GPU, and posts progress and results back |
 | Self-hosted inference | `apps/inference` | Standalone service that serves exported `.onnx`, `.pt`, or `.engine` files over `/predict`; it has no workspace, API key, or billing code |
 | SDK and CLI | `apps/sdk` | Python client for `/api/v1`; the operation map is generated from the API's OpenAPI schema |
 | Batch pipeline | `sam3_auto_label`, `yolo26_ppe` | SAM auto-labeling and YOLO26 training, evaluation, and export. The target layout moves both under `ml/` |
 
-The `packages/` directory in the target layout does not exist yet. Shared Python code currently lives under `apps/api/app`. The frontend is self-contained.
+The `packages/` directory in the target layout does not exist yet. Shared Python code currently lives under `apps/backend/app`. The frontend is self-contained.
 
 ## Request path
 
-Routers are thin. A request enters through a router in `apps/api/app/routers/`, resolves identity and workspace context in `deps.py`, and calls a service in `apps/api/app/services/` or a model adapter in `apps/api/app/adapters/`. Pydantic models handle request validation. Errors that reach a user are `ValueError` or `HTTPException` messages; internal detail goes to `log.exception`.
+Routers are thin. A request enters through a router in `apps/backend/app/routers/`, resolves identity and workspace context in `deps.py`, and calls a service in `apps/backend/app/services/` or a model adapter in `apps/backend/app/adapters/`. Pydantic models handle request validation. Errors that reach a user are `ValueError` or `HTTPException` messages; internal detail goes to `log.exception`.
 
 Workspace isolation is enforced in request queries, not by database row-level security. Every workspace-scoped query filters by `workspace_id`, and trained models are resolved through `resolve(ref, db, workspace_id=...)`. Any new query path has to keep that rule.
 
@@ -55,14 +55,14 @@ Local kinds run in the API process when `LD_EMBEDDED_WORKER=1`, or in a separate
 
 A crash leaves rows in `running`. When a local worker starts, `worker.recover()` puts running jobs back to `queued` and turns `cancelling` rows into `cancelled`, filtered by the effective `LD_LOCAL_JOBS` list. The development default includes `train` and `autolabel`, so a crashed training row is requeued and starts over. The Compose stack removes both kinds from the list, so there they are left in `running`. See the [recovery runbook](../runbooks/recovery-after-shutdown.md) for the operational consequence.
 
-The GPU lease ledger in `apps/api/app/gpu.py` is process-local. That is why the API image runs one uvicorn worker. Training and other exclusive GPU work take a lease; inference does not load a model outside one.
+The GPU lease ledger in `apps/backend/app/gpu.py` is process-local. That is why the API image runs one uvicorn worker. Training and other exclusive GPU work take a lease; inference does not load a model outside one.
 
 ## Data and storage
 
 | Data | Location | Notes |
 |---|---|---|
 | Relational data | `DATABASE_URL` | PostgreSQL in Compose, SQLite by default in development |
-| Uploaded images, versions, exports, weights, engines | `LD_DATA_DIR` | A volume in Compose; `apps/api/data` in development |
+| Uploaded images, versions, exports, weights, engines | `LD_DATA_DIR` | A volume in Compose; `apps/backend/data` in development |
 | Schema | Created by `Base.metadata.create_all` plus `ensure_columns` | Columns are added, not dropped |
 | Secrets at rest | Encrypted in the database | Key derived from `LD_SECRET`; rotation uses `LD_SECRET_OLD` |
 
@@ -72,9 +72,9 @@ Streams are different from uploaded video. A stream worker lives in the API proc
 
 ## Front and back contract
 
-The backend publishes the FastAPI OpenAPI document. The SDK operation map is generated from it by `tools/gen_sdk.py`, and `apps/api/tests/test_sdk_cli.py` keeps the committed map in lockstep.
+The backend publishes the FastAPI OpenAPI document. The SDK operation map is generated from it by `tools/gen_sdk.py`, and `apps/backend/tests/test_sdk_cli.py` keeps the committed map in lockstep.
 
-The frontend does not consume generated types yet. `apps/web/src/lib/types.ts` and `apps/web/src/lib/api.ts` are maintained by hand. The planned contract, where frontend types are generated from the same schema and a mismatch fails the frontend build, is recorded in [ADR 0002](../adr/0002-front-back-contract.md). Until that lands, an API shape change needs a matching frontend task and a manual type update.
+The frontend does not consume generated types yet. `apps/frontend/src/lib/types.ts` and `apps/frontend/src/lib/api.ts` are maintained by hand. The planned contract, where frontend types are generated from the same schema and a mismatch fails the frontend build, is recorded in [ADR 0002](../adr/0002-front-back-contract.md). Until that lands, an API shape change needs a matching frontend task and a manual type update.
 
 ## Deployment
 

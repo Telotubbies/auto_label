@@ -105,7 +105,7 @@ git status --short
 git diff --stat
 ```
 
-Run the checks that cover the change. At minimum, backend changes run `pytest -q` from `apps/backend` (today `apps/api`), and frontend changes run `npm run build` from `apps/frontend` (today `apps/web`). Report the commands you ran and anything you skipped.
+Run the checks that cover the change. At minimum, backend changes run `pytest -q` from `apps/backend`, and frontend changes run `npm run build` from `apps/frontend`. Report the commands you ran and anything you skipped.
 
 Commit your work on the task branch, then tell the merger:
 

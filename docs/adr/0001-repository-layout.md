@@ -6,7 +6,7 @@
 
 ## Context
 
-The repository grew from a research pipeline into a labeling application without a single layout. Pipeline code sits in `sam3_auto_label/` and `yolo26_ppe/`. The application sits in `apps/api`, `apps/web`, `apps/worker`, `apps/inference`, and `apps/sdk`. Deployment, tools, tests, and docs are separate root directories.
+The repository grew from a research pipeline into a labeling application without a single layout. Pipeline code sits in `sam3_auto_label/` and `yolo26_ppe/`. The application sits in `apps/backend`, `apps/frontend`, `apps/worker`, `apps/inference`, and `apps/sdk`. Deployment, tools, tests, and docs are separate root directories.
 
 Agents work in parallel on frontend, backend, ML, and platform tasks. That exposed two problems. Shared files such as `main.py`, `models.py`, `App.tsx`, and `lib/api.ts` collect edits from every feature and conflict repeatedly. And a split into separate repositories would make a cross-cutting change, such as an API field used by the editor, require coordinated releases in two places.
 
@@ -28,7 +28,7 @@ research/    reports and research notes
 data/        datasets that task worktrees do not check out
 ```
 
-The approved application names are `apps/frontend` and `apps/backend`. They replace the current `apps/web` and `apps/api`.
+The application folders are `apps/frontend` and `apps/backend`; they were renamed from the earlier layout, which older documents and the frozen plan still use.
 
 Features add their own file instead of appending to a shared registration file: one router per feature, one worker handler module, one web route and navigation registration, one API client file, and per-domain model modules with migrations for schema.
 
@@ -38,14 +38,14 @@ There is no repository split. A future change that needs both halves is two task
 
 | Target | Current state |
 |---|---|
-| `apps/frontend` | Not renamed. The code is in `apps/web`. |
-| `apps/backend` | Not renamed. The code is in `apps/api`. |
-| `packages/` | Not created. Shared Python code is under `apps/api/app`. |
+| `apps/frontend` | Renamed from the earlier web folder. The React app lives here. |
+| `apps/backend` | Renamed from the earlier API folder. The FastAPI app, its routers, services, and tests live here. |
+| `packages/` | Not created. Shared Python code is under `apps/backend/app`. |
 | `ml/` | Not created. The pipeline is still `sam3_auto_label/` and `yolo26_ppe/`. |
 | `research/` | Not created. Reports are in `reports/` and `research_notes/`. |
 | Feature registration split | Partly in place. Routers are separate modules; several shared frontend files are still central. |
 
-The rename and the moves are pending. Documentation uses the planned names and gives the current path when a reader needs to run a command. No task should perform the rename as a side effect of an unrelated change.
+The application folders have been renamed and the `ml/`, `research/` and `packages/` moves are still pending. Documentation uses the current folder names. Do not move or rename an app folder as a side effect of an unrelated change.
 
 ## Consequences
 

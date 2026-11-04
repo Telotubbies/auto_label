@@ -23,8 +23,8 @@ Expect an acknowledgement when the owner is available. This project has no paid 
 
 In scope:
 
-- the API in `apps/backend` (today `apps/api`),
-- the web app in `apps/frontend` (today `apps/web`),
+- the API in `apps/backend`,
+- the web app in `apps/frontend`,
 - the worker, SDK, and inference packages under `apps/`,
 - the deployment files in `deploy/`,
 - authentication, authorization, tenant isolation, file handling, and secret storage.
@@ -42,19 +42,19 @@ These are the main defenses a reporter should know about. Each has tests or a cl
 
 | Control | Where |
 |---|---|
-| Password hashing with PBKDF2-SHA256 | `apps/api/app/security.py` |
-| Short-lived access tokens and hashed refresh tokens | `apps/api/app/security.py`, `apps/api/app/routers/auth.py` |
-| API keys stored as hashes with scopes | `apps/api/app/apikeys.py` |
-| Signed, expiring file URLs | `apps/api/app/security.py`, `apps/api/app/main.py` |
-| Secrets encrypted at rest with a key derived from `LD_SECRET` | `apps/api/app/services/secretbox.py` |
-| SSRF guard for user-supplied image URLs | `apps/api/app/services/safefetch.py` |
-| Upload size and image pixel limits | `apps/api/app/config.py`, `apps/api/app/services/imaging.py` |
-| Per-IP rate limits on login, signup, refresh, and API keys | `apps/api/app/ratelimit.py` |
-| Worker authentication with a shared token | `apps/api/app/routers/remote.py` |
-| Security headers and API response caching rules | `apps/api/app/main.py` |
-| Non-root API container | `apps/api/Dockerfile` |
-| Demo seed disabled in production | `apps/api/app/bootstrap.py` |
-| Dev mail inbox closed unless explicitly enabled on localhost | `apps/api/app/routers/devmail.py`, `deploy/.env.example` |
+| Password hashing with PBKDF2-SHA256 | `apps/backend/app/security.py` |
+| Short-lived access tokens and hashed refresh tokens | `apps/backend/app/security.py`, `apps/backend/app/routers/auth.py` |
+| API keys stored as hashes with scopes | `apps/backend/app/apikeys.py` |
+| Signed, expiring file URLs | `apps/backend/app/security.py`, `apps/backend/app/main.py` |
+| Secrets encrypted at rest with a key derived from `LD_SECRET` | `apps/backend/app/services/secretbox.py` |
+| SSRF guard for user-supplied image URLs | `apps/backend/app/services/safefetch.py` |
+| Upload size and image pixel limits | `apps/backend/app/config.py`, `apps/backend/app/services/imaging.py` |
+| Per-IP rate limits on login, signup, refresh, and API keys | `apps/backend/app/ratelimit.py` |
+| Worker authentication with a shared token | `apps/backend/app/routers/remote.py` |
+| Security headers and API response caching rules | `apps/backend/app/main.py` |
+| Non-root API container | `apps/backend/Dockerfile` |
+| Demo seed disabled in production | `apps/backend/app/bootstrap.py` |
+| Dev mail inbox closed unless explicitly enabled on localhost | `apps/backend/app/routers/devmail.py`, `deploy/.env.example` |
 
 ## Handling secrets
 

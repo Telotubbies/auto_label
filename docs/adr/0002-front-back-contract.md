@@ -8,9 +8,9 @@
 
 The backend is a FastAPI application. FastAPI builds an OpenAPI document from the routers and Pydantic models, and serves it at `/openapi.json`. The document describes paths, operations, parameters, request bodies, and response models.
 
-The frontend currently defines its own types in `apps/web/src/lib/types.ts` and calls the API through `apps/web/src/lib/api.ts`. Nothing checks those types against the backend. A backend field rename can merge and leave the frontend reading a missing property until a user hits the screen.
+The frontend currently defines its own types in `apps/frontend/src/lib/types.ts` and calls the API through `apps/frontend/src/lib/api.ts`. Nothing checks those types against the backend. A backend field rename can merge and leave the frontend reading a missing property until a user hits the screen.
 
-The SDK is further along. `tools/gen_sdk.py` projects the OpenAPI document down to an operation map in `apps/sdk/labeldesk/_generated.py`. `apps/api/tests/test_sdk_cli.py` regenerates the map from the live schema and fails when the committed map drifts. That test only covers operations, methods, paths, scopes, and parameters. It does not cover response body types, and it does not cover the frontend.
+The SDK is further along. `tools/gen_sdk.py` projects the OpenAPI document down to an operation map in `apps/sdk/labeldesk/_generated.py`. `apps/backend/tests/test_sdk_cli.py` regenerates the map from the live schema and fails when the committed map drifts. That test only covers operations, methods, paths, scopes, and parameters. It does not cover response body types, and it does not cover the frontend.
 
 A separate repository would make this worse. The producer and consumer would release on different schedules, and the contract would need its own versioning and publication process.
 
@@ -28,8 +28,8 @@ A separate repository would make this worse. The producer and consumer would rel
 |---|---|
 | Backend publishes OpenAPI | Implemented. FastAPI serves `/openapi.json`. |
 | SDK operation map generated | Implemented in `tools/gen_sdk.py`. |
-| SDK lockstep test | Implemented in `apps/api/tests/test_sdk_cli.py`. |
-| Frontend types generated | Not implemented. `apps/web/src/lib/types.ts` is hand-written. |
+| SDK lockstep test | Implemented in `apps/backend/tests/test_sdk_cli.py`. |
+| Frontend types generated | Not implemented. `apps/frontend/src/lib/types.ts` is hand-written. |
 | Frontend build fails on schema drift | Not implemented. |
 | Feature flag convention | Implemented. Workspace flags are exposed by the API and read by the frontend. |
 
