@@ -78,6 +78,7 @@ apps/worker/*.egg-info/
 deploy/.env
 deploy/models/
 apps/worker/*.pt
+apps/backend/*.pt
 apps/inference/models/
 
 # Old LabelDesk prototype (superseded by apps/)
