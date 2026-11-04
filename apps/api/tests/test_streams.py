@@ -657,7 +657,18 @@ def test_zone_ids_must_be_unique(c):
 
 
 def test_rtsp_credentials_are_masked(c):
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Audit, Stream
+
     sid = create_stream(c, source="rtsp://alice:s3cret@8.8.8.8/live")
+    with SessionLocal() as db:
+        row = db.get(Stream, sid)
+        assert row.source.startswith("enc:v1:") and "s3cret" not in row.source
+        audit_row = db.scalar(select(Audit).where(Audit.action == "stream.create", Audit.target == "Test stream")
+                              .order_by(Audit.created.desc()))
+        assert audit_row is not None and "s3cret" not in str(audit_row.meta)
     body = c.get(f"{BASE}/{sid}").json()
     assert "s3cret" not in body["source"] and "***@" in body["source"]
     from app.streams.manager import display_source
@@ -666,6 +677,75 @@ def test_rtsp_credentials_are_masked(c):
     assert display_source("rtsp://user:p@ss@8.8.8.8/live") == "rtsp://***@8.8.8.8/live"
     assert "ss@" not in c.post(BASE, json={"name": "At sign", "source": "rtsp://user:p@ss@8.8.8.8/live",
                                            "model_ref": "ultralytics:yolo11n"}).json()["source"]
+
+
+QUERY_CAM = "rtsp://8.8.8.8:554/live?user=admin&password=hunter2&channel=2"
+QUERY_CAM_MASKED = "rtsp://8.8.8.8:554/live?user=****&password=****&channel=2"
+
+
+def test_query_string_credentials_are_sealed_masked_and_audited(c):
+    """I-2: a camera password in the query string is as secret as one in the userinfo."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Audit, Stream
+
+    sid = create_stream(c, source=QUERY_CAM)
+    try:
+        with SessionLocal() as db:
+            row = db.get(Stream, sid)
+            assert row.source.startswith("enc:v1:"), row.source
+            assert "hunter2" not in row.source
+            audit_row = db.scalar(select(Audit).where(Audit.action == "stream.create", Audit.target == "Test stream")
+                                  .order_by(Audit.created.desc()))
+            assert audit_row is not None
+            assert "hunter2" not in str(audit_row.meta)
+            assert audit_row.meta["source"] == QUERY_CAM_MASKED
+
+        assert c.get(f"{BASE}/{sid}").json()["source"] == QUERY_CAM_MASKED
+
+        r = c.patch(f"{BASE}/{sid}", json={"source": "rtsp://8.8.8.8:554/live?token=abc123&channel=3"})
+        assert r.status_code == 200, r.text
+        assert r.json()["source"] == "rtsp://8.8.8.8:554/live?token=****&channel=3"
+        with SessionLocal() as db:
+            assert db.get(Stream, sid).source.startswith("enc:v1:")
+            audit_row = db.scalar(select(Audit).where(Audit.action == "stream.update", Audit.target == "Test stream")
+                                  .order_by(Audit.created.desc()))
+            assert audit_row is not None
+            assert "abc123" not in str(audit_row.meta)
+            assert audit_row.meta["source"] == "rtsp://8.8.8.8:554/live?token=****&channel=3"
+    finally:
+        c.delete(f"{BASE}/{sid}")
+
+    from app.streams.manager import display_source
+    assert display_source(QUERY_CAM) == QUERY_CAM_MASKED
+
+
+def test_query_string_credentials_survive_a_restart(c, monkeypatch):
+    """I-2: a boot-time seal and a restart must leave the query-string camera usable and masked."""
+    import app.streams.manager as mgr
+    from app import bootstrap
+    from app.db import SessionLocal
+    from app.models import Stream
+
+    opened: list[str] = []
+    monkeypatch.setattr(mgr.cv2, "VideoCapture",
+                        lambda src, *a, **k: (opened.append(src), _OpenableCap())[1])
+    monkeypatch.setattr(mgr, "resolve", _fake_resolve)
+    sid = create_stream(c, source=QUERY_CAM)
+    try:
+        bootstrap.init_db()                       # the documented restart path
+        with SessionLocal() as db:
+            row = db.get(Stream, sid)
+            assert row.source.startswith("enc:v1:")
+            assert "hunter2" not in row.source
+        assert c.get(f"{BASE}/{sid}").json()["source"] == QUERY_CAM_MASKED
+        assert c.post(f"{BASE}/{sid}/start").status_code == 200
+        _poll(lambda: opened or None, timeout=10)
+        assert opened[0] == QUERY_CAM             # OpenCV sees the real URL, query string intact
+    finally:
+        c.post(f"{BASE}/{sid}/stop")
+        c.delete(f"{BASE}/{sid}")
 
 
 def test_file_source_cannot_escape_data_dir(c):
