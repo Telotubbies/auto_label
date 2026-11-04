@@ -31,6 +31,7 @@ from ..gpu import GpuBusy
 from ..models import Project, Stream, StreamEvent, Workspace, new_id
 from ..services import metering
 from ..services.safefetch import UnresolvableHost, _public_ip
+from .allowlist import allowed_stream_ip
 from .creds import mask_query, open_source
 from .event_fields import filter_fields
 from .guard import GuardedMediaProxy
@@ -111,7 +112,8 @@ def resolve_source(source: str) -> tuple[str, str]:
 
     The IP is pinned by the caller (loopback guard for HTTP(S), URL rewrite for RTSP) so
     libavformat cannot re-resolve the name into the internal network. A resolver failure is
-    ``SourceTransient``; a resolved private/loopback/link-local address stays a hard ValueError.
+    ``SourceTransient``; a resolved private/loopback/link-local address stays a hard ValueError
+    unless the operator named its network in ``LD_STREAM_ALLOW_CIDR`` (I-3).
     """
     s = canonical_source(source)
     if s.startswith("file:"):
@@ -119,11 +121,17 @@ def resolve_source(source: str) -> tuple[str, str]:
     parts = urlsplit(s)
     scheme = parts.scheme.lower()
     try:
-        ip = _public_ip(parts.hostname, parts.port or _DEFAULT_PORTS[scheme])
-    except UnresolvableHost as e:
-        raise SourceTransient(f"cannot resolve {parts.hostname}") from e
-    except ValueError as e:
+        port = parts.port or _DEFAULT_PORTS[scheme]
+    except ValueError as e:                          # malformed port keeps the old "invalid source" message
         raise ValueError(f"invalid source: {e}") from e
+    ip = allowed_stream_ip(parts.hostname, port)     # operator opt-in for LAN cameras (I-3)
+    if ip is None:
+        try:
+            ip = _public_ip(parts.hostname, port)
+        except UnresolvableHost as e:
+            raise SourceTransient(f"cannot resolve {parts.hostname}") from e
+        except ValueError as e:
+            raise ValueError(f"invalid source: {e}") from e
     return s, ip
 
 

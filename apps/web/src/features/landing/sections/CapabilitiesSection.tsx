@@ -180,7 +180,7 @@ export default function CapabilitiesSection() {
             icon={Cctv}
             title="Monitor"
             lead="Point a stream at a trained model and get events with zones, lines and dwell time."
-            detail="One camera or forty, the rules read the same."
+            detail="Public camera URLs work out of the box. Private or LAN cameras need an operator allowlist, and the stream surface may need enabling in Settings → Feature flags."
             href="#workflow"
             linkLabel="Learn more about monitoring"
             visual={<MonitorVisual />}

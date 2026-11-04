@@ -12,6 +12,8 @@ tests pin the two halves of the fix:
 
 import http.server
 import io
+import ipaddress
+import socket
 import threading
 import time
 import urllib.error
@@ -22,6 +24,7 @@ import pytest
 from PIL import Image as PImage
 from sqlalchemy import select
 
+from app import config
 from app.db import SessionLocal
 from app.models import Project, Stream
 from app.services.safefetch import BlockedURL, UnresolvableHost
@@ -278,3 +281,86 @@ def test_forbidden_rebinding_is_a_fatal_stream_error(monkeypatch):
         with SessionLocal() as db:
             db.delete(db.get(Stream, row.id))
             db.commit()
+
+
+# ---------------------------------------------------------------------------
+# I-3: LAN cameras are private by definition, so the operator may name the exact
+# networks the stream egress may reach. The allowlist is empty by default and a
+# name is only allowed when *every* address it resolves to is inside it.
+# ---------------------------------------------------------------------------
+
+
+def _answer(ip: str, port: int = 554):
+    family = socket.AF_INET6 if ":" in ip else socket.AF_INET
+    return [(family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (ip, port))]
+
+
+def test_private_source_is_rejected_by_default(monkeypatch):
+    monkeypatch.setattr(config, "STREAM_ALLOW_CIDR", ())
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: _answer("192.168.1.20"))
+    with pytest.raises(ValueError, match="private or reserved"):
+        mgr.resolve_source("rtsp://user:pass@192.168.1.20:554/stream1")
+
+
+def test_private_source_is_allowed_when_its_cidr_is_configured(monkeypatch):
+    monkeypatch.setattr(config, "STREAM_ALLOW_CIDR", (ipaddress.ip_network("192.168.0.0/16"),))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: _answer("192.168.1.20"))
+    source, ip = mgr.resolve_source("rtsp://user:pass@cam.lan:554/stream1")
+    assert source == "rtsp://user:pass@cam.lan:554/stream1"
+    assert ip == "192.168.1.20"
+
+
+def test_address_outside_the_configured_cidr_is_still_rejected(monkeypatch):
+    monkeypatch.setattr(config, "STREAM_ALLOW_CIDR", (ipaddress.ip_network("10.0.0.0/8"),))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: _answer("192.168.1.20"))
+    with pytest.raises(ValueError, match="private or reserved"):
+        mgr.resolve_source("rtsp://cam.lan:554/stream1")
+
+
+def test_a_name_mixing_allowed_and_forbidden_answers_is_rejected(monkeypatch):
+    monkeypatch.setattr(config, "STREAM_ALLOW_CIDR", (ipaddress.ip_network("192.168.1.20/32"),))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: _answer("192.168.1.20") + _answer("10.0.0.9"))
+    with pytest.raises(ValueError, match="private or reserved"):
+        mgr.resolve_source("rtsp://cam.lan:554/stream1")
+
+
+def test_invalid_allow_cidr_fails_loudly():
+    with pytest.raises(RuntimeError, match="LD_STREAM_ALLOW_CIDR"):
+        config.parse_cidrs("192.168.0.0/16,not-a-cidr")
+
+
+def test_wildcard_allow_cidr_is_refused():
+    with pytest.raises(RuntimeError, match="wildcard"):
+        config.parse_cidrs("0.0.0.0/0")
+    with pytest.raises(RuntimeError, match="wildcard"):
+        config.parse_cidrs("::/0")
+
+
+def test_allow_cidr_accepts_a_comma_separated_list():
+    nets = config.parse_cidrs(" 192.168.0.0/16 , 10.0.0.0/8 ,")
+    assert nets == (ipaddress.ip_network("192.168.0.0/16"), ipaddress.ip_network("10.0.0.0/8"))
+
+
+def test_uploaded_video_needs_no_allowlist(monkeypatch):
+    monkeypatch.setattr(config, "STREAM_ALLOW_CIDR", ())
+    assert mgr.resolve_source("file:videos/demo.mp4") == ("file:videos/demo.mp4", "")
+
+
+def test_guard_follows_a_redirect_into_an_allowlisted_network(monkeypatch):
+    target, target_port = _serve(_Target)
+    _Redirect.location = f"http://internal.test:{target_port}/secret"
+    redirect, redirect_port = _serve(_Redirect)
+    _Target.hits = []
+    monkeypatch.setattr(config, "STREAM_ALLOW_CIDR", (ipaddress.ip_network("127.0.0.0/8"),))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda _host, port, *_a, **_k: _answer("127.0.0.1", port))
+    proxy = mgr.GuardedMediaProxy(f"http://public.test:{redirect_port}/live", ip="127.0.0.1")
+    url = proxy.start()
+    try:
+        assert urllib.request.urlopen(url, timeout=5).read() == _JPEG
+    finally:
+        proxy.stop()
+        redirect.shutdown()
+        redirect.server_close()
+        target.shutdown()
+        target.server_close()
+    assert _Target.hits == ["/secret"]

@@ -116,8 +116,8 @@ function NewStreamDialog({ open, onClose, ws, project }: { open: boolean; onClos
         </Field>
         {registry.isError && <p className="text-xs text-destructive" role="alert">Could not load the model registry. Train a model first.</p>}
 
-        <Field label="Camera source" hint="RTSP or HTTP stream URL, or the uploaded video path. Nothing is opened until you start the stream.">
-          <Input placeholder="rtsp://user:pass@192.168.1.20:554/stream1" value={source} onChange={(e) => setSource(e.target.value)} spellCheck={false} />
+        <Field label="Camera source" hint="RTSP or HTTP stream URL, or the uploaded video path. Nothing is opened until you start the stream. Private/LAN cameras need the operator allowlist (LD_STREAM_ALLOW_CIDR).">
+          <Input placeholder="rtsp://user:pass@camera.example.com:554/stream1" value={source} onChange={(e) => setSource(e.target.value)} spellCheck={false} />
         </Field>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -363,7 +363,7 @@ export default function Streams() {
               icon={<Cctv className="h-8 w-8 text-muted-foreground/60" />}
               title="No streams yet"
               hint={admin
-                ? 'Point a camera at a trained model, or upload a demo video to try the rules without hardware.'
+                ? 'Point a camera at a trained model, or upload a demo video to try the rules without hardware. Private/LAN cameras need the operator allowlist; the surface may need enabling in Settings → Feature flags.'
                 : 'Ask a project admin to connect a camera. Events will appear here once it runs.'}
               action={admin ? <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4" /> Create your first stream</Button> : undefined}
             />

@@ -1,4 +1,5 @@
 """Runtime settings — everything comes from env vars so the same image runs dev and prod."""
+import ipaddress
 import os
 import secrets
 from pathlib import Path
@@ -9,6 +10,27 @@ API_ROOT = Path(__file__).resolve().parents[1]           # apps/api/
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
+
+
+def parse_cidrs(raw: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse a comma-separated CIDR list; empty means none.
+
+    A wildcard-all entry is refused: the allowlist exists to keep the SSRF guard narrow,
+    so an operator must name the real LAN ranges instead of disabling the check.
+    """
+    nets = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            net = ipaddress.ip_network(part, strict=False)
+        except ValueError as e:
+            raise RuntimeError(f"LD_STREAM_ALLOW_CIDR entry {part!r} is not a valid CIDR") from e
+        if net.prefixlen == 0:
+            raise RuntimeError(f"LD_STREAM_ALLOW_CIDR entry {part!r} is a wildcard-all network; list the exact ranges")
+        nets.append(net)
+    return tuple(nets)
 
 
 DATA_DIR = Path(_env("LD_DATA_DIR", str(API_ROOT / "data"))).resolve()
@@ -117,5 +139,9 @@ WORKER_STALE_S = int(_env("LD_WORKER_STALE_S", "45"))        # a heartbeat older
 # finishes after the sweep still recovers the run via /complete (Important 1).
 REMOTE_JOB_TIMEOUT_S = int(_env("LD_REMOTE_JOB_TIMEOUT_S", "21600"))   # 6 h without progress
 REMOTE_CANCEL_GRACE_S = int(_env("LD_REMOTE_CANCEL_GRACE_S", "900"))   # 15 min to acknowledge a cancel
+# Operator opt-in for cameras on a private LAN: stream sources may resolve into these
+# networks. Empty by default, so the public-only SSRF posture is unchanged. Parsed at
+# import time: a typo or a wildcard stops the API instead of silently widening egress (I-3).
+STREAM_ALLOW_CIDR = parse_cidrs(_env("LD_STREAM_ALLOW_CIDR"))
 if WORKER_TOKEN and len(WORKER_TOKEN) < 24:
     raise RuntimeError("LD_WORKER_TOKEN must be at least 24 characters")

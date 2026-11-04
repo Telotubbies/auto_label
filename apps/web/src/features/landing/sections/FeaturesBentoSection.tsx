@@ -248,7 +248,7 @@ function DeployCard() {
         <TagPill className="self-start" icon={<Radio className="size-4" aria-hidden />}>Deploy</TagPill>
         <CardHeading
           title="Ship to every camera."
-          body="Zones, line crossings and dwell rules run in the stream manager, with a 30-second cooldown per event."
+          body="Zones, line crossings and dwell rules run in the stream manager, with a 30-second cooldown per event. LAN cameras need an operator allowlist; the surface may need enabling in Settings → Feature flags."
         />
         <MockPanel tone="bg-muted text-foreground">
           <div className="overflow-hidden rounded-xl border bg-card">

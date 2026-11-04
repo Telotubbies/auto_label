@@ -38,6 +38,8 @@ services:
       LD_SAM_ENABLED: "0"
       # Shipped surfaces are flag-gated; off unless a workspace enables them or this forces them on.
       LD_FLAGS_ON: ${LD_FLAGS_ON:-}
+      # Stream egress allowlist for LAN cameras (comma-separated CIDRs). Empty = public sources only.
+      LD_STREAM_ALLOW_CIDR: ${LD_STREAM_ALLOW_CIDR:-}
       # Production is the default posture. The dev mail inbox also requires LD_MAIL_DEV=1 and a
       # localhost LD_PUBLIC_URL, so it stays closed here even if mail is misconfigured.
       LD_ENV: ${LD_ENV:-production}
