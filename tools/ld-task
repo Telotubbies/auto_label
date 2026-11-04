@@ -12,6 +12,7 @@ import argparse
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -206,6 +207,12 @@ def _task_path(values: dict[str, str], key: str, root: Path, expected: Path, lab
     return path
 
 
+def _force_writable(function, path, _exc_info) -> None:
+    """shutil.rmtree hook: clear the read-only bit git leaves on pack files."""
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
 def _remove_temp(temp: Path) -> None:
     """Remove a temp tree only when it is a strict child of TMP_ROOT."""
     root = TMP_ROOT.resolve()
@@ -213,7 +220,43 @@ def _remove_temp(temp: Path) -> None:
     if resolved == root or not resolved.is_relative_to(root):
         raise LdTaskError(f"refusing: {resolved} is outside {root}")
     if resolved.exists():
-        shutil.rmtree(resolved)
+        shutil.rmtree(resolved, onerror=_force_writable)
+
+
+def _record_matches_branch(
+    env_path: Path,
+    values: dict[str, str],
+    branch: str,
+    segments: list[str],
+    task_id: str,
+) -> None:
+    """Bind the record's own id/team/slug to the branch it names."""
+    team, tail = segments[1], segments[2]
+    record_id = values.get("LD_TASK_ID", "")
+    record_team = values.get("LD_TASK_TEAM", "")
+    record_slug = values.get("LD_TASK_SLUG", "")
+    if record_team != team or f"{record_id}-{record_slug}" != tail:
+        raise LdTaskError(f"refusing: {env_path} names {record_team}/{record_id}-{record_slug}, not {branch}")
+    if task_id not in (record_id, branch):
+        raise LdTaskError(f"refusing: {env_path} is not the record for '{task_id}'")
+
+
+def _restore_record(env_path: Path, text: str) -> None:
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text(text, encoding="utf-8")
+
+
+def _remove_retired_record(worktree: Path) -> None:
+    """Remove the record restored by a failed retire, and its now-empty directory."""
+    if not worktree.exists():
+        return
+    env_file = worktree / ".env.task"
+    if env_file.is_file():
+        env_file.unlink()
+    try:
+        worktree.rmdir()
+    except OSError as error:
+        raise LdTaskError(f"removed the branch but {worktree} is not empty: {error}") from error
 
 
 def _is_clean(worktree: Path) -> bool:
@@ -340,12 +383,13 @@ def find_task(task_id: str) -> tuple[Path, dict[str, str]]:
 
 
 def finish_task(task_id: str) -> None:
-    _, values = find_task(task_id)
+    env_path, values = find_task(task_id)
     repo = Path(values.get("LD_TASK_REPO") or _resolve_repo()).expanduser()
     branch = values.get("LD_TASK_BRANCH", "")
     if not branch:
         raise LdTaskError("task env file is incomplete")
     segments = _branch_segments(branch)
+    _record_matches_branch(env_path, values, branch, segments, task_id)
     # Validate before any destructive step: a corrupted .env.task must never point
     # rmtree or "git worktree remove" at a path outside this task's own roots.
     worktree = _task_path(
@@ -355,6 +399,9 @@ def finish_task(task_id: str) -> None:
         WORKTREES_ROOT.joinpath(*segments),
         "worktree",
     )
+    # The record must live in the worktree it describes, not in another task's.
+    if env_path.resolve() != (worktree / ".env.task").resolve():
+        raise LdTaskError(f"refusing: {env_path} is not the record of {branch}")
     temp = _task_path(values, "LD_TASK_TMP", TMP_ROOT, TMP_ROOT.joinpath(*segments), "temp")
     base_ref = values.get("LD_TASK_BASE_REF") or DEFAULT_BASE_REF
 
@@ -362,17 +409,38 @@ def finish_task(task_id: str) -> None:
         raise LdTaskError(f"worktree is missing: {worktree}")
     if not _is_merged(repo, branch, base_ref):
         raise LdTaskError(f"branch {branch} is not merged into {base_ref}")
-    if not _is_clean(worktree):
+    # A record restored by a failed retire has no .git: the tree is already gone,
+    # so there is nothing left to check for cleanliness.
+    if (worktree / ".git").exists() and not _is_clean(worktree):
         raise LdTaskError(f"worktree is not clean: {worktree}")
+
+    # Keep the record in memory: the worktree removal deletes the only copy.
+    env_text = env_path.read_text(encoding="utf-8")
 
     # Remove the worktree first: it carries .env.task, so a locked or otherwise
     # unremovable worktree must fail while the task record is still on disk.
     # --force is required because .env.task is untracked and _is_clean ignored it;
     # a locked worktree still needs a second --force, so locks keep failing here.
-    _git(repo, "worktree", "remove", "--force", str(worktree))
-    # -D: patch-equivalent (cherry-picked) branches are merged but not ancestors.
-    _git(repo, "branch", "-D", branch)
-    _remove_temp(temp)
+    if (worktree / ".git").exists():
+        _git(repo, "worktree", "remove", "--force", str(worktree))
+    # Temp before branch: the branch is the merge witness a retry needs, and it is
+    # cheap to delete once everything else succeeded.
+    try:
+        _remove_temp(temp)
+    except (LdTaskError, OSError) as error:
+        _restore_record(env_path, env_text)
+        raise LdTaskError(
+            f"removed the worktree but not {temp} ({error}); restored {env_path}; clean the temp tree by hand"
+        ) from error
+    try:
+        # -D: patch-equivalent (cherry-picked) branches are merged but not ancestors.
+        _git(repo, "branch", "-D", branch)
+    except LdTaskError as error:
+        _restore_record(env_path, env_text)
+        raise LdTaskError(
+            f"removed the worktree and temp but not branch {branch} ({error}); restored {env_path}"
+        ) from error
+    _remove_retired_record(worktree)
 
     print(f"removed {branch}")
     print(f"  worktree  {worktree}")

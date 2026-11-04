@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import os
+import stat
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -125,18 +126,19 @@ def repo_root() -> Path:
 
 
 @pytest.fixture
-def real_clone(tmp_path: Path) -> Sandbox:
-    """A throwaway clone of the repository that contains this tool.
+def heavy_clone(sandbox: Sandbox, tmp_path: Path) -> Sandbox:
+    """A real clone of a throwaway repo that tracks data/ and yolo26_ppe/.
 
-    --shared keeps the object store in the source, so data/ and yolo26_ppe/ cost
-    nothing; --no-checkout means only the sparse profiles are ever written out.
+    The source is the synthetic sandbox, not this repository: the approved history
+    rewrite removes those folders from HEAD, and the exclusion contract must stay
+    testable after it lands. --shared keeps the object store in the source;
+    --no-checkout means only the sparse profiles are written out.
     """
-    source = repo_root()
-    clone = tmp_path / "real clone"
-    cloned = run(["git", "clone", "--shared", "--no-checkout", "-q", str(source), str(clone)], cwd=tmp_path)
+    clone = tmp_path / "heavy clone"
+    cloned = run(["git", "clone", "--shared", "--no-checkout", "-q", str(sandbox.repo), str(clone)], cwd=tmp_path)
     assert cloned.returncode == 0, cloned.stderr
     branch = run(["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"], cwd=clone).stdout.strip()
-    root = tmp_path / "real-roots"
+    root = tmp_path / "clone-roots"
     return Sandbox(
         repo=clone,
         worktrees=root / "worktrees",
@@ -160,24 +162,24 @@ def real_clone(tmp_path: Path) -> Sandbox:
         ("full", ["apps", "deploy"]),
     ],
 )
-def test_real_worktree_omits_data_and_yolo_weights(
-    real_clone: Sandbox,
+def test_cloned_worktree_omits_data_and_yolo_weights(
+    heavy_clone: Sandbox,
     profile: str,
     present: list[str],
 ) -> None:
     tracked = run(
-        ["git", "-C", str(real_clone.repo), "ls-tree", "-d", "--name-only", "HEAD"],
-        cwd=real_clone.repo,
+        ["git", "-C", str(heavy_clone.repo), "ls-tree", "-d", "--name-only", "HEAD"],
+        cwd=heavy_clone.repo,
     )
     assert tracked.returncode == 0, tracked.stderr
     top_level = tracked.stdout.split()
-    assert "data" in top_level and "yolo26_ppe" in top_level, "precondition: the base tree has the heavy folders"
+    assert "data" in top_level and "yolo26_ppe" in top_level, "precondition: the fixture tracks the heavy folders"
 
     team = {"frontend": "frontend", "backend": "backend", "full": "platform"}[profile]
-    result = real_clone.tool("new", team, "Z9", profile, profile)
+    result = heavy_clone.tool("new", team, "Z9", profile, profile)
 
     assert result.returncode == 0, result.stderr
-    worktree = real_clone.worktree(team, f"Z9-{profile}")
+    worktree = heavy_clone.worktree(team, f"Z9-{profile}")
     assert not (worktree / "data").exists()
     assert not (worktree / "yolo26_ppe").exists()
     for path in present:
@@ -499,6 +501,135 @@ def test_done_keeps_the_task_record_when_the_worktree_is_locked(sandbox: Sandbox
     assert removed.returncode == 0, removed.stderr
     assert not worktree.exists()
     assert not (sandbox.tmp / "task" / "backend" / "B1-ports").exists()
+
+
+def test_done_accepts_the_branch_name_as_the_selector(sandbox: Sandbox) -> None:
+    assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
+    worktree = sandbox.worktree("backend", "B1-ports")
+    commit_and_merge(sandbox, worktree)
+
+    result = sandbox.tool("done", "task/backend/B1-ports")
+
+    assert result.returncode == 0, result.stderr
+    assert not worktree.exists()
+
+
+def test_done_refuses_a_consistent_record_for_another_task(sandbox: Sandbox) -> None:
+    assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
+    assert sandbox.tool("new", "backend", "B2", "two", "backend").returncode == 0
+    first = sandbox.worktree("backend", "B1-ports")
+    second = sandbox.worktree("backend", "B2-two")
+    (second / "apps/api/extra.py").write_text("x = 1\n", encoding="utf-8")
+    git(second, "add", "-A")
+    git(second, "commit", "-qm", "B2 work")
+    git(sandbox.repo, "merge", "--no-ff", "-m", "merge B2", "task/backend/B2-two")
+
+    # The probe from the re-review: B1's record is internally consistent, but it
+    # names B2's branch, worktree and temp with B1's id.
+    values = read_env(second / ".env.task")
+    values["LD_TASK_ID"] = "B1"
+    write_env(first / ".env.task", values)
+
+    result = sandbox.tool("done", "B1")
+
+    assert result.returncode != 0
+    assert "refusing" in result.stderr
+    assert second.is_dir()
+    assert (second / ".env.task").is_file()
+    assert (sandbox.tmp / "task" / "backend" / "B2-two").is_dir()
+    assert "task/backend/B2-two" in git(sandbox.repo, "branch", "--list").stdout
+    assert first.is_dir()
+    assert (first / ".env.task").is_file()
+
+
+def test_done_restores_the_record_when_temp_removal_fails(
+    sandbox: Sandbox,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
+    worktree = sandbox.worktree("backend", "B1-ports")
+    commit_and_merge(sandbox, worktree)
+    temp = sandbox.tmp / "task" / "backend" / "B1-ports"
+
+    module = load_tool()
+    monkeypatch.setattr(module, "WORKTREES_ROOT", sandbox.worktrees)
+    monkeypatch.setattr(module, "TMP_ROOT", sandbox.tmp)
+    real_remove = module._remove_temp
+    failures = {"left": 1}
+
+    def flaky_remove(path: Path) -> None:
+        if failures["left"]:
+            failures["left"] -= 1
+            raise OSError("simulated rmtree failure")
+        real_remove(path)
+
+    monkeypatch.setattr(module, "_remove_temp", flaky_remove)
+
+    with pytest.raises(module.LdTaskError, match="restored"):
+        module.finish_task("B1")
+
+    assert (worktree / ".env.task").is_file()
+    assert not (worktree / ".git").exists()
+    assert temp.is_dir()
+    assert "B1" in sandbox.tool("list").stdout
+
+    module.finish_task("B1")
+
+    assert not worktree.exists()
+    assert not temp.exists()
+    assert "task/backend/B1-ports" not in git(sandbox.repo, "branch", "--list").stdout
+
+
+def test_done_restores_the_record_when_branch_deletion_fails(
+    sandbox: Sandbox,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert sandbox.tool("new", "backend", "B1", "ports", "backend").returncode == 0
+    worktree = sandbox.worktree("backend", "B1-ports")
+    commit_and_merge(sandbox, worktree)
+    temp = sandbox.tmp / "task" / "backend" / "B1-ports"
+
+    module = load_tool()
+    monkeypatch.setattr(module, "WORKTREES_ROOT", sandbox.worktrees)
+    monkeypatch.setattr(module, "TMP_ROOT", sandbox.tmp)
+    real_git = module._git
+    failures = {"left": 1}
+
+    def flaky_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("branch", "-D") and failures["left"]:
+            failures["left"] -= 1
+            raise module.LdTaskError("simulated branch delete failure")
+        return real_git(repo, *args, check=check)
+
+    monkeypatch.setattr(module, "_git", flaky_git)
+
+    with pytest.raises(module.LdTaskError, match="restored"):
+        module.finish_task("B1")
+
+    assert (worktree / ".env.task").is_file()
+    assert not (worktree / ".git").exists()
+    assert not temp.exists()
+    assert "B1" in sandbox.tool("list").stdout
+
+    module.finish_task("B1")
+
+    assert not worktree.exists()
+    assert not temp.exists()
+    assert "task/backend/B1-ports" not in git(sandbox.repo, "branch", "--list").stdout
+
+
+def test_remove_temp_clears_read_only_files(sandbox: Sandbox, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_tool()
+    monkeypatch.setattr(module, "TMP_ROOT", sandbox.tmp)
+    temp = sandbox.tmp / "task" / "backend" / "B1-ports"
+    temp.mkdir(parents=True)
+    locked = temp / "objects.pack"
+    locked.write_text("x", encoding="utf-8")
+    os.chmod(locked, stat.S_IREAD)
+
+    module._remove_temp(temp)
+
+    assert not temp.exists()
 
 
 def test_done_refuses_a_tracked_modified_task_env(sandbox: Sandbox) -> None:
