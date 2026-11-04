@@ -175,15 +175,17 @@ def patch_project(body: ProjectPatch, c: Ctx = Depends(project_ctx)):
 @router.delete("/{project}")
 def delete_project(c: Ctx = Depends(project_ctx)):
     c.need("admin")
-    from ..streams.manager import manager
-    # C2: capture threads are independent of the row; trashing must stop them before the
-    # project disappears from every lookup (otherwise footage keeps being written).
-    for sid in c.db.scalars(select(Stream.id).where(Stream.workspace_id == c.ws.id,
-                                                    Stream.project_id == c.project.id)).all():
-        manager.stop(sid)
+    from ..services.stream_stop import stop_streams
+    # C2: capture threads are independent of the row, so the project is marked deleted first and
+    # every worker is signalled before the request returns. The wait is one small shared budget
+    # (I-4): a worker still draining exits on its own stop event and audits itself as draining.
     c.project.deleted_at = time.time()
     audit(c.db, c.ws.id, c.user.id, "project.delete", c.project.name)
-    c.db.commit()
+    c.db.commit()                       # C2: workers see deleted_at through their own sessions
+    stop_streams(c.db, c.db.scalars(select(Stream.id).where(Stream.workspace_id == c.ws.id,
+                                                           Stream.project_id == c.project.id)).all(),
+                 workspace_id=c.ws.id, user_id=c.user.id, reason="project.delete")
+    c.db.commit()                       # the draining audit row, if any
     return {"ok": True}
 
 

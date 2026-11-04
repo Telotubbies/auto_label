@@ -1164,6 +1164,457 @@ def test_worker_refuses_to_record_into_a_trashed_project(c):
         c.delete(f"{BASE}/{sid}")
 
 
+class _BlockingModel:
+    """A predict that blocks until the test releases it, so a request races a draining worker."""
+
+    variant = "yolo11n"
+    entered = threading.Event()
+    release = threading.Event()
+    expect = 1
+    _calls = 0
+    _lock = threading.Lock()
+
+    @classmethod
+    def reset(cls, expect: int) -> None:
+        cls.entered.clear()
+        cls.release.clear()
+        cls.expect = expect
+        cls._calls = 0
+
+    def predict(self, im, **kw):
+        cls = type(self)
+        with cls._lock:
+            cls._calls += 1
+            if cls._calls >= cls.expect:
+                cls.entered.set()
+        cls.release.wait(15)                     # a bug here must not hang the suite forever
+        return {"predictions": [{"class": "person", "confidence": .9, "x": im.width * .5,
+                                 "y": im.height * .5, "width": im.width * .2, "height": im.height * .2}],
+                "image": {"width": im.width, "height": im.height}, "time": 0.0}
+
+
+def _blocking_resolve(ref, db=None, workspace_id=None):
+    return _BlockingModel()
+
+
+def _start_blocked_streams(c, base: str, source: str, count: int, rules: list[dict]) -> list[str]:
+    """Start `count` cameras and wait until every processor is inside predict (i.e. slow to stop)."""
+    from app.streams.manager import manager
+
+    _BlockingModel.reset(count)
+    sids = [c.post(f"{base}/streams", json={"name": f"cam{i}", "source": source,
+                                            "model_ref": "ultralytics:yolo11n",
+                                            "sample_fps": 5, "rules": rules}).json()["id"]
+            for i in range(count)]
+    for sid in sids:
+        r = c.post(f"{base}/streams/{sid}/start")
+        assert r.status_code == 200, r.text
+    assert _BlockingModel.entered.wait(20), "the processors never reached predict"
+    assert all(manager.status(sid) is not None for sid in sids)
+    return sids
+
+
+def _wait_threads_gone(sids: list[str]) -> None:
+    prefixes = tuple(f"stream-{sid}-" for sid in sids)
+    _poll(lambda: not any(t.name.startswith(prefixes) for t in threading.enumerate()), timeout=15)
+
+
+def test_trashing_a_project_with_many_streams_returns_before_workers_finish(c, monkeypatch, video):
+    """I-4: trash must not join every worker inline; a draining stream is audited, never silent."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Audit, StreamEvent, Workspace
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    ws, slug, pid = _fresh_project(c, "Slow trash")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    with SessionLocal() as db:                       # three cameras exceed the Free stream cap
+        db.scalar(select(Workspace).where(Workspace.slug == ws)).plan = "pro"
+        db.commit()
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sids = _start_blocked_streams(c, base, video, 3, [rule])
+    folder = DATA_DIR / "snapshots" / pid
+    try:
+        started = time.time()
+        assert c.delete(base).status_code == 200
+        elapsed = time.time() - started
+        assert elapsed < 2.0, f"trash blocked {elapsed:.1f}s on three draining workers"
+        assert all(manager.status(sid) is None for sid in sids), "a trashed camera stayed registered"
+        with SessionLocal() as db:
+            ws_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+            row = db.scalar(select(Audit).where(Audit.workspace_id == ws_id,
+                                               Audit.action == "stream.stop_draining"))
+            assert row is not None, "a half-stopped set was returned without an audit row"
+            assert set(row.meta["streams"]) == set(sids), row.meta
+            before_events = db.scalar(select(func.count(StreamEvent.id))
+                                      .where(StreamEvent.stream_id.in_(sids)))
+        before_files = set(folder.glob("*")) if folder.exists() else set()
+        _BlockingModel.release.set()
+        _wait_threads_gone(sids)
+        after_files = set(folder.glob("*")) if folder.exists() else set()
+        with SessionLocal() as db:
+            after_events = db.scalar(select(func.count(StreamEvent.id))
+                                     .where(StreamEvent.stream_id.in_(sids)))
+        assert after_files == before_files, "a snapshot was written after the project was trashed"
+        assert after_events == before_events, "an event row was written after the project was trashed"
+    finally:
+        _BlockingModel.release.set()
+
+
+def test_purging_a_project_with_draining_streams_returns_before_workers_finish(c, monkeypatch, video):
+    """I-4: purge shares the bounded stop and must not let a drained worker recreate footage."""
+    from app.db import SessionLocal
+    from app.models import Project
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    ws, slug, pid = _fresh_project(c, "Slow purge")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sids = _start_blocked_streams(c, base, video, 2, [rule])
+    # An earlier trash already set deleted_at; purge only removes what trash marked.
+    with SessionLocal() as db:
+        db.get(Project, pid).deleted_at = time.time()
+        db.commit()
+    folder = DATA_DIR / "snapshots" / pid
+    try:
+        started = time.time()
+        assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+        elapsed = time.time() - started
+        assert elapsed < 2.0, f"purge blocked {elapsed:.1f}s on two draining workers"
+        assert all(manager.status(sid) is None for sid in sids)
+        _BlockingModel.release.set()
+        _wait_threads_gone(sids)
+        assert not folder.exists(), "a drained worker recreated snapshots under a purged project"
+        with SessionLocal() as db:
+            assert db.get(Project, pid) is None
+    finally:
+        _BlockingModel.release.set()
+
+
+def test_worker_stop_joins_its_threads_and_a_second_stop_is_a_noop(c, monkeypatch, video):
+    """I-4: the single-stream stop still joins within the old timeout and is safe to repeat."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    sid = create_stream(c, source=video, sample_fps=10, name="Double stop")
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=15)
+    worker = manager._workers[sid]
+    started = time.time()
+    assert worker.stop() is True
+    assert time.time() - started < 4.0, "stop did not join both threads within the existing timeout"
+    assert not any(t.is_alive() for t in worker._threads)
+
+    hours = _meter_used("stream_hours")
+    started = time.time()
+    assert worker.stop() is True
+    assert time.time() - started < 0.5, "a second stop blocked instead of being a no-op"
+    assert _meter_used("stream_hours") == hours, "a second stop metered the stream hours twice"
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
+def test_trash_waits_for_an_in_flight_snapshot_and_leaves_no_files(c, monkeypatch, video):
+    """C-1: the deleted_at check, the JPEG write and the event insert are one critical section."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import StreamEvent
+    from app.streams import manager as manager_module
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    ws, slug, pid = _fresh_project(c, "Inflight write")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sid = c.post(f"{base}/streams", json={"name": "cam", "source": video,
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5, "rules": [rule]}).json()["id"]
+    in_write = threading.Event()
+    release = threading.Event()
+    real_remaining = manager_module.metering.remaining
+
+    def gated_remaining(*args, **kwargs):
+        if not threading.current_thread().name.startswith(f"stream-{sid}-"):
+            return real_remaining(*args, **kwargs)   # ignore leftovers from earlier tests
+        in_write.set()                           # past the deleted_at check, before the JPEG write
+        release.wait(15)
+        return real_remaining(*args, **kwargs)
+
+    monkeypatch.setattr(manager_module.metering, "remaining", gated_remaining)
+    result: dict[str, int] = {}
+    try:
+        assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+        assert in_write.wait(20), "the worker never reached the snapshot write"
+
+        def trash():
+            tc = TestClient(app, client=("inflight-trash", 50100))
+            tok = tc.post("/api/auth/login", json={"email": "demo@labeldesk.dev",
+                                                   "password": "demo1234"}).json()["token"]
+            tc.headers["Authorization"] = f"Bearer {tok}"
+            result["status"] = tc.delete(base).status_code
+
+        t = threading.Thread(target=trash, daemon=True)
+        t.start()
+        time.sleep(0.6)                          # the trash must be blocked on the worker's write lock
+        blocked = t.is_alive()
+        release.set()
+        t.join(20)
+        assert not t.is_alive()
+        _wait_threads_gone([sid])                # let the in-flight write attempt finish
+        assert result.get("status") == 200
+        folder = DATA_DIR / "snapshots" / pid
+        assert not (folder.exists() and list(folder.glob("*"))), "a snapshot landed after the trash"
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count(StreamEvent.id))
+                             .where(StreamEvent.stream_id == sid)) == 0
+        assert blocked, "the trash returned while a snapshot write was still in flight"
+    finally:
+        release.set()
+        manager.stop(sid)
+
+
+def test_kill_switch_waits_for_an_in_flight_write_without_a_db_lock(c, monkeypatch, video):
+    """C-1 round 2: the flag request must not hold a write transaction while it waits for a write."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import StreamEvent, Workspace
+    from app.services import metering as metering_service
+    from app.streams import manager as manager_module
+    from app.streams.manager import manager
+
+    monkeypatch.delenv("LD_FLAGS_ON", raising=False)     # the kill switch only acts on a stored off
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    ws, slug, pid = _fresh_project(c, "Flag race")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    flag_url = f"/api/ws/{ws}/flags/task_10b"
+    assert c.put(flag_url, json={"enabled": True}).status_code == 200
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sid = c.post(f"{base}/streams", json={"name": "cam", "source": video,
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5, "rules": [rule]}).json()["id"]
+    in_write = threading.Event()
+    release = threading.Event()
+    real_remaining = manager_module.metering.remaining
+
+    def gated_remaining(*args, **kwargs):
+        if not threading.current_thread().name.startswith(f"stream-{sid}-"):
+            return real_remaining(*args, **kwargs)   # ignore leftovers from earlier tests
+        in_write.set()
+        release.wait(15)
+        return real_remaining(*args, **kwargs)
+
+    monkeypatch.setattr(manager_module.metering, "remaining", gated_remaining)
+    result: dict[str, int] = {}
+    started = 0.0
+    try:
+        assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+        assert in_write.wait(20), "the worker never reached the snapshot write"
+
+        def disable():
+            tc = TestClient(app, client=("flag-race", 50101))
+            tok = tc.post("/api/auth/login", json={"email": "demo@labeldesk.dev",
+                                                   "password": "demo1234"}).json()["token"]
+            tc.headers["Authorization"] = f"Bearer {tok}"
+            result["status"] = tc.put(flag_url, json={"enabled": False}).status_code
+
+        t = threading.Thread(target=disable, daemon=True)
+        started = time.time()
+        t.start()
+        time.sleep(0.6)
+        assert t.is_alive(), "the kill switch did not wait for the in-flight write"
+        release.set()
+        t.join(20)
+        assert not t.is_alive()
+        elapsed = time.time() - started
+        assert result.get("status") == 200
+        assert elapsed < 5.0, f"kill switch took {elapsed:.1f}s (SQLite busy timeout is 30 s)"
+        with SessionLocal() as db:
+            events = db.scalars(select(StreamEvent).where(StreamEvent.stream_id == sid)).all()
+            assert len(events) == 1, "the in-flight event was lost"
+            assert (DATA_DIR / events[0].snapshot_path).is_file()
+            assert (DATA_DIR / events[0].clean_path).is_file()
+            ws_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+            used = metering_service.used(db, db.get(Workspace, ws_id), "storage_bytes")
+            assert used > 0, "the snapshot bytes were never charged"
+    finally:
+        release.set()
+        manager.stop(sid)
+
+
+def test_a_drained_stop_still_records_stream_hours(c, monkeypatch, video):
+    """I-1: a worker that exits after the stop budget must still bill its run, exactly once."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    ws, slug, pid = _fresh_project(c, "Drained meter")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    sid = _start_blocked_streams(c, base, video, 1, [])[0]
+    try:
+        time.sleep(1.0)                          # a real interval to bill
+        before = _meter_used("stream_hours", ws)
+        assert manager.stop_many([sid], budget=0.0) == [sid]
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+        after = _meter_used("stream_hours", ws)
+        assert after - before > 0, "a drained worker exited without recording stream_hours"
+    finally:
+        _BlockingModel.release.set()
+
+
+def test_update_refuses_to_restart_a_stream_that_is_still_stopping(c, monkeypatch, video):
+    """I-1 round 2: the 409 must be retryable — the retry restarts the camera, not leaves it off."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 0.05, raising=False)
+    sid = create_stream(c, source=video, sample_fps=5, name="Draining edit")
+    _BlockingModel.reset(1)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    assert _BlockingModel.entered.wait(20)
+    try:
+        r = c.patch(f"{BASE}/{sid}", json={"name": "Renamed while draining"})
+        assert r.status_code == 409, r.text
+        assert [w.id for w in manager._workers.values()].count(sid) == 0, "a duplicate worker started"
+    finally:
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+    r = c.patch(f"{BASE}/{sid}", json={"name": "Renamed after drain"})
+    assert r.status_code == 200, r.text
+    _poll(lambda: manager.status(sid) is not None, timeout=10)
+    assert [w.id for w in manager._workers.values()].count(sid) == 1
+    _poll(_status_is(c, sid, "live"), timeout=10)        # the retry restarted capture
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
+def test_start_after_a_drained_stop_succeeds(c, monkeypatch, video):
+    """I-1 round 3: a stop that drains must not leave /start answering 409 forever."""
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 0.05, raising=False)
+    sid = create_stream(c, source=video, sample_fps=5, name="Drained stop")
+    _BlockingModel.reset(1)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    assert _BlockingModel.entered.wait(20)
+    try:
+        r = c.post(f"{BASE}/{sid}/stop")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "stopping", r.text
+    finally:
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+    r = c.post(f"{BASE}/{sid}/start")
+    assert r.status_code == 200, r.text
+    _poll(_status_is(c, sid, "live"), timeout=10)
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
+def test_patch_with_a_trained_ref_does_not_deadlock_with_a_worker_write(c, monkeypatch, video):
+    """I-2 round 3: update_stream must stop before its edit opens a DB write transaction."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import StreamEvent, TrainedModel, Version, Workspace
+    from app.services import metering as metering_service
+    from app.streams import manager as manager_module
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 0.05, raising=False)
+    ws, slug, pid = _fresh_project(c, "Trained patch")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    with SessionLocal() as db:
+        ws_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+        version = Version(project_id=pid, number=1, status="ready", stats={})
+        db.add(version)
+        db.flush()
+        model = TrainedModel(workspace_id=ws_id, project_id=pid, version_id=version.id, name="patch-model",
+                             arch="yolo26n", variant="yolo26n", task="detect", status="ready",
+                             family="ultralytics", classes=[], weights=f"models/{version.id}/best.pt")
+        db.add(model)
+        db.commit()
+        mid = model.id
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sid = c.post(f"{base}/streams", json={"name": "cam", "source": video,
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5, "rules": [rule]}).json()["id"]
+    in_write = threading.Event()
+    release = threading.Event()
+    real_remaining = manager_module.metering.remaining
+
+    def gated_remaining(*args, **kwargs):
+        if not threading.current_thread().name.startswith(f"stream-{sid}-"):
+            return real_remaining(*args, **kwargs)   # ignore leftovers from earlier tests
+        in_write.set()
+        release.wait(15)
+        return real_remaining(*args, **kwargs)
+
+    monkeypatch.setattr(manager_module.metering, "remaining", gated_remaining)
+    result: dict[str, int] = {}
+    started = 0.0
+    try:
+        assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+        assert in_write.wait(20), "the worker never reached the snapshot write"
+
+        def patch():
+            tc = TestClient(app, client=("trained-patch", 50102))
+            tok = tc.post("/api/auth/login", json={"email": "demo@labeldesk.dev",
+                                                   "password": "demo1234"}).json()["token"]
+            tc.headers["Authorization"] = f"Bearer {tok}"
+            result["status"] = tc.patch(f"{base}/streams/{sid}",
+                                        json={"name": "Edited", "model_ref": f"trained:{mid}"}).status_code
+
+        t = threading.Thread(target=patch, daemon=True)
+        started = time.time()
+        t.start()
+        time.sleep(0.6)
+        assert t.is_alive(), "the PATCH did not wait for the in-flight write"
+        release.set()
+        t.join(20)
+        assert not t.is_alive()
+        elapsed = time.time() - started
+        assert result.get("status") == 409, result          # quick conflict, retryable
+        assert elapsed < 5.0, f"PATCH took {elapsed:.1f}s (SQLite busy timeout is 30 s)"
+        with SessionLocal() as db:
+            events = db.scalars(select(StreamEvent).where(StreamEvent.stream_id == sid)).all()
+            assert len(events) == 1, "the in-flight event was lost"
+            assert (DATA_DIR / events[0].snapshot_path).is_file()
+            assert (DATA_DIR / events[0].clean_path).is_file()
+            used = metering_service.used(db, db.get(Workspace, ws_id), "storage_bytes")
+            assert used > 0, "the snapshot bytes were never charged"
+        r = c.patch(f"{base}/streams/{sid}", json={"name": "Edited", "model_ref": f"trained:{mid}"})
+        assert r.status_code == 200, r.text
+        _poll(lambda: (j if (j := c.get(f"{base}/streams/{sid}").json()).get("status") == "live" else None),
+              timeout=10)
+    finally:
+        release.set()
+        manager.stop(sid)
+
+
+def test_delete_refuses_to_erase_a_stream_that_is_still_stopping(c, monkeypatch, video):
+    """I-2: erasing rows and bytes under a draining worker must be a conflict, not a silent race."""
+    from app.db import SessionLocal
+    from app.models import Stream
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 0.05, raising=False)
+    sid = create_stream(c, source=video, sample_fps=5, name="Draining delete")
+    _BlockingModel.reset(1)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    assert _BlockingModel.entered.wait(20)
+    try:
+        r = c.delete(f"{BASE}/{sid}")
+        assert r.status_code == 409, r.text
+        with SessionLocal() as db:
+            assert db.get(Stream, sid) is not None, "the row was erased under a live worker"
+    finally:
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
 @pytest.mark.parametrize("source", [
     "rtsp://10.0.0.5/live",
     "rtsp://192.168.1.20:554/stream1",

@@ -228,9 +228,21 @@ def test_workspace_flag_dependency_closes_its_session(monkeypatch):
 class _FakeWorker:
     def __init__(self):
         self.stopped = False
+        self.signals = 0
 
-    def stop(self):
+    def signal_stop(self):
         self.stopped = True
+        self.signals += 1
+
+    def join(self, budget: float = 0.0) -> bool:
+        return True
+
+    def wait_for_writes(self) -> None:
+        return None
+
+    def stop(self, budget: float = 0.0) -> bool:
+        self.signal_stop()
+        return self.join(budget)
 
 
 def _create_stream() -> str:
@@ -266,6 +278,33 @@ def test_disabling_streams_flag_stops_running_cameras(admin):
         assert sid not in manager._workers
         with SessionLocal() as db:
             assert db.get(Stream, sid).status == "stopped"
+    finally:
+        _drop_stream(sid)
+
+
+def test_disabling_streams_flag_stops_capture_before_the_flag_is_committed(admin):
+    """I-4: every camera is signalled before the flag commits, so no request 404s while capture runs."""
+    from app.streams.manager import manager
+
+    sid = _create_stream()
+    seen: dict[str, bool] = {}
+
+    class _OrderWorker(_FakeWorker):
+        def signal_stop(self):
+            with SessionLocal() as db:                  # a fresh session sees only committed state
+                seen["enabled"] = flags.is_enabled(FLAG, db, ws_id())
+            super().signal_stop()
+
+    worker = _OrderWorker()
+    manager._workers[sid] = worker
+    try:
+        assert admin.put(f"/api/ws/{WS}/flags/{FLAG}", json={"enabled": True}).status_code == 200
+        r = admin.put(f"/api/ws/{WS}/flags/{FLAG}", json={"enabled": False})
+        assert r.status_code == 200 and r.json()["enabled"] is False
+        assert worker.stopped is True
+        assert seen.get("enabled") is True, "the flag was committed before capture was signalled"
+        with SessionLocal() as db:
+            assert flags.is_enabled(FLAG, db, ws_id()) is False
     finally:
         _drop_stream(sid)
 
