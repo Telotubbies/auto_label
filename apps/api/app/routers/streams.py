@@ -358,6 +358,8 @@ def start_stream(sid: str, c: Ctx = Depends(project_ctx)):
         manager.start(s.id)
     except KeyError:
         raise HTTPException(404, "stream not found")
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
     audit(c.db, c.ws.id, c.user.id, "stream.start", s.name)
     c.db.commit()
     return stream_out(c, s)

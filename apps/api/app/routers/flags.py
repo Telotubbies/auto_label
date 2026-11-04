@@ -36,15 +36,15 @@ class FlagIn(BaseModel):
 @router.put("/flags/{key}")
 def put_flag(key: str, body: FlagIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
-    try:
-        flag_service.set_flag(c.db, c.ws.id, key, body.enabled)
-    except ValueError:
-        raise HTTPException(404, "unknown feature flag") from None
-    audit(c.db, c.ws.id, c.user.id, "flag.update", key, enabled=body.enabled)
-    enabled = flag_service.is_enabled(key, c.db, c.ws.id)     # the uncommitted row is visible here
-    # I-4: signal capture *before* the flag commits, so the 404 window is bounded by one drain
-    # (one read timeout / one predict), not by N × 4 s of inline joins. A forced-on env flag wins.
+    if key not in flag_service.FLAGS:
+        raise HTTPException(404, "unknown feature flag")
+    enabled = body.enabled or key in flag_service.forced_on()   # a forced-on env flag wins
+    # I-4: signal and wait for capture *before* this request opens a write transaction, then write
+    # the flag and audit. The 404 window is bounded by one drain, and waiting while holding an
+    # uncommitted write would deadlock with the worker's event insert (SQLite busy timeout, C-1).
     if key == "task_10b" and not enabled:
         _stop_workspace_streams(c.db, c.ws.id, c.user.id)
+    flag_service.set_flag(c.db, c.ws.id, key, body.enabled)
+    audit(c.db, c.ws.id, c.user.id, "flag.update", key, enabled=body.enabled)
     c.db.commit()
     return {"key": key, "enabled": enabled}

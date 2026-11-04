@@ -1374,6 +1374,73 @@ def test_trash_waits_for_an_in_flight_snapshot_and_leaves_no_files(c, monkeypatc
         manager.stop(sid)
 
 
+def test_kill_switch_waits_for_an_in_flight_write_without_a_db_lock(c, monkeypatch, video):
+    """C-1 round 2: the flag request must not hold a write transaction while it waits for a write."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import StreamEvent, Workspace
+    from app.services import metering as metering_service
+    from app.streams import manager as manager_module
+    from app.streams.manager import manager
+
+    monkeypatch.delenv("LD_FLAGS_ON", raising=False)     # the kill switch only acts on a stored off
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    ws, slug, pid = _fresh_project(c, "Flag race")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    flag_url = f"/api/ws/{ws}/flags/task_10b"
+    assert c.put(flag_url, json={"enabled": True}).status_code == 200
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sid = c.post(f"{base}/streams", json={"name": "cam", "source": video,
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5, "rules": [rule]}).json()["id"]
+    in_write = threading.Event()
+    release = threading.Event()
+    real_remaining = manager_module.metering.remaining
+
+    def gated_remaining(*args, **kwargs):
+        in_write.set()
+        release.wait(15)
+        return real_remaining(*args, **kwargs)
+
+    monkeypatch.setattr(manager_module.metering, "remaining", gated_remaining)
+    result: dict[str, int] = {}
+    started = 0.0
+    try:
+        assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+        assert in_write.wait(20), "the worker never reached the snapshot write"
+
+        def disable():
+            with TestClient(app, client=("flag-race", 50101)) as tc:
+                tok = tc.post("/api/auth/login", json={"email": "demo@labeldesk.dev",
+                                                       "password": "demo1234"}).json()["token"]
+                tc.headers["Authorization"] = f"Bearer {tok}"
+                result["status"] = tc.put(flag_url, json={"enabled": False}).status_code
+
+        t = threading.Thread(target=disable, daemon=True)
+        started = time.time()
+        t.start()
+        time.sleep(0.6)
+        assert t.is_alive(), "the kill switch did not wait for the in-flight write"
+        release.set()
+        t.join(20)
+        assert not t.is_alive()
+        elapsed = time.time() - started
+        assert result.get("status") == 200
+        assert elapsed < 5.0, f"kill switch took {elapsed:.1f}s (SQLite busy timeout is 30 s)"
+        with SessionLocal() as db:
+            events = db.scalars(select(StreamEvent).where(StreamEvent.stream_id == sid)).all()
+            assert len(events) == 1, "the in-flight event was lost"
+            assert (DATA_DIR / events[0].snapshot_path).is_file()
+            assert (DATA_DIR / events[0].clean_path).is_file()
+            ws_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+            used = metering_service.used(db, db.get(Workspace, ws_id), "storage_bytes")
+            assert used > 0, "the snapshot bytes were never charged"
+    finally:
+        release.set()
+        manager.stop(sid)
+
+
 def test_a_drained_stop_still_records_stream_hours(c, monkeypatch, video):
     """I-1: a worker that exits after the stop budget must still bill its run, exactly once."""
     from app.streams.manager import manager
@@ -1395,7 +1462,7 @@ def test_a_drained_stop_still_records_stream_hours(c, monkeypatch, video):
 
 
 def test_update_refuses_to_restart_a_stream_that_is_still_stopping(c, monkeypatch, video):
-    """I-2: a draining worker must not be duplicated by an immediate restart."""
+    """I-1 round 2: the 409 must be retryable — the retry restarts the camera, not leaves it off."""
     from app.streams.manager import manager
 
     monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
@@ -1413,6 +1480,9 @@ def test_update_refuses_to_restart_a_stream_that_is_still_stopping(c, monkeypatc
         _wait_threads_gone([sid])
     r = c.patch(f"{BASE}/{sid}", json={"name": "Renamed after drain"})
     assert r.status_code == 200, r.text
+    _poll(lambda: manager.status(sid) is not None, timeout=10)
+    assert [w.id for w in manager._workers.values()].count(sid) == 1
+    _poll(_status_is(c, sid, "live"), timeout=10)        # the retry restarted capture
     assert c.delete(f"{BASE}/{sid}").status_code == 200
 
 

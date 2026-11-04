@@ -877,11 +877,20 @@ class _Worker:
 class StreamManager:
     def __init__(self):
         self._workers: dict[str, _Worker] = {}
+        # Signalled workers whose threads have not been joined yet. Keeping them reachable makes a
+        # 409 retryable: status() still reports "stopping" and start() refuses a duplicate worker.
+        self._draining: dict[str, _Worker] = {}
         self._lock = threading.Lock()
 
     def start(self, stream_id: str) -> dict:
-        """Spawn the capture + processing threads and return immediately."""
+        """Spawn the capture + processing threads and return immediately.
+
+        Raises ``ValueError`` while the previous worker for this id is still draining: starting a
+        second one would duplicate capture and events under the same stream id (I-1).
+        """
         with self._lock:
+            if stream_id in self._draining:
+                raise ValueError("stream is still stopping")
             worker = self._workers.get(stream_id)
             if worker is not None and not worker.dead():
                 return worker.status_out()
@@ -899,48 +908,76 @@ class StreamManager:
     def stop(self, stream_id: str, budget: float = 4.0) -> bool:
         """Stop one stream, waiting at most ``budget``; returns False when its threads still drain.
 
-        The row is marked ``stopped`` either way: the operator asked for it and the worker loops
-        exit on their own stop event. ``stop_many`` is the bounded path for trash/purge.
+        A draining worker stays in ``_draining`` and the row says ``stopping``, so a retry can
+        finish the stop and restart capture instead of silently leaving the camera off (I-1).
+        ``stop_many`` is the bounded path for trash/purge.
         """
         with self._lock:
             worker = self._workers.pop(stream_id, None)
-        stopped = True if worker is None else worker.stop(budget)
-        self._persist_stopped([stream_id])
-        return stopped
+            if worker is not None:
+                self._draining[stream_id] = worker
+            else:
+                worker = self._draining.get(stream_id)
+        if worker is None:
+            self._persist_stopped([stream_id], "stopped")
+            return True
+        worker.signal_stop()
+        joined = worker.join(budget)
+        worker.wait_for_writes()
+        if joined:
+            with self._lock:
+                if self._draining.get(stream_id) is worker:
+                    self._draining.pop(stream_id, None)
+        self._persist_stopped([stream_id], "stopped" if joined else "stopping")
+        return joined
 
     def stop_many(self, stream_ids: list[str], budget: float = 0.25) -> list[str]:
         """Signal every stream, then wait at most ``budget`` in total for all of them (I-4).
 
-        Returns the ids whose threads were still draining. No DB write happens here: the caller
-        persists ``stopped`` and audits the draining set in its own transaction, so a request that
-        already holds a SQLite write lock cannot deadlock against this manager.
+        Returns the ids whose threads were still draining; a bulk stop is final, so none of them
+        stays reachable for a retry (only single-stream ``stop()`` keeps that). This method performs
+        no DB write, but it *does* wait for an in-flight ``_record`` and its event insert. Callers
+        must therefore not hold an uncommitted DB write transaction here: the worker's insert would
+        block on that lock until the SQLite busy timeout (C-1 round 2).
         """
         ids = list(dict.fromkeys(stream_ids))
         with self._lock:
-            workers = [(sid, self._workers.pop(sid, None)) for sid in ids]
-        workers = [(sid, w) for sid, w in workers if w is not None]
-        for _, w in workers:                 # signal first: no worker keeps capturing while we join
-            w.signal_stop()
+            workers: list[tuple[str, _Worker]] = []
+            for sid in ids:
+                worker = self._workers.pop(sid, None)
+                if worker is not None:
+                    self._draining[sid] = worker
+                else:
+                    worker = self._draining.get(sid)
+                if worker is not None:
+                    workers.append((sid, worker))
+        for _, worker in workers:            # signal first: no worker keeps capturing while we join
+            worker.signal_stop()
         deadline = time.monotonic() + max(0.0, budget)
-        draining = [sid for sid, w in workers
-                    if not w.join(max(0.0, deadline - time.monotonic()))]
-        for _, w in workers:                 # no snapshot write may outlive the request (C2)
-            w.wait_for_writes()
+        draining: list[str] = []
+        for sid, worker in workers:
+            joined = worker.join(max(0.0, deadline - time.monotonic()))
+            worker.wait_for_writes()         # no snapshot write may outlive the request (C2)
+            if not joined:
+                draining.append(sid)
+            with self._lock:                 # bulk stops are final: the caller audits the drain
+                if self._draining.get(sid) is worker:
+                    self._draining.pop(sid, None)
         return draining
 
-    def _persist_stopped(self, stream_ids: list[str]) -> None:
+    def _persist_stopped(self, stream_ids: list[str], status: str = "stopped") -> None:
         try:
             with session_scope() as db:
                 for sid in stream_ids:
                     row = db.get(Stream, sid)
                     if row is not None:
-                        row.status, row.last_error = "stopped", ""
+                        row.status, row.last_error = status, ""
         except Exception:
             log.exception("streams %s: could not persist stop", stream_ids)
 
     def stop_all(self) -> None:
         with self._lock:
-            ids = list(self._workers)
+            ids = list(dict.fromkeys([*self._workers, *self._draining]))
         for sid in ids:
             self.stop(sid)
 
@@ -969,9 +1006,13 @@ class StreamManager:
 
     def status(self, stream_id: str) -> dict | None:
         worker = self._workers.get(stream_id)
-        if worker is None:
+        if worker is not None:
+            return worker.status_out()
+        draining = self._draining.get(stream_id)
+        if draining is None:
             return None
-        return worker.status_out()
+        # Reachable until an explicit stop/start resolves it, so a 409 retry sees the stream as live.
+        return {**draining.status_out(), "status": "stopping"}
 
 
 manager = StreamManager()

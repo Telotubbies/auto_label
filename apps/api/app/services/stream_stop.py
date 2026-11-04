@@ -42,7 +42,8 @@ def stop_streams(
     for sid in ids:
         row = db.get(Stream, sid)
         if row is not None:
-            row.status, row.last_error = "stopped", ""
+            row.status = "stopping" if sid in draining else "stopped"
+            row.last_error = ""
     if draining:
         audit(db, workspace_id, user_id, "stream.stop_draining", reason,
               streams=draining, count=len(draining))

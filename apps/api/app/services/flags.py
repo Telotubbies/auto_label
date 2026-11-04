@@ -31,6 +31,11 @@ def _forced_on() -> set[str]:
     return {key.strip() for key in os.environ.get("LD_FLAGS_ON", "").split(",") if key.strip()}
 
 
+def forced_on() -> set[str]:
+    """Public view of the env-forced keys, for callers that must decide before writing a flag."""
+    return _forced_on()
+
+
 def is_enabled(key: str, db: Session, workspace_id: str) -> bool:
     """True when ``key`` is known and env-forced or explicitly enabled for this workspace."""
     if key not in FLAGS:
