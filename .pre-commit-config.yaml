@@ -14,7 +14,7 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6
+    rev: v0.17.3
     hooks:
       # TODO(lint-chore): widen both hooks to apps/(api|worker|inference), tests
       # and ml once their 196 pre-existing ruff findings are fixed (progress.md:181).

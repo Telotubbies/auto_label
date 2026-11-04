@@ -37,7 +37,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install test tools
-        run: python -m pip install --disable-pip-version-check ruff pytest pyyaml
+        # Pinned: ruff's default rule set grows between minor releases, so an unpinned
+        # install turns a green branch red without a code change.
+        run: python -m pip install --disable-pip-version-check ruff==0.17.3 pytest pyyaml
       - name: Lint tools
         run: ruff check --line-length=120 tools/ld-task tools
       - name: Check formatting
