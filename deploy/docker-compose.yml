@@ -16,13 +16,13 @@ services:
 
   web:
     build:
-      context: ../apps/web
+      context: ../apps/frontend
       args: { VITE_API_URL: "" }        # same origin — nginx proxies /api
     restart: unless-stopped
     depends_on: [api]
 
   api:
-    build: ../apps/api
+    build: ../apps/backend
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://labeldesk:${POSTGRES_PASSWORD}@db:5432/labeldesk
@@ -55,7 +55,7 @@ services:
       db: { condition: service_healthy }
 
   worker:
-    build: ../apps/api
+    build: ../apps/backend
     restart: unless-stopped
     command: ["python", "-m", "app.worker"]
     environment:

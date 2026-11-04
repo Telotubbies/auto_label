@@ -1,6 +1,6 @@
 // Face-blur copy: the switch must name every source the API anonymises, and the DPA must not
 // keep claiming video-only coverage. Runs with the built-in Node test runner:
-//   node --test tests/privacy-blur-label.test.mjs   (from apps/web)
+//   node --test tests/privacy-blur-label.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

@@ -1,5 +1,5 @@
 // Selection rules for the Compare tab picker. Runs with the built-in Node test runner:
-//   node --test tests/compare-selection.test.mjs   (from apps/web)
+//   node --test tests/compare-selection.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { defaultCompare, toggleSelection } from '../src/features/insights/modelSelection.ts'

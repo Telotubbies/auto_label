@@ -1,5 +1,5 @@
 // Pure rules behind the workspace Home dashboard: checklist, tour state and queue helpers.
-// Runs with the built-in Node test runner: node --test tests/dashboard.test.mjs (from apps/web).
+// Runs with the built-in Node test runner: node --test tests/dashboard.test.mjs (from apps/frontend).
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {

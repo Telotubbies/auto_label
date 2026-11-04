@@ -1,7 +1,7 @@
 // I14 regression: landing copy must not promise SAM 3.1 / VLM when the deployment does not
 // expose them. The sections read the public capability endpoint and label the add-on as
 // operator setup instead of an included feature.
-//   node --test tests/landing-claims.test.mjs   (from apps/web)
+//   node --test tests/landing-claims.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

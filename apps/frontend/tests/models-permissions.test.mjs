@@ -7,7 +7,7 @@
 //   POST   /jobs/{id}/cancel     -> reviewer (project.review also includes reviewers)
 // so the UI must gate each control on the same capability the server enforces.
 //
-//   node --test tests/models-permissions.test.mjs   (from apps/web)
+//   node --test tests/models-permissions.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

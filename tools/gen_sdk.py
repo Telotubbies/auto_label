@@ -3,7 +3,7 @@
 Usage (either cwd works):
 
     python tools/gen_sdk.py              # repo root
-    python ../../tools/gen_sdk.py        # apps/api
+    python ../../tools/gen_sdk.py        # apps/backend
 
 The generated file is committed so `pip install` never needs the API's dependencies.
 """

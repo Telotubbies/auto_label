@@ -1,5 +1,5 @@
 // Pure rules behind the dashboard builder. Runs with Node's test runner:
-//   node --test tests/dashboard-widgets.test.mjs   (from apps/web)
+//   node --test tests/dashboard-widgets.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {

@@ -1,5 +1,5 @@
 // Task G5: annotation stack order and viewport culling — pure rules for the editor.
-//   node --test tests/editor-g5.test.mjs   (from apps/web)
+//   node --test tests/editor-g5.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { canMove, moveAnnotation, orderIndexOf, ORDER_ACTIONS } from '../src/features/editor/annotationOrder.ts'

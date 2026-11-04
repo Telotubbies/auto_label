@@ -4,7 +4,7 @@
 // (workspace rank 2) must not; a project manager who is a workspace member must see manager
 // actions. These files are source-checked because the suite has no DOM renderer.
 //
-//   node --test tests/project-screen-permissions.test.mjs   (from apps/web)
+//   node --test tests/project-screen-permissions.test.mjs   (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
