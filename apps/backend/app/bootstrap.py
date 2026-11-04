@@ -5,12 +5,13 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import exists, func, inspect, select, update
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import exists, func, select, update
 
+from . import schema
 from .config import DATA_DIR, ENVIRONMENT, REPO_ROOT, SEED_DEMO
 from .db import Base, SessionLocal, engine
 from .models import Image, ImageClass, Project, UsageEvent, User, Video, Workspace
+from .schema import ensure_columns  # noqa: F401  re-exported: the column helper has always lived here
 
 log = logging.getLogger("labeldesk")
 DEMO_EMAIL, DEMO_PW = "demo@labeldesk.dev", "demo1234"
@@ -63,31 +64,7 @@ def init_db():
 
 def _init_db():
     Base.metadata.create_all(engine)
-    ensure_columns(engine, "trained_models", {
-        "family": "VARCHAR(32) DEFAULT 'ultralytics'", "variant": "VARCHAR(64) DEFAULT ''",
-        "license": "VARCHAR(64) DEFAULT 'AGPL-3.0'", "runtime_refs": "JSON"})
-    ensure_columns(engine, "api_keys", {"scopes": "JSON", "publishable": "BOOLEAN DEFAULT FALSE"})
-    ensure_columns(engine, "connectors", {"last_sync": "FLOAT", "last_status": "VARCHAR(16) DEFAULT ''"})
-    ensure_columns(engine, "users", {
-        "email_verified": "FLOAT", "totp_secret": "VARCHAR(255)", "mfa_enabled": "BOOLEAN DEFAULT FALSE",
-        "recovery_codes": "JSON", "totp_last_step": "INTEGER DEFAULT 0",
-        "platform_admin": "BOOLEAN DEFAULT FALSE"})
-    ensure_columns(engine, "workspaces", {"require_mfa": "BOOLEAN DEFAULT FALSE",
-                                          "data_region": "VARCHAR(16) DEFAULT 'th'",
-                                          "quotas": "JSON"})
-    ensure_columns(engine, "projects", {"retention_days": "INTEGER", "face_blur": "BOOLEAN DEFAULT TRUE",
-                                        "biometrics": "BOOLEAN DEFAULT FALSE", "legal_basis": "TEXT DEFAULT ''"})
-    ensure_columns(engine, "members", {"custom_role_id": "VARCHAR(32)"})
-    ensure_columns(engine, "project_members", {"custom_role_id": "VARCHAR(32)"})
-    ensure_columns(engine, "classes", {"skeleton": "JSON"})
-    ensure_columns(engine, "images", {"video_id": "VARCHAR(32)", "frame_index": "INTEGER",
-                                      "sharpness": "FLOAT", "luminance": "FLOAT"})
-    ensure_columns(engine, "jobs", {"executor": "VARCHAR(8) DEFAULT ''"})
-    ensure_columns(engine, "label_events", {"ai_ids": "JSON"})
-    ensure_columns(engine, "consensus_jobs", {"image_metrics": "JSON"})
-    ensure_columns(engine, "refresh_tokens", {
-        "created": "FLOAT DEFAULT 0", "last_seen": "FLOAT DEFAULT 0",
-        "ip": "VARCHAR(64) DEFAULT ''", "user_agent": "VARCHAR(255) DEFAULT ''"})
+    schema.apply(engine)               # per-domain ADD COLUMN blocks, in the order they shipped
     _widen_totp_secret()
     _widen_text_columns()
     _backfill_sessions()
@@ -95,10 +72,6 @@ def _init_db():
     # One-time upgrade of connector/webhook secrets, legacy TOTP seeds, and any key rotation.
     _encrypt_secrets()
     _seal_stream_sources()
-    ensure_columns(engine, "stream_events", {
-        "clean_path": "VARCHAR(1024) DEFAULT ''",
-        "rule_index": "INTEGER", "rule_kind": "VARCHAR(16) DEFAULT ''",
-        "rule_label": "VARCHAR(255) DEFAULT ''", "classes": "TEXT DEFAULT ''"})
     with engine.begin() as cn:
         cn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_stream_events_stream_ts ON stream_events (stream_id, ts)")
     _backfill_event_fields()
@@ -163,21 +136,6 @@ def _backfill_event_fields() -> None:
             for name, value in filter_fields(ev.rule or {}, ev.predictions or []).items():
                 setattr(ev, name, value)
         db.commit()
-
-
-def ensure_columns(eng, table: str, cols: dict[str, str]) -> None:
-    """Idempotent ALTER TABLE ... ADD COLUMN; cols maps name -> DDL fragment (type + default)."""
-    have = {c["name"] for c in inspect(eng).get_columns(table)}
-    with eng.begin() as cn:
-        for name, ddl in cols.items():
-            if name in have:
-                continue
-            try:
-                cn.exec_driver_sql(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}')
-            except OperationalError as e:      # a concurrent process won the race after our inspect
-                msg = str(e).lower()
-                if "duplicate column" not in msg and "already exists" not in msg:
-                    raise
 
 
 def seed():
