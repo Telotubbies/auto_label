@@ -2,15 +2,20 @@
 // Runs with the built-in Node test runner: node --test tests/nav.test.mjs  (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import {
   isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, RESERVED_WORKSPACE_SEGMENTS,
   visibleProjectNav, visibleWorkspaceNav, WORKSPACE_PAGE_LABELS, workspaceIndexPath, workspaceNav,
 } from '../src/lib/nav.ts'
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
+/** Concatenated sources of a split module, so a check follows the code into its feature files. */
+const sourceTree = (dir) => readdirSync(new URL(`${dir}/`, import.meta.url), { recursive: true })
+  .filter((f) => /\.(ts|tsx)$/.test(f))
+  .map((f) => source(`${dir}/${f.replaceAll('\\', '/')}`))
+  .join('\n')
 const appSrc = source('../src/App.tsx')
-const shellSrc = source('../src/components/shell.tsx')
+const shellSrc = sourceTree('../src/components/shell')
 const settingsSrc = source('../src/features/settings/Settings.tsx')
 const insightsSrc = source('../src/features/project/Insights.tsx')
 const projectLayoutSrc = source('../src/features/project/ProjectLayout.tsx')
