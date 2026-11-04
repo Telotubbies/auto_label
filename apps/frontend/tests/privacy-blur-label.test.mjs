@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 const privacyUi = read('../src/features/governance/Privacy.tsx')
-const dpaSource = read('../../api/app/routers/privacy.py')
+const dpaSource = read('../../backend/app/routers/privacy.py')
 
 test('the face-blur switch names uploaded images and video frames', () => {
   assert.match(privacyUi, /Blur faces in uploaded images and video frames of \$\{project\.name\}/)
