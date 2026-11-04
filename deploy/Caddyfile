@@ -1,0 +1,23 @@
+(hardening) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	encode gzip
+	request_body {
+		max_size 2GB
+	}
+}
+
+{$LD_DOMAIN} {
+	import hardening
+	# web container serves the SPA and proxies /api to the api container
+	reverse_proxy web:80
+}
+
+# Split hosting (web on Vercel): point api.<domain> here too and set
+# VITE_API_URL=https://api.<domain> on Vercel, LD_CORS_ORIGINS=https://<vercel app>.
+api.{$LD_DOMAIN} {
+	import hardening
+	reverse_proxy api:8000
+}

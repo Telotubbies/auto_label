@@ -1,0 +1,29 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pyjwt>=2.8
+python-multipart>=0.0.9
+pillow>=10
+numpy>=1.26
+# OpenCV 5 removed cv2.CascadeClassifier and the bundled Haar cascades, so face blur would fail
+# closed on every upload (503). ultralytics requires the GUI distribution; pin both to the same
+# 4.x line so pip cannot leave a mixed cv2 tree either.
+opencv-python-headless>=4.8,<5
+opencv-python>=4.8,<5
+# ultralytics pulls torch; the Dockerfile installs the CPU torch wheel first so it isn't the 2 GB CUDA build
+ultralytics>=8.3
+httpx>=0.27
+imagehash>=4.3
+cryptography>=42
+defusedxml>=0.7
+pycocotools>=2.0.7
+segno>=1.6
+cachetools>=7.0
+# Optional Insights embeddings (Task 20a): CLIP ViT-B/32 through transformers when installed, and
+# UMAP for the 2-D projection. Without them the job uses cheap CV features + deterministic PCA.
+# transformers>=4.52
+# umap-learn>=0.5
+# Optional Apache-2.0 families (Task 15) — install on the GPU host only; adapters degrade with a clear reason
+# rfdetr[train,loggers]>=1.11
+# transformers>=4.52   (D-FINE and RT-DETRv2 mappings in AutoModelForObjectDetection)

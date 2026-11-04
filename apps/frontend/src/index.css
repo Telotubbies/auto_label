@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+@font-face { font-family: 'IBM Plex Sans'; font-weight: 100 700; font-stretch: 85% 100%; src: url(/fonts/IBMPlexSans-VF.ttf) format('truetype'); font-display: swap; }
+@font-face { font-family: 'Anuphan'; font-weight: 100 700; src: url(/fonts/Anuphan-VF.ttf) format('truetype'); font-display: swap; }
+
+/* Fallback values (light, seed #3b6cf6). theme.ts overwrites all of these at startup from the Material HCT scheme. */
+:root {
+  --background: oklch(98.5% 0.006 265);
+  --foreground: oklch(21% 0.02 265);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(21% 0.02 265);
+  --popover: oklch(95% 0.01 265);
+  --popover-foreground: oklch(21% 0.02 265);
+  --primary: oklch(50% 0.2 265);
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(92% 0.03 265);
+  --secondary-foreground: oklch(30% 0.05 265);
+  --muted: oklch(96.5% 0.008 265);
+  --muted-foreground: oklch(42% 0.02 265);
+  --accent: oklch(91% 0.05 265);
+  --accent-foreground: oklch(30% 0.12 265);
+  --destructive: oklch(50% 0.2 27);
+  --destructive-foreground: oklch(100% 0 0);
+  --border: oklch(88% 0.01 265);
+  --input: oklch(62% 0.015 265);
+  --ring: oklch(50% 0.2 265);
+  --radius: 0.625rem;
+  --sidebar: oklch(95% 0.01 265);
+  --sidebar-foreground: oklch(21% 0.02 265);
+  --sidebar-primary: oklch(50% 0.2 265);
+  --sidebar-primary-foreground: oklch(100% 0 0);
+  --sidebar-accent: oklch(91% 0.04 265);
+  --sidebar-accent-foreground: oklch(30% 0.08 265);
+  --sidebar-border: oklch(88% 0.01 265);
+  --sidebar-ring: oklch(50% 0.2 265);
+  --success: oklch(45% 0.13 145);
+  --info: oklch(50% 0.17 255);
+  --warning: oklch(55% 0.13 75);
+  --upgrade: oklch(85% 0.15 85);
+  --tertiary: oklch(55% 0.15 330);
+  --tertiary-container: oklch(92% 0.05 330);
+  --scrim: oklch(0% 0 0);
+  --font-ui: 'IBM Plex Sans', 'Anuphan', 'Noto Sans Thai', system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --color-warning: var(--warning);
+  --color-upgrade: var(--upgrade);
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-scrim: var(--scrim);
+  --font-sans: var(--font-ui);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Rules live in layers so Tailwind utilities (border-input, border-destructive, outline-none ...) can override them. */
+@layer base {
+  * { border-color: var(--border); }
+  html { color-scheme: light dark; }
+  body { font-family: var(--font-ui); background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  :lang(th) { line-height: 1.6; word-break: normal; overflow-wrap: anywhere; }
+  @media (prefers-contrast: more) { * { border-color: var(--foreground); } }
+}
+/* Thai is never cut with slice(): clip with CSS instead */
+.truncate-th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Annotation canvas well: a neutral surface in both themes so class colours and the image stay true. */
+@layer base {
+  .canvas-well { background: color-mix(in oklab, var(--background) 74%, var(--foreground) 26%); }
+}
+
+@layer components {
+  /* 3:1 focus ring; scroll-padding keeps focused items clear of the floating top bar and the job tray */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  main, [data-scroll] { scroll-padding: 4rem 1rem 7rem; }
+  button, [role=button], [role=switch] { min-height: 24px; min-width: 24px; }
+
+  /* ===== Liquid Glass (chrome only) =====
+     Solid by default. Blur turns on only where supported, and is switched back off for prefers-reduced-transparency
+     and the Settings toggle (html[data-reduce-transparency], needed because Safari ignores the media query).
+     Literal blur values: Safari wants the -webkit- prefix and static numbers. Max blur 20px; motion never animates blur. */
+  .glass {
+    --glass-solid: color-mix(in oklab, var(--popover) 92%, var(--foreground));
+    --glass-tint: color-mix(in oklab, var(--popover) 58%, transparent);
+    --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / .55), rgb(255 255 255 / .08) 38%, transparent 62%);
+    --glass-hi: rgb(255 255 255 / .7);
+    --glass-edge: color-mix(in oklab, var(--foreground) 14%, transparent);
+    background-color: var(--glass-solid);
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 rgb(0 0 0 / .05), 0 10px 30px -14px rgb(0 0 0 / .35);
+  }
+  .dark .glass { --glass-hi: rgb(255 255 255 / .22); --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / .16), rgb(255 255 255 / .03) 38%, transparent 62%); --glass-tint: color-mix(in oklab, var(--popover) 62%, transparent); }
+  .glass-overlay { --glass-tint: color-mix(in oklab, var(--popover) 80%, transparent); }
+  .dark .glass-overlay { --glass-tint: color-mix(in oklab, var(--popover) 84%, transparent); }
+  .glass-sidebar { --glass-solid: var(--sidebar); --glass-tint: color-mix(in oklab, var(--sidebar) 58%, transparent); }
+  .dark .glass-sidebar { --glass-tint: color-mix(in oklab, var(--sidebar) 60%, transparent); }
+
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass { background-color: var(--glass-tint); background-image: var(--glass-sheen); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%); }
+    .glass-overlay { -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass, .glass-overlay { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .app-bg { background: var(--background); }
+  }
+  html[data-reduce-transparency] .glass, html[data-reduce-transparency] .glass-overlay { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html[data-reduce-transparency] .app-bg { background: var(--background); }
+
+  /* Ambient wash behind the chrome so the glass has something to refract. Content cards stay solid on top. */
+  .app-bg {
+    background:
+      radial-gradient(60rem 36rem at 8% -10%, color-mix(in oklab, var(--primary) 24%, transparent), transparent 70%),
+      radial-gradient(48rem 30rem at 100% 0%, color-mix(in oklab, var(--tertiary) 20%, transparent), transparent 70%),
+      var(--background);
+  }
+  .dark .app-bg {
+    background:
+      radial-gradient(60rem 38rem at 8% -10%, color-mix(in oklab, var(--primary) 38%, transparent), transparent 70%),
+      radial-gradient(48rem 32rem at 100% 0%, color-mix(in oklab, var(--tertiary) 30%, transparent), transparent 70%),
+      var(--background);
+  }
+}
+
+/* Higher-contrast preference: 2px borders on every bordered control, not only glass (utilities layer so they win over .border) */
+@layer utilities {
+  @media (prefers-contrast: more) {
+    .border, .glass { border-width: 2px; }
+    .glass { border-color: var(--foreground); }
+  }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--foreground) 22%, transparent); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--foreground) 38%, transparent); }
+
+/* ===== Motion layer — opacity/transform only, blur is never animated ===== */
+@keyframes ldFadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ldFadeInUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+@keyframes ldZoomIn { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: scale(1) } }
+@keyframes ldSlideDown { from { opacity: 0; transform: translateY(-6px) scale(.98) } to { opacity: 1; transform: none } }
+@keyframes ldOverlayIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ldPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+@keyframes ldToastIn { from { opacity: 0; transform: translateY(14px) scale(.96) } to { opacity: 1; transform: none } }
+
+.anim-overlay { animation: ldOverlayIn .2s ease-out; }
+.anim-modal { animation: ldZoomIn .18s cubic-bezier(.16,1,.3,1); }
+.anim-pop { animation: ldSlideDown .14s ease-out; transform-origin: top; }
+.anim-page { animation: ldFadeInUp .22s ease-out; }
+.anim-fade { animation: ldFadeIn .2s ease-out; }
+.anim-toast { animation: ldToastIn .25s cubic-bezier(.21,1.02,.73,1); }
+.skeleton { animation: ldPulse 2s cubic-bezier(.4,0,.6,1) infinite; background: var(--muted); border-radius: 6px; }
+
+.lift { transition: transform .16s ease, box-shadow .16s ease; }
+.lift:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -6px rgb(0 0 0 / .18); }
+
+/* Guided-tour spotlight: rings the section being explained without dimming the rest of the page. */
+.tour-target { outline: 3px solid var(--ring); outline-offset: 4px; border-radius: var(--radius); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

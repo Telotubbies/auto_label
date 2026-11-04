@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+models/
+*.onnx
+*.pt
+*.engine
+README.md
+Dockerfile
+Dockerfile.gpu
+requirements-dev.txt

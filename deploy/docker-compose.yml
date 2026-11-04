@@ -1,0 +1,100 @@
+# LabelDesk production stack for one VM (e.g. Oracle Cloud Always Free).
+#   cp .env.example .env && edit it, then:  docker compose up -d --build
+# Caddy obtains HTTPS certificates automatically for LD_DOMAIN.
+# GPU training runs elsewhere via `labeldesk-worker` (see docs/DEPLOY.md).
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      LD_DOMAIN: ${LD_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [web, api]
+
+  web:
+    build:
+      context: ../apps/frontend
+      args: { VITE_API_URL: "" }        # same origin — nginx proxies /api
+    restart: unless-stopped
+    depends_on: [api]
+
+  api:
+    build: ../apps/backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://labeldesk:${POSTGRES_PASSWORD}@db:5432/labeldesk
+      LD_SECRET: ${LD_SECRET}
+      LD_PUBLIC_URL: https://${LD_DOMAIN}
+      LD_CORS_ORIGINS: ${LD_CORS_ORIGINS:-https://${LD_DOMAIN}}
+      LD_WORKER_TOKEN: ${LD_WORKER_TOKEN}
+      LD_EMBEDDED_WORKER: "0"            # jobs run in the `worker` service so exports never slow requests
+      LD_TRAIN_WORKER: ${LD_TRAIN_WORKER:-}        # optional override; empty = follow the online workers
+      LD_SIGNUP_ENABLED: ${LD_SIGNUP_ENABLED:-1}
+      LD_SEED_DEMO: ${LD_SEED_DEMO:-0}
+      LD_SUPERADMINS: ${LD_SUPERADMINS:-}
+      LD_SAM_ENABLED: "0"
+      # Shipped surfaces are flag-gated; off unless a workspace enables them or this forces them on.
+      LD_FLAGS_ON: ${LD_FLAGS_ON:-}
+      # Stream egress allowlist for LAN cameras (comma-separated CIDRs). Empty = public sources only.
+      LD_STREAM_ALLOW_CIDR: ${LD_STREAM_ALLOW_CIDR:-}
+      # Production is the default posture. The dev mail inbox also requires LD_MAIL_DEV=1 and a
+      # localhost LD_PUBLIC_URL, so it stays closed here even if mail is misconfigured.
+      LD_ENV: ${LD_ENV:-production}
+      LD_MAIL_DEV: ${LD_MAIL_DEV:-}
+      LD_SMTP_HOST: ${LD_SMTP_HOST:-}
+      LD_SMTP_PORT: ${LD_SMTP_PORT:-587}
+      LD_SMTP_USER: ${LD_SMTP_USER:-}
+      LD_SMTP_PASSWORD: ${LD_SMTP_PASSWORD:-}
+      LD_SMTP_FROM: ${LD_SMTP_FROM:-}
+      LD_SMTP_TLS: ${LD_SMTP_TLS:-1}
+    volumes: [labeldesk_data:/data]
+    depends_on:
+      db: { condition: service_healthy }
+
+  worker:
+    build: ../apps/backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: postgresql://labeldesk:${POSTGRES_PASSWORD}@db:5432/labeldesk
+      LD_SECRET: ${LD_SECRET}
+      LD_LOCAL_JOBS: ${LD_LOCAL_JOBS:-version,export,export_engine,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,insights_images,insights_leakage,insights_embedding}
+      LD_SEED_DEMO: "0"
+      LD_SAM_ENABLED: "0"
+    volumes: [labeldesk_data:/data]
+    depends_on:
+      db: { condition: service_healthy }
+
+  # Self-hosted inference (optional, single tenant). No API keys or workspace settings are passed:
+  # mount exported weights read-only and call http://<host>:${LD_INFERENCE_PORT}/predict.
+  #   docker compose --profile inference up -d --build
+  inference:
+    profiles: ["inference"]
+    build: ../apps/inference
+    restart: unless-stopped
+    ports: ["${LD_INFERENCE_PORT:-8010}:8010"]
+    environment:
+      LD_INFERENCE_MODELS: /models
+    volumes:
+      - ${LD_INFERENCE_MODELS_DIR:-./models}:/models:ro
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: labeldesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: labeldesk
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labeldesk"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  caddy_data:
+  labeldesk_data:
+  pgdata:

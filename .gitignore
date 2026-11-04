@@ -63,3 +63,38 @@ Thumbs.db
 
 # testfile
 .tests/
+
+# Python caches
+.mypy_cache/
+.ruff_cache/
+
+# LabelDesk app
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/tsconfig.tsbuildinfo
+apps/backend/data/
+apps/backend/.pytest_cache/
+apps/worker/*.egg-info/
+deploy/.env
+deploy/models/
+apps/worker/*.pt
+apps/backend/*.pt
+apps/inference/models/
+
+# Old LabelDesk prototype (superseded by apps/)
+web/node_modules/
+api/*.db
+api/uploads/
+
+# DINOv3 is a separate git clone, keep local
+sam3_auto_label/dinov3/
+
+# Design capture reference (large, dev-only)
+design-ref/
+
+# Agent worktrees and SDD scratch
+.claude/worktrees/
+.claude/settings.local.json
+
+# Per-task environment written by tools/ld-task
+.env.task

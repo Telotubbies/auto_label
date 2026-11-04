@@ -1,0 +1,31 @@
+# CODEOWNERS
+#
+# Replace @OWNER-PLACEHOLDER with a GitHub user or team that has write access.
+# The placeholder is not a real owner and will not satisfy a review request.
+# CODEOWNERS only takes effect on the default branch.
+#
+# App folders are apps/frontend and apps/backend; earlier documents may still
+# use the previous names.
+
+*                               @OWNER-PLACEHOLDER
+
+/apps/frontend/                 @OWNER-PLACEHOLDER
+/apps/backend/                  @OWNER-PLACEHOLDER
+/apps/worker/                   @OWNER-PLACEHOLDER
+/apps/inference/                @OWNER-PLACEHOLDER
+/apps/sdk/                      @OWNER-PLACEHOLDER
+
+/deploy/                        @OWNER-PLACEHOLDER
+/.github/                       @OWNER-PLACEHOLDER
+/SECURITY.md                    @OWNER-PLACEHOLDER
+/CODEOWNERS                     @OWNER-PLACEHOLDER
+
+/docs/architecture/             @OWNER-PLACEHOLDER
+/docs/adr/                      @OWNER-PLACEHOLDER
+/docs/runbooks/                 @OWNER-PLACEHOLDER
+/docs/GIT_WORKFLOW.md           @OWNER-PLACEHOLDER
+/docs/STANDARDS.md              @OWNER-PLACEHOLDER
+
+/ml/                            @OWNER-PLACEHOLDER
+/sam3_auto_label/               @OWNER-PLACEHOLDER
+/yolo26_ppe/                    @OWNER-PLACEHOLDER
