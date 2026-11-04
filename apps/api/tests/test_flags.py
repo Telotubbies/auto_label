@@ -237,6 +237,9 @@ class _FakeWorker:
     def join(self, budget: float = 0.0) -> bool:
         return True
 
+    def wait_for_writes(self) -> None:
+        return None
+
     def stop(self, budget: float = 0.0) -> bool:
         self.signal_stop()
         return self.join(budget)

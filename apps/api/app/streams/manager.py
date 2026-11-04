@@ -249,6 +249,10 @@ class _Worker:
         self.fatal = False
         self._state_lock = threading.Lock()
         self._lock = threading.Lock()
+        # Serialises the final deleted_at check, the snapshot write and the event insert against
+        # stop(): after stop() has taken this lock no write can be in flight or start (C2, I-4).
+        self._write_lock = threading.Lock()
+        self._meter_lock = threading.Lock()
         self._stop = threading.Event()
         self._paused = threading.Event()
         self._reopen = threading.Event()        # processor asks the grabber to reopen; it owns the capture
@@ -273,18 +277,25 @@ class _Worker:
             return
         self._set("connecting")
         for target, name in ((self._grab, "grabber"), (self._process, "processor")):
-            t = threading.Thread(target=self._guard, args=(target,),
+            t = threading.Thread(target=self._guard, args=(target, name == "processor"),
                                  name=f"stream-{self.id}-{name}", daemon=True)
             self._threads.append(t)
             t.start()
 
-    def _guard(self, fn) -> None:
-        """An unexpected worker exception must surface as `error`, never as a silently dead thread."""
+    def _guard(self, fn, meter: bool = False) -> None:
+        """An unexpected worker exception must surface as `error`, never as a silently dead thread.
+
+        The processor also bills its last interval here, on the thread that ran it: a stop that
+        times out still records stream_hours instead of losing the whole session (I-1).
+        """
         try:
             fn()
         except Exception:
             log.exception("stream %s: worker crashed", self.id)
             self._fail("stream worker failed")
+        finally:
+            if meter:
+                self._meter()
 
     def _fail(self, message: str) -> None:
         """Fatal exit. `fatal` is flipped under the state lock: a concurrent grabber `live` write loses."""
@@ -300,40 +311,54 @@ class _Worker:
     def join(self, budget: float) -> bool:
         """Wait at most ``budget`` in total for both threads; returns True once they have exited.
 
-        The grabber releases its own VideoCapture in its finally clause, so a worker that is still
-        draining keeps its threads and proxy; it exits on its own stop event.
+        The budget is split half per thread (the old 2 s + 2 s for a 4 s budget). The grabber
+        releases its own VideoCapture in its finally clause, so a worker that is still draining
+        keeps its threads and proxy; it exits on its own stop event.
         """
         threads = list(self._threads)
+        half = max(0.0, budget) / 2.0
         deadline = time.monotonic() + max(0.0, budget)
         for t in reversed(threads):          # processor leaves first, the grabber may be in a read timeout
-            t.join(max(0.0, deadline - time.monotonic()))
+            t.join(min(half, max(0.0, deadline - time.monotonic())))
         if any(t.is_alive() for t in threads):
             return False
         self._threads.clear()
         self._close_proxy()
-        self._meter()
         return True
 
-    def stop(self, budget: float = 4.0) -> bool:
-        """Signal and join within ``budget`` (the old 2.0 s per thread); repeat calls are no-ops.
+    def wait_for_writes(self) -> None:
+        """Block until no ``_record`` is in flight; after this no new one can write (stop is set)."""
+        with self._write_lock:
+            pass
 
-        VideoCapture is not thread-safe: releasing it here while the grabber sits in read() races
-        the decoder and can crash the process. A blocking read returns through its 3 s timeout, and
-        the grabber's finally clause then releases the handle on the thread that opened it.
+    def stop(self, budget: float = 4.0) -> bool:
+        """Signal, join within ``budget``, then wait out an in-flight snapshot write (C2).
+
+        The wait is the one ``_record`` that was already writing, not a blind join of a blocked
+        reader. VideoCapture is not thread-safe: releasing it here while the grabber sits in read()
+        races the decoder, so the grabber's finally clause releases the handle on its own thread.
+        A repeat call after a successful join is a no-op; after a timed-out join it retries.
         """
         self.signal_stop()
         if not self._threads:                # a repeat stop must not meter (or join) twice
             return True
-        return self.join(budget)
+        joined = self.join(budget)
+        self.wait_for_writes()
+        return joined
 
     # ---- metering ----------------------------------------------------------
     def _meter(self, now: float | None = None) -> None:
-        """Record the wall-clock time since the last sample as stream_hours (crash-safe granularity)."""
+        """Record the wall-clock time since the last sample as stream_hours (crash-safe granularity).
+
+        Only the processor thread meters (its loop and its exit path), under a lock so a late call
+        cannot bill the same window twice.
+        """
         now = time.time() if now is None else now
-        hours = (now - self._metered_until) / 3600.0
-        if hours <= 0:
-            return
-        self._metered_until = now
+        with self._meter_lock:
+            hours = (now - self._metered_until) / 3600.0
+            if hours <= 0:
+                return
+            self._metered_until = now
         try:
             with session_scope() as db:
                 metering.record(db, self.workspace_id, "stream_hours", hours,
@@ -728,7 +753,7 @@ class _Worker:
 
     # ---- events ------------------------------------------------------------
     def _record(self, ev: dict, ts: float, preds: list[dict], frame) -> None:
-        if self._project_gone():
+        if self._stopped or self._project_gone():
             # C2: a purge can race a rule firing. Stop the threads here instead of recreating
             # identifiable footage under a project the operator already deleted.
             self._stop.set()
@@ -750,32 +775,60 @@ class _Worker:
             except Exception:
                 log.exception("stream %s: could not draw event snapshot", self.id)
         size = float(len(snapshot_jpeg) + len(clean_jpeg))
-        with session_scope() as db:
-            # I8-R: event JPEGs are project storage. Check the same meter as uploads before writing,
-            # and bill the exact bytes with the event row so retention/purge can refund them.
-            project = db.get(Project, self.project_id)
-            if project is None or project.deleted_at is not None:
+        # One critical section for the final deleted_at check, the JPEG write and the event insert.
+        # stop() takes this same lock before returning, so no write is in flight after a trash/purge.
+        with self._write_lock:
+            if self._stopped or self._project_gone():
                 self._stop.set()
                 return
-            ws = db.get(Workspace, self.workspace_id)
-            room = metering.remaining(db, ws, "storage_bytes") if ws is not None else 0.0
-            if size and ws is not None and size <= room:
-                try:
-                    snapshot, clean = self._save_frames(snapshot_jpeg, clean_jpeg, eid)
-                except Exception:
-                    log.exception("stream %s: could not save event snapshot", self.id)
-            if snapshot and ws is not None:
-                metering.record(db, ws.id, "storage_bytes", size, project_id=self.project_id,
-                                stream_event=eid)
-                with self._state_lock:
-                    self._quota_error = ""
-            elif size:
-                with self._state_lock:
-                    self._quota_error = "storage quota reached: event snapshots are not being saved"
-            db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
-                               summary=ev.get("summary", ""), snapshot_path=snapshot,
-                               clean_path=clean, predictions=payload,
-                               **filter_fields(rule_json, payload)))
+            with session_scope() as db:
+                # I8-R: event JPEGs are project storage. Check the same meter as uploads before writing,
+                # and bill the exact bytes with the event row so retention/purge can refund them.
+                project = db.get(Project, self.project_id)
+                if project is None or project.deleted_at is not None:
+                    self._stop.set()
+                    return
+                ws = db.get(Workspace, self.workspace_id)
+                room = metering.remaining(db, ws, "storage_bytes") if ws is not None else 0.0
+                if size and ws is not None and size <= room:
+                    try:
+                        snapshot, clean = self._save_frames(snapshot_jpeg, clean_jpeg, eid)
+                    except Exception:
+                        log.exception("stream %s: could not save event snapshot", self.id)
+                if snapshot:
+                    # The trash commits deleted_at without this lock; re-read once the bytes are on
+                    # disk and erase them instead of leaving footage under a deleted project.
+                    try:
+                        db.refresh(project)
+                        gone = project.deleted_at is not None
+                    except Exception:            # the row itself was purged under us
+                        gone = True
+                    if gone:
+                        self._unlink_frames(snapshot, clean)
+                        self._stop.set()
+                        return
+                if snapshot and ws is not None:
+                    metering.record(db, ws.id, "storage_bytes", size, project_id=self.project_id,
+                                    stream_event=eid)
+                    with self._state_lock:
+                        self._quota_error = ""
+                elif size:
+                    with self._state_lock:
+                        self._quota_error = "storage quota reached: event snapshots are not being saved"
+                db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
+                                   summary=ev.get("summary", ""), snapshot_path=snapshot,
+                                   clean_path=clean, predictions=payload,
+                                   **filter_fields(rule_json, payload)))
+
+    def _unlink_frames(self, *rels: str) -> None:
+        """Remove snapshot bytes written by a ``_record`` that lost the race with a trash."""
+        for rel in rels:
+            if not rel:
+                continue
+            try:
+                (DATA_DIR / rel).unlink(missing_ok=True)
+            except OSError:
+                log.warning("stream %s: could not remove a post-trash snapshot %s", self.id, rel)
 
     def _render_frames(self, frame, preds: list[dict], ev: dict) -> tuple[bytes, bytes]:
         """Draw the annotated review frame and encode it plus the untouched dataset frame."""
@@ -869,8 +922,11 @@ class StreamManager:
         for _, w in workers:                 # signal first: no worker keeps capturing while we join
             w.signal_stop()
         deadline = time.monotonic() + max(0.0, budget)
-        return [sid for sid, w in workers
-                if not w.join(max(0.0, deadline - time.monotonic()))]
+        draining = [sid for sid, w in workers
+                    if not w.join(max(0.0, deadline - time.monotonic()))]
+        for _, w in workers:                 # no snapshot write may outlive the request (C2)
+            w.wait_for_writes()
+        return draining
 
     def _persist_stopped(self, stream_ids: list[str]) -> None:
         try:

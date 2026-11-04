@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..deps import Ctx, audit, ws_ctx
 from ..models import Stream
@@ -10,7 +11,7 @@ from ..services import flags as flag_service
 router = APIRouter(prefix="/api/ws/{ws}", tags=["flags"])
 
 
-def _stop_workspace_streams(db, workspace_id: str, user_id: str | None) -> list[str]:
+def _stop_workspace_streams(db: Session, workspace_id: str, user_id: str | None) -> list[str]:
     """The streams kill switch must stop capture before it hides the API (I-2), within a budget (I-4)."""
     from ..services.stream_stop import stop_streams
 
@@ -41,8 +42,8 @@ def put_flag(key: str, body: FlagIn, c: Ctx = Depends(ws_ctx)):
         raise HTTPException(404, "unknown feature flag") from None
     audit(c.db, c.ws.id, c.user.id, "flag.update", key, enabled=body.enabled)
     enabled = flag_service.is_enabled(key, c.db, c.ws.id)     # the uncommitted row is visible here
-    # I-4: signal capture *before* the flag commits, so the API never 404s while cameras still run.
-    # A forced-on env flag wins, so no stream is stopped in that case.
+    # I-4: signal capture *before* the flag commits, so the 404 window is bounded by one drain
+    # (one read timeout / one predict), not by N × 4 s of inline joins. A forced-on env flag wins.
     if key == "task_10b" and not enabled:
         _stop_workspace_streams(c.db, c.ws.id, c.user.id)
     c.db.commit()

@@ -1316,6 +1316,128 @@ def test_worker_stop_joins_its_threads_and_a_second_stop_is_a_noop(c, monkeypatc
     assert c.delete(f"{BASE}/{sid}").status_code == 200
 
 
+def test_trash_waits_for_an_in_flight_snapshot_and_leaves_no_files(c, monkeypatch, video):
+    """C-1: the deleted_at check, the JPEG write and the event insert are one critical section."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import StreamEvent
+    from app.streams import manager as manager_module
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    ws, slug, pid = _fresh_project(c, "Inflight write")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sid = c.post(f"{base}/streams", json={"name": "cam", "source": video,
+                                          "model_ref": "ultralytics:yolo11n",
+                                          "sample_fps": 5, "rules": [rule]}).json()["id"]
+    in_write = threading.Event()
+    release = threading.Event()
+    real_remaining = manager_module.metering.remaining
+
+    def gated_remaining(*args, **kwargs):
+        in_write.set()                           # past the deleted_at check, before the JPEG write
+        release.wait(15)
+        return real_remaining(*args, **kwargs)
+
+    monkeypatch.setattr(manager_module.metering, "remaining", gated_remaining)
+    result: dict[str, int] = {}
+    try:
+        assert c.post(f"{base}/streams/{sid}/start").status_code == 200
+        assert in_write.wait(20), "the worker never reached the snapshot write"
+
+        def trash():
+            with TestClient(app, client=("inflight-trash", 50100)) as tc:
+                tok = tc.post("/api/auth/login", json={"email": "demo@labeldesk.dev",
+                                                       "password": "demo1234"}).json()["token"]
+                tc.headers["Authorization"] = f"Bearer {tok}"
+                result["status"] = tc.delete(base).status_code
+
+        t = threading.Thread(target=trash, daemon=True)
+        t.start()
+        time.sleep(0.6)                          # the trash must be blocked on the worker's write lock
+        blocked = t.is_alive()
+        release.set()
+        t.join(20)
+        assert not t.is_alive()
+        _wait_threads_gone([sid])                # let the in-flight write attempt finish
+        assert result.get("status") == 200
+        folder = DATA_DIR / "snapshots" / pid
+        assert not (folder.exists() and list(folder.glob("*"))), "a snapshot landed after the trash"
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count(StreamEvent.id))
+                             .where(StreamEvent.stream_id == sid)) == 0
+        assert blocked, "the trash returned while a snapshot write was still in flight"
+    finally:
+        release.set()
+        manager.stop(sid)
+
+
+def test_a_drained_stop_still_records_stream_hours(c, monkeypatch, video):
+    """I-1: a worker that exits after the stop budget must still bill its run, exactly once."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    ws, slug, pid = _fresh_project(c, "Drained meter")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    sid = _start_blocked_streams(c, base, video, 1, [])[0]
+    try:
+        time.sleep(1.0)                          # a real interval to bill
+        before = _meter_used("stream_hours", ws)
+        assert manager.stop_many([sid], budget=0.0) == [sid]
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+        after = _meter_used("stream_hours", ws)
+        assert after - before > 0, "a drained worker exited without recording stream_hours"
+    finally:
+        _BlockingModel.release.set()
+
+
+def test_update_refuses_to_restart_a_stream_that_is_still_stopping(c, monkeypatch, video):
+    """I-2: a draining worker must not be duplicated by an immediate restart."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 0.05, raising=False)
+    sid = create_stream(c, source=video, sample_fps=5, name="Draining edit")
+    _BlockingModel.reset(1)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    assert _BlockingModel.entered.wait(20)
+    try:
+        r = c.patch(f"{BASE}/{sid}", json={"name": "Renamed while draining"})
+        assert r.status_code == 409, r.text
+        assert [w.id for w in manager._workers.values()].count(sid) == 0, "a duplicate worker started"
+    finally:
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+    r = c.patch(f"{BASE}/{sid}", json={"name": "Renamed after drain"})
+    assert r.status_code == 200, r.text
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
+def test_delete_refuses_to_erase_a_stream_that_is_still_stopping(c, monkeypatch, video):
+    """I-2: erasing rows and bytes under a draining worker must be a conflict, not a silent race."""
+    from app.db import SessionLocal
+    from app.models import Stream
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 0.05, raising=False)
+    sid = create_stream(c, source=video, sample_fps=5, name="Draining delete")
+    _BlockingModel.reset(1)
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    assert _BlockingModel.entered.wait(20)
+    try:
+        r = c.delete(f"{BASE}/{sid}")
+        assert r.status_code == 409, r.text
+        with SessionLocal() as db:
+            assert db.get(Stream, sid) is not None, "the row was erased under a live worker"
+    finally:
+        _BlockingModel.release.set()
+        _wait_threads_gone([sid])
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
 @pytest.mark.parametrize("source", [
     "rtsp://10.0.0.5/live",
     "rtsp://192.168.1.20:554/stream1",

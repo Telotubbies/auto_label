@@ -30,6 +30,9 @@ _GATE = [Depends(require_workspace_flag("task_10b"))]
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 TOKEN_TTL = 12 * 3600
+# A single-stream stop may wait this long for both threads; trash/purge use the manager's shared
+# 0.25 s budget instead. Tests lower this to force the draining path without a 4 s wait.
+STOP_BUDGET_S = 4.0
 _MODEL_MSG = "stream model must be ultralytics:*, trained:* or tensorrt:*"
 _RULE_KINDS = {"count", "zone", "line", "dwell", "vlm"}
 _OPS = {">=", ">", "<=", "<", "=="}
@@ -286,7 +289,9 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
     if rules is not None:
         s.rules = rules
     if live:
-        manager.stop(sid)
+        if not manager.stop(sid, budget=STOP_BUDGET_S):
+            # I-2: restarting now would duplicate capture under the same stream id.
+            raise HTTPException(409, "stream is still stopping; retry")
     audit(c.db, c.ws.id, c.user.id, "stream.update", s.name, source=creds.mask_source(s.source), model=s.model_ref)
     c.db.commit()
     if live:
@@ -303,7 +308,9 @@ def delete_stream(sid: str, c: Ctx = Depends(project_ctx)):
         source = creds.open_source(s.source)
     except ValueError:
         source = ""
-    manager.stop(sid)
+    if not manager.stop(sid, budget=STOP_BUDGET_S):
+        # I-2: the worker may still be draining; erasing its rows/bytes now would race its write.
+        raise HTTPException(409, "stream is still stopping; retry")
     event_ids = set(c.db.scalars(select(StreamEvent.id)
                                  .where(StreamEvent.stream_id == sid)).all())
     stored = [p for row in c.db.execute(select(StreamEvent.snapshot_path, StreamEvent.clean_path)
@@ -360,7 +367,7 @@ def start_stream(sid: str, c: Ctx = Depends(project_ctx)):
 def stop_stream(sid: str, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     s = _get(c, sid)
-    manager.stop(s.id)
+    manager.stop(s.id, budget=STOP_BUDGET_S)
     c.db.refresh(s)
     audit(c.db, c.ws.id, c.user.id, "stream.stop", s.name)
     c.db.commit()

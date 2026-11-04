@@ -31,8 +31,9 @@ def stop_streams(
 ) -> list[str]:
     """Signal every worker, wait at most ``budget``, audit the ones still draining.
 
-    Status writes and the audit row use the caller's session, so they commit atomically with the
-    trash/purge/flag write that triggered the stop.
+    Status writes and the audit row use the caller's session, so they commit atomically with each
+    other and with the flag write; the trash commits ``deleted_at`` earlier, before the signal, so
+    the worker guard sees it.
     """
     ids = [sid for sid in dict.fromkeys(stream_ids) if sid]
     if not ids:
