@@ -14,7 +14,9 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Audit, Image, Job, LabelClass, Project, TrainedModel, User, Version, Workspace
+from app.models import (
+    Audit, Image, Job, LabelClass, Project, SuspectFeedback, TrainedModel, User, Version, Workspace,
+)
 from app.security import issue_access
 from app.services import flags, health, health_scan, suspect_queue, suspects
 
@@ -98,6 +100,23 @@ def c():
         yield client
 
 
+CREATED: list[str] = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_projects():
+    """Free-plan project quota is shared by every module: hand the fixture projects back."""
+    yield
+    with SessionLocal() as db:
+        for pid in CREATED:
+            db.query(SuspectFeedback).filter_by(project_id=pid).delete()
+            db.query(Job).filter_by(project_id=pid).delete()
+            db.query(Image).filter_by(project_id=pid).delete()
+            db.query(LabelClass).filter_by(project_id=pid).delete()
+            db.query(Project).filter_by(id=pid).delete()
+        db.commit()
+
+
 def make_project(name: str) -> str:
     with SessionLocal() as db:
         ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
@@ -106,6 +125,7 @@ def make_project(name: str) -> str:
         db.flush()
         db.add_all([LabelClass(project_id=p.id, name="person"), LabelClass(project_id=p.id, name="dog")])
         db.commit()
+        CREATED.append(p.id)
         return p.id
 
 

@@ -1,5 +1,6 @@
 import type {
-  Annotation, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, Job, LabelClass, Version,
+  Annotation, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, Job, LabelClass, SuspectQueue,
+  SuspectStats, SuspectVerdict, Version,
 } from '../types'
 import { get, P, post } from './client'
 
@@ -16,6 +17,9 @@ export const datasetApi = {
   versions: (ws: string, p: string) => get<Version[]>(`${P(ws, p)}/versions`),
   formats: (ws: string, p: string) => get<{ id: string; label: string }[]>(`${P(ws, p)}/versions/formats`),
   healthCheck: (ws: string, p: string, imgsz?: number) => post<Job>(`${P(ws, p)}/health`, imgsz ? { imgsz } : {}),
+  suspects: (ws: string, p: string, limit = 50) => get<SuspectQueue>(`${P(ws, p)}/suspect-labels?limit=${limit}`),
+  suspectFeedback: (ws: string, p: string, annotationId: string, verdict: SuspectVerdict) =>
+    post<{ stats: SuspectStats }>(`${P(ws, p)}/suspect-labels/${encodeURIComponent(annotationId)}/feedback`, { verdict }),
   autolabelPreview: (ws: string, p: string, body: AutoLabelInput & { sample?: number }) =>
     post<AutoLabelPreview>(`${P(ws, p)}/autolabel/preview`, body),
 }

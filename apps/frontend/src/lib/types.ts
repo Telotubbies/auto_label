@@ -203,6 +203,43 @@ export interface HealthChecks {
 
 export interface HealthRecommendation { key: string; message: string; suggest: Record<string, unknown> }
 
+export type SuspectKind = 'wrong_class' | 'shifted_box' | 'extra_box'
+export type SuspectVerdict = 'confirmed' | 'dismissed'
+
+/** One model-vs-label disagreement from the cached health scan, ranked by `score` (0..1). */
+export interface SuspectItem {
+  annotation_id: string
+  image_id: string
+  kind: SuspectKind
+  score: number
+  class_id?: string
+  class: string
+  predicted_class: string | null
+  iou: number
+  /** Reviewer verdict already saved for this annotation, if any. */
+  feedback: SuspectVerdict | null
+}
+
+/** Counts of reviewer verdicts; `precision` is the share of reviewed items that were real mistakes. */
+export interface SuspectStats {
+  reviewed: number
+  confirmed: number
+  dismissed: number
+  precision: number | null
+  by_kind: Partial<Record<SuspectKind, { confirmed: number; dismissed: number }>>
+}
+
+export interface SuspectQueue {
+  items: SuspectItem[]
+  /** Scan totals; `items` may be a page of them. */
+  total: number
+  open: number
+  stats: SuspectStats
+  job_id: string | null
+  stale: boolean
+  model: { id: string; name: string } | null
+}
+
 export interface Analytics {
   images: number; annotations: number; null_images: number; avg_annotations: number; avg_width: number; avg_height: number
   median_size: string; classes: LabelClass[]; imbalance_ratio: number
