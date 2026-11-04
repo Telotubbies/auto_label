@@ -20,7 +20,7 @@ from app.services import flags
 
 WS = "labeldesk-demo"
 FLAG = "task_10b"
-SURFACES = {"task_10b", "task_20c", "task_22", "task_23"}
+SURFACES = {"task_10b", "task_20c", "task_22", "task_23", "task_28"}
 
 
 def login(email: str = "demo@labeldesk.dev", pw: str = "demo1234") -> TestClient:
