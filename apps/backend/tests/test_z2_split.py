@@ -27,6 +27,28 @@ def test_every_upgraded_table_exists_in_the_schema():
 
 def test_bootstrap_still_exposes_ensure_columns():
     """The column helper moved to app.schema; app.bootstrap must keep re-exporting it."""
-    from app import bootstrap
-    from app import schema
+    from app import bootstrap, schema
     assert bootstrap.ensure_columns is schema.ensure_columns
+
+
+def test_worker_registry_is_the_union_of_the_feature_modules():
+    """``worker.HANDLERS`` must be composed from app.handlers, not maintained beside it."""
+    from app import worker
+    from app.handlers import MODULES
+
+    expected = {}
+    for module in MODULES:
+        expected.update(module.HANDLERS)
+    assert worker.HANDLERS == expected
+
+
+def test_handlers_are_defined_in_their_feature_module():
+    """The runner keeps the queue and the watchdogs; the job bodies live in app.handlers.*."""
+    from app import worker
+
+    assert worker.run_version.__module__ == "app.handlers.versioning"
+    assert worker.run_export_engine.__module__ == "app.handlers.versioning"
+    assert worker.run_train.__module__ == "app.handlers.training"
+    assert worker.run_extract_frames.__module__ == "app.handlers.streams"
+    assert worker.run_insights_images.__module__ == "app.handlers.insights"
+    assert worker.run_retention.__module__ == "app.handlers.ops"
