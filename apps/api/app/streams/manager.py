@@ -292,20 +292,39 @@ class _Worker:
             self.fatal = True
         self._set("error", message)
 
-    def stop(self) -> None:
-        """Signal both threads and wait; the grabber releases its own VideoCapture when it exits.
+    def signal_stop(self) -> None:
+        """Flag both loops to exit without waiting; safe to call from any thread and repeat."""
+        self._stopped = True
+        self._stop.set()
+
+    def join(self, budget: float) -> bool:
+        """Wait at most ``budget`` in total for both threads; returns True once they have exited.
+
+        The grabber releases its own VideoCapture in its finally clause, so a worker that is still
+        draining keeps its threads and proxy; it exits on its own stop event.
+        """
+        threads = list(self._threads)
+        deadline = time.monotonic() + max(0.0, budget)
+        for t in reversed(threads):          # processor leaves first, the grabber may be in a read timeout
+            t.join(max(0.0, deadline - time.monotonic()))
+        if any(t.is_alive() for t in threads):
+            return False
+        self._threads.clear()
+        self._close_proxy()
+        self._meter()
+        return True
+
+    def stop(self, budget: float = 4.0) -> bool:
+        """Signal and join within ``budget`` (the old 2.0 s per thread); repeat calls are no-ops.
 
         VideoCapture is not thread-safe: releasing it here while the grabber sits in read() races
         the decoder and can crash the process. A blocking read returns through its 3 s timeout, and
         the grabber's finally clause then releases the handle on the thread that opened it.
         """
-        self._stopped = True
-        self._stop.set()
-        for t in reversed(self._threads):      # processor leaves first, the grabber may be in a read timeout
-            t.join(2.0)
-        self._threads.clear()
-        self._close_proxy()
-        self._meter()
+        self.signal_stop()
+        if not self._threads:                # a repeat stop must not meter (or join) twice
+            return True
+        return self.join(budget)
 
     # ---- metering ----------------------------------------------------------
     def _meter(self, now: float | None = None) -> None:
@@ -824,19 +843,44 @@ class StreamManager:
             worker.start()
         return worker.status_out()
 
-    def stop(self, stream_id: str) -> None:
-        """Stop within ~5 s: join both threads (2 s each) and persist ``stopped``; idempotent."""
+    def stop(self, stream_id: str, budget: float = 4.0) -> bool:
+        """Stop one stream, waiting at most ``budget``; returns False when its threads still drain.
+
+        The row is marked ``stopped`` either way: the operator asked for it and the worker loops
+        exit on their own stop event. ``stop_many`` is the bounded path for trash/purge.
+        """
         with self._lock:
             worker = self._workers.pop(stream_id, None)
-        if worker is not None:
-            worker.stop()
+        stopped = True if worker is None else worker.stop(budget)
+        self._persist_stopped([stream_id])
+        return stopped
+
+    def stop_many(self, stream_ids: list[str], budget: float = 0.25) -> list[str]:
+        """Signal every stream, then wait at most ``budget`` in total for all of them (I-4).
+
+        Returns the ids whose threads were still draining. No DB write happens here: the caller
+        persists ``stopped`` and audits the draining set in its own transaction, so a request that
+        already holds a SQLite write lock cannot deadlock against this manager.
+        """
+        ids = list(dict.fromkeys(stream_ids))
+        with self._lock:
+            workers = [(sid, self._workers.pop(sid, None)) for sid in ids]
+        workers = [(sid, w) for sid, w in workers if w is not None]
+        for _, w in workers:                 # signal first: no worker keeps capturing while we join
+            w.signal_stop()
+        deadline = time.monotonic() + max(0.0, budget)
+        return [sid for sid, w in workers
+                if not w.join(max(0.0, deadline - time.monotonic()))]
+
+    def _persist_stopped(self, stream_ids: list[str]) -> None:
         try:
             with session_scope() as db:
-                row = db.get(Stream, stream_id)
-                if row is not None:
-                    row.status, row.last_error = "stopped", ""
+                for sid in stream_ids:
+                    row = db.get(Stream, sid)
+                    if row is not None:
+                        row.status, row.last_error = "stopped", ""
         except Exception:
-            log.exception("stream %s: could not persist stop", stream_id)
+            log.exception("streams %s: could not persist stop", stream_ids)
 
     def stop_all(self) -> None:
         with self._lock:

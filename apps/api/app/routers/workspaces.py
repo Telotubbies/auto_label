@@ -422,9 +422,10 @@ def purge(pid: str, c: Ctx = Depends(ws_ctx)):
     if not p or p.workspace_id != c.ws.id or not p.deleted_at:
         raise HTTPException(404, "project not in trash")
     from ..models import Stream
-    from ..streams.manager import manager
-    for sid in c.db.scalars(select(Stream.id).where(Stream.project_id == p.id)).all():
-        manager.stop(sid)                       # C2: no thread may outlive its project row
+    from ..services.stream_stop import stop_streams
+    stop_streams(c.db, c.db.scalars(select(Stream.id).where(Stream.project_id == p.id)).all(),
+                 workspace_id=c.ws.id, user_id=c.user.id, reason="project.purge")   # C2, bounded (I-4)
+    c.db.commit()                              # keep the stop status/audit if the erase below 409s
     from ..services import metering
     from ..services.erasure import delete_project_data
     metered = metering.project_used(c.db, p.id)  # what this project was actually charged

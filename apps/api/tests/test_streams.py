@@ -1164,6 +1164,158 @@ def test_worker_refuses_to_record_into_a_trashed_project(c):
         c.delete(f"{BASE}/{sid}")
 
 
+class _BlockingModel:
+    """A predict that blocks until the test releases it, so a request races a draining worker."""
+
+    variant = "yolo11n"
+    entered = threading.Event()
+    release = threading.Event()
+    expect = 1
+    _calls = 0
+    _lock = threading.Lock()
+
+    @classmethod
+    def reset(cls, expect: int) -> None:
+        cls.entered.clear()
+        cls.release.clear()
+        cls.expect = expect
+        cls._calls = 0
+
+    def predict(self, im, **kw):
+        cls = type(self)
+        with cls._lock:
+            cls._calls += 1
+            if cls._calls >= cls.expect:
+                cls.entered.set()
+        cls.release.wait(15)                     # a bug here must not hang the suite forever
+        return {"predictions": [{"class": "person", "confidence": .9, "x": im.width * .5,
+                                 "y": im.height * .5, "width": im.width * .2, "height": im.height * .2}],
+                "image": {"width": im.width, "height": im.height}, "time": 0.0}
+
+
+def _blocking_resolve(ref, db=None, workspace_id=None):
+    return _BlockingModel()
+
+
+def _start_blocked_streams(c, base: str, source: str, count: int, rules: list[dict]) -> list[str]:
+    """Start `count` cameras and wait until every processor is inside predict (i.e. slow to stop)."""
+    from app.streams.manager import manager
+
+    _BlockingModel.reset(count)
+    sids = [c.post(f"{base}/streams", json={"name": f"cam{i}", "source": source,
+                                            "model_ref": "ultralytics:yolo11n",
+                                            "sample_fps": 5, "rules": rules}).json()["id"]
+            for i in range(count)]
+    for sid in sids:
+        r = c.post(f"{base}/streams/{sid}/start")
+        assert r.status_code == 200, r.text
+    assert _BlockingModel.entered.wait(20), "the processors never reached predict"
+    assert all(manager.status(sid) is not None for sid in sids)
+    return sids
+
+
+def _wait_threads_gone(sids: list[str]) -> None:
+    prefixes = tuple(f"stream-{sid}-" for sid in sids)
+    _poll(lambda: not any(t.name.startswith(prefixes) for t in threading.enumerate()), timeout=15)
+
+
+def test_trashing_a_project_with_many_streams_returns_before_workers_finish(c, monkeypatch, video):
+    """I-4: trash must not join every worker inline; a draining stream is audited, never silent."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Audit, StreamEvent, Workspace
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    ws, slug, pid = _fresh_project(c, "Slow trash")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    with SessionLocal() as db:                       # three cameras exceed the Free stream cap
+        db.scalar(select(Workspace).where(Workspace.slug == ws)).plan = "pro"
+        db.commit()
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sids = _start_blocked_streams(c, base, video, 3, [rule])
+    folder = DATA_DIR / "snapshots" / pid
+    try:
+        started = time.time()
+        assert c.delete(base).status_code == 200
+        elapsed = time.time() - started
+        assert elapsed < 2.0, f"trash blocked {elapsed:.1f}s on three draining workers"
+        assert all(manager.status(sid) is None for sid in sids), "a trashed camera stayed registered"
+        with SessionLocal() as db:
+            ws_id = db.scalar(select(Workspace.id).where(Workspace.slug == ws))
+            row = db.scalar(select(Audit).where(Audit.workspace_id == ws_id,
+                                               Audit.action == "stream.stop_draining"))
+            assert row is not None, "a half-stopped set was returned without an audit row"
+            assert set(row.meta["streams"]) == set(sids), row.meta
+            before_events = db.scalar(select(func.count(StreamEvent.id))
+                                      .where(StreamEvent.stream_id.in_(sids)))
+        before_files = set(folder.glob("*")) if folder.exists() else set()
+        _BlockingModel.release.set()
+        _wait_threads_gone(sids)
+        after_files = set(folder.glob("*")) if folder.exists() else set()
+        with SessionLocal() as db:
+            after_events = db.scalar(select(func.count(StreamEvent.id))
+                                     .where(StreamEvent.stream_id.in_(sids)))
+        assert after_files == before_files, "a snapshot was written after the project was trashed"
+        assert after_events == before_events, "an event row was written after the project was trashed"
+    finally:
+        _BlockingModel.release.set()
+
+
+def test_purging_a_project_with_draining_streams_returns_before_workers_finish(c, monkeypatch, video):
+    """I-4: purge shares the bounded stop and must not let a drained worker recreate footage."""
+    from app.db import SessionLocal
+    from app.models import Project
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _blocking_resolve)
+    ws, slug, pid = _fresh_project(c, "Slow purge")
+    base = f"/api/ws/{ws}/projects/{slug}"
+    rule = {"kind": "count", "class": "person", "op": ">=", "k": 1, "for_s": 0}
+    sids = _start_blocked_streams(c, base, video, 2, [rule])
+    # An earlier trash already set deleted_at; purge only removes what trash marked.
+    with SessionLocal() as db:
+        db.get(Project, pid).deleted_at = time.time()
+        db.commit()
+    folder = DATA_DIR / "snapshots" / pid
+    try:
+        started = time.time()
+        assert c.delete(f"/api/ws/{ws}/trash/{pid}").status_code == 200
+        elapsed = time.time() - started
+        assert elapsed < 2.0, f"purge blocked {elapsed:.1f}s on two draining workers"
+        assert all(manager.status(sid) is None for sid in sids)
+        _BlockingModel.release.set()
+        _wait_threads_gone(sids)
+        assert not folder.exists(), "a drained worker recreated snapshots under a purged project"
+        with SessionLocal() as db:
+            assert db.get(Project, pid) is None
+    finally:
+        _BlockingModel.release.set()
+
+
+def test_worker_stop_joins_its_threads_and_a_second_stop_is_a_noop(c, monkeypatch, video):
+    """I-4: the single-stream stop still joins within the old timeout and is safe to repeat."""
+    from app.streams.manager import manager
+
+    monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
+    sid = create_stream(c, source=video, sample_fps=10, name="Double stop")
+    assert c.post(f"{BASE}/{sid}/start").status_code == 200
+    _poll(_status_is(c, sid, "live"), timeout=15)
+    worker = manager._workers[sid]
+    started = time.time()
+    assert worker.stop() is True
+    assert time.time() - started < 4.0, "stop did not join both threads within the existing timeout"
+    assert not any(t.is_alive() for t in worker._threads)
+
+    hours = _meter_used("stream_hours")
+    started = time.time()
+    assert worker.stop() is True
+    assert time.time() - started < 0.5, "a second stop blocked instead of being a no-op"
+    assert _meter_used("stream_hours") == hours, "a second stop metered the stream hours twice"
+    assert c.delete(f"{BASE}/{sid}").status_code == 200
+
+
 @pytest.mark.parametrize("source", [
     "rtsp://10.0.0.5/live",
     "rtsp://192.168.1.20:554/stream1",
