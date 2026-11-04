@@ -5,11 +5,11 @@ Handlers resolve their runner dependencies through ``app.worker`` (``w.scheduler
 that swaps one of them at runtime keeps working.
 """
 from ..db import SessionLocal
-from ..models import Project
+from ..models import Job, Project
 from ..services import health, insights_embedding, insights_jobs
 
 
-def run_health(job):
+def run_health(job: Job):
     """Leakage + missing-box scan (needs the model): cached on the job row for the analytics page."""
     from .. import jobs
     jobs.check(job)
@@ -18,7 +18,7 @@ def run_health(job):
         return health.scan_health(db, p, should_stop=lambda: jobs.is_cancelled(job.id))
 
 
-def run_insights_images(job):
+def run_insights_images(job: Job):
     from .. import jobs
     jobs.check(job)
     with SessionLocal() as db:
@@ -26,7 +26,7 @@ def run_insights_images(job):
                                          should_stop=lambda: jobs.is_cancelled(job.id))
 
 
-def run_insights_leakage(job):
+def run_insights_leakage(job: Job):
     from .. import jobs
     jobs.check(job)
     with SessionLocal() as db:
@@ -35,7 +35,7 @@ def run_insights_leakage(job):
                                           should_stop=lambda: jobs.is_cancelled(job.id))
 
 
-def run_insights_embedding(job):
+def run_insights_embedding(job: Job):
     from .. import jobs, worker as w
     jobs.check(job)
     with SessionLocal() as db:

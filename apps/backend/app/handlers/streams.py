@@ -16,14 +16,14 @@ from sqlalchemy import func, select
 from ..config import DATA_DIR
 from ..db import SessionLocal
 from ..errors import safe_error
-from ..models import Batch, Image, Project, Video, Workspace, new_id, set_annotations
+from ..models import Batch, Image, Job, Project, Video, Workspace, new_id, set_annotations
 from ..services import faceblur, imaging, metering, quality, track
 from ..services.video import DEFAULT_SCENE_THRESHOLD, is_scene_change, plan_frames
 
 log = logging.getLogger("labeldesk.worker")     # same logger the runner used before the split
 
 
-def run_extract_frames(job):
+def run_extract_frames(job: Job):
     """Sample a video into a batch of JPEG frames (fps / every N seconds / scene cuts)."""
     from .. import worker as w
     P = job.params
@@ -154,7 +154,7 @@ def run_extract_frames(job):
             cap.release()
 
 
-def run_track_forward(job):
+def run_track_forward(job: Job):
     """SAM box-prompt tracking: copy one annotation onto the next N frames of its video."""
     from .. import jobs, worker as w
     P = job.params

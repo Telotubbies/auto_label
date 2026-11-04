@@ -9,11 +9,11 @@ from pathlib import Path
 from ..adapters import Cancelled
 from ..config import DATA_DIR
 from ..db import SessionLocal
-from ..models import TrainedModel, Version
+from ..models import Job, TrainedModel, Version
 from ..services import exporters, versioning
 
 
-def run_version(job):
+def run_version(job: Job):
     from .. import jobs, worker as w
     jobs.check(job)
     with SessionLocal() as db:
@@ -31,7 +31,7 @@ def run_version(job):
         return {"version_id": v.id, **stats}
 
 
-def run_export(job):
+def run_export(job: Job):
     from .. import jobs, worker as w
     jobs.check(job)
     with SessionLocal() as db:
@@ -48,7 +48,7 @@ def run_export(job):
         return {"version_id": v.id, "format": fmt, "file": z.relative_to(DATA_DIR).as_posix(), "bytes": z.stat().st_size}
 
 
-def run_export_engine(job):
+def run_export_engine(job: Job):
     """Build a TensorRT engine for a ready model, cache it under engines/, and register the runtime."""
     from .. import jobs, worker as w
     jobs.check(job)

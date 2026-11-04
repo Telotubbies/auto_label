@@ -2,10 +2,11 @@
 
 Each body lives in the service that owns it; this module only names the kind the queue can claim.
 """
+from ..models import Job
 from ..services import active_learning, connectors, drift
 
 
-def run_retention(job):
+def run_retention(job: Job):
     """PDPA cleanup. Imported lazily so the worker starts even on a build without the privacy extra."""
     from ..services.retention import run_retention as cleanup
     return cleanup(job)
