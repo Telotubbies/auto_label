@@ -30,8 +30,8 @@ def _cascade():
         if classifier.empty():
             raise RuntimeError("cascade file could not be loaded")
         return classifier
-    except Exception:  # no cv2, no cv2.data, corrupt install — degrade, never raise
-        log.warning("face detection unavailable; callers that promise anonymisation must fail closed")
+    except Exception as exc:  # no cv2, no cv2.data, corrupt install — degrade, never raise
+        log.warning("face detection unavailable (%s); callers that promise anonymisation must fail closed", exc)
         return None
 
 

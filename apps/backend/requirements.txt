@@ -6,7 +6,11 @@ pyjwt>=2.8
 python-multipart>=0.0.9
 pillow>=10
 numpy>=1.26
-opencv-python-headless>=4.8
+# OpenCV 5 removed cv2.CascadeClassifier and the bundled Haar cascades, so face blur would fail
+# closed on every upload (503). ultralytics requires the GUI distribution; pin both to the same
+# 4.x line so pip cannot leave a mixed cv2 tree either.
+opencv-python-headless>=4.8,<5
+opencv-python>=4.8,<5
 # ultralytics pulls torch; the Dockerfile installs the CPU torch wheel first so it isn't the 2 GB CUDA build
 ultralytics>=8.3
 httpx>=0.27

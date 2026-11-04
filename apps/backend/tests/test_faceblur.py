@@ -114,6 +114,11 @@ def test_missing_cv2_never_raises(monkeypatch):
     assert n == 0 and out is im
 
 
+def test_installed_opencv_still_ships_the_haar_detector():
+    """requirements.txt pins OpenCV <5: v5 dropped cv2.CascadeClassifier and the cascade data."""
+    assert faceblur.available(), "opencv-python-headless must provide cv2.CascadeClassifier and its cascades"
+
+
 def test_ingest_blurs_every_source(client, demo_ctx, monkeypatch):
     """I16: stream frames and ordinary uploads both go through blur_faces when face_blur is on."""
     db, c = demo_ctx
