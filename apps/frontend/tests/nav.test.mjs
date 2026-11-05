@@ -109,7 +109,7 @@ test('a manager sees every project group', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(MANAGER, 'manager')), [
     ['DATA', ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights', 'Suspect labels']],
     ['LABEL', ['Annotate', 'Review & Quality']],
-    ['MODELS', ['Train', 'Anomaly', 'Model insights', 'Models']],
+    ['MODELS', ['Train', 'Anomaly', 'Model insights', 'Models', 'Workflows']],
     ['STUDIO', ['Lineage', 'Dashboards', 'Stream analytics']],
     ['DEPLOY', ['Deploy & Test', 'Streams']],
     ['SETTINGS', ['Project Settings']],
@@ -122,7 +122,7 @@ test('a reviewer loses Train and the settings group', () => {
   assert.deepEqual(itemLabels(groups, 'data'),
     ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights', 'Suspect labels'])
   assert.deepEqual(itemLabels(groups, 'label'), ['Annotate', 'Review & Quality'])
-  assert.deepEqual(itemLabels(groups, 'models'), ['Anomaly', 'Model insights', 'Models'])
+  assert.deepEqual(itemLabels(groups, 'models'), ['Anomaly', 'Model insights', 'Models', 'Workflows'])
   assert.deepEqual(itemLabels(groups, 'studio'), ['Lineage', 'Dashboards', 'Stream analytics'])
   assert.deepEqual(itemLabels(groups, 'deploy'), ['Deploy & Test', 'Streams'])
   assert.deepEqual(itemLabels(groups, 'settings'), [])
