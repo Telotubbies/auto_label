@@ -44,7 +44,7 @@ EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside t
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
 LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS",
-                                   "version,export,export_engine,train,autolabel,health,connector_sync,retention,"
+                                   "version,export,export_engine,export_preset,train,autolabel,health,connector_sync,retention,"
                                    "extract_frames,track_forward,drift,active_learning,"
                                    "insights_images,insights_leakage,insights_embedding,anomaly_train").split(",") if k]
 for _kind in ("connector_sync", "retention", "extract_frames", "track_forward", "anomaly_train"):

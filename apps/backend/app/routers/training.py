@@ -10,14 +10,14 @@ from sqlalchemy.orm import Session
 from ..adapters import ADAPTERS, engine_ref, resolve
 from ..adapters.refine import label_image, sam_available
 from ..apikeys import resolve_key
-from ..config import CREDIT_COST, LOCAL_JOB_KINDS
+from ..config import CREDIT_COST, DATA_DIR, LOCAL_JOB_KINDS
 from ..db import get_db
 from ..deps import Ctx, audit, charge, project_ctx
 from ..errors import safe_error, safe_reason
 from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace
 from ..security import sign_path
-from ..services import active_learning, deployments, drift, imaging, metering, ml, safefetch, topology
-from ..services.flags import is_enabled
+from ..services import active_learning, deployments, drift, edge, imaging, metering, ml, safefetch, topology
+from ..services.flags import is_enabled, require_flag
 from ..services.tiling import Tiling, sliced_predict
 from .projects import job_out
 
@@ -91,10 +91,15 @@ def model_out(m: TrainedModel) -> dict:
     # HF models store a directory (models/<id>/), which the single-file route cannot serve — no download.
     weights_url = sign_path(m.weights) if m.weights and m.family != "hf" else None
     engine = engine_ref(m)
+    edge_exports = {key: {"url": sign_path(ref["file"]), "bytes": ref.get("bytes", 0),
+                          "verified": bool(ref.get("verified")), "device": ref.get("device"),
+                          "built": ref.get("built", 0)}
+                    for key, ref in ((m.runtime_refs or {}).get("edge") or {}).items()
+                    if isinstance(ref, dict) and ref.get("file") and (DATA_DIR / ref["file"]).is_file()}
     return {"id": m.id, "name": m.name, "arch": m.arch, "task": m.task, "status": m.status, "metrics": m.metrics,
             "history": m.history, "classes": m.classes, "versionId": m.version_id, "jobId": m.job_id,
             "family": m.family, "variant": m.variant, "license": m.license,
-            "runtimeRefs": {"engine": engine} if engine else {},
+            "runtimeRefs": {"engine": engine} if engine else {}, "edgeExports": edge_exports,
             "created": m.created, "weightsUrl": weights_url}
 
 
@@ -107,7 +112,7 @@ def visible_model(c: Ctx, m: TrainedModel) -> dict:
     metrics = _lean_metrics(m.metrics)
     metrics.pop("eval", None)
     metrics.pop("eval_error", None)
-    return {**out, "metrics": metrics, "weightsUrl": None, "runtimeRefs": {}}
+    return {**out, "metrics": metrics, "weightsUrl": None, "runtimeRefs": {}, "edgeExports": {}}
 
 
 def _files_in(obj) -> list[str]:
@@ -289,6 +294,13 @@ def _model(c: Ctx, mid: str) -> TrainedModel:
     return m
 
 
+@router.get(P + "/models/edge-presets")
+def edge_presets(c: Ctx = Depends(project_ctx), _gate=Depends(require_flag("task_34"))):
+    """Edge targets this worker can build; a preset that never ran on the device stays UNVERIFIED."""
+    c.perm("project.models")
+    return edge.public_presets()
+
+
 @router.get(P + "/models/{mid}")
 def get_model(mid: str, c: Ctx = Depends(project_ctx)):
     c.perm("project.models")
@@ -348,13 +360,59 @@ async def test_predict(mid: str, file: UploadFile = File(...), confidence: float
 
 class ExportModelIn(BaseModel):
     format: str = "engine"
+    preset: str | None = None                              # Task 34 edge target; wins over the legacy format
+
+
+def _export_edge(c: Ctx, m: TrainedModel, preset: str) -> dict:
+    """Validate and queue one edge preset; the worker builds and zips the artifact."""
+    if not is_enabled("task_34", c.db, c.ws.id):
+        raise HTTPException(404, "not found")
+    try:
+        spec = edge.get_preset(preset)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if m.status != "ready" or not m.weights:
+        raise HTTPException(409, "model is not ready")
+    if (m.family or "ultralytics") != "ultralytics":
+        raise HTTPException(400, "edge presets are available for ultralytics models only")
+    if "world" in (m.variant or ""):
+        raise HTTPException(400, "edge presets are not available for open-vocabulary models")
+    if spec["requires"] == "yolo26" and not (m.variant or "").startswith("yolo26"):
+        raise HTTPException(400, "this preset requires a YOLO26 model")
+    if spec["needs_data"]:
+        v = c.db.get(Version, m.version_id)
+        if v is None or v.status != "ready":
+            raise HTTPException(409, "the dataset version behind this model is not ready for INT8 calibration")
+    ok, reason = edge.supported(preset)
+    if not ok:
+        raise HTTPException(503, reason)
+    if spec["format"] == "engine":
+        trt = ADAPTERS.get("tensorrt")
+        if trt is None or not trt.probe().ok:
+            raise HTTPException(503, "TensorRT is not available on this worker")
+    if "export_preset" not in LOCAL_JOB_KINDS:
+        raise HTTPException(503, "no local worker builds edge exports")
+    active = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "export_preset",
+                                            Job.status.in_(("queued", "running")))).all()
+    existing = next((j for j in active if j.params.get("model_id") == m.id
+                     and j.params.get("preset") == preset), None)
+    if existing is not None:                              # a double click must not queue a second build
+        return job_out(existing)
+    j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="export_preset", created_by=c.uid,
+            params={"model_id": m.id, "preset": preset})
+    c.db.add(j)
+    audit(c.db, c.ws.id, c.uid, "model.export", m.name, preset=preset)
+    c.db.commit()
+    return job_out(j)
 
 
 @router.post(P + "/models/{mid}/export")
 def export_model(mid: str, body: ExportModelIn, c: Ctx = Depends(project_ctx)):
-    """Queue a TensorRT engine build; the worker caches it and registers runtime_refs.engine."""
+    """Queue a TensorRT engine build or an edge preset; the worker caches the artifact."""
     c.need("admin")
     m = _model(c, mid)
+    if body.preset:
+        return _export_edge(c, m, body.preset)
     if body.format != "engine":
         raise HTTPException(400, "only format=engine is supported")
     if m.status != "ready" or not m.weights:

@@ -247,6 +247,7 @@ export interface ExportIn {
 
 export interface ExportModelIn {
   format?: string
+  preset?: string | null
 }
 
 export interface FailIn {

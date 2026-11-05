@@ -132,9 +132,10 @@ def delete_image_files(path: str | None, thumb: str | None) -> tuple[int, bool]:
 
 
 def delete_model_files(model: TrainedModel) -> tuple[int, bool]:
-    """Erase a model's weights, run directory, dataset copy and cached engine."""
+    """Erase a model's weights, run directory, dataset copy, cached engine and edge exports."""
     paths = [DATA_DIR / "models" / model.id, DATA_DIR / "train_data" / model.id,
-             DATA_DIR / "runs" / model.id, DATA_DIR / "engines" / f"{model.id}.engine"]
+             DATA_DIR / "runs" / model.id, DATA_DIR / "engines" / f"{model.id}.engine",
+             DATA_DIR / "edge" / model.id]
     engine = (model.runtime_refs or {}).get("engine")
     if isinstance(engine, str) and engine:
         paths.append(DATA_DIR / engine)         # a pre-built engine may live outside engines/<id>

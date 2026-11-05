@@ -318,6 +318,7 @@ const KIND: Record<Job['kind'], { label: string; page: string }> = {
   version: { label: 'Version', page: 'versions' },
   export: { label: 'Export', page: 'versions' },
   export_engine: { label: 'TensorRT export', page: 'models' },
+  export_preset: { label: 'Edge export', page: 'models' },
   health: { label: 'Health check', page: 'analytics' },
   insights_images: { label: 'Image stats', page: 'insights' },
   insights_leakage: { label: 'Leakage scan', page: 'insights' },

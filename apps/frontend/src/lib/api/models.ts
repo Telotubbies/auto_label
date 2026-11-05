@@ -1,5 +1,5 @@
 import type {
-  Analytics, AnomalyResult, AnomalyStation, CompareInsights, DeploymentAlias, DeploymentOverview, Job,
+  Analytics, AnomalyResult, AnomalyStation, CompareInsights, DeploymentAlias, DeploymentOverview, EdgePreset, Job,
   LeaderboardRow, ModelDetections, ModelInsights, ModelItem, PlaygroundResult, PlaygroundRuntime,
   PlaygroundSample, TrainingInsights, VideoFrame, VideoItem,
 } from '../types'
@@ -9,6 +9,8 @@ import { get, P, patch, post, put } from './client'
 export const modelApi = {
   models: (ws: string, p: string) => get<ModelItem[]>(`${P(ws, p)}/models`),
   model: (ws: string, p: string, id: string) => get<ModelItem>(`${P(ws, p)}/models/${id}`),
+  /** What this backend can build for edge devices; 404 while the flag is off. */
+  edgePresets: (ws: string, p: string) => get<EdgePreset[]>(`${P(ws, p)}/models/edge-presets`),
   leaderboard: (ws: string, p: string) => get<LeaderboardRow[]>(`${P(ws, p)}/leaderboard`),
   jobs: (ws: string, p: string, kind = '') => get<Job[]>(`${P(ws, p)}/jobs${kind ? `?kind=${kind}` : ''}`),
   analytics: (ws: string, p: string) => get<Analytics>(`${P(ws, p)}/analytics`),
