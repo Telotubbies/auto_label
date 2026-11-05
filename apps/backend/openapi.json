@@ -353,6 +353,62 @@
         "title": "AutoLabelPreviewIn",
         "type": "object"
       },
+      "BatchInferenceIn": {
+        "properties": {
+          "classes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Classes",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "model_ref": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Name",
+            "type": "string"
+          },
+          "output": {
+            "default": "csv",
+            "enum": [
+              "csv",
+              "coco",
+              "dataset"
+            ],
+            "title": "Output",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceIn"
+          }
+        },
+        "required": [
+          "model_ref",
+          "source"
+        ],
+        "title": "BatchInferenceIn",
+        "type": "object"
+      },
       "BoardMove": {
         "properties": {
           "assignee_id": {
@@ -1904,6 +1960,74 @@
           "points"
         ],
         "title": "SmartIn",
+        "type": "object"
+      },
+      "SourceIn": {
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "connector_id": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Id"
+          },
+          "kind": {
+            "enum": [
+              "batch",
+              "video",
+              "connector",
+              "workflow"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit": {
+            "default": 500,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "prefix": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "video_id": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Id"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SourceIn",
         "type": "object"
       },
       "StreamIn": {
@@ -8758,6 +8882,186 @@
         "summary": "Autolabel Preview",
         "tags": [
           "training"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/batch-inference": {
+      "get": {
+        "operationId": "list_jobs_api_ws__ws__projects__project__batch_inference_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Jobs",
+        "tags": [
+          "batch-inference"
+        ]
+      },
+      "post": {
+        "description": "Queue the job; the worker resolves every input inside this project/workspace.",
+        "operationId": "start_api_ws__ws__projects__project__batch_inference_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchInferenceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start",
+        "tags": [
+          "batch-inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/batch-inference/{jid}": {
+      "get": {
+        "operationId": "get_job_api_ws__ws__projects__project__batch_inference__jid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "title": "Jid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Job",
+        "tags": [
+          "batch-inference"
         ]
       }
     },

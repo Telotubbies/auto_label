@@ -27,6 +27,7 @@ FLAGS: dict[str, str] = {
     "task_29": "Good-only anomaly station: normal-patch bank, heatmap and per-station threshold",
     "task_32": "OCR annotations: Thai document templates, text/key-value/table and exports",
     "task_33": "Alert channels: LINE, Slack and email on stream events",
+    "task_36": "Batch inference: run one model over a batch, video frames or a bucket prefix",
 }
 
 

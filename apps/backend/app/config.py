@@ -45,9 +45,9 @@ SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"
 # job kinds the in-process worker runs; drop train/autolabel when GPU jobs go to remote workers
 LOCAL_JOB_KINDS = [k for k in _env("LD_LOCAL_JOBS",
                                    "version,export,export_engine,train,autolabel,health,connector_sync,retention,"
-                                   "extract_frames,track_forward,drift,active_learning,"
+                                   "extract_frames,track_forward,drift,active_learning,batch_infer,"
                                    "insights_images,insights_leakage,insights_embedding,anomaly_train").split(",") if k]
-for _kind in ("connector_sync", "retention", "extract_frames", "track_forward", "anomaly_train"):
+for _kind in ("connector_sync", "retention", "extract_frames", "track_forward", "batch_infer", "anomaly_train"):
     if _kind not in LOCAL_JOB_KINDS:
         LOCAL_JOB_KINDS.append(_kind)     # CPU/network/SAM work: never leave it unclaimed by every process
 REMOTE_JOB_KINDS = ("train", "autolabel")
