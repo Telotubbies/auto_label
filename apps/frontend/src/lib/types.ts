@@ -68,8 +68,23 @@ export type Shape =
   | { kind: 'obb'; cx: number; cy: number; w: number; h: number; angle: number }
   /** Flat [x, y, visibility, …] triples, normalized; visibility 0=absent 1=occluded 2=visible. */
   | { kind: 'keypoints'; points: number[] }
+export type OcrKind = 'text' | 'keyvalue' | 'table'
+/** OCR payload attached to a bbox annotation. A table always has exactly rows × cols cells. */
+export interface OcrData {
+  kind: OcrKind
+  text?: string
+  key?: string
+  value?: string
+  rows?: number
+  cols?: number
+  cells?: string[][]
+}
+/** A Thai document preset; template and field names are served in Thai by the API. */
+export interface OcrTemplate { id: string; name: string; fields: string[] }
 export interface Annotation {
   id: string; classId: string; shape: Shape; attributes?: Record<string, boolean>; confidence?: number
+  /** OCR text/key-value/table payload; only valid on bbox annotations. */
+  ocr?: OcrData
   /** 'human' | 'sam3' | 'vlm+sam3' | 'trained:<id>' | '<family>:<variant>' | 'interpolated' (derived between video keyframes) */
   source?: string
   /** Video timeline: this annotation is a keyframe; in-between frames are interpolated. */

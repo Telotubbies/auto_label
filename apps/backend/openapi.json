@@ -1380,6 +1380,35 @@
         "title": "MfaVerifyIn",
         "type": "object"
       },
+      "OcrExportIn": {
+        "properties": {
+          "format": {
+            "default": "markdown",
+            "title": "Format",
+            "type": "string"
+          },
+          "mask_pii": {
+            "default": true,
+            "title": "Mask Pii",
+            "type": "boolean"
+          }
+        },
+        "title": "OcrExportIn",
+        "type": "object"
+      },
+      "OcrTemplateIn": {
+        "properties": {
+          "template": {
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "OcrTemplateIn",
+        "type": "object"
+      },
       "PlanIn": {
         "properties": {
           "plan": {
@@ -3733,6 +3762,71 @@
         "summary": "Label Assist",
         "tags": [
           "images"
+        ]
+      }
+    },
+    "/api/images/{image_id}/ocr/export": {
+      "get": {
+        "operationId": "export_image_api_images__image_id__ocr_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mask_pii",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Mask Pii",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Image",
+        "tags": [
+          "ocr"
         ]
       }
     },
@@ -13195,6 +13289,188 @@
         "summary": "Test Predict",
         "tags": [
           "training"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/ocr/export": {
+      "post": {
+        "operationId": "export_dataset_api_ws__ws__projects__project__ocr_export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Dataset",
+        "tags": [
+          "ocr"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/ocr/template": {
+      "put": {
+        "operationId": "set_template_api_ws__ws__projects__project__ocr_template_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrTemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Template",
+        "tags": [
+          "ocr"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/ocr/templates": {
+      "get": {
+        "operationId": "list_templates_api_ws__ws__projects__project__ocr_templates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Templates",
+        "tags": [
+          "ocr"
         ]
       }
     },
