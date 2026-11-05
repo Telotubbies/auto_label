@@ -397,9 +397,17 @@ export interface ResidencyIn {
   data_region: string
 }
 
+export interface RestoreIn {
+  version: number
+}
+
 export interface RolePatch {
   name?: string | null
   permissions?: string[] | null
+}
+
+export interface RunIn {
+  image_id: string
 }
 
 export interface SelectionIn {
@@ -497,6 +505,16 @@ export interface WebhookPatch {
   active?: boolean | null
   events?: string[] | null
   url?: string | null
+}
+
+export interface WorkflowIn {
+  blocks: Record<string, unknown>[]
+  name: string
+}
+
+export interface WorkflowPatch {
+  blocks?: Record<string, unknown>[] | null
+  name?: string | null
 }
 
 export interface WorkspaceCustomRoleIn {

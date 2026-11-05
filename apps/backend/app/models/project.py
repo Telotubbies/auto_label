@@ -179,3 +179,32 @@ class Version(Base):
     stats: Mapped[dict] = mapped_column(JSON, default=dict)      # counts per split / class
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class Workflow(Base):
+    """A no-code pipeline of blocks (model → filter → crop → OCR/model → rule → sink)."""
+    __tablename__ = "workflows"
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    blocks: Mapped[list] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
+class WorkflowVersion(Base):
+    """Immutable snapshot of a workflow's blocks; restore copies one into a new version."""
+    __tablename__ = "workflow_versions"
+    __table_args__ = (UniqueConstraint("workflow_id", "number"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    blocks: Mapped[list] = mapped_column(JSON, default=list)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
