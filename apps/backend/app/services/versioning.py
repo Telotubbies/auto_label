@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..adapters.base import Cancelled
 from ..config import DATA_DIR
 from ..models import Image, LabelClass, Project, Version
-from . import exporters, imaging
+from . import exporters, imaging, tiling
 
 
 def version_dir(v: Version) -> Path:
@@ -127,10 +127,13 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
                         splits[i] = tgt
                         leakage_moved += 1
 
+    pre, aug = cfg.get("preprocessing", {}), cfg.get("augmentation", {})
+    tile_cfg = tiling.Tiling.parse(pre.get("tiling"))
+    if tile_cfg and p.type == "classification":
+        raise ValueError("tiling needs a detection or segmentation project")
     out = version_dir(v)
     if out.exists():
         shutil.rmtree(out)
-    pre, aug = cfg.get("preprocessing", {}), cfg.get("augmentation", {})
     out.mkdir(parents=True, exist_ok=True)
     (out / "recipe.json").write_text(json.dumps(
         {"resize": pre.get("resize"), "grayscale": bool(pre.get("grayscale")), "contrast": pre.get("contrast")}))
@@ -145,25 +148,37 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
             raise Cancelled("version build cancelled")
         im = imaging.load(r.path)
         anns = [a for a in (r.annotations or []) if a.get("classId") in cls_idx]
-        im, anns = imaging.preprocess(im, anns, pre)
         split = splits[r.id]
-        variants = [(im, anns)]
-        if split == "train" and has_aug:
-            if copies > 1:
-                variants += [imaging.augment(im, anns, aug, rng) for _ in range(copies - 1)]
-            else:
-                variants = [imaging.augment(im, anns, aug, rng)]
-        for k, (vim, vanns) in enumerate(variants):
-            stem = f"{Path(r.name).stem}_{r.id[:6]}" + (f"_aug{k}" if k else "")
-            rel = f"{split}/{stem}.jpg"
-            (out / split).mkdir(parents=True, exist_ok=True)
-            vim.save(out / rel, "JPEG", quality=92)
-            items.append({"file": rel, "split": split, "width": vim.width, "height": vim.height, "source": r.id,
-                          "anns": [{"cls": cls_idx[a["classId"]], "shape": a["shape"],
-                                    "source": a.get("source") or "human"} for a in vanns]})
-            per_split[split] += 1
-            for a in vanns:
-                per_class[classes[cls_idx[a["classId"]]].name] += 1
+        if tile_cfg:
+            # Slice at source resolution, then apply resize/colour per tile: a default 640 px
+            # resize must not erase the small objects the tiling exists to keep.
+            pieces = []
+            for box in tile_cfg.boxes(im.width, im.height):
+                pim, panns = imaging.preprocess(
+                    im.crop(box), tiling.tile_annotations(anns, box, im.width, im.height), pre)
+                pieces.append((pim, panns))
+        else:
+            im, anns = imaging.preprocess(im, anns, pre)
+            pieces = [(im, anns)]
+        for ti, (pim, panns) in enumerate(pieces):
+            variants = [(pim, panns)]
+            if split == "train" and has_aug:
+                if copies > 1:
+                    variants += [imaging.augment(pim, panns, aug, rng) for _ in range(copies - 1)]
+                else:
+                    variants = [imaging.augment(pim, panns, aug, rng)]
+            for k, (vim, vanns) in enumerate(variants):
+                stem = (f"{Path(r.name).stem}_{r.id[:6]}" + (f"_t{ti}" if tile_cfg else "")
+                        + (f"_aug{k}" if k else ""))
+                rel = f"{split}/{stem}.jpg"
+                (out / split).mkdir(parents=True, exist_ok=True)
+                vim.save(out / rel, "JPEG", quality=92)
+                items.append({"file": rel, "split": split, "width": vim.width, "height": vim.height, "source": r.id,
+                              "anns": [{"cls": cls_idx[a["classId"]], "shape": a["shape"],
+                                        "source": a.get("source") or "human"} for a in vanns]})
+                per_split[split] += 1
+                for a in vanns:
+                    per_class[classes[cls_idx[a["classId"]]].name] += 1
         progress((n + 1) / len(rows))
 
     if should_stop and should_stop():
