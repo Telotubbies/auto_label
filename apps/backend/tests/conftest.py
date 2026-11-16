@@ -39,7 +39,7 @@ os.environ["LD_MAIL_DEV"] = "1"
 os.environ["LD_PUBLIC_URL"] = "http://localhost:5173"   # the dev inbox also requires a localhost origin
 os.environ["LD_SEED_DEMO"] = "1"
 # The suite exercises the shipped surfaces; a workspace turns them off through the same flag API.
-os.environ["LD_FLAGS_ON"] = "task_10b,task_20c,task_22,task_23"
+os.environ["LD_FLAGS_ON"] = "task_10b,task_20c,task_22,task_23,task_33"
 
 import pytest
 
