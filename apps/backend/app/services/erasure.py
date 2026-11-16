@@ -92,7 +92,8 @@ def project_paths(db: Session, project: Project) -> list[Path]:
             paths.append(DATA_DIR / v.path)
     for m in db.scalars(select(TrainedModel).where(TrainedModel.project_id == project.id)):
         paths += [DATA_DIR / "models" / m.id, DATA_DIR / "train_data" / m.id,
-                  DATA_DIR / "runs" / m.id, DATA_DIR / "engines" / f"{m.id}.engine"]
+                  DATA_DIR / "runs" / m.id, DATA_DIR / "engines" / f"{m.id}.engine",
+                  DATA_DIR / "edge" / m.id]         # C1: edge exports are a full copy of the model
         if m.weights:
             paths.append(DATA_DIR / m.weights)
     for v in db.scalars(select(Version).where(Version.project_id == project.id)):

@@ -44,7 +44,7 @@ sudo docker compose up -d --build
 
 > ฟีเจอร์ที่ยังไม่พร้อมเปิดให้ทุกคน (สตรีม, lineage/dashboards, วิดีโอ, QA) ปิดไว้เป็นค่าเริ่มต้น
 > เปิดได้สองทาง: ให้แอดมินของ workspace เปิดใน Settings → Feature flags หรือใส่ `LD_FLAGS_ON`
-> ใน `.env` ของ API (เช่น `task_10b,task_20c,task_22,task_23,task_32`) เพื่อเปิดทุก workspace
+> ใน `.env` ของ API (เช่น `task_10b,task_20c,task_22,task_23,task_32,task_34`) เพื่อเปิดทุก workspace
 
 > แค่นี้ก็ใช้งานได้ครบแล้ว (เว็บ, API, DB อยู่บน VM ตัวเดียว) ส่วนข้อ 2 ทำเฉพาะเมื่ออยากให้หน้าเว็บอยู่บน Vercel
 

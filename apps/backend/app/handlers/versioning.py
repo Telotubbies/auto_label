@@ -83,6 +83,14 @@ def run_export_engine(job: Job):
     return {"model_id": mid, "format": "engine", "engine": rel, "bytes": out.stat().st_size}
 
 
+def _discard(path: Path) -> None:
+    """Remove a temporary build output, whether the adapter wrote a file or a directory."""
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
+
 def _zip_edge_artifact(mid: str, preset: str, out: Path) -> Path:
     """Pack a file or directory artifact into edge/<mid>/<preset>.zip atomically."""
     root = DATA_DIR / "edge" / mid
@@ -99,10 +107,7 @@ def _zip_edge_artifact(mid: str, preset: str, out: Path) -> Path:
         tmp.replace(root / f"{preset}.zip")
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-        if out.is_dir():
-            shutil.rmtree(out, ignore_errors=True)
-        else:
-            out.unlink(missing_ok=True)
+        _discard(out)
     return root / f"{preset}.zip"
 
 
@@ -140,6 +145,9 @@ def run_export_preset(job: Job):
             out = Path(build(str(src), fmt, half=True, options=options))
     else:
         out = Path(build(str(src), fmt, options=options, data=data))
+    if w._cancelled(job.id):                                       # I22: never register a cancelled build
+        _discard(out)
+        raise Cancelled("edge build cancelled")
     zip_path = _zip_edge_artifact(mid, preset, out)
     rel = zip_path.relative_to(DATA_DIR).as_posix()
     entry = {"file": rel, "bytes": zip_path.stat().st_size, "verified": bool(spec["verified"]),

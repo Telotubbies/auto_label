@@ -31,6 +31,7 @@ SURFACES = {
     "task_31",
     "task_32",
     "task_33",
+    "task_34",
 }
 
 
@@ -198,6 +199,7 @@ SURFACE_ROUTES = [
     f"/api/ws/{WS}/projects/ppe-detection/suspect-labels",
     f"/api/ws/{WS}/projects/ppe-detection/ocr/templates",
     f"/api/ws/{WS}/projects/ppe-detection/workflows",
+    f"/api/ws/{WS}/projects/ppe-detection/models/edge-presets",
 ]
 
 

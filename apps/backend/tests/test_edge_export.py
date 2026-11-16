@@ -11,10 +11,10 @@ os.environ["LD_SAM_ENABLED"] = "0"
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app import worker
-from app.adapters.base import Availability
+from app.adapters.base import Availability, Cancelled
 from app.config import DATA_DIR, LOCAL_JOB_KINDS, REMOTE_JOB_KINDS
 from app.db import SessionLocal
 from app.handlers import versioning as vhandlers
@@ -415,6 +415,43 @@ def test_preset_job_zips_a_directory_artifact(client, monkeypatch):
             names = z.namelist()
         assert any(n.endswith("openvino.xml") for n in names)
         assert FakePresetAdapter.calls[0]["fmt"] == "openvino"
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
+
+
+def test_cancelled_preset_build_registers_no_artifact(client, monkeypatch):
+    """I2: a Stop mid-build must leave no zip, no signed URL and no 'built' ref (mirrors I22)."""
+    FakePresetAdapter.calls.clear()
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        m = _new_model(db, ws, p, v)
+        job = _queued_job(db, ws, p, m, "onnx")
+        mid, vid, jid = m.id, v.id, job.id
+        db.commit()
+    _model_files(mid)
+
+    class _CancellingAdapter(FakePresetAdapter):
+        def export(self, weights, fmt, **kw):
+            out = super().export(weights, fmt, **kw)      # the build finished before the user cancelled
+            with SessionLocal() as db:
+                db.execute(update(Job).where(Job.id == jid).values(status="cancelling"))
+                db.commit()
+            return out
+
+    monkeypatch.setattr(worker, "ADAPTERS", {"ultralytics": _CancellingAdapter()})
+    try:
+        with SessionLocal() as db:
+            job = db.get(Job, jid)
+            db.expunge(job)
+        with pytest.raises(Cancelled):
+            vhandlers.run_export_preset(job)
+        with SessionLocal() as db:
+            refs = db.get(TrainedModel, mid).runtime_refs or {}
+        assert "onnx" not in (refs.get("edge") or {})
+        assert not (DATA_DIR / "edge" / mid / "onnx.zip").exists()
+        assert not (DATA_DIR / "models" / mid / "best.onnx").exists()     # the temporary output is gone
+        assert client.get(f"{BASE}/models/{mid}").json()["edgeExports"] == {}
     finally:
         _drop(model_ids=[mid], version_ids=[vid], job_ids=[jid])
 

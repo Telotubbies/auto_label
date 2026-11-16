@@ -41,12 +41,27 @@ def test_project_purge_removes_all_prefixes():
         from app.models import Video
         db.add(Video(id="v" + suffix, project_id=p.id, workspace_id=ws.id, name="cam.mp4",
                      path=f"videos/{suffix}.mp4"))
+        # C1: a model in another workspace must keep its edge export when this project is purged.
+        other_ws = Workspace(id="w2" + suffix, slug=f"er2-{suffix}", name="Other", owner_id=u.id)
+        db.add(other_ws)
+        db.flush()
+        other_p = Project(workspace_id=other_ws.id, slug=f"erp2-{suffix}", name="Other")
+        db.add(other_p)
+        db.flush()
+        other_v = Version(project_id=other_p.id, number=1, status="ready", stats={})
+        db.add(other_v)
+        db.flush()
+        other_m = TrainedModel(workspace_id=other_ws.id, project_id=other_p.id, version_id=other_v.id,
+                               name="other", arch="yolo26n", variant="yolo26n", task="detect", status="ready",
+                               family="ultralytics", classes=[], weights=f"models/{'o' + suffix}/best.pt")
+        db.add(other_m)
         db.commit()
-        pid, wid, mid, vid = p.id, ws.id, m.id, v.id
+        pid, wid, mid, vid, other_mid = p.id, ws.id, m.id, v.id, other_m.id
     for rel in (f"projects/{pid}/images/x.jpg", f"projects/{pid}/thumbs/x.jpg",
                 f"videos/{suffix}.mp4", f"models/{mid}/best.pt", f"runs/{mid}/weights/last.pt",
-                f"versions/{vid}/manifest.json",
-                f"exports/{vid}/coco.zip", f"snapshots/{pid}/a.jpg", f"workspaces/{wid}/drift/{pid}/a.jpg"):
+                f"versions/{vid}/manifest.json", f"edge/{mid}/onnx.zip",
+                f"exports/{vid}/coco.zip", f"snapshots/{pid}/a.jpg", f"workspaces/{wid}/drift/{pid}/a.jpg",
+                f"edge/{other_mid}/onnx.zip"):
         _touch(rel)
     keep = DATA_DIR / f"projects/other-{suffix}/images/keep.jpg"
     keep.parent.mkdir(parents=True, exist_ok=True); keep.write_bytes(b"keep")
@@ -56,8 +71,9 @@ def test_project_purge_removes_all_prefixes():
         freed, ok = delete_project_data(db, db.get(Project, pid))
     assert ok and freed > 0
     for rel in (f"projects/{pid}", f"videos/{suffix}.mp4", f"models/{mid}", f"runs/{mid}", f"versions/{vid}",
-                f"exports/{vid}", f"snapshots/{pid}", f"workspaces/{wid}/drift/{pid}"):
+                f"exports/{vid}", f"snapshots/{pid}", f"workspaces/{wid}/drift/{pid}", f"edge/{mid}"):
         assert not (DATA_DIR / rel).exists(), rel
+    assert (DATA_DIR / f"edge/{other_mid}/onnx.zip").exists()
     assert keep.exists()
 
 

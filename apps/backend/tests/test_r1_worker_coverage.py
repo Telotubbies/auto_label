@@ -37,6 +37,18 @@ def test_compose_worker_claims_every_cpu_handler():
     assert not missing, f"compose worker never claims {sorted(missing)}"
 
 
+def test_env_example_claims_every_cpu_handler():
+    """`cp .env.example .env` must not narrow the worker below the handler registry (C2)."""
+    env = Path(__file__).resolve().parents[3] / "deploy" / ".env.example"
+    if not env.exists():
+        return
+    m = re.search(r"^LD_LOCAL_JOBS=([a-z_,]+)$", env.read_text(encoding="utf-8"), re.MULTILINE)
+    assert m, ".env.example must define LD_LOCAL_JOBS"
+    claimed = {k.strip() for k in m.group(1).split(",") if k.strip()}
+    missing = set(worker.HANDLERS) - set(config.REMOTE_JOB_KINDS) - claimed
+    assert not missing, f"a copied .env.example never claims {sorted(missing)}"
+
+
 def test_no_gpu_docs_list_claims_every_cpu_handler():
     """DEPLOY.md's no-GPU recipe must match the startup assertion, not crash the worker (Important 3)."""
     doc = Path(__file__).resolve().parents[3] / "docs" / "DEPLOY.md"
