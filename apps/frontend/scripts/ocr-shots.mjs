@@ -5,7 +5,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { mkdirSync } from 'node:fs'
 
 const base = process.argv[2] ?? 'http://localhost:5173'
-const outDir = process.argv[3] ?? 'E:/02_Projects/auto_label/.superpowers/sdd/2026-10-31-labeldesk-v2/task-32-v2-shots'
+const outDir = process.argv[3] ?? 'ocr-shots'
 const WS = 'labeldesk-demo'
 const PR = 'ocr-task32'
 mkdirSync(outDir, { recursive: true })

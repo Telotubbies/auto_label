@@ -56,12 +56,14 @@ export function ocrText(ann: Annotation): string {
 }
 
 // Same patterns and ordering as apps/backend/app/services/ocr.py, so the panel, canvas and
-// exports hide exactly the same characters. Thai ID first (dashed or spaced), then plain digits.
+// exports hide exactly the same characters. Python's `\d`/`\w` are Unicode-aware, so the
+// equivalents here are `\p{Nd}` / `[\p{L}\p{N}_]` with the `u` flag: Thai numerals and
+// Thai-script emails are masked on both sides. Thai ID first (dashed or spaced), then plain digits.
 const PII_PATTERNS: RegExp[] = [
-  /(?<!\d)\d[-\u00a0 ]\d{4}[-\u00a0 ]\d{5}[-\u00a0 ]\d{2}[-\u00a0 ]\d(?!\d)/g,
-  /(?<!\d)\d{13}(?!\d)/g,
-  /(?<!\d)0[1-9](?:[-\s]?\d){8}(?!\d)/g,
-  /[\w.+-]+@[\w-]+\.[\w.-]+/g,
+  /(?<!\p{Nd})\p{Nd}[-\u00a0 ]\p{Nd}{4}[-\u00a0 ]\p{Nd}{5}[-\u00a0 ]\p{Nd}{2}[-\u00a0 ]\p{Nd}(?!\p{Nd})/gu,
+  /(?<!\p{Nd})\p{Nd}{13}(?!\p{Nd})/gu,
+  /(?<!\p{Nd})0[1-9](?:[-\s]?\p{Nd}){8}(?!\p{Nd})/gu,
+  /[\p{L}\p{N}_.+-]+@[\p{L}\p{N}_-]+\.[\p{L}\p{N}_.-]+/gu,
 ]
 
 /** Replace detected personal data with `*` of the same length, keeping the layout readable. */

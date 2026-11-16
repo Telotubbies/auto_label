@@ -71,6 +71,7 @@ Thumbs.db
 # LabelDesk app
 apps/frontend/node_modules/
 apps/frontend/dist/
+apps/frontend/ocr-shots/
 apps/frontend/tsconfig.tsbuildinfo
 apps/backend/data/
 apps/backend/.pytest_cache/

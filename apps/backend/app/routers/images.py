@@ -464,7 +464,7 @@ def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and -0.5 <= v <= 1.5   # normalised, small overshoot ok
 
 
-def _check_ann(a: dict, ocr_enabled: bool = False) -> dict:
+def _check_ann(a: dict, ocr_enabled: bool) -> dict:
     if not isinstance(a, dict):
         raise HTTPException(400, "annotation must be an object")
     s = a.get("shape") or {}

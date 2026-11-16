@@ -292,6 +292,25 @@ def test_pii_masking_covers_thai_id_spacing(c):
     assert "*" * len(spaced) in r.text
 
 
+def test_pii_masking_hides_thai_numerals_and_thai_script_email(c):
+    """The UI's maskPii matches these Unicode classes; an export must not leak what it hides."""
+    img = upload(c, "thai-pii.jpg")
+    cls = class_ids(c)
+    thai_id, email = "๑๒๓๔๕๖๗๘๙๐๑๒๓", "สมชาย@example.co.th"
+    c.put(
+        f"/api/images/{img}/annotations",
+        json={
+            "annotations": [
+                box_ann("u1", cls["text-line"], "text", text=f"เลขบัตร {thai_id}"),
+                box_ann("u2", cls["text-line"], "text", text=email),
+            ]
+        },
+    ).raise_for_status()
+    md = c.get(f"/api/images/{img}/ocr/export?format=markdown").text
+    assert thai_id not in md and "*" * len(thai_id) in md
+    assert email not in md and "*" * len(email) in md
+
+
 def test_single_image_export(c):
     img = upload(c, "single.jpg")
     cls = class_ids(c)

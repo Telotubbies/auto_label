@@ -24,6 +24,16 @@ test('maskPii hides an email address', () => {
   assert.equal(maskPii('somchai@example.co.th'), '*'.repeat('somchai@example.co.th'.length))
 })
 
+test('maskPii hides an ID written in Thai numerals', () => {
+  const id = '๑๒๓๔๕๖๗๘๙๐๑๒๓'
+  assert.equal(maskPii(`เลขบัตร ${id}`), `เลขบัตร ${'*'.repeat(id.length)}`)
+})
+
+test('maskPii hides an email address written in Thai script', () => {
+  const email = 'สมชาย@example.co.th'
+  assert.equal(maskPii(email), '*'.repeat(email.length))
+})
+
 test('maskPii leaves document numbers alone', () => {
   assert.equal(maskPii('เลขที่ INV-2569-001 ยอด 1,250.00'), 'เลขที่ INV-2569-001 ยอด 1,250.00')
 })

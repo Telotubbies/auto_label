@@ -1126,3 +1126,69 @@ def test_honeypot_reassigned_from_a_non_annotator_is_attemptable(client, auth, p
     finally:
         client.delete(f"{project['labels']}/honeypots/{hid}", headers=auth["reviewer"]["h"])
 
+
+def set_task_32(client, auth, project, on: bool) -> None:
+    r = client.put(f"/api/ws/{project['ws']}/flags/task_32", json={"enabled": on},
+                   headers=auth["admin"]["h"])
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.parametrize("flag_on", [True, False])
+def test_consensus_submit_keeps_ocr_annotations(client, auth, project, flag_on):
+    """I1: submit re-validates the stored draft, so it must read the task_32 flag like autosave."""
+    img = upload_image(client, project, f"ocr-submit-{flag_on}.jpg",
+                       (40, 40, 40) if not flag_on else (140, 40, 40))
+    person = project["classes"]["person"]
+    ocr = {**box(person, 0.4, 0.4, aid="ocr-draft"), "ocr": {"kind": "text", "text": "เลขที่ INV-001"}}
+    job_id = None
+    set_task_32(client, auth, project, True)
+    try:
+        r = client.post(f"{project['labels']}/consensus", json={"image_ids": [img], "k": 2})
+        assert r.status_code == 200, r.text
+        job_id = r.json()["id"]
+        with SessionLocal() as db:
+            holders = {row.user_id for row in db.scalars(select(ConsensusAssignment).where(
+                ConsensusAssignment.job_id == job_id))}
+        who = next(name for name, data in auth.items() if data["id"] in holders)
+        assert save(client, auth, who, img, [ocr]).status_code == 200
+        set_task_32(client, auth, project, flag_on)
+        r = submit(client, auth, who, project["labels"], job_id, img)
+        if flag_on:
+            assert r.status_code == 200, r.text
+            assert r.json()["submitted"] == 1
+        else:
+            # off is not a crash: the same gate autosave applies, and no silent strip of the draft
+            assert r.status_code == 400 and "OCR" in r.json()["detail"]
+    finally:
+        if job_id:
+            drop_job(job_id)
+        set_task_32(client, auth, project, False)
+
+
+@pytest.mark.parametrize("flag_on", [True, False])
+def test_honeypot_keeps_ocr_answer_key(client, auth, project, flag_on):
+    """I1: a ground-truth key that carries OCR text must be pinnable while the flag is on."""
+    img = upload_image(client, project, f"ocr-honeypot-{flag_on}.jpg",
+                       (45, 45, 45) if not flag_on else (45, 145, 45))
+    helmet = project["classes"]["helmet"]
+    ocr = {**box(helmet, 0.2, 0.2, aid="hp-ocr"),
+           "ocr": {"kind": "keyvalue", "key": "ทะเบียน", "value": "1กก 1234"}}
+    hid = None
+    set_task_32(client, auth, project, True)
+    try:
+        assert save(client, auth, "admin", img, [ocr]).status_code == 200
+        set_task_32(client, auth, project, flag_on)
+        r = client.post(f"{project['labels']}/honeypots", json={"image_id": img},
+                        headers=auth["reviewer"]["h"])
+        if flag_on:
+            assert r.status_code == 200, r.text
+            hid = r.json()["id"]
+            items = client.get(f"{project['labels']}/honeypots",
+                               headers=auth["reviewer"]["h"]).json()["items"]
+            assert next(x for x in items if x["id"] == hid)["annotations"] == 1
+        else:
+            assert r.status_code == 400 and "OCR" in r.json()["detail"]
+    finally:
+        if hid:
+            client.delete(f"{project['labels']}/honeypots/{hid}", headers=auth["reviewer"]["h"])
+        set_task_32(client, auth, project, False)
