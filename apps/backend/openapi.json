@@ -2023,6 +2023,23 @@
         "title": "SuggestIn",
         "type": "object"
       },
+      "SuspectFeedbackIn": {
+        "properties": {
+          "verdict": {
+            "enum": [
+              "confirmed",
+              "dismissed"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "title": "SuspectFeedbackIn",
+        "type": "object"
+      },
       "SwitchIn": {
         "properties": {
           "model_id": {
@@ -14414,6 +14431,147 @@
         "summary": "Stop Stream",
         "tags": [
           "streams"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/suspect-labels": {
+      "get": {
+        "description": "Score-sorted review queue from the cached health scan; never runs inference.",
+        "operationId": "suspect_labels_api_ws__ws__projects__project__suspect_labels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Suspect Labels",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/suspect-labels/{annotation_id}/feedback": {
+      "post": {
+        "description": "Record a reviewer verdict for one queued label; the response carries the new statistics.",
+        "operationId": "suspect_feedback_api_ws__ws__projects__project__suspect_labels__annotation_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "annotation_id",
+            "required": true,
+            "schema": {
+              "title": "Annotation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspectFeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Suspect Feedback",
+        "tags": [
+          "projects"
         ]
       }
     },

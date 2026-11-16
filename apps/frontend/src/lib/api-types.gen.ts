@@ -446,6 +446,10 @@ export interface SuggestIn {
   annotation_id: string
 }
 
+export interface SuspectFeedbackIn {
+  verdict: "confirmed" | "dismissed"
+}
+
 export interface SwitchIn {
   model_id: string
 }

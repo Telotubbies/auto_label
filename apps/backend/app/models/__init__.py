@@ -12,8 +12,8 @@ from .identity import (ApiKey, Connector, CustomRole, EmailToken, Invite, LoginE
                        RefreshToken, User, Webhook, WebhookDelivery, Workspace, WorkspaceFlag)
 from .insights import (Audit, ConsensusAssignment, ConsensusJob, Dashboard, Honeypot, HoneypotAttempt,
                        LabelEvent, UsageEvent, Worker)
-from .project import (Batch, Comment, Folder, Image, ImageClass, LabelClass, Project, Version, Video,
-                      set_annotations)
+from .project import (Batch, Comment, Folder, Image, ImageClass, LabelClass, Project, SuspectFeedback,
+                      Version, Video, set_annotations)
 from .streams import Stream, StreamEvent
 from .training import (AnomalyStation, DeploymentAlias, DeploymentEvent, DriftRun, DriftSample, Job,
                       TrainedModel)

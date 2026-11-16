@@ -12,5 +12,7 @@ export const dataNav: NavGroup<ProjectNavItem> = {
     // The dataset health check (Task 9) is a tab of the Insights studio, per the v2 tree;
     // /analytics stays alive as a legacy redirect into that tab.
     { to: 'insights', label: 'Insights', icon: 'insights', perm: 'project.review' },
+    // Suspect-label queue (Task 28): the model's disagreements with human labels, behind its flag.
+    { to: 'suspects', label: 'Suspect labels', icon: 'suspects', perm: 'project.review', flag: 'task_28' },
   ],
 }

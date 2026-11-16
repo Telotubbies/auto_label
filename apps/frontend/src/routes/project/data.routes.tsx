@@ -8,6 +8,7 @@ import { lazy } from 'react'
 
 const Versions = lazy(() => import('@/features/project/Versions'))
 const Insights = lazy(() => import('@/features/project/Insights'))
+const Suspects = lazy(() => import('@/features/project/Suspects'))
 const ModelInsights = lazy(() => import('@/features/insights/Insights'))
 
 /** DATA: dataset intake, the grid, versions and the insights studio tabs. */
@@ -18,6 +19,7 @@ export const projectDataRoutes = (
     <Route path="videos" element={<FlagGate flag="task_22"><PermGate perm="project.annotate"><VideoTimeline /></PermGate></FlagGate>} />
     <Route path="versions" element={<PermGate perm="project.export"><Versions /></PermGate>} />
     <Route path="insights" element={<PermGate perm="project.review"><Insights /></PermGate>} />
+    <Route path="suspects" element={<FlagGate flag="task_28"><PermGate perm="project.review"><Suspects /></PermGate></FlagGate>} />
     <Route path="model-insights" element={<PermGate perm="project.review"><ModelInsights /></PermGate>} />
     <Route path="classes" element={<PermGate perm="project.classes"><Classes /></PermGate>} />
   </>

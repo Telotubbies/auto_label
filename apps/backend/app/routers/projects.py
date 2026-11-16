@@ -2,8 +2,9 @@
 import re
 import time
 from collections import Counter
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,7 +15,8 @@ from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, 
                       Version, now, set_annotations)
 from ..naming import clean_class_name
 from ..security import sign_path
-from ..services import flags, health
+from ..services import flags, health, suspect_queue
+from ..services.flags import require_flag
 
 router = APIRouter(prefix="/api/ws/{ws}/projects", tags=["projects"])
 PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#14b8a6", "#ef4444",
@@ -422,6 +424,37 @@ def queue_health(body: HealthIn | None = None, c: Ctx = Depends(project_ctx)):
 
 
 _analytics_cache: dict[str, tuple] = {}
+
+
+class SuspectFeedbackIn(BaseModel):
+    verdict: Literal["confirmed", "dismissed"]
+
+
+@router.get("/{project}/suspect-labels")
+def suspect_labels(
+    limit: int = Query(50, ge=1, le=500),
+    c: Ctx = Depends(project_ctx),
+    _: None = Depends(require_flag("task_28")),
+):
+    """Score-sorted review queue from the cached health scan; never runs inference."""
+    return suspect_queue.queue(c.db, c.project, limit)
+
+
+@router.post("/{project}/suspect-labels/{annotation_id}/feedback")
+def suspect_feedback(
+    annotation_id: str,
+    body: SuspectFeedbackIn,
+    c: Ctx = Depends(project_ctx),
+    _: None = Depends(require_flag("task_28")),
+):
+    """Record a reviewer verdict for one queued label; the response carries the new statistics."""
+    c.need("reviewer")
+    out = suspect_queue.record_feedback(c.db, c.project, annotation_id, body.verdict, c.user.id)
+    if out is None:
+        raise HTTPException(404, "suspect label not found")
+    audit(c.db, c.ws.id, c.user.id, "suspect.feedback", annotation_id, verdict=body.verdict)
+    c.db.commit()
+    return {"stats": out}
 
 
 def _analytics(c: Ctx) -> dict:

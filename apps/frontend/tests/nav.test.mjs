@@ -107,7 +107,7 @@ test('project nav has the six v2 groups in lifecycle order', () => {
 
 test('a manager sees every project group', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(MANAGER, 'manager')), [
-    ['DATA', ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights']],
+    ['DATA', ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights', 'Suspect labels']],
     ['LABEL', ['Annotate', 'Review & Quality']],
     ['MODELS', ['Train', 'Anomaly', 'Model insights', 'Models']],
     ['STUDIO', ['Lineage', 'Dashboards', 'Stream analytics']],
@@ -120,7 +120,7 @@ test('a reviewer loses Train and the settings group', () => {
   const groups = visibleProjectNav(REVIEWER, 'reviewer')
   assert.deepEqual(groups.map((g) => g.id), ['data', 'label', 'models', 'studio', 'deploy'])
   assert.deepEqual(itemLabels(groups, 'data'),
-    ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights'])
+    ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights', 'Suspect labels'])
   assert.deepEqual(itemLabels(groups, 'label'), ['Annotate', 'Review & Quality'])
   assert.deepEqual(itemLabels(groups, 'models'), ['Anomaly', 'Model insights', 'Models'])
   assert.deepEqual(itemLabels(groups, 'studio'), ['Lineage', 'Dashboards', 'Stream analytics'])

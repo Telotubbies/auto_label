@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 
 from ..adapters import model_conf, resolve
 from ..adapters.base import Cancelled
-from ..models import Image, Job, Project, TrainedModel
+from ..models import Image, Job, LabelClass, Project, TrainedModel
 from . import imaging, versioning
+from . import suspects as suspect_scoring
 
 DEFAULT_CONF = 0.4  # fallback when the model has no best-F1 confidence
 MISSING_IOU = 0.3
 MISSING_LIMIT = 500  # keep the cached job row bounded on a big unlabelled dataset
+SUSPECT_LIMIT = 500  # same bound for the review queue cached on the health job
 
 _PHASH_CACHE: dict[tuple, dict] = {}
 _ENQ_LOCK = threading.Lock()  # one uvicorn process: serialise the enqueue read-then-insert
@@ -118,22 +120,29 @@ def _stop(should_stop: Callable[[], bool] | None) -> None:
         raise Cancelled("job cancelled")
 
 
-def _missing_boxes(
+def _model_checks(
     db: Session, project: Project, rows: list[Image], model: TrainedModel | None, conf: float | None,
     should_stop: Callable[[], bool] | None = None,
-) -> list[dict]:
-    """Predictions above the model threshold with IoU < 0.3 to every human ground-truth box."""
+) -> tuple[list[dict], list[dict]]:
+    """One inference pass per image feeds both the missing-box check and the suspect-label queue.
+
+    The pass stops when the missing-box list fills, so cost stays bounded like Task 9's and the
+    suspect list can be truncated to the images scanned (shortcut: a scan budget if that bites)."""
     if project.type == "classification" or model is None:
-        return []
+        return [], []
     try:
         resolved = resolve(f"trained:{model.id}", db, workspace_id=project.workspace_id)
     except ValueError:  # deleted between the query and the resolve
-        return []
+        return [], []
     conf = DEFAULT_CONF if conf is None else conf
-    out = []
+    class_names = dict(
+        db.execute(select(LabelClass.id, LabelClass.name).where(LabelClass.project_id == project.id)).all()
+    )
+    out: list[dict] = []
+    suspects: list[dict] = []
     for img in rows:
         _stop(should_stop)                     # a long scan must honour a cancel between images
-        if len(out) >= MISSING_LIMIT:
+        if len(out) >= MISSING_LIMIT:          # Task 9's bound: never infer the whole dataset
             break
         if not img.width or not img.height:
             continue
@@ -145,9 +154,11 @@ def _missing_boxes(
         # a model failure (GPU busy, missing weights, broken adapter) must fail the job, never be
         # cached as "no missing boxes" — the UI keeps the previous result and shows the error
         pred = resolved.predict(im, conf=conf)
+        usable = []
         for p in pred.get("predictions") or []:
             if p.get("confidence", 0) < conf or not all(k in p for k in ("x", "y", "width", "height")):
                 continue
+            usable.append(p)
             # predictions are centre boxes in pixels; health compares normalised boxes
             found = (
                 (p["x"] - p["width"] / 2) / img.width,
@@ -155,11 +166,13 @@ def _missing_boxes(
                 p["width"] / img.width,
                 p["height"] / img.height,
             )
-            if all(iou(found, gt) < MISSING_IOU for gt in gts):
+            if all(iou(found, gt) < MISSING_IOU for gt in gts) and len(out) < MISSING_LIMIT:
                 out.append({"image_id": img.id, "box": [round(v, 4) for v in found], "class": p.get("class")})
-                if len(out) >= MISSING_LIMIT:
-                    break
-    return out
+        if len(suspects) < SUSPECT_LIMIT:
+            for item in suspect_scoring.score_image(img.annotations or [], usable, class_names, img.width, img.height):
+                suspects.append({**item, "image_id": img.id})
+    suspects.sort(key=lambda x: (-x["score"], str(x["annotation_id"])))
+    return out, suspects[:SUSPECT_LIMIT]
 
 
 def _leakage_pairs(project: Project, rows: list[Image]) -> int:
@@ -189,14 +202,16 @@ def scan_health(db: Session, project: Project, should_stop: Callable[[], bool] |
     _stop(should_stop)
     leakage = _leakage_pairs(project, rows)
     _stop(should_stop)
+    missing, suspects = _model_checks(db, project, rows, model, conf, should_stop)
     return {
         "signature": sig,
         "model_id": model.id if model else None,
         "conf": conf if model else None,
         "checks": {
             "leakage_pairs": leakage,
-            "missing_boxes": _missing_boxes(db, project, rows, model, conf, should_stop),
+            "missing_boxes": missing,
         },
+        "suspect_labels": suspects,
     }
 
 

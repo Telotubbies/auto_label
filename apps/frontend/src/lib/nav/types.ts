@@ -3,7 +3,7 @@ import type { ProjectRole, Role } from '../types'
 export type NavIcon =
   | 'projects' | 'models' | 'playground' | 'deployments' | 'members' | 'audit' | 'usage'
   | 'integrations' | 'activity' | 'settings' | 'admin'
-  | 'upload' | 'annotate' | 'dataset' | 'video' | 'versions' | 'classes' | 'insights' | 'train'
+  | 'upload' | 'annotate' | 'dataset' | 'video' | 'versions' | 'classes' | 'insights' | 'suspects' | 'train'
   | 'modelInsights' | 'deploy' | 'qa' | 'streams' | 'access' | 'projectSettings'
   | 'lineage' | 'dashboards' | 'streamAnalytics' | 'anomaly'
 

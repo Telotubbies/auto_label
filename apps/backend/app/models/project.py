@@ -142,6 +142,21 @@ def set_annotations(db, img: "Image", anns: list[dict]):
         db.add(ImageClass(image_id=img.id, class_id=cid, project_id=img.project_id, n=n))
 
 
+class SuspectFeedback(Base):
+    """Reviewer verdict on a suspect-label queue item; survives rescans and feeds the precision stat."""
+    __tablename__ = "suspect_feedback"
+    __table_args__ = (UniqueConstraint("project_id", "annotation_id"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    annotation_id: Mapped[str] = mapped_column(String(32))
+    kind: Mapped[str] = mapped_column(String(16))
+    verdict: Mapped[str] = mapped_column(String(12))     # confirmed | dismissed
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
 class Comment(Base):
     __tablename__ = "comments"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
