@@ -183,6 +183,7 @@ SURFACE_ROUTES = [
     f"/api/ws/{WS}/projects/ppe-detection/insights/lineage",
     f"/api/ws/{WS}/projects/ppe-detection/dashboards",
     f"/api/ws/{WS}/projects/ppe-detection/labeling/dashboard",
+    f"/api/ws/{WS}/projects/ppe-detection/suspect-labels",
 ]
 
 

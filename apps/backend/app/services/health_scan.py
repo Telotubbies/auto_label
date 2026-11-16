@@ -124,7 +124,10 @@ def _model_checks(
     db: Session, project: Project, rows: list[Image], model: TrainedModel | None, conf: float | None,
     should_stop: Callable[[], bool] | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """One inference pass per image feeds both the missing-box check and the suspect-label queue."""
+    """One inference pass per image feeds both the missing-box check and the suspect-label queue.
+
+    The pass stops when the missing-box list fills, so cost stays bounded like Task 9's and the
+    suspect list can be truncated to the images scanned (shortcut: a scan budget if that bites)."""
     if project.type == "classification" or model is None:
         return [], []
     try:
@@ -139,7 +142,7 @@ def _model_checks(
     suspects: list[dict] = []
     for img in rows:
         _stop(should_stop)                     # a long scan must honour a cancel between images
-        if len(out) >= MISSING_LIMIT and len(suspects) >= SUSPECT_LIMIT:
+        if len(out) >= MISSING_LIMIT:          # Task 9's bound: never infer the whole dataset
             break
         if not img.width or not img.height:
             continue

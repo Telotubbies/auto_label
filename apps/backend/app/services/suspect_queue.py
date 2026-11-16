@@ -27,8 +27,9 @@ def _cached_run(db: Session, project: Project) -> tuple[list[dict], Job | None]:
     ).all()
     for job in jobs:
         result = job.result or {}
-        if job.status == "done" and result.get("model_id") == model_id:
-            return result.get("suspect_labels") or [], job
+        # older health jobs carry no suspect payload: they never scored anything, so that is a miss
+        if job.status == "done" and result.get("model_id") == model_id and "suspect_labels" in result:
+            return result["suspect_labels"] or [], job
     return [], None
 
 

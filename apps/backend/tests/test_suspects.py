@@ -1,6 +1,8 @@
 """Suspect-label queue: ObjectLab-style scoring, cached scan output, feedback statistics, flag gating."""
 
 import os
+import time
+import uuid
 
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
@@ -15,7 +17,7 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.main import app
 from app.models import (
-    Audit, Image, Job, LabelClass, Project, SuspectFeedback, TrainedModel, User, Version, Workspace,
+    Audit, Image, Job, LabelClass, Member, Project, SuspectFeedback, TrainedModel, User, Version, Workspace, now,
 )
 from app.security import issue_access
 from app.services import flags, health, health_scan, suspect_queue, suspects
@@ -245,6 +247,34 @@ def test_queue_totals_cover_the_whole_scan_not_just_the_page(monkeypatch):
     assert out["total"] == 2 and out["open"] == 1
 
 
+def test_a_scan_that_never_scored_suspects_is_not_reported_as_clean(monkeypatch):
+    """A pre-Task-28 health job has no suspect payload: that is unscored, never "no suspects"."""
+    pid = make_project("suspects-legacy")
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        db.add(
+            Job(
+                workspace_id=p.workspace_id,
+                project_id=p.id,
+                kind="health",
+                status="done",
+                result={
+                    "signature": health_scan.signature(db, p),
+                    "model_id": "m1",
+                    "checks": {"leakage_pairs": 0, "missing_boxes": []},
+                },
+            )
+        )
+        db.commit()
+    stub_model(monkeypatch)
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        out = suspect_queue.queue(db, p)
+        assert out["job_id"] is None  # the page must offer a scan instead of claiming agreement
+        assert out["items"] == [] and out["total"] == 0
+        assert suspect_queue.record_feedback(db, p, "a", "confirmed", user_id=None) is None
+
+
 def test_scan_caches_suspect_labels_without_changing_health_checks(monkeypatch):
     """The Task 9 payload keeps its keys; suspects ride along in the cached job result."""
     pid = make_project("suspects-scan")
@@ -300,6 +330,29 @@ def test_scan_caches_suspect_labels_without_changing_health_checks(monkeypatch):
     assert [i["annotation_id"] for i in out["items"]] == ["a1"]
 
 
+def test_scan_stops_at_the_missing_box_budget_on_an_unlabelled_dataset(monkeypatch):
+    """A bulk upload with nothing labelled must not infer the whole dataset (Task 9's bound)."""
+    pid = make_project("suspects-budget")
+    calls: list[int] = []
+
+    def predict(im, **kw):
+        calls.append(1)
+        return {"predictions": [pred("person", 20, 20, 20, 20, 0.9)]}
+
+    monkeypatch.setattr(health_scan, "resolve", lambda *a, **k: SimpleNamespace(predict=predict))
+    monkeypatch.setattr(health_scan.imaging, "load", lambda path: SimpleNamespace(width=100, height=100))
+    rows = [
+        SimpleNamespace(id=f"unlabelled-{i}", width=100, height=100, path="x.jpg", annotations=[])
+        for i in range(health_scan.MISSING_LIMIT + 200)
+    ]
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        missing, items = health_scan._model_checks(db, p, rows, SimpleNamespace(id="m1"), 0.4)
+    assert len(missing) == health_scan.MISSING_LIMIT
+    assert items == []
+    assert len(calls) == health_scan.MISSING_LIMIT  # one inference pass, bounded like Task 9
+
+
 def test_queue_endpoint_is_flag_gated_and_records_feedback(c, monkeypatch):
     before = c.get(f"/api/ws/{WS}/flags").json()
     assert before["enabled"].count(FLAG) == 0
@@ -320,6 +373,7 @@ def test_queue_endpoint_is_flag_gated_and_records_feedback(c, monkeypatch):
     stub_model(monkeypatch)
 
     assert c.get(f"{base}/suspect-labels").status_code == 404  # flag off by default
+    assert c.post(f"{base}/suspect-labels/api-a/feedback", json={"verdict": "confirmed"}).status_code == 404
 
     monkeypatch.setenv("LD_FLAGS_ON", FLAG)
     r = c.get(f"{base}/suspect-labels")
@@ -336,6 +390,71 @@ def test_queue_endpoint_is_flag_gated_and_records_feedback(c, monkeypatch):
         assert row is not None and row.meta["verdict"] == "confirmed"
     assert c.post(f"{base}/suspect-labels/nope/feedback", json={"verdict": "confirmed"}).status_code == 404
     assert c.post(f"{base}/suspect-labels/api-a/feedback", json={"verdict": "maybe"}).status_code == 422
+
+
+@pytest.fixture(scope="module")
+def other_world():
+    """A second workspace with its own project, to prove the queue stays tenant-scoped."""
+    tag = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        u = User(email=f"suspects-{tag}@example.test", name="Suspects Outsider", email_verified=now())
+        db.add(u)
+        db.flush()
+        ws = Workspace(
+            slug=f"suspects-{tag}",
+            name="Suspects Fixture",
+            owner_id=u.id,
+            credits_period=time.strftime("%Y-%m"),
+        )
+        db.add(ws)
+        db.flush()
+        db.add(Member(workspace_id=ws.id, user_id=u.id, role="admin"))
+        p = Project(workspace_id=ws.id, slug="suspects-other", name="Suspects Other", settings={})
+        db.add(p)
+        db.commit()
+        return {"ws": ws.slug, "pid": p.id, "slug": p.slug, "token": issue_access(u.id)}
+
+
+def test_queue_and_feedback_stay_inside_their_tenant(c, other_world, monkeypatch):
+    """Mirror of the image-quality tenant test: neither another project nor another workspace sees this queue."""
+    monkeypatch.setenv("LD_FLAGS_ON", FLAG)
+    mine = make_project("suspects-tenant-mine")
+    other_project = make_project("suspects-tenant-other-project")
+    add_scan(mine, [{"annotation_id": "mine-a", "image_id": "i", "kind": "extra_box", "score": 0.6}], model_id="m1")
+    add_scan(
+        other_project,
+        [{"annotation_id": "project-b", "image_id": "i", "kind": "extra_box", "score": 0.7}],
+        model_id="m1",
+    )
+    add_scan(
+        other_world["pid"],
+        [{"annotation_id": "world-a", "image_id": "i", "kind": "extra_box", "score": 0.8}],
+        model_id="m1",
+    )
+    stub_model(monkeypatch)
+    with SessionLocal() as db:
+        mine_slug = db.get(Project, mine).slug
+        project_b_slug = db.get(Project, other_project).slug
+    mine_base = f"/api/ws/{WS}/projects/{mine_slug}"
+    project_b_base = f"/api/ws/{WS}/projects/{project_b_slug}"
+
+    assert [i["annotation_id"] for i in c.get(f"{mine_base}/suspect-labels").json()["items"]] == ["mine-a"]
+    assert [i["annotation_id"] for i in c.get(f"{project_b_base}/suspect-labels").json()["items"]] == ["project-b"]
+    # a verdict cannot be posted against an id that only exists in another project's queue
+    assert c.post(f"{mine_base}/suspect-labels/project-b/feedback", json={"verdict": "confirmed"}).status_code == 404
+
+    other = TestClient(app)
+    other.headers["Authorization"] = f"Bearer {other_world['token']}"
+    world_base = f"/api/ws/{other_world['ws']}/projects/{other_world['slug']}"
+    r = other.get(f"{world_base}/suspect-labels")
+    assert r.status_code == 200, r.text
+    assert [i["annotation_id"] for i in r.json()["items"]] == ["world-a"]
+    # a non-member is refused at the workspace boundary on both routes
+    assert other.get(f"{mine_base}/suspect-labels").status_code == 403
+    assert other.post(
+        f"{mine_base}/suspect-labels/mine-a/feedback", json={"verdict": "confirmed"}
+    ).status_code == 403
+    other.close()
 
 
 def test_feedback_requires_a_reviewer(c, monkeypatch):
