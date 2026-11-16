@@ -31,6 +31,7 @@ FLAGS: dict[str, str] = {
     "task_33": "Alert channels: LINE, Slack and email on stream events",
     "task_34": "Edge export presets: ONNX, OpenVINO, INT8 and device targets",
     "task_36": "Batch inference: run one model over a batch, video frames or a bucket prefix",
+    "task_40": "PLC / OT output (Modbus, OPC-UA, MQTT, GPIO)",
 }
 
 

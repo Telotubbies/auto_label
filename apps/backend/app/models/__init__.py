@@ -14,7 +14,7 @@ from .insights import (Audit, ConsensusAssignment, ConsensusJob, Dashboard, Hone
                        LabelEvent, UsageEvent, Worker)
 from .project import (Batch, Comment, Folder, Image, ImageClass, LabelClass, Project, SuspectFeedback,
                       Version, Video, Workflow, WorkflowVersion, set_annotations)
-from .streams import Stream, StreamEvent
+from .streams import OtDelivery, OtOutput, Stream, StreamEvent
 from .training import (AnomalyStation, DeploymentAlias, DeploymentEvent, DriftRun, DriftSample, Job,
                       TrainedModel)
 

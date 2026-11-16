@@ -793,6 +793,45 @@ export type StreamPatchBody = Omit<Partial<StreamCreateBody>, 'tiling'> & {
 }
 export interface StreamVideoUpload { source: string }
 
+// --- PLC / OT outputs (Task 40) ----------------------------------------------
+
+export type OtProtocol = 'modbus' | 'opcua' | 'mqtt' | 'gpio'
+export interface OtFilter { kinds: string[]; classes: string[] }
+
+export interface OtOutput {
+  id: string
+  workspace_id: string
+  project_id: string
+  name: string
+  protocol: OtProtocol
+  endpoint: Record<string, string | number | boolean>
+  event_filter: OtFilter
+  latency_budget_ms: number
+  pulse_ms: number
+  enabled: boolean
+  last_status: 'never' | 'ok' | 'late' | 'failed'
+  last_latency_ms: number | null
+  last_error: string
+  created: number
+  updated: number
+}
+
+/** Create/update payload: every field the API accepts, snake_case on the wire. */
+export type OtOutputInput = Pick<OtOutput, 'name' | 'protocol' | 'endpoint' | 'event_filter' |
+  'latency_budget_ms' | 'pulse_ms' | 'enabled'>
+
+export interface OtDelivery {
+  id: string
+  output_id: string
+  stream_id: string
+  rule_kind: string
+  event: { summary?: string; class?: string }
+  status: 'ok' | 'late' | 'failed'
+  latency_ms: number | null
+  detail: string
+  created: number
+}
+
 // --- Insights Studio (Task 20c): lineage, widget queries, dashboards -----------
 
 export type LineageKind = 'batch' | 'version' | 'run' | 'model' | 'stream'

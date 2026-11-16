@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, del, patch } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { Button, Card, Field, Input, PageHeader, Select, Spinner, Switch, Tabs, toast } from '@/components/ui'
 import { typeLabel } from '@/components/shell'
 import { ProjectPrivacySection } from '@/features/governance/Privacy'
 import { ProjectAccess } from '@/features/governance/Roles'
 import { useProject } from './ProjectLayout'
+import OtOutputs from './OtOutputs'
 
 const TABS = [
   { id: 'general', label: 'General' },
@@ -21,9 +23,11 @@ export default function ProjectSettings({ initialTab }: { initialTab?: string })
   const nav = useNavigate()
   const role = useApp((s) => s.role)
   const admin = role === 'owner' || role === 'admin'
+  const otEnabled = useFlag('task_40')
+  const tabs = otEnabled ? [...TABS, { id: 'ot', label: 'OT output' }] : TABS
   const [params] = useSearchParams()
   const requested = params.get('tab') ?? initialTab ?? ''
-  const active = TABS.some((t) => t.id === requested) ? requested : 'general'
+  const active = tabs.some((t) => t.id === requested) ? requested : 'general'
   const [f, setF] = useState({ name: project.name, visibility: project.visibility, license: project.license, annotation_group: project.annotationGroup })
   const al = project.settings.active_learning ?? {}
   const [learn, setLearn] = useState({ enabled: !!al.enabled, below: al.below ?? 0.5, sample_pct: al.sample_pct ?? 0, include_empty: al.include_empty ?? true })
@@ -52,7 +56,7 @@ export default function ProjectSettings({ initialTab }: { initialTab?: string })
       <PageHeader title="Project Settings" desc={typeLabel(project.type)} />
       <div className="px-4 pb-10 sm:px-8">
         <div className="mb-4 overflow-x-auto">
-          <Tabs tabs={TABS} active={active} onChange={setTab} />
+          <Tabs tabs={tabs} active={active} onChange={setTab} />
         </div>
         <div className="space-y-4">
           {active === 'general' && (
@@ -90,6 +94,7 @@ export default function ProjectSettings({ initialTab }: { initialTab?: string })
           )}
           {active === 'privacy' && <ProjectPrivacySection ws={ws} project={project.slug} canEdit={manager} />}
           {active === 'access' && <ProjectAccess ws={ws} project={project.slug} canEdit={manager} />}
+          {active === 'ot' && <OtOutputs ws={ws} project={project.slug} canEdit={manager} />}
         </div>
       </div>
     </div>

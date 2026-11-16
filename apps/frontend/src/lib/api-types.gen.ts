@@ -356,6 +356,26 @@ export interface OcrTemplateIn {
   template: string
 }
 
+export interface OutputIn {
+  enabled?: boolean
+  endpoint: Record<string, unknown>
+  event_filter?: Record<string, unknown>
+  latency_budget_ms?: number
+  name: string
+  protocol: string
+  pulse_ms?: number
+}
+
+export interface OutputPatch {
+  enabled?: boolean | null
+  endpoint?: Record<string, unknown> | null
+  event_filter?: Record<string, unknown> | null
+  latency_budget_ms?: number | null
+  name?: string | null
+  protocol?: string | null
+  pulse_ms?: number | null
+}
+
 export interface PlanIn {
   plan: string
 }

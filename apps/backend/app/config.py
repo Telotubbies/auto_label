@@ -143,5 +143,9 @@ REMOTE_CANCEL_GRACE_S = int(_env("LD_REMOTE_CANCEL_GRACE_S", "900"))   # 15 min 
 # networks. Empty by default, so the public-only SSRF posture is unchanged. Parsed at
 # import time: a typo or a wildcard stops the API instead of silently widening egress (I-3).
 STREAM_ALLOW_CIDR = parse_cidrs(_env("LD_STREAM_ALLOW_CIDR"))
+# PLC/OT outputs are addressed by an admin-supplied host:port or opc.tcp URL, so the same opt-in
+# gates them: a target may only resolve into these networks. Empty by default, so no OT write
+# leaves the API host until an operator names the plant network (R7 SSRF finding on task 40).
+OT_ALLOW_CIDR = parse_cidrs(_env("LD_OT_ALLOW_CIDR"))
 if WORKER_TOKEN and len(WORKER_TOKEN) < 24:
     raise RuntimeError("LD_WORKER_TOKEN must be at least 24 characters")
