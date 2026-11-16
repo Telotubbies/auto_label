@@ -29,6 +29,7 @@ FLAGS: dict[str, str] = {
     "task_31": "No-code workflow builder: versioned block chains run on a project image",
     "task_32": "OCR annotations: Thai document templates, text/key-value/table and exports",
     "task_33": "Alert channels: LINE, Slack and email on stream events",
+    "task_40": "PLC / OT output (Modbus, OPC-UA, MQTT, GPIO)",
 }
 
 
