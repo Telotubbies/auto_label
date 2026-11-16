@@ -31,6 +31,7 @@ from ..gpu import GpuBusy
 from ..models import Project, Stream, StreamEvent, Workspace, new_id
 from ..services import metering
 from ..services.safefetch import UnresolvableHost, _public_ip
+from ..services.tiling import sliced_predict
 from . import alert_bridge
 from .allowlist import allowed_stream_ip
 from .creds import mask_query, open_source
@@ -242,6 +243,7 @@ class _Worker:
         self.sample_fps = min(30.0, max(0.5, float(row.sample_fps or 5.0)))
         self.zones = list(row.zones or [])
         self.rules = list(row.rules or [])
+        self.tiling = row.tiling or None                    # task_30: slice every analysed frame
 
         self.status = "connecting"
         self.last_error = ""
@@ -655,6 +657,11 @@ class _Worker:
             backoff = min(backoff * 2, _MAX_BACKOFF)
 
     # ---- inference ---------------------------------------------------------
+    def _infer(self, resolved, im, classes) -> dict:
+        """Sliced or whole-frame inference: the one seam a tiled stream differs at (task_30)."""
+        kw = {"classes": classes} if classes else {}
+        return sliced_predict(resolved, im, self.tiling, **kw) if self.tiling else resolved.predict(im, **kw)
+
     def _process(self) -> None:
         try:
             with session_scope() as db:
@@ -706,7 +713,7 @@ class _Worker:
             last_proc, last_seq = now, seq
             im = PImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             try:
-                out = resolved.predict(im, **({"classes": classes} if classes else {}))
+                out = self._infer(resolved, im, classes)
             except GpuBusy:
                 self.gpu_busy = True
                 self._set("paused (GPU busy)", "GPU busy: training owns the card")

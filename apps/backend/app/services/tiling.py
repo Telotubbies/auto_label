@@ -13,6 +13,7 @@ from . import imaging
 MIN_TILE = 64
 MAX_TILE = 4096
 MAX_OVERLAP = 0.9
+MAX_TILES = 400          # one synchronous request must not fan out to hundreds of thousands of crops
 MERGE_IOU = 0.5
 
 
@@ -44,9 +45,12 @@ class Tiling:
         return cls(tile, overlap)
 
     def boxes(self, width: int, height: int) -> list[tuple[int, int, int, int]]:
-        return [(x, y, x + self.tile_size, y + self.tile_size)
-                for y in _starts(height, self.tile_size, self.overlap)
-                for x in _starts(width, self.tile_size, self.overlap)]
+        bw, bh = min(self.tile_size, width), min(self.tile_size, height)   # never pad past the image edge
+        xs, ys = _starts(width, bw, self.overlap), _starts(height, bh, self.overlap)
+        if len(xs) * len(ys) > MAX_TILES:
+            raise ValueError(f"tiling would create {len(xs) * len(ys)} tiles; "
+                             f"raise the tile size or lower the overlap (max {MAX_TILES})")
+        return [(x, y, x + bw, y + bh) for y in ys for x in xs]
 
 
 def _starts(total: int, tile: int, overlap: float) -> list[int]:
@@ -134,7 +138,9 @@ def sliced_predict(model, im: PImage.Image, tiling: Tiling | dict | bool, *,
     cfg = tiling if isinstance(tiling, Tiling) else Tiling.parse(tiling)
     if cfg is None:
         raise ValueError("tiling needs a tile size")
-    if not ({"detect", "segment"} & set(model.adapter.capabilities(getattr(model, "variant", "")))):
+    # SAM 3.1 and VLM advertise segment/detect but cannot be tiled: per-crop prompts, unrefined boxes.
+    if model.adapter.family in ("sam3", "vlm") or not (
+            {"detect", "segment"} & set(model.adapter.capabilities(getattr(model, "variant", "")))):
         raise ValueError("tiling needs a detection or segmentation model")
     t0 = time.perf_counter()
     tiles = []

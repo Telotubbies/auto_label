@@ -129,6 +129,7 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
 
     pre, aug = cfg.get("preprocessing", {}), cfg.get("augmentation", {})
     tile_cfg = tiling.Tiling.parse(pre.get("tiling"))
+    drop_empty = bool(pre.get("filter_null"))
     if tile_cfg and p.type == "classification":
         raise ValueError("tiling needs a detection or segmentation project")
     out = version_dir(v)
@@ -141,6 +142,7 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
     # outputs = images produced per training example (original + outputs-1 augmented; 1 = replace with augmented)
     copies = max(1, min(int(aug.get("outputs", 3) or 1), 5))
     items, per_split, per_class = [], Counter(), Counter()
+    skipped_tiles = 0
 
     for n, r in enumerate(rows):
         if should_stop and should_stop():
@@ -156,6 +158,9 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
             for box in tile_cfg.boxes(im.width, im.height):
                 pim, panns = imaging.preprocess(
                     im.crop(box), tiling.tile_annotations(anns, box, im.width, im.height), pre)
+                if drop_empty and not panns:      # "drop images with no annotations" now covers tiles too
+                    skipped_tiles += 1
+                    continue
                 pieces.append((pim, panns))
         else:
             im, anns = imaging.preprocess(im, anns, pre)
@@ -198,4 +203,4 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
     (out / "manifest.json").write_text(json.dumps(manifest))
     return {"images": len(items), "source_images": len(rows), "splits": dict(per_split),
             "classes": dict(per_class), "class_names": manifest["classes"],
-            "leakage_moved": leakage_moved}
+            "leakage_moved": leakage_moved, "tiles_skipped": skipped_tiles}

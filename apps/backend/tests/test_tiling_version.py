@@ -129,6 +129,27 @@ def test_tiling_slices_the_source_before_the_resize(c):
     assert sum(len(it["anns"]) for it in mine) == 2
 
 
+def test_tiling_an_image_smaller_than_the_tile_keeps_its_real_size(c):
+    """I3: the 1024 px default over an 800x600 image is one 800x600 item, not a padded crop."""
+    enable_tiling()
+    iid = _seed_source_image()
+    v = _make_version(c, {"preprocessing": {"tiling": {"tile_size": 1024}}, "augmentation": {}})
+    mine = [it for it in _manifest(v)["items"] if it["source"] == iid]
+    assert len(mine) == 1, mine
+    assert (mine[0]["width"], mine[0]["height"]) == (800, 600)
+
+
+def test_filter_null_drops_the_tiles_without_annotations(c):
+    """I4: "drop images with no annotations" must mean the same thing for the tiles it creates."""
+    enable_tiling()
+    iid = _seed_source_image()
+    v = _make_version(c, {"preprocessing": {"tiling": TILING, "filter_null": True}, "augmentation": {}})
+    mine = [it for it in _manifest(v)["items"] if it["source"] == iid]
+    assert mine and all(it["anns"] for it in mine), mine
+    assert len(mine) < 6
+    assert v["stats"]["tiles_skipped"] >= 6 - len(mine)
+
+
 def test_tiling_is_hidden_when_the_flag_is_off(c):
     _seed_source_image()
     with SessionLocal() as db:

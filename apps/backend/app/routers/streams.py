@@ -16,9 +16,10 @@ from ..deps import Ctx, audit, project_ctx
 from ..models import Project, Stream, StreamEvent, UsageEvent, Workspace
 from ..security import check_signature, sign_path, sign_query
 from ..services import metering
+from ..services.flags import is_enabled, require_workspace_flag
+from ..services.tiling import Tiling
 from ..streams import creds
 from ..streams.event_fields import class_key
-from ..services.flags import require_workspace_flag
 from ..streams.manager import check_source, display_source, manager
 from .images import ingest, safe_name
 
@@ -69,6 +70,7 @@ def stream_out(c: Ctx, s: Stream) -> dict:
     base = f"/api/ws/{c.ws.slug}/projects/{c.project.slug}/streams/{s.id}"
     return {"id": s.id, "name": s.name, "source": creds.mask_source(s.source), "modelRef": s.model_ref,
             "sampleFps": s.sample_fps, "zones": s.zones or [], "rules": s.rules or [],
+            "tiling": s.tiling or None,
             "status": live["status"] if live else s.status,
             "lastError": live["last_error"] if live else (s.last_error or ""),
             "fps": live["fps"] if live else 0.0,
@@ -206,6 +208,19 @@ def check_model(c: Ctx, ref: str) -> str:
     return ref
 
 
+def check_tiling(c: Ctx, raw) -> dict | None:
+    """task_30: slice every analysed frame. Hidden (404) while the flag is off, like every surface."""
+    try:
+        cfg = Tiling.parse(raw)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if cfg is None:
+        return None
+    if not is_enabled("task_30", c.db, c.ws.id):
+        raise HTTPException(404, "not found")
+    return {"tile_size": cfg.tile_size, "overlap": cfg.overlap}
+
+
 # --- CRUD ---------------------------------------------------------------------
 
 class StreamIn(BaseModel):
@@ -215,6 +230,7 @@ class StreamIn(BaseModel):
     sample_fps: float = 5
     zones: list = Field(default_factory=list)
     rules: list = Field(default_factory=list)
+    tiling: dict | None = None
 
 
 @router.post("", dependencies=_GATE)
@@ -231,7 +247,7 @@ def create(body: StreamIn, c: Ctx = Depends(project_ctx)):
     rules = check_rules(body.rules, {z["id"] for z in zones})
     s = Stream(workspace_id=c.ws.id, project_id=c.project.id, name=name[:255], source=source,
                model_ref=check_model(c, body.model_ref), sample_fps=check_fps(body.sample_fps),
-               zones=zones, rules=rules, status="stopped")
+               zones=zones, rules=rules, tiling=check_tiling(c, body.tiling), status="stopped")
     c.db.add(s)
     audit(c.db, c.ws.id, c.user.id, "stream.create", s.name, source=creds.mask_source(s.source), model=s.model_ref)
     c.db.commit()
@@ -253,6 +269,7 @@ class StreamPatch(BaseModel):
     sample_fps: float | None = None
     zones: list | None = None
     rules: list | None = None
+    tiling: dict | None = None
 
 
 @router.get("/{sid}", dependencies=_GATE)
@@ -283,6 +300,7 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
             raise HTTPException(400, str(e)) from e
     model_ref = check_model(c, body.model_ref) if body.model_ref is not None else None
     sample_fps = check_fps(body.sample_fps) if body.sample_fps is not None else None
+    tiling = check_tiling(c, body.tiling) if body.tiling is not None else None
     zones = check_zones(body.zones) if body.zones is not None else list(s.zones or [])
     rules = check_rules(body.rules, {z["id"] for z in zones}) if body.rules is not None else None
     if body.zones is not None and body.rules is None:
@@ -301,6 +319,8 @@ def update_stream(sid: str, body: StreamPatch, c: Ctx = Depends(project_ctx)):
         s.model_ref = model_ref
     if sample_fps is not None:
         s.sample_fps = sample_fps
+    if body.tiling is not None:
+        s.tiling = tiling
     if body.zones is not None:
         s.zones = zones
     if rules is not None:

@@ -185,6 +185,78 @@ def test_label_image_refuses_a_sam_model(monkeypatch):
                            workspace_id=WS, sam_ok=False)
 
 
+def test_playground_rejects_a_grid_above_the_tile_cap(c, monkeypatch):
+    """I2: the unmetered synchronous endpoint must refuse before it fans out."""
+    monkeypatch.setattr("app.routers.playground.resolve", lambda *a, **kw: FakeResolved())
+    _enable()
+    r = c.post(f"/api/ws/{WS}/playground/predict", files={"file": ("big.jpg", _jpeg())},
+               data={"model_refs": "trained:fake", "tile_size": "64", "tile_overlap": "0.9"})
+    assert r.status_code == 400, r.text
+    assert "tiles" in r.json()["detail"]
+
+
+def test_playground_refuses_tiling_for_a_sam_model(c, monkeypatch):
+    """I1: SAM 3.1 advertises segment but must not be run once per crop."""
+    fake = FakeResolved()
+    fake.adapter = SimpleNamespace(family="sam3", capabilities=lambda _v: {"segment", "text-prompt"})
+    monkeypatch.setattr("app.routers.playground.resolve", lambda *a, **kw: fake)
+    _enable()
+    r = c.post(f"/api/ws/{WS}/playground/predict", files={"file": ("big.jpg", _jpeg())},
+               data={"model_refs": "sam3:sam3.1", "tile_size": "400"})
+    assert r.status_code == 200, r.text
+    assert fake.calls == [], "the model was run on tiles before the refusal"
+    assert "detection" in r.json()["results"][0]["error"]
+
+
+def test_model_test_predict_rejects_a_grid_above_the_tile_cap(c, monkeypatch):
+    mid = _ready_model("t30-cap")
+    monkeypatch.setattr("app.routers.training.resolve", lambda *a, **kw: FakeResolved())
+    _enable()
+    r = c.post(f"{BASE}/models/{mid}/predict", files={"file": ("big.jpg", _jpeg())},
+               data={"tile_size": "64", "tile_overlap": "0.9"})
+    assert r.status_code == 400, r.text
+    assert "tiles" in r.json()["detail"]
+
+
+STREAMS = f"/api/ws/{WS}/projects/{PR}/streams"
+
+
+def _stream(body: dict) -> dict:
+    return {"name": "t30 camera", "source": "file:videos/none.mp4", "model_ref": "ultralytics:yolo11n", **body}
+
+
+def test_a_stream_slices_each_frame_when_tiling_is_set(c, monkeypatch):
+    """I5: the stream processor has the seam; a tiled stream must actually slice frames."""
+    from app.models import Stream
+    from app.streams.manager import _Worker
+
+    fake = FakeResolved()
+    monkeypatch.setattr("app.streams.manager.resolve", lambda *a, **kw: fake)
+    _enable()
+    sid = c.post(STREAMS, json=_stream({"tiling": {"tile_size": 400, "overlap": 0}})).json()["id"]
+    try:
+        assert c.get(f"{STREAMS}/{sid}").json()["tiling"] == {"tile_size": 400, "overlap": 0.0}
+        with SessionLocal() as db:
+            worker = _Worker(db.get(Stream, sid))
+        out = worker._infer(fake, PImage.new("RGB", (800, 800)), None)
+        assert len(fake.calls) == 4
+        assert len(out["predictions"]) == 4
+    finally:
+        c.delete(f"{STREAMS}/{sid}")
+
+
+def test_stream_tiling_is_hidden_when_the_flag_is_off(c):
+    r = c.post(STREAMS, json=_stream({"tiling": {"tile_size": 400}}))
+    assert r.status_code == 404, r.text
+
+
+def test_stream_tiling_rejects_a_bad_tile_size(c):
+    _enable()
+    r = c.post(STREAMS, json=_stream({"tiling": {"tile_size": 16}}))
+    assert r.status_code == 400, r.text
+    assert "tiling" in r.json()["detail"]
+
+
 def test_health_offers_tiling_only_when_enabled():
     checks = {"imgsz": 640, "size_buckets": {"small": 41, "medium": 30, "large": 29},
               "label_quality": [], "missing_boxes": [], "leakage_pairs": 0}

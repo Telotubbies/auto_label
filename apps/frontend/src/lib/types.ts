@@ -737,6 +737,8 @@ export type StreamRule = StreamCountRule | StreamZoneRule | StreamLineRule | Str
 export interface StreamItem {
   id: string; name: string; source: string; modelRef: string; sampleFps: number
   zones: StreamZone[]; rules: StreamRule[]
+  /** task_30: slices each analysed frame; null when the stream runs whole frames. */
+  tiling: StreamTiling | null
   status: StreamStatus; lastError: string
   created: number; mjpeg: string
   /** One JPEG of the newest frame; 503 until the source has produced one. */
@@ -770,8 +772,10 @@ export interface StreamEventPage { total: number; items: StreamEventItem[] }
 
 export interface StreamCreateBody {
   name: string; source: string; model_ref: string; sample_fps?: number
-  zones?: StreamZone[]; rules?: StreamRule[]
+  zones?: StreamZone[]; rules?: StreamRule[]; tiling?: StreamTiling | null
 }
+/** task_30 tiling settings, as the server stores them. */
+export interface StreamTiling { tile_size: number; overlap: number }
 export type StreamPatchBody = Partial<StreamCreateBody>
 export interface StreamVideoUpload { source: string }
 

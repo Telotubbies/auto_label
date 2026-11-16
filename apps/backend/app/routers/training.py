@@ -340,7 +340,10 @@ async def test_predict(mid: str, file: UploadFile = File(...), confidence: float
     if confidence is not None:                     # no slider value: Resolved uses the model's best-F1 threshold
         kw["conf"] = confidence
     model = resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id)
-    return sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    try:
+        return sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+        raise HTTPException(400, str(e)) from e
 
 
 class ExportModelIn(BaseModel):
@@ -579,7 +582,10 @@ async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Re
     if confidence is not None:                     # omitted: the model's evaluated best-F1 threshold
         kw["conf"] = confidence
     model = resolve(f"trained:{m.id}", db, workspace_id=ws.id)
-    out = sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    try:
+        out = sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+        raise HTTPException(400, str(e)) from e
     audit(db, ws.id, None, "infer.hosted", m.name, n=len(out["predictions"]))
     metering.record(db, ws.id, "ai_calls", 1, project_id=m.project_id, model_id=m.id, kind="hosted")
     db.commit()                                    # the paid inference is safe before any monitoring work

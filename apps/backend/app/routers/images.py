@@ -755,5 +755,8 @@ def label_assist(image_id: str, body: AssistIn, u: User = Depends(current_user),
     model = resolve(f"trained:{m.id}", db, workspace_id=c.ws.id)
     kw = {"conf": body.confidence, "classes": m.classes}
     im = imaging.load(img.path)
-    pred = sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    try:
+        pred = sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+        raise HTTPException(400, str(e)) from e
     return {"annotations": ml.to_annotations(pred, by_name)}

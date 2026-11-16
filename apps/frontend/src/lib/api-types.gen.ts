@@ -453,6 +453,7 @@ export interface StreamIn {
   rules?: unknown[]
   sample_fps?: number
   source: string
+  tiling?: Record<string, unknown> | null
   zones?: unknown[]
 }
 
@@ -462,6 +463,7 @@ export interface StreamPatch {
   rules?: unknown[] | null
   sample_fps?: number | null
   source?: string | null
+  tiling?: Record<string, unknown> | null
   zones?: unknown[] | null
 }
 

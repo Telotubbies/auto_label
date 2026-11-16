@@ -3,9 +3,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cctv, Eye, MoreVertical, Play, Plus, Square, Trash2, TriangleAlert, Upload } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
 import type { RegistryItem, StreamItem, StreamStatus } from '@/lib/types'
-import { Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, toast } from '@/components/ui'
+import { Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, Switch, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 /** Status is always shown as dot + words, never colour alone. */
@@ -52,6 +53,8 @@ function NewStreamDialog({ open, onClose, ws, project }: { open: boolean; onClos
   const [modelRef, setModelRef] = useState('')
   const [source, setSource] = useState('')
   const [fps, setFps] = useState(5)
+  const tilingOn = useFlag('task_30')
+  const [tile, setTile] = useState({ on: false, size: 1024, overlap: 20 })
   const [uploaded, setUploaded] = useState<{ name: string; bytes: number } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -83,10 +86,11 @@ function NewStreamDialog({ open, onClose, ws, project }: { open: boolean; onClos
       const created = await api.createStream(ws, project, {
         name: name.trim(), source: source.trim(), model_ref: modelRef,
         sample_fps: Math.min(30, Math.max(1, Number.isFinite(fps) ? fps : 5)),
+        tiling: tile.on ? { tile_size: Math.min(4096, Math.max(64, tile.size)), overlap: tile.overlap / 100 } : null,
       })
       await qc.invalidateQueries({ queryKey: ['streams', ws, project] })
       toast.ok('Stream created')
-      setName(''); setSource(''); setUploaded(null); setFps(5)
+      setName(''); setSource(''); setUploaded(null); setFps(5); setTile({ on: false, size: 1024, overlap: 20 })
       onClose()
       nav(`/${ws}/${project}/streams/${created.id}`)
     } catch (e) { toast.err(e as Error) } finally { setBusy(false) }
@@ -132,6 +136,28 @@ function NewStreamDialog({ open, onClose, ws, project }: { open: boolean; onClos
         <Field label="Sample rate (FPS)" hint="How many frames per second are analysed. 5 keeps CPU cost low for most cameras.">
           <Input type="number" min={1} max={30} step={1} value={fps} onChange={(e) => setFps(Number(e.target.value))} inputMode="numeric" />
         </Field>
+
+        {tilingOn && (
+          <div className="space-y-3 rounded-lg border p-3">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={tile.on} onChange={(v) => setTile({ ...tile, on: v })} /> Tiled inference (SAHI)
+            </label>
+            {tile.on && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Tile size (px)">
+                  <Input type="number" min={64} max={4096} value={tile.size}
+                    onChange={(e) => setTile({ ...tile, size: +e.target.value })} />
+                </Field>
+                <Field label={`Overlap ${tile.overlap}%`}>
+                  <input type="range" min={0} max={80} value={tile.overlap}
+                    onChange={(e) => setTile({ ...tile, overlap: +e.target.value })} className="w-full accent-primary"
+                    aria-label="Tile overlap" />
+                </Field>
+                <p className="col-span-2 text-xs text-muted-foreground">Distant objects stay full size when each frame is sliced into overlapping crops. Costs one inference per tile and frame.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {!ready && <p className="text-xs text-muted-foreground">A name, a model and a source are required.</p>}
 

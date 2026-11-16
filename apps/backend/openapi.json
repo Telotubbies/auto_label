@@ -2006,6 +2006,18 @@
             "title": "Source",
             "type": "string"
           },
+          "tiling": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiling"
+          },
           "zones": {
             "items": {},
             "title": "Zones",
@@ -2077,6 +2089,18 @@
               }
             ],
             "title": "Source"
+          },
+          "tiling": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiling"
           },
           "zones": {
             "anyOf": [

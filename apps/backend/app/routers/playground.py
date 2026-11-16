@@ -90,6 +90,11 @@ def predict(file: UploadFile = File(...), model_refs: str = Form(""), prompt: st
         im = open_image(data)             # EXIF auto-orient, like the rest of the ingest path
     except Exception:
         raise HTTPException(400, "not a valid image")
+    if tiling:
+        try:
+            tiling.boxes(im.width, im.height)   # the grid cap: refuse before any inference runs
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
     cls = [x.strip() for x in (classes or "").split(",") if x.strip()]
     q = (prompt or "").strip() or None
     return {"results": [_run(r, im, c.db, c.ws.id, cls, q, confidence, tiling) for r in refs]}

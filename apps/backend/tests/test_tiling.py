@@ -85,13 +85,24 @@ def test_stitch_keeps_different_classes_and_polygons_in_global_coords():
     assert vest["points"][0] == {"x": 450.0, "y": 150.0}
 
 
+def test_an_image_smaller_than_the_tile_is_one_image_sized_tile():
+    """I3: a 1024 px tile over an 800x600 image must not pad a bigger, partly black crop."""
+    assert tile_boxes(800, 600, Tiling(1024)) == [(0, 0, 800, 600)]
+
+
+def test_a_grid_above_the_tile_cap_is_refused():
+    """I2: 6000x4000 at 64 px / 90 % overlap is ~650k inferences from one request."""
+    with pytest.raises(ValueError, match="tiles"):
+        Tiling(64, 0.9).boxes(6000, 4000)
+
+
 class _FakeModel:
     ref = "trained:fake"
 
-    def __init__(self, caps=("detect",)):
+    def __init__(self, caps=("detect",), family="ultralytics"):
         self.caps = set(caps)
         self.calls = []
-        self.adapter = SimpleNamespace(family="ultralytics", capabilities=lambda _v: self.caps)
+        self.adapter = SimpleNamespace(family=family, capabilities=lambda _v: self.caps)
 
     def predict(self, im, **kw):
         self.calls.append((im.size, kw))
@@ -112,3 +123,12 @@ def test_sliced_predict_runs_each_tile_and_returns_global_boxes():
 def test_sliced_predict_rejects_models_without_boxes():
     with pytest.raises(ValueError, match="detection"):
         sliced_predict(_FakeModel({"classify"}), PImage.new("RGB", (800, 800)), Tiling(400, 0))
+
+
+@pytest.mark.parametrize("family,caps", [("sam3", {"segment", "text-prompt"}), ("vlm", {"detect", "open-vocab"})])
+def test_sliced_predict_refuses_sam_and_vlm_without_running(family, caps):
+    """I1: both advertise segment/detect, but neither can be tiled per crop."""
+    model = _FakeModel(caps, family=family)
+    with pytest.raises(ValueError, match="detection"):
+        sliced_predict(model, PImage.new("RGB", (800, 800)), Tiling(400, 0))
+    assert model.calls == []
