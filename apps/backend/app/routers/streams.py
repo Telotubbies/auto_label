@@ -61,6 +61,7 @@ def _check_view(ws: str, project: str, sid: str, kind: str, exp: int, sig: str, 
 def event_out(ev: StreamEvent) -> dict:
     return {"id": ev.id, "ts": ev.ts, "rule": ev.rule or {}, "summary": ev.summary or "",
             "snapshot": sign_path(ev.snapshot_path) if ev.snapshot_path else None,
+            "snapshot_error": ev.snapshot_error or None,
             "reviewed": bool(ev.reviewed), "predictions": ev.predictions or []}
 
 

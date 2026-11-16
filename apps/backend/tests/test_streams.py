@@ -1786,7 +1786,15 @@ def test_event_snapshots_are_metered_and_stop_at_the_storage_quota(c, ws_quotas)
                                 .order_by(StreamEvent.ts)).all()
             assert len(events) == 2, "the quota-blocked event row must still be visible"
             assert events[-1].snapshot_path == "" and events[-1].clean_path == ""
+            # G3.7: the row must say the evidence is missing because of the quota, not look like an
+            # event that never had a frame.
+            assert events[-1].snapshot_error == "storage quota reached"
+            assert events[0].snapshot_error == ""
         assert "quota" in worker.status_out()["last_error"].lower()
+        page = c.get(f"{BASE}/{sid}/events").json()["items"]
+        by_id = {item["id"]: item for item in page}
+        assert by_id[events[-1].id]["snapshot_error"] == "storage quota reached"
+        assert by_id[events[0].id]["snapshot_error"] is None
     finally:
         c.delete(f"{BASE}/{sid}")
 

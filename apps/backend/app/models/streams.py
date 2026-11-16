@@ -35,6 +35,9 @@ class StreamEvent(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     snapshot_path: Mapped[str] = mapped_column(String(1024), default="")     # annotated, relative to DATA_DIR
     clean_path: Mapped[str] = mapped_column(String(1024), default="")        # no overlays: the dataset copy
+    # Why no snapshot was stored (quota, save failure). Empty means the frames were written, so an
+    # event with an empty snapshot and an empty reason is a pre-fix row, not a silent loss.
+    snapshot_error: Mapped[str] = mapped_column(String(120), default="")
     predictions: Mapped[list] = mapped_column(JSON, default=list)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     # denormalised from `rule` / `predictions` so the timeline filters and pages in SQL
