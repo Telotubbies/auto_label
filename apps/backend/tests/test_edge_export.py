@@ -318,6 +318,35 @@ def test_only_managers_can_queue_an_edge_build(client):
         _drop(model_ids=[mid], version_ids=[vid])
 
 
+def test_labeler_cannot_see_or_download_the_edge_artifact(client):
+    """I3: the lean list must not hand a project.infer-only caller a signed edge zip."""
+    with SessionLocal() as db:
+        ws, p = _demo(db)
+        v = _new_version(db, p)
+        m = _new_model(db, ws, p, v)
+        rel = f"edge/{m.id}/onnx.zip"
+        m.runtime_refs = {"edge": {"onnx": {"file": rel, "bytes": 3, "verified": False, "device": "desk"}}}
+        mid, vid = m.id, v.id
+        user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+        db.commit()
+    (DATA_DIR / rel).parent.mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / rel).write_bytes(b"ZIP")
+    h = {"Authorization": f"Bearer {issue_access(user.id)}"}
+    try:
+        r = client.get(f"{BASE}/models", headers=h)
+        assert r.status_code == 200, r.text
+        row = next(x for x in r.json() if x["id"] == mid)
+        assert row["weightsUrl"] is None and row["edgeExports"] == {}
+        assert "/api/files/edge/" not in r.text
+        assert client.get(f"{BASE}/models/{mid}", headers=h).status_code == 403
+
+        own = client.get(f"{BASE}/models/{mid}").json()["edgeExports"]["onnx"]
+        assert own["url"].startswith("/api/files/edge/")
+        assert client.get(own["url"]).status_code == 200       # the artifact exists and is downloadable
+    finally:
+        _drop(model_ids=[mid], version_ids=[vid])
+
+
 def test_export_plan_uses_litert_on_new_ultralytics(monkeypatch):
     monkeypatch.setattr(edge, "_ultralytics_version", lambda: (8, 4, 146))
     assert edge.export_plan("tflite-int8") == ("litert", {"quantize": 8})

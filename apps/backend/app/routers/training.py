@@ -160,7 +160,7 @@ def models(c: Ctx = Depends(project_ctx)):
         j = c.db.get(Job, m.job_id) if m.job_id else None
         d["job"] = job_out(j, lean=not show_models) if j else None
         if not show_models:                 # AI-assist list: no weights, eval or runtime artefacts
-            d["weightsUrl"], d["metrics"], d["runtimeRefs"] = None, {}, {}
+            d["weightsUrl"], d["metrics"], d["runtimeRefs"], d["edgeExports"] = None, {}, {}, {}
         out.append(d)
     return out
 
