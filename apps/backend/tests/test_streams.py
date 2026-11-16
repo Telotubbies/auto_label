@@ -1487,6 +1487,8 @@ def test_update_refuses_to_restart_a_stream_that_is_still_stopping(c, monkeypatc
     _poll(lambda: manager.status(sid) is not None, timeout=10)
     assert [w.id for w in manager._workers.values()].count(sid) == 1
     _poll(_status_is(c, sid, "live"), timeout=10)        # the retry restarted capture
+    # The 0.05 s budget above only forces the drain: a healthy worker needs its real budget to exit.
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 4.0)
     assert c.delete(f"{BASE}/{sid}").status_code == 200
 
 
@@ -1508,6 +1510,8 @@ def test_start_after_a_drained_stop_succeeds(c, monkeypatch, video):
     r = c.post(f"{BASE}/{sid}/start")
     assert r.status_code == 200, r.text
     _poll(_status_is(c, sid, "live"), timeout=10)
+    # The 0.05 s budget above only forces the drain: a healthy worker needs its real budget to exit.
+    monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 4.0)
     assert c.delete(f"{BASE}/{sid}").status_code == 200
 
 
