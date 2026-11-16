@@ -9,6 +9,7 @@ const EventSearch = lazy(() => import('@/features/project/EventSearch'))
 export const projectSearchRoutes = (
   <>
     <Route path="search" element={<FlagGate flag="task_27"><PermGate perm="project.read"><SearchPage /></PermGate></FlagGate>} />
-    <Route path="events" element={<FlagGate flag="task_38"><PermGate perm="project.read"><EventSearch /></PermGate></FlagGate>} />
+    {/* Event search reads stream footage, so it needs the stream permission, not just project.read. */}
+    <Route path="events" element={<FlagGate flag="task_38"><PermGate perm="project.streams"><EventSearch /></PermGate></FlagGate>} />
   </>
 )

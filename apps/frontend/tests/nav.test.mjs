@@ -132,17 +132,18 @@ test('a reviewer loses Train and the settings group', () => {
 
 test('a labeler sees dataset, video and annotate only — the IA labeler view', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(LABELER, 'labeler')), [
-    ['DATA', ['Dataset', 'Search', 'Event search', 'Video']],
+    ['DATA', ['Dataset', 'Search', 'Video']],
     ['LABEL', ['Annotate']],
-    // Streams carry camera footage and predictions: project.streams (manager/reviewer) only.
+    // Streams carry camera footage and predictions: project.streams (manager/reviewer) only, and
+    // event search reads the same footage, so a labeler gets neither.
   ])
   assert.deepEqual(visibleProjectNav(LABELER, 'labeler').flatMap((g) => g.items).map((i) => i.label),
-    ['Dataset', 'Search', 'Event search', 'Video', 'Annotate'])
+    ['Dataset', 'Search', 'Video', 'Annotate'])
 })
 
 test('a viewer keeps the dataset and no stream list', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(VIEWER, 'viewer')), [
-    ['DATA', ['Dataset', 'Search', 'Event search']],
+    ['DATA', ['Dataset', 'Search']],
   ])
 })
 
@@ -151,7 +152,7 @@ test('no permission means no project nav at all', () => {
 })
 
 test('an unresolved project role falls back to the permission check', () => {
-  assert.deepEqual(itemLabels(visibleProjectNav(LABELER, null), 'data'), ['Dataset', 'Search', 'Event search', 'Video', 'Classes & Tags'])
+  assert.deepEqual(itemLabels(visibleProjectNav(LABELER, null), 'data'), ['Dataset', 'Search', 'Video', 'Classes & Tags'])
 })
 
 test('search and event search stay hidden until their own flag is on', () => {

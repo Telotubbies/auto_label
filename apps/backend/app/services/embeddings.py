@@ -2,9 +2,11 @@
 
 The model is optional — a CPU-only or offline install simply reports `available() == False` and
 callers fall back to their own cheap features. When Task 20a's `insights_embedding` module is
-importable its loaded backend is reused, so the process holds at most one CLIP model; vectors are
-cached per sha256 in this seam's own `clip-full` namespace (20a caches 64 px thumbnails, this seam
-embeds the full frame). `LD_CLIP=0` forces the fallback (deterministic tests).
+importable its loaded backend is reused for image vectors, so image embedding never loads a second
+copy; the text tower below is the one text encoder in the codebase, lives on the CPU and never takes
+the GPU lease. Vectors are cached per sha256 in this seam's own `clip-full` namespace (20a caches
+64 px thumbnails, this seam embeds the full frame). `LD_CLIP=0` forces the fallback (deterministic
+tests).
 
 The backend is a scheduler lease: a CUDA load goes through `app.gpu.scheduler`, so the VRAM ledger
 counts it and training's exclusive lease unloads it like any other model. The lease is optional

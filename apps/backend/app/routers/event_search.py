@@ -76,7 +76,9 @@ def _frame_out(c: Ctx, frame: EventSearchFrame, score: float | None = None) -> d
 def start_search(body: SearchIn, c: Ctx = Depends(project_ctx),
                  _: None = Depends(require_flag(FLAG))):
     """Queue an index+rank job; a long window is sampled in the background."""
-    c.perm("project.read")
+    # Stream footage is project.streams data and the stored result needs project.models
+    # (visible_job strips it for anyone else), so the same roles that watch streams search them.
+    c.perm("project.streams")
     query = body.query.strip()
     if not query or len(query) > 500:
         raise HTTPException(400, "query must be 1 to 500 characters")

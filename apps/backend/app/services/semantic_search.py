@@ -19,6 +19,7 @@ from .embeddings import embed_text
 
 MAX_RESULTS = 200
 MAX_LIMIT = 500
+MAX_QUERY = 500
 
 
 def _project_classes(db: Session, project: Project) -> list[LabelClass]:
@@ -117,7 +118,7 @@ def search(
     limit: int = MAX_RESULTS,
 ) -> dict:
     """Rank this project's images by CLIP similarity, or browse them when the query is blank."""
-    q = (query or "").strip()[:500]
+    q = (query or "").strip()[:MAX_QUERY]
     classes = _project_classes(db, project)
     rows = insights.live_images(db, project)
     if project_role == "labeler" and user_id:

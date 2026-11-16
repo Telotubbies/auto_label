@@ -18,6 +18,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import Image, ImageClass, LabelClass, Project, User, Workspace
 from app.security import issue_access
+from app.services import collections as collection_service
 from app.services import insights_embedding, semantic_search
 
 WS = "labeldesk-demo"
@@ -219,7 +220,47 @@ def test_collections_crud(client, data):
 def test_collection_rejects_images_from_another_project(client, data):
     r = client.post(f"{BASE}/collections", json={"name": "mixed", "image_ids": [data["a"], data["other_img"]]})
     assert r.status_code == 400
-    assert "another project" in r.json()["detail"]
+    # the refusal must not read the other project's row: the id is simply not in this project
+    assert "not found" in r.json()["detail"]
+
+
+def test_collection_rejects_a_deleted_image(client, data):
+    ghost = seed_image(data["project"], "ghost.jpg", sha=hashlib.sha256(b"ghost").hexdigest())
+    with SessionLocal() as db:
+        db.get(Image, ghost).deleted_at = 1.0
+        db.commit()
+    r = client.post(f"{BASE}/collections", json={"name": "ghosts", "image_ids": [data["a"], ghost]})
+    assert r.status_code == 400
+    assert "deleted" in r.json()["detail"]
+
+
+def test_collection_name_is_validated(client, data):
+    assert client.post(f"{BASE}/collections", json={"name": "   "}).status_code == 400
+    long_name = client.post(f"{BASE}/collections", json={"name": "x" * 256})
+    assert long_name.status_code == 400 and "too long" in long_name.json()["detail"]
+
+
+def test_collection_item_cap_is_enforced(client, data, monkeypatch):
+    monkeypatch.setattr(collection_service, "MAX_ITEMS", 3)
+    over = client.post(f"{BASE}/collections",
+                       json={"name": "cap", "image_ids": [data["a"], data["b"], data["c"], data["d"]]})
+    assert over.status_code == 400 and "3 images" in over.json()["detail"]
+
+    made = client.post(f"{BASE}/collections", json={"name": "cap ok",
+                                                    "image_ids": [data["a"], data["b"], data["c"]]})
+    assert made.status_code == 200, made.text
+    cid = made.json()["id"]
+    assert client.post(f"{BASE}/collections/{cid}/items",
+                       json={"image_ids": [data["d"]]}).status_code == 400
+    # an id already in the set costs no room, so re-adding it is not an error
+    same = client.post(f"{BASE}/collections/{cid}/items", json={"image_ids": [data["a"]]})
+    assert same.status_code == 200 and same.json()["count"] == 3
+
+
+def test_over_long_query_is_rejected(client, data):
+    assert client.get(f"{BASE}/search", params={"q": "x" * 500}).status_code == 200
+    r = client.get(f"{BASE}/search", params={"q": "x" * 501})
+    assert r.status_code == 400 and "500" in r.json()["detail"]
 
 
 def test_collections_are_project_scoped(client, data):

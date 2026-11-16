@@ -43,19 +43,22 @@ def _check_name(db: Session, project: Project, name: str, *, exclude: str = "") 
 
 
 def _validated_ids(db: Session, project: Project, image_ids: list[str]) -> list[str]:
-    """Requested ids in caller order; foreign or missing/deleted ids are a validation error."""
+    """Requested ids in caller order; anything outside this project or deleted is a validation error."""
     wanted = list(dict.fromkeys(i for i in image_ids or [] if isinstance(i, str) and i))
     if not wanted:
         return []
     rows = db.execute(
-        select(Image.id, Image.project_id, Image.deleted_at).where(Image.id.in_(wanted))
+        select(Image.id, Image.project_id, Image.deleted_at)
+        .where(Image.id.in_(wanted), Image.project_id == project.id)
     ).all()
-    foreign = [image_id for image_id, project_id, _deleted in rows if project_id != project.id]
-    if foreign:
-        raise ValueError("images from another project cannot be added to a collection")
+    # A foreign or unknown id is "not found" on purpose: a cross-tenant id must not reveal that it
+    # exists in another project.
+    found = {row.id for row in rows}
+    if any(image_id not in found for image_id in wanted):
+        raise ValueError("image not found")
     live = {image_id for image_id, _project_id, deleted in rows if deleted is None}
     if any(image_id not in live for image_id in wanted):
-        raise ValueError("image not found")
+        raise ValueError("image was deleted; restore it before adding it to a collection")
     return wanted
 
 
@@ -120,7 +123,9 @@ def create(db: Session, project: Project, name: str, *, image_ids: list[str] | N
            query: str = "", user_id: str | None = None) -> dict:
     clean = _clean_name(name)
     _check_name(db, project, clean)
-    ids = _validated_ids(db, project, image_ids or [])[:MAX_ITEMS]
+    ids = _validated_ids(db, project, image_ids or [])
+    if len(ids) > MAX_ITEMS:
+        raise ValueError(f"a collection holds at most {MAX_ITEMS} images")
     row = Collection(workspace_id=project.workspace_id, project_id=project.id, name=clean,
                      query=(query or "")[:MAX_QUERY], created_by=user_id)
     db.add(row)
@@ -193,8 +198,13 @@ def rename(db: Session, project: Project, collection_id: str, name: str) -> dict
 
 def add_items(db: Session, project: Project, collection_id: str, image_ids: list[str]) -> dict:
     row = get(db, project, collection_id)
-    room = max(0, MAX_ITEMS - _count(db, row))
-    _append(db, row, _validated_ids(db, project, image_ids)[:room])
+    present = set(
+        db.scalars(select(CollectionItem.image_id).where(CollectionItem.collection_id == row.id))
+    )
+    new = [image_id for image_id in _validated_ids(db, project, image_ids) if image_id not in present]
+    if len(new) > MAX_ITEMS - _count(db, row):
+        raise ValueError(f"a collection holds at most {MAX_ITEMS} images")
+    _append(db, row, new)
     db.commit()
     db.refresh(row)
     return summary(db, row)

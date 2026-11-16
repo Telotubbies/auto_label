@@ -121,7 +121,8 @@ export default function SearchPage() {
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
           <Input className="pl-8" aria-label="Search images" placeholder="e.g. workers without helmets"
-            value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+            maxLength={500} value={text} onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()} />
         </div>
         <Select aria-label="Filter by class" value={filters.class_id} onChange={(e) => setF('class_id', e.target.value)}>
           <option value="">All classes</option>

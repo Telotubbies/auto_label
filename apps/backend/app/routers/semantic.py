@@ -57,6 +57,8 @@ def search(
     c: Ctx = Depends(project_ctx),
 ):
     """Rank images by CLIP similarity; a blank query browses the filtered dataset."""
+    if len(q) > semantic_search.MAX_QUERY:
+        raise HTTPException(400, f"query must be at most {semantic_search.MAX_QUERY} characters")
     return semantic_search.search(
         c.db,
         c.project,

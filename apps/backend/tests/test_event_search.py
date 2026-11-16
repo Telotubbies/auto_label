@@ -30,6 +30,7 @@ BASE = f"/api/ws/{WS}/projects/{PROJECT}"
 OTHER = f"/api/ws/{WS}/projects/{OTHER_PROJECT}"
 FLAG = "task_38"
 PW = "demo1234"
+DAY = 24 * 3600
 
 
 def _login(email: str = "demo@labeldesk.dev") -> TestClient:
@@ -306,3 +307,42 @@ def test_request_validation(admin):
     assert admin.post(f"{BASE}/event-search",
                       json={"query": "x", "from_ts": now, "to_ts": now - 10}).status_code == 400
     assert admin.post(f"{BASE}/event-search", json={"query": "x", "limit": 0}).status_code == 400
+
+
+def test_window_is_limited_to_31_days(admin):
+    now = time.time()
+    r = admin.post(f"{BASE}/event-search",
+                   json={"query": "helmet", "from_ts": now - 31 * DAY - 60, "to_ts": now})
+    assert r.status_code == 400 and "31 days" in r.json()["detail"]
+
+
+def test_labeler_cannot_start_an_event_search(labeler):
+    """Stream footage is project.streams data and the result needs project.models; a labeler gets neither."""
+    assert labeler.post(f"{BASE}/event-search", json={"query": "helmet"}).status_code == 403
+
+
+def test_data_path_refuses_paths_outside_the_data_dir():
+    assert event_search.data_path("event-search/frame.jpg") == (DATA_DIR / "event-search/frame.jpg").resolve()
+    assert event_search.data_path("") is None
+    assert event_search.data_path("../escape.jpg") is None
+    assert event_search.data_path(str(DATA_DIR.parent / "escape.jpg")) is None
+
+
+def test_indexing_stops_after_a_cancellation(admin, monkeypatch, footage):
+    monkeypatch.setattr(event_search.embeddings, "available", lambda: True)
+    embedded: list[str] = []
+
+    def vector(_im, sha):
+        embedded.append(sha)
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(event_search, "_image_vector", vector)
+    now = footage["now"]
+    with SessionLocal() as db:
+        project = _project()
+        candidates = event_search.collect_candidates(db, project, now - 900, now)
+        rows, stats = event_search.index_candidates(
+            db, project, candidates, should_stop=lambda: len(embedded) >= 1)
+    assert stats["embeddings"] == 1
+    assert len(embedded) == 1
+    assert sum(1 for row in rows if row.embedding) == 1
