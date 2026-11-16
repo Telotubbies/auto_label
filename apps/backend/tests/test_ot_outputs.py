@@ -430,7 +430,7 @@ def test_worker_record_enqueues_the_rule_for_the_actuator(monkeypatch):
     from app.streams import manager
 
     stream = SimpleNamespace(id="cam-1", workspace_id="ws-1", project_id="p-1", name="Cam", source="rtsp://x",
-                             model_ref="trained:x", sample_fps=5.0, zones=[],
+                             model_ref="trained:x", sample_fps=5.0, zones=[], tiling=None,
                              rules=[{"kind": "zone", "class": "defect", "zone_id": "z"}])
     worker = manager._Worker(stream)
     worker._save_frames = lambda *_args: ("", "")
