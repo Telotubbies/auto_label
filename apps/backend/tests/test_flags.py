@@ -20,7 +20,7 @@ from app.services import flags
 
 WS = "labeldesk-demo"
 FLAG = "task_10b"
-SURFACES = {"task_10b", "task_20c", "task_22", "task_23"}
+SURFACES = {"task_10b", "task_20c", "task_22", "task_23", "task_29"}
 
 
 def login(email: str = "demo@labeldesk.dev", pw: str = "demo1234") -> TestClient:
@@ -183,6 +183,7 @@ SURFACE_ROUTES = [
     f"/api/ws/{WS}/projects/ppe-detection/insights/lineage",
     f"/api/ws/{WS}/projects/ppe-detection/dashboards",
     f"/api/ws/{WS}/projects/ppe-detection/labeling/dashboard",
+    f"/api/ws/{WS}/projects/ppe-detection/anomaly/stations",
 ]
 
 

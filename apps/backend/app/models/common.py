@@ -7,7 +7,8 @@ import time
 ROLES = ("admin", "reviewer", "annotator")
 WORKSPACE_ROLES = ("owner", "admin", "billing", "member")
 PROJECT_ROLES = ("manager", "reviewer", "labeler", "viewer")
-PROJECT_TYPES = ("object-detection", "instance-segmentation", "classification", "keypoint-detection")
+PROJECT_TYPES = ("object-detection", "instance-segmentation", "classification", "keypoint-detection",
+                 "anomaly-detection")
 SPLITS = ("train", "valid", "test")
 STATUSES = ("unassigned", "annotating", "review", "done")
 API_SCOPES = ("read", "upload", "train", "infer")
