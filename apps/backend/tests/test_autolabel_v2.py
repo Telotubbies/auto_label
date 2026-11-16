@@ -278,6 +278,37 @@ def test_prompt_parser_feeds_sam(c, scratch, monkeypatch):
     assert sam.prompts == ["workers", "helmets"]
 
 
+def test_trained_default_threshold_comes_from_eval(c, scratch, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import TrainedModel, Version, Workspace
+    seen = []
+    adapter = FakeDetector()
+
+    def predict(variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5):
+        seen.append(conf)
+        return {"predictions": [box()], "time": 0.0, "image": {"width": im.width, "height": im.height}}
+
+    adapter.predict = predict
+    monkeypatch.setitem(ADAPTERS, "ultralytics", adapter)
+    with SessionLocal() as s:
+        ws = s.scalar(select(Workspace).where(Workspace.slug == WS))
+        v = Version(project_id=scratch["id"], number=2, name="conf test")
+        s.add(v); s.flush()
+        m = TrainedModel(workspace_id=ws.id, project_id=scratch["id"], version_id=v.id, name="conf model",
+                         arch="yolo26n", task="detect", status="ready", family="ultralytics", variant="yolo26n",
+                         weights="models/x/best.pt", metrics={"eval": {"f1_best": {"conf": 0.62}}})
+        s.add(m); s.commit()
+        mid = m.id
+    try:
+        j = run_job(c, scratch["base"], {"model_ref": f"trained:{mid}", "only_unannotated": False,
+                                         "image_ids": [scratch["images"][3]]})
+        assert j["status"] == "done", j
+        assert seen == [0.62]            # Resolved.conf: the evaluator's best-F1 threshold
+    finally:
+        with SessionLocal() as s:
+            s.delete(s.get(TrainedModel, mid)); s.commit()
+
+
 def test_ready_trained_model_in_registry(c, scratch):
     from app.db import SessionLocal
     from app.models import TrainedModel, Version, Workspace
