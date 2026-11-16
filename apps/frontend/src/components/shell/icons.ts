@@ -1,7 +1,7 @@
 import {
   Activity, BarChart3, Bell, Boxes, BrainCircuit, Cctv, ClipboardCheck, CreditCard, Database, Film, FlaskConical,
   FolderGit2, GitBranch, KeyRound, Layers, LayoutDashboard, LineChart, Rocket, ScrollText, Settings, ShieldCheck,
-  Tag, Tags, Upload, Users, Wrench,
+  Tag, Tags, Upload, Users, Wrench, ScanSearch,
 } from 'lucide-react'
 import type { NavIcon } from '@/lib/nav'
 
@@ -13,5 +13,5 @@ export const ICONS: Record<NavIcon, typeof Layers> = {
   upload: Upload, annotate: Tag, dataset: Database, video: Film, versions: FolderGit2, classes: Tags,
   insights: LineChart, train: BrainCircuit, modelInsights: BarChart3, deploy: Rocket, qa: ClipboardCheck,
   streams: Cctv, access: KeyRound, projectSettings: Wrench,
-  lineage: GitBranch, dashboards: LayoutDashboard, streamAnalytics: Activity,
+  lineage: GitBranch, dashboards: LayoutDashboard, streamAnalytics: Activity, anomaly: ScanSearch,
 }

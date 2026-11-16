@@ -1,9 +1,9 @@
 import type {
-  Analytics, CompareInsights, DeploymentAlias, DeploymentOverview, Job, LeaderboardRow, ModelDetections,
-  ModelInsights, ModelItem, PlaygroundResult, PlaygroundRuntime, PlaygroundSample, TrainingInsights,
-  VideoFrame, VideoItem,
+  Analytics, AnomalyResult, AnomalyStation, CompareInsights, DeploymentAlias, DeploymentOverview, Job,
+  LeaderboardRow, ModelDetections, ModelInsights, ModelItem, PlaygroundResult, PlaygroundRuntime,
+  PlaygroundSample, TrainingInsights, VideoFrame, VideoItem,
 } from '../types'
-import { get, P, post, put } from './client'
+import { get, P, patch, post, put } from './client'
 
 /** Model lifecycle: training, the model registry, insights, video authoring, playground and deploy. */
 export const modelApi = {
@@ -39,4 +39,15 @@ export const modelApi = {
     post<DeploymentAlias>(`${P(ws, p)}/deployments/${encodeURIComponent(alias)}/rollback`, {}),
   sendDriftToLabeling: (ws: string, p: string, runId: string) =>
     post<{ sent: number }>(`${P(ws, p)}/drift/${encodeURIComponent(runId)}/send-to-labeling`, {}),
+
+  // --- good-only anomaly detection ---
+  anomalyStations: (ws: string, p: string) => get<AnomalyStation[]>(`${P(ws, p)}/anomaly/stations`),
+  createAnomalyStation: (ws: string, p: string, body: { name: string; threshold?: number }) =>
+    post<AnomalyStation>(`${P(ws, p)}/anomaly/stations`, body),
+  updateAnomalyStation: (ws: string, p: string, id: string, body: { name?: string; threshold?: number }) =>
+    patch<AnomalyStation>(`${P(ws, p)}/anomaly/stations/${id}`, body),
+  trainAnomalyStation: (ws: string, p: string, id: string) =>
+    post<{ station: AnomalyStation; job: Job }>(`${P(ws, p)}/anomaly/stations/${id}/train`, {}),
+  predictAnomaly: (ws: string, p: string, id: string, body: { image_id: string; compare_vlm?: boolean }) =>
+    post<AnomalyResult>(`${P(ws, p)}/anomaly/stations/${id}/predict`, body),
 }

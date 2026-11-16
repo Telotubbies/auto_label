@@ -109,7 +109,7 @@ test('a manager sees every project group', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(MANAGER, 'manager')), [
     ['DATA', ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights']],
     ['LABEL', ['Annotate', 'Review & Quality']],
-    ['MODELS', ['Train', 'Model insights', 'Models']],
+    ['MODELS', ['Train', 'Anomaly', 'Model insights', 'Models']],
     ['STUDIO', ['Lineage', 'Dashboards', 'Stream analytics']],
     ['DEPLOY', ['Deploy & Test', 'Streams']],
     ['SETTINGS', ['Project Settings']],
@@ -122,7 +122,7 @@ test('a reviewer loses Train and the settings group', () => {
   assert.deepEqual(itemLabels(groups, 'data'),
     ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights'])
   assert.deepEqual(itemLabels(groups, 'label'), ['Annotate', 'Review & Quality'])
-  assert.deepEqual(itemLabels(groups, 'models'), ['Model insights', 'Models'])
+  assert.deepEqual(itemLabels(groups, 'models'), ['Anomaly', 'Model insights', 'Models'])
   assert.deepEqual(itemLabels(groups, 'studio'), ['Lineage', 'Dashboards', 'Stream analytics'])
   assert.deepEqual(itemLabels(groups, 'deploy'), ['Deploy & Test', 'Streams'])
   assert.deepEqual(itemLabels(groups, 'settings'), [])
@@ -185,6 +185,19 @@ test('Task 23 QA and Task 10b Streams keep their nav entries and routes', () => 
   assert.match(appSrc, /path="streams"/, 'the Streams route must render the Streams page')
   assert.match(appSrc, /path="streams\/:sid"/, 'a stream keeps its detail URL')
   assert.match(appSrc, /<PermGate perm="project\.streams">/, 'the Streams route must use project.streams')
+})
+
+test('the Task 29 anomaly station is scoped to anomaly projects', () => {
+  const anomaly = projectNav.flatMap((g) => g.items).find((i) => i.to === 'anomaly')
+  assert.ok(anomaly, 'the anomaly station lost its nav entry')
+  assert.equal(anomaly.perm, 'project.read')
+  assert.equal(anomaly.type, 'anomaly-detection')
+  assert.equal(anomaly.flag, 'task_29')
+  const targets = (type) => visibleProjectNav(MANAGER, 'manager', undefined, type)
+    .flatMap((g) => g.items.map((i) => i.to))
+  assert.ok(!targets('object-detection').includes('anomaly'))
+  assert.ok(targets('anomaly-detection').includes('anomaly'), 'an anomaly project keeps its station')
+  assert.match(appSrc, /path="anomaly"/)
 })
 
 test('roles without a Projects entry land on their first visible surface', () => {

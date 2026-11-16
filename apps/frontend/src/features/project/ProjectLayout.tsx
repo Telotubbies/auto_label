@@ -31,7 +31,7 @@ export default function ProjectLayout() {
   const review = project.statusCounts?.review ?? 0
   // Below lg the project panel is hidden; one compact strip keeps every section reachable.
   // Same builder and project role as ProjectPanel, so a role never sees a different IA by width.
-  const items = projectNavGroups(canProject, projectRole, flags).flatMap((g) => g.items)
+  const items = projectNavGroups(canProject, projectRole, flags, project.type).flatMap((g) => g.items)
   const section = location.pathname.split('/').pop() ?? 'browse'
   return (
     <div className="flex h-full">

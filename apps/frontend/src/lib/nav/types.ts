@@ -5,7 +5,7 @@ export type NavIcon =
   | 'integrations' | 'activity' | 'settings' | 'admin'
   | 'upload' | 'annotate' | 'dataset' | 'video' | 'versions' | 'classes' | 'insights' | 'train'
   | 'modelInsights' | 'deploy' | 'qa' | 'streams' | 'access' | 'projectSettings'
-  | 'lineage' | 'dashboards' | 'streamAnalytics'
+  | 'lineage' | 'dashboards' | 'streamAnalytics' | 'anomaly'
 
 export interface WorkspaceNavItem {
   to: string
@@ -29,6 +29,8 @@ export interface ProjectNavItem {
   roles?: ProjectRole[]
   /** Feature flag that gates both this nav entry and its API surface. */
   flag?: string
+  /** Only show the entry on projects of this type. */
+  type?: string
   /** Show the project's image count beside the label. */
   count?: boolean
 }

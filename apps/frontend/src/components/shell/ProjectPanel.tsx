@@ -16,8 +16,9 @@ import { ICONS } from './icons'
  */
 export function projectNavGroups(
   can: (perm: string) => boolean, role?: ProjectRole | null, flags?: ReadonlySet<string>,
+  projectType?: string,
 ) {
-  return visibleProjectNav(can, role, flags).map((g) => ({
+  return visibleProjectNav(can, role, flags, projectType).map((g) => ({
     group: g.label ?? '',
     items: g.items.map((i) => ({ ...i, icon: ICONS[i.icon] })),
   }))
@@ -27,7 +28,7 @@ export function projectNavGroups(
 export const projNav = projectNavGroups(() => true)
 
 export const typeLabel = (t: string) =>
-  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection' } as Record<string, string>)[t] ?? t
+  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection', 'anomaly-detection': 'Anomaly Detection' } as Record<string, string>)[t] ?? t
 
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws = '' } = useParams()
@@ -38,7 +39,7 @@ export function ProjectPanel({ project }: { project: Project }) {
   const flagsQuery = useWorkspaceFlags()
   const flags = flagsQuery.data ? new Set(flagsQuery.data.enabled) : undefined
   const visible = (perm: string) => (ready ? canProject(perm) : can('admin'))
-  const groups = projectNavGroups(visible, projectRole, flags)
+  const groups = projectNavGroups(visible, projectRole, flags, project.type)
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
       <div className="p-3">

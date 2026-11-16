@@ -15,6 +15,25 @@ export interface AnnotationsIn {
   annotations: Record<string, unknown>[]
 }
 
+export interface AnomalyPredictIn {
+  compare_vlm?: boolean
+  image_id: string
+}
+
+export interface AnomalyStationIn {
+  name: string
+  threshold?: number
+}
+
+export interface AnomalyStationPatch {
+  name?: string | null
+  threshold?: number | null
+}
+
+export interface AppRoutersAnomalyTrainIn {
+  image_ids?: string[] | null
+}
+
 export interface AppRoutersDevapiTrainIn {
   batch?: number
   epochs?: number
