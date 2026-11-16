@@ -127,8 +127,10 @@ def checks(db: Session, project: Project, imgsz: int = 640, *, auto_scan: bool =
     }
 
 
-def recommendations(checks: dict) -> list[dict]:
-    """Plain-language next steps for the Health page; `suggest` carries the one-click values."""
+def recommendations(checks: dict, tiling: bool = False) -> list[dict]:
+    """Plain-language next steps for the Health page; `suggest` carries the one-click values.
+
+    ``tiling`` is the task_30 flag: only an enabled workspace is offered the tiled-inference values."""
     out = []
     buckets = checks.get("size_buckets") or {}
     total = sum(buckets.values())
@@ -136,13 +138,14 @@ def recommendations(checks: dict) -> list[dict]:
     if total and buckets.get("small", 0) / total >= SMALL_SHARE:
         target = 1024 if imgsz <= 768 else 1280
         pct = round(buckets["small"] / total * 100)
-        out.append(
-            {
-                "key": "imgsz",
-                "message": f"{pct} % objects are small at {imgsz} → try {target} or tiling",
-                "suggest": {"imgsz": target},
-            }
-        )
+        suggest = {"imgsz": target}
+        message = f"{pct} % objects are small at {imgsz} → try {target}"
+        if tiling:
+            suggest["tiling"] = {"tile_size": target, "overlap": 0.2}
+            message += f" px, or tiled inference at {target} px for very large images"
+        else:
+            message += " or tiling"
+        out.append({"key": "imgsz", "message": message, "suggest": suggest})
     if flags := checks.get("label_quality") or []:
         n = len(flags)
         out.append(
