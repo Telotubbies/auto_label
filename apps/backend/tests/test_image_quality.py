@@ -274,7 +274,9 @@ def test_health_payload_exposes_counts_samples_and_links(c, project):
     assert recs["quality_dark"]["suggest"] == {"quality": "dark"}
 
 
-def test_analytics_exposes_the_quality_card(c, project):
+def test_analytics_exposes_the_quality_card(c, project, monkeypatch):
+    # GET /analytics auto-queues a health scan; this module must not leave that job for the next one.
+    monkeypatch.setattr(health, "enqueue", lambda *a, **k: None)
     r = c.get(f"/api/ws/{WS}/projects/{project['slug']}/analytics")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -321,6 +323,7 @@ def test_video_extracted_frames_get_a_quality_score(c, other_world):
             workspace_id=ws.id,
             project_id=p.id,
             kind="extract_frames",
+            status="running",  # this test drives the handler itself; the embedded worker must not claim it
             params={"video_id": v.id, "mode": "fps", "target_fps": 5.0},
         )
         db.add(job)
@@ -328,13 +331,20 @@ def test_video_extracted_frames_get_a_quality_score(c, other_world):
         pid, vid, job_id = p.id, v.id, job.id
         assert quality.summary(db, p)["counts"]["unknown"] == 0  # no rows yet
 
-    with SessionLocal() as db:
-        worker.run_extract_frames(db.get(Job, job_id))
+    try:
+        with SessionLocal() as db:
+            worker.run_extract_frames(db.get(Job, job_id))
 
-    with SessionLocal() as db:
-        frames = db.scalars(select(Image).where(Image.video_id == vid)).all()
-        assert len(frames) == 4
-        assert all(f.sharpness is not None and f.luminance is not None for f in frames)
-        assert {quality.classify(f.sharpness, f.luminance) for f in frames} == {"ok"}
-        counts = quality.summary(db, db.get(Project, pid))["counts"]
-    assert counts == {"blurry": 0, "dark": 0, "ok": 4, "unknown": 0}
+        with SessionLocal() as db:
+            frames = db.scalars(select(Image).where(Image.video_id == vid)).all()
+            assert len(frames) == 4
+            assert all(f.sharpness is not None and f.luminance is not None for f in frames)
+            assert {quality.classify(f.sharpness, f.luminance) for f in frames} == {"ok"}
+            counts = quality.summary(db, db.get(Project, pid))["counts"]
+        assert counts == {"blurry": 0, "dark": 0, "ok": 4, "unknown": 0}
+    finally:
+        with SessionLocal() as db:  # never leave a job row for another module's worker
+            row = db.get(Job, job_id)
+            if row is not None:
+                db.delete(row)
+                db.commit()
