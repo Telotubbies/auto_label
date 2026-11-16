@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ImageOff, Play, Plus, ScanLine, Send, Square, Trash2, TriangleAlert, VideoOff } from 'lucide-react'
 import { api, fileUrl } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
 import { classColor, dateLocale } from '@/lib/theme'
 import type { StreamCountOp, StreamEvent, StreamEventPage, StreamEventRule, StreamItem, StreamPrediction, StreamRule, StreamRuleKind, StreamZone } from '@/lib/types'
@@ -162,6 +163,9 @@ function SummaryPanel({ stream }: { stream: StreamItem }) {
     ['Events', <span className="tabular-nums">{fmtInt(stream.events)}</span>],
     ['Zones', <span className="tabular-nums">{stream.zones.length}</span>],
     ['Rules', <span className="tabular-nums">{stream.rules.length}</span>],
+    ['Tiling', stream.tiling
+      ? <span className="tabular-nums">{stream.tiling.tile_size} px · {Math.round(stream.tiling.overlap * 100)}%</span>
+      : <span>Whole frame</span>],
   ]
   return (
     <Card className="p-4" role="region" aria-label="Stream summary">
@@ -238,6 +242,69 @@ function ReadOnlyRules({ stream }: { stream: StreamItem }) {
           ))}
         </ul>
       )}
+    </Card>
+  )
+}
+
+// ---------- tiling ------------------------------------------------------------
+/** task_30: the stream's own tile settings, saved through PATCH like zones and rules. */
+function TilingSection({ stream, ws, project }: { stream: StreamItem; ws: string; project: string }) {
+  const qc = useQueryClient()
+  const enabled = useFlag('task_30')
+  const [saving, setSaving] = useState(false)
+  // null = follow the stored setting; a draft keeps in-progress edits across the 3 s poll.
+  const [draft, setDraft] = useState<{ on: boolean; size: number; overlap: number } | null>(null)
+  const tile = draft ?? {
+    on: !!stream.tiling,
+    size: stream.tiling?.tile_size ?? 1024,
+    overlap: Math.round((stream.tiling?.overlap ?? 0.2) * 100),
+  }
+
+  if (!enabled) return null
+  const valid = !tile.on || (Number.isFinite(tile.size) && tile.size >= 64 && tile.size <= 4096)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const updated = await api.updateStream(ws, project, stream.id, {
+        // The same limits as the playground; the server rejects anything outside them too.
+        tiling: tile.on ? { tile_size: Math.round(tile.size), overlap: tile.overlap / 100 } : {},
+      })
+      qc.setQueryData(['stream', ws, project, stream.id], updated)
+      qc.invalidateQueries({ queryKey: ['streams', ws, project] })
+      setDraft(null)
+      toast.ok(tile.on ? 'Tiled inference saved' : 'Tiling turned off')
+    } catch (e) { toast.err(e as Error) } finally { setSaving(false) }
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">Tiled inference (SAHI)</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Slice each analysed frame into overlapping crops so distant objects keep their size. One inference runs per tile and frame. Saving restarts a running stream.</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <Switch checked={tile.on} onChange={(v) => setDraft({ ...tile, on: v })} label="Tiled inference" />
+          {tile.on ? 'On' : 'Off'}
+        </label>
+      </div>
+      {tile.on && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Field label="Tile size (px)">
+            <Input type="number" min={64} max={4096} value={tile.size} inputMode="numeric"
+              onChange={(e) => setDraft({ ...tile, size: Number(e.target.value) })} />
+          </Field>
+          <Field label={`Overlap ${tile.overlap}%`}>
+            <input type="range" min={0} max={80} value={tile.overlap} aria-label="Tile overlap"
+              onChange={(e) => setDraft({ ...tile, overlap: Number(e.target.value) })} className="w-full accent-primary" />
+          </Field>
+        </div>
+      )}
+      <div className="mt-3 flex items-center justify-end gap-3">
+        {!valid && <span className="text-xs text-destructive">Tile size must be 64–4096 px.</span>}
+        <Button disabled={saving || !valid} onClick={save}>{saving ? <><Spinner /> Saving…</> : 'Save tiling'}</Button>
+      </div>
     </Card>
   )
 }
@@ -781,7 +848,14 @@ export default function StreamDetail() {
           <EventsTimeline stream={stream} ws={ws} project={project} active={tab === 'events'} />
         </div>
         <div className={tab === 'rules' ? '' : 'hidden'}>
-          {admin ? <RulesSection stream={stream} ws={ws} project={project} /> : <ReadOnlyRules stream={stream} />}
+          {admin
+            ? (
+              <div className="space-y-4">
+                <TilingSection key={stream.id} stream={stream} ws={ws} project={project} />
+                <RulesSection stream={stream} ws={ws} project={project} />
+              </div>
+            )
+            : <ReadOnlyRules stream={stream} />}
         </div>
       </div>
 

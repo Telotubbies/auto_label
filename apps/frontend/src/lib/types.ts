@@ -776,7 +776,10 @@ export interface StreamCreateBody {
 }
 /** task_30 tiling settings, as the server stores them. */
 export interface StreamTiling { tile_size: number; overlap: number }
-export type StreamPatchBody = Partial<StreamCreateBody>
+export type StreamPatchBody = Omit<Partial<StreamCreateBody>, 'tiling'> & {
+  /** `{}` clears the stored tiling; the keys are the same settings as creation. */
+  tiling?: Partial<StreamTiling> | null
+}
 export interface StreamVideoUpload { source: string }
 
 // --- Insights Studio (Task 20c): lineage, widget queries, dashboards -----------

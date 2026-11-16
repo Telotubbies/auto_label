@@ -660,7 +660,13 @@ class _Worker:
     def _infer(self, resolved, im, classes) -> dict:
         """Sliced or whole-frame inference: the one seam a tiled stream differs at (task_30)."""
         kw = {"classes": classes} if classes else {}
-        return sliced_predict(resolved, im, self.tiling, **kw) if self.tiling else resolved.predict(im, **kw)
+        if self.tiling:
+            try:
+                return sliced_predict(resolved, im, self.tiling, **kw)
+            except ValueError as e:           # a stored setting outlived its bounds or its model
+                log.warning("stream %s: tiling off, %s", self.id, e)
+                self.tiling = None            # whole frames from now on, not one failure per frame
+        return resolved.predict(im, **kw)
 
     def _process(self) -> None:
         try:

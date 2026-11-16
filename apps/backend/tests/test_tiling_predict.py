@@ -245,6 +245,82 @@ def test_a_stream_slices_each_frame_when_tiling_is_set(c, monkeypatch):
         c.delete(f"{STREAMS}/{sid}")
 
 
+def test_an_untiled_stream_keeps_the_single_whole_frame_call(c, monkeypatch):
+    """I5: only a tiled stream slices; the ordinary one must still call predict once per frame."""
+    from app.models import Stream
+    from app.streams.manager import _Worker
+
+    fake = FakeResolved()
+    monkeypatch.setattr("app.streams.manager.resolve", lambda *a, **kw: fake)
+    _enable()
+    sid = c.post(STREAMS, json=_stream({})).json()["id"]
+    try:
+        assert c.get(f"{STREAMS}/{sid}").json()["tiling"] is None
+        with SessionLocal() as db:
+            worker = _Worker(db.get(Stream, sid))
+        worker._infer(fake, PImage.new("RGB", (800, 800)), None)
+        assert len(fake.calls) == 1
+        assert fake.calls[0][0] == (800, 800)
+    finally:
+        c.delete(f"{STREAMS}/{sid}")
+
+
+def test_a_stream_with_an_unusable_tiling_setting_falls_back_to_whole_frames(c, monkeypatch):
+    """I5: a stored setting can outlive its bounds or its model; one bad row must not fail every frame."""
+    from app.models import Stream
+    from app.streams.manager import _Worker
+
+    fake = FakeResolved()
+    monkeypatch.setattr("app.streams.manager.resolve", lambda *a, **kw: fake)
+    _enable()
+    sid = c.post(STREAMS, json=_stream({})).json()["id"]
+    try:
+        with SessionLocal() as db:
+            # Bypasses the router on purpose: an old row (or a hand edit) can hold a value the
+            # parser now rejects.
+            db.get(Stream, sid).tiling = {"tile_size": 16}
+            db.commit()
+            worker = _Worker(db.get(Stream, sid))
+        out = worker._infer(fake, PImage.new("RGB", (800, 800)), None)
+        assert len(fake.calls) == 1, "a bad setting must not slice"
+        assert fake.calls[0][0] == (800, 800)
+        assert len(out["predictions"]) == 1
+        assert worker.tiling is None, "the worker disables it instead of warning on every frame"
+    finally:
+        c.delete(f"{STREAMS}/{sid}")
+
+
+def test_stream_tiling_round_trips_through_patch(c):
+    _enable()
+    sid = c.post(STREAMS, json=_stream({})).json()["id"]
+    try:
+        r = c.patch(f"{STREAMS}/{sid}", json={"tiling": {"tile_size": 512, "overlap": 0.1}})
+        assert r.status_code == 200, r.text
+        assert r.json()["tiling"] == {"tile_size": 512, "overlap": 0.1}
+        assert c.get(f"{STREAMS}/{sid}").json()["tiling"] == {"tile_size": 512, "overlap": 0.1}
+        r = c.patch(f"{STREAMS}/{sid}", json={"tiling": {}})
+        assert r.status_code == 200, r.text
+        assert r.json()["tiling"] is None
+    finally:
+        c.delete(f"{STREAMS}/{sid}")
+
+
+def test_stream_tiling_patch_is_hidden_when_the_flag_is_off(c):
+    sid = c.post(STREAMS, json=_stream({})).json()["id"]
+    try:
+        assert c.patch(f"{STREAMS}/{sid}", json={"tiling": {"tile_size": 512}}).status_code == 404
+        assert c.get(f"{STREAMS}/{sid}").json()["tiling"] is None
+    finally:
+        c.delete(f"{STREAMS}/{sid}")
+
+
+def test_stream_tiling_rejects_an_absurd_overlap(c):
+    _enable()
+    r = c.post(STREAMS, json=_stream({"tiling": {"tile_size": 512, "overlap": 0.95}}))
+    assert r.status_code == 400, r.text
+    assert "overlap" in r.json()["detail"]
+
+
 def test_stream_tiling_is_hidden_when_the_flag_is_off(c):
     r = c.post(STREAMS, json=_stream({"tiling": {"tile_size": 400}}))
     assert r.status_code == 404, r.text
