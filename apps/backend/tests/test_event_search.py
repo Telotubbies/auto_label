@@ -379,6 +379,29 @@ def test_concurrent_index_of_the_same_window_keeps_one_row_per_frame(footage):
     assert len(keys) == len(set(keys)) == len(candidates)
 
 
+def test_frame_of_a_deleted_image_is_not_served_and_not_reindexed(admin, monkeypatch, footage):
+    """An erased dataset image must not stay openable inside an old result, nor keep its vector."""
+    monkeypatch.setattr(event_search, "_text_vector", lambda text: None)
+    now = footage["now"]
+    erased = _frame("erased-frame.jpg", now - 570)
+    job = _run(admin, {"query": "erased", "from_ts": now - 900, "to_ts": now})
+    hit = next(r for r in job["result"]["results"] if r["source_id"] == erased)
+    assert admin.get(hit["image"]).status_code == 200
+    with SessionLocal() as db:
+        assert db.get(EventSearchFrame, hit["id"]) is not None
+
+    with SessionLocal() as db:
+        db.get(Image, erased).deleted_at = time.time()
+        db.commit()
+    assert admin.get(hit["image"]).status_code == 404      # already-handed-out signed URL
+
+    _run(admin, {"query": "erased", "from_ts": now - 900, "to_ts": now})
+    with SessionLocal() as db:
+        kept = {row.source_id for row in db.scalars(
+            select(EventSearchFrame).where(EventSearchFrame.project_id == _project().id)).all()}
+    assert erased not in kept and footage["ids"]["helmet"] in kept
+
+
 def test_indexing_stops_after_a_cancellation(admin, monkeypatch, footage):
     monkeypatch.setattr(event_search.embeddings, "available", lambda: True)
     embedded: list[str] = []

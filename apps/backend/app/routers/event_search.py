@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import Ctx, audit, project_ctx
-from ..models import EventSearchFrame, Job, Project, Stream, Video, Workspace
+from ..models import EventSearchFrame, Image, Job, Project, Stream, Video, Workspace
 from ..security import check_signature, sign_query
 from ..services import event_search, streamaudit
 from ..services.flags import require_flag, require_workspace_flag
@@ -150,6 +150,11 @@ def frame_image(fid: str, exp: int, sig: str, viewer: str, ws: str, project: str
     frame = db.get(EventSearchFrame, fid)
     if frame is None or frame.project_id != project_row.id:
         raise HTTPException(404, "search frame not found")
+    if frame.source == "footage":
+        # a frame outlives its dataset image only as a tombstone: never serve erased footage
+        image = db.get(Image, frame.source_id)
+        if image is None or image.deleted_at is not None:
+            raise HTTPException(404, "frame image not found")
     path = event_search.data_path(frame.path)
     if path is None or not path.exists():
         raise HTTPException(404, "frame image not found")

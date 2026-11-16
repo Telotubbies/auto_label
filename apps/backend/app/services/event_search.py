@@ -11,7 +11,7 @@ import logging
 import math
 import re
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -209,8 +209,24 @@ def _text_vector(text: str) -> list[float] | None:
 
 def index_candidates(db: Session, project: Project, candidates: list[dict],
                      should_stop=None, retried: bool = False) -> tuple[list[EventSearchFrame], dict]:
-    """Upsert the window into the index, then backfill image vectors that are missing."""
+    """Prune dead sources, upsert the window into the index, then backfill missing image vectors."""
     stats = {"indexed": 0, "embeddings": 0}
+
+    # Bound the index by live data: a purged/erased frame must not stay indexed (or servable).
+    live_images = select(Image.id).where(Image.project_id == project.id, Image.deleted_at.is_(None))
+    live_events = select(StreamEvent.id).where(
+        StreamEvent.stream_id.in_(select(Stream.id).where(Stream.project_id == project.id)))
+    db.execute(
+        delete(EventSearchFrame).where(
+            EventSearchFrame.project_id == project.id,
+            or_(
+                and_(EventSearchFrame.source == "footage", EventSearchFrame.source_id.not_in(live_images)),
+                and_(EventSearchFrame.source == "stream", EventSearchFrame.source_id.not_in(live_events)),
+            ),
+        )
+    )
+    db.commit()
+
     if not candidates:
         return [], stats
 
