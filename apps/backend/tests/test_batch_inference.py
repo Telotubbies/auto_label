@@ -71,6 +71,21 @@ def flag_on():
 
 
 @pytest.fixture(scope="module", autouse=True)
+def _own_project_headroom():
+    """The demo workspace's Free plan cannot fit this module plus whatever earlier modules leak
+    (test_adapters leaves one project behind), so raise the plan here and restore it after."""
+    with SessionLocal() as db:
+        ws = db.get(Workspace, _ws_id())
+        before = ws.plan
+        ws.plan = "pro"
+        db.commit()
+    yield
+    with SessionLocal() as db:
+        db.get(Workspace, _ws_id()).plan = before
+        db.commit()
+
+
+@pytest.fixture(scope="module", autouse=True)
 def _drop_flag_rows():
     yield
     with SessionLocal() as db:
