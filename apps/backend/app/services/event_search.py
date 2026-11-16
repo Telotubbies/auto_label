@@ -12,6 +12,7 @@ import math
 import re
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
@@ -207,7 +208,7 @@ def _text_vector(text: str) -> list[float] | None:
 
 
 def index_candidates(db: Session, project: Project, candidates: list[dict],
-                     should_stop=None) -> tuple[list[EventSearchFrame], dict]:
+                     should_stop=None, retried: bool = False) -> tuple[list[EventSearchFrame], dict]:
     """Upsert the window into the index, then backfill image vectors that are missing."""
     stats = {"indexed": 0, "embeddings": 0}
     if not candidates:
@@ -248,7 +249,13 @@ def index_candidates(db: Session, project: Project, candidates: list[dict],
             if cand.get("label"):
                 row.label = cand["label"]
         rows.append(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # a concurrent search committed the same frames first
+        db.rollback()
+        if retried:
+            raise
+        return index_candidates(db, project, candidates, should_stop=should_stop, retried=True)
 
     sha_by_id = {c["source_id"]: c.get("sha") for c in candidates}
     clip = embeddings.available()

@@ -15,7 +15,7 @@ os.environ.setdefault("LD_CLIP", "0")
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
 
 from app.config import DATA_DIR
 from app.db import SessionLocal
@@ -347,6 +347,36 @@ def test_unreadable_frame_file_does_not_fail_the_search(admin, monkeypatch, foot
     with SessionLocal() as db:                             # leave the module window at four live frames
         db.get(Image, gone).deleted_at = time.time()
         db.commit()
+
+
+def test_concurrent_index_of_the_same_window_keeps_one_row_per_frame(footage):
+    """Coalescing windows must not duplicate rows: confirm is per row, so a frame needs one identity."""
+    now = footage["now"]
+    with SessionLocal() as db:
+        project = _project()
+        candidates = event_search.collect_candidates(db, project, now - 900, now)
+        assert len(candidates) >= 4
+        raced: list[str] = []
+
+        @event.listens_for(db, "before_flush")
+        def _competing_index(_session, _ctx, _instances):
+            if raced:                                      # only the first flush loses the race
+                return
+            raced.append("raced")
+            first = candidates[0]
+            with SessionLocal() as other:                  # a second search commits the same frame first
+                other.add(EventSearchFrame(
+                    id="racedframe", workspace_id=project.workspace_id, project_id=project.id,
+                    source=first["source"], source_id=first["source_id"], ts=first["ts"],
+                    path=first["path"], label=first["label"], embedding=[]))
+                other.commit()
+
+        event_search.index_candidates(db, project, candidates)
+        assert raced
+    with SessionLocal() as db:
+        rows = db.scalars(select(EventSearchFrame).where(EventSearchFrame.project_id == _project().id)).all()
+    keys = [(row.source, row.source_id) for row in rows]
+    assert len(keys) == len(set(keys)) == len(candidates)
 
 
 def test_indexing_stops_after_a_cancellation(admin, monkeypatch, footage):

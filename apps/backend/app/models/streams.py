@@ -1,5 +1,5 @@
 """Live camera / video feeds and the rule events they fire."""
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -87,7 +87,8 @@ class OtDelivery(Base):
 class EventSearchFrame(Base):
     """One indexed candidate frame for Task 38's natural-language event search."""
     __tablename__ = "event_search_frames"
-    __table_args__ = (Index("ix_event_search_frames_project_source", "project_id", "source", "source_id"),)
+    __table_args__ = (UniqueConstraint("project_id", "source", "source_id"),
+                      Index("ix_event_search_frames_project_source", "project_id", "source", "source_id"))
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
