@@ -283,7 +283,8 @@ def test_run_meters_one_ai_call_per_model_call(monkeypatch):
         assert row.quantity == 3 and row.meta["kind"] == "workflow" and row.project_id == project.id
 
 
-def test_run_clamps_at_the_ai_call_allowance(monkeypatch):
+def test_run_refuses_when_the_ai_call_allowance_is_spent(monkeypatch):
+    """I1: the check runs before the loop, so an exhausted workspace gets a 402 and no calls."""
     seen = install(monkeypatch, lambda ref, im, **kw: det(ref, "person", 0.5, 0.5, 0.1, 0.1, size=im.size))
     blocks = validate_blocks([{"type": "model", "model_ref": "trained:a"},
                               {"type": "sink", "kind": "response"}])
@@ -294,13 +295,45 @@ def test_run_clamps_at_the_ai_call_allowance(monkeypatch):
         ws.quotas = {**quotas, "ai_calls": metering.used(db, ws, "ai_calls")}
         db.commit()
         try:
+            with pytest.raises(HTTPException) as err:
+                runner.run(db, project, blocks, PImage.new("RGB", (100, 100)))
+        finally:
+            ws.quotas = quotas
+            db.commit()
+    assert err.value.status_code == 402
+    assert [s for s in seen if s[0] != "resolve"] == []
+
+
+def test_run_stops_at_the_remaining_allowance_and_still_reaches_the_sink(monkeypatch):
+    """A crop fan-out stops at the allowance instead of overrunning it; the paid work still lands."""
+    def fn(ref, im, **kw):
+        if ref != "trained:outer":
+            return det(ref, "pallet", 0.5, 0.5, 0.1, 0.1, size=im.size)
+        out = det(ref, "pallet", 0.2, 0.2, 0.1, 0.1, size=im.size)
+        out["predictions"] += det(ref, "pallet", 0.6, 0.6, 0.1, 0.1, size=im.size)["predictions"]
+        return out
+
+    seen = install(monkeypatch, fn)
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:outer"},
+        {"type": "crop", "expand": 0},
+        {"type": "model", "model_ref": "trained:inner"},
+        {"type": "sink", "kind": "response"},
+    ])
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        quotas = dict(ws.quotas or {})
+        ws.quotas = {**quotas, "ai_calls": metering.used(db, ws, "ai_calls") + 2}   # root + one crop only
+        db.commit()
+        try:
             out = runner.run(db, project, blocks, PImage.new("RGB", (100, 100)))
         finally:
             ws.quotas = quotas
             db.commit()
     assert out["quota_clamped"] is True
-    assert out["detections"] == []
-    assert [s for s in seen if s[0] != "resolve"] == []
+    assert len([s for s in seen if s[0] != "resolve"]) == 2
+    assert [d["class"] for d in out["detections"]] == ["pallet"]
 
 
 def test_a_run_that_spends_its_last_call_still_writes_the_annotations(monkeypatch):

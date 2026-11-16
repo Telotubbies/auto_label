@@ -11,10 +11,11 @@ os.environ["LD_SAM_ENABLED"] = "0"
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.config import DATA_DIR
 from app.db import SessionLocal
+from app.gpu import GpuBusy
 from app.main import app
 from app.models import (
     CustomRole,
@@ -23,7 +24,9 @@ from app.models import (
     Member,
     Project,
     ProjectMember,
+    TrainedModel,
     User,
+    Version,
     Workflow,
     WorkflowVersion,
     Workspace,
@@ -33,11 +36,44 @@ from app.services import workflow_runner
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}/workflows"
+MODEL, NOT_READY, FOREIGN, GONE = ("workflow-ready-model-0001", "workflow-training-0002",
+                                   "workflow-foreign-0003", "workflow-gone-0004")
 
 BLOCKS = [
-    {"type": "model", "model_ref": "trained:abc", "conf": 0.4, "classes": []},
+    {"type": "model", "model_ref": f"trained:{MODEL}", "conf": 0.4, "classes": []},
     {"type": "sink", "kind": "response"},
 ]
+
+
+def _trained_model(model_id: str, *, status: str = "ready", workspace_id: str | None = None) -> str:
+    """A trained-model row of the demo project (Minor 1 makes a saved ref resolve for real)."""
+    with SessionLocal() as db:
+        project = db.scalar(select(Project).where(Project.slug == PR))
+        number = (db.scalar(select(func.max(Version.number)).where(Version.project_id == project.id)) or 0) + 1
+        v = Version(project_id=project.id, number=number, name=f"wf-{number}", status="ready")
+        db.add(v)
+        db.flush()
+        db.add(TrainedModel(id=model_id, workspace_id=workspace_id or project.workspace_id, project_id=project.id,
+                            version_id=v.id, name=model_id, arch="yolo26n", task="detect", status=status))
+        db.commit()
+        return v.id
+
+
+def _drop_model(model_id: str) -> None:
+    with SessionLocal() as db:
+        m = db.get(TrainedModel, model_id)
+        vid = m.version_id if m else None
+        db.execute(delete(TrainedModel).where(TrainedModel.id == model_id))
+        if vid:
+            db.execute(delete(Version).where(Version.id == vid))
+        db.commit()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _ready_model():
+    _trained_model(MODEL)
+    yield
+    _drop_model(MODEL)
 
 
 @pytest.fixture(scope="module")
@@ -231,7 +267,7 @@ def test_run_executes_the_pipeline_on_a_project_image(client, monkeypatch):
 
 
 def test_run_with_the_annotations_sink_saves_like_the_labeler_path(client, monkeypatch):
-    w = _create(client, blocks=[{"type": "model", "model_ref": "trained:abc"},
+    w = _create(client, blocks=[{"type": "model", "model_ref": f"trained:{MODEL}"},
                                 {"type": "sink", "kind": "annotations"}])
     image_id = _image_row()
 
@@ -262,7 +298,7 @@ def test_run_with_the_annotations_sink_saves_like_the_labeler_path(client, monke
 
 def test_run_rejects_the_annotations_sink_without_project_annotate(client, monkeypatch):
     """project.infer alone never writes the dataset: the sink needs project.annotate (I2)."""
-    w = _create(client, blocks=[{"type": "model", "model_ref": "trained:abc"},
+    w = _create(client, blocks=[{"type": "model", "model_ref": f"trained:{MODEL}"},
                                 {"type": "sink", "kind": "annotations"}])
     image_id = _image_row()
     with SessionLocal() as db:
@@ -295,14 +331,74 @@ def test_run_rejects_an_image_from_another_project(client):
     assert r.status_code == 404
 
 
-def test_run_maps_a_bad_model_ref_to_400(client):
-    w = _create(client, blocks=[{"type": "model", "model_ref": "trained:missing"},
-                                {"type": "sink", "kind": "response"}])
+def test_save_rejects_a_model_ref_that_cannot_run(client):
+    """Minor 1: a missing, foreign, not-ready or unknown-family ref fails at save, not at the first run."""
+    for name, blocks, message in [
+        ("missing", [{"type": "model", "model_ref": "trained:missing"}, {"type": "sink", "kind": "response"}],
+         "unknown trained model"),
+        ("family", [{"type": "model", "model_ref": "nope:x"}, {"type": "sink", "kind": "response"}],
+         "no adapter for family"),
+    ]:
+        r = client.post(BASE, json={"name": f"bad model {name}", "blocks": blocks})
+        assert r.status_code == 400, r.text
+        assert message in r.json()["detail"]
+
+    with SessionLocal() as db:
+        owner = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        other = Workspace(slug="workflow-model-owner", name="Other", owner_id=owner.id)
+        db.add(other)
+        db.commit()
+        other_id = other.id
+    _trained_model(NOT_READY, status="training")
+    _trained_model(FOREIGN, workspace_id=other_id)
+    try:
+        for model_id in (NOT_READY, FOREIGN):
+            r = client.post(BASE, json={"name": f"bad model {model_id}", "blocks": [
+                {"type": "model", "model_ref": f"trained:{model_id}"}, {"type": "sink", "kind": "response"}]})
+            assert r.status_code == 400, r.text
+            assert "unknown trained model" in r.json()["detail"]
+    finally:
+        _drop_model(NOT_READY)
+        _drop_model(FOREIGN)
+        with SessionLocal() as db:
+            db.execute(delete(Workspace).where(Workspace.id == other_id))
+            db.commit()
+
+    w = _create(client)
+    r = client.put(f"{BASE}/{w['id']}", json={"blocks": [
+        {"type": "ocr", "model_ref": "trained:missing"}, {"type": "sink", "kind": "response"}]})
+    assert r.status_code == 400 and "unknown trained model" in r.json()["detail"]
+
+
+def test_run_reports_a_model_that_vanished_after_save_as_400(client):
+    _trained_model(GONE)
+    w = _create(client, name="Gone model", blocks=[{"type": "model", "model_ref": f"trained:{GONE}"},
+                                                   {"type": "sink", "kind": "response"}])
+    _drop_model(GONE)
     image_id = _image_row()
     try:
         r = client.post(f"{BASE}/{w['id']}/run", json={"image_id": image_id})
         assert r.status_code == 400
         assert "unknown trained model" in r.json()["detail"]
+    finally:
+        with SessionLocal() as db:
+            db.execute(delete(Image).where(Image.id == image_id))
+            db.commit()
+
+
+def test_run_reports_a_busy_gpu_with_its_own_message(client, monkeypatch):
+    """Minor 2: GpuBusy(RuntimeError) must reach the app handler, not become "model unavailable"."""
+    wid = _create(client)["id"]
+    image_id = _image_row()
+
+    def busy(ref, db, *, workspace_id=None):
+        raise GpuBusy("training owns the GPU until 12:30")
+
+    monkeypatch.setattr(workflow_runner, "resolve", busy)
+    try:
+        r = client.post(f"{BASE}/{wid}/run", json={"image_id": image_id})
+        assert r.status_code == 503
+        assert r.json()["detail"] == "training owns the GPU until 12:30"
     finally:
         with SessionLocal() as db:
             db.execute(delete(Image).where(Image.id == image_id))

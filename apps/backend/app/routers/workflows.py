@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..deps import Ctx, project_ctx
+from ..gpu import GpuBusy
 from ..models import Image
 from ..services import imaging, labeling_ops
 from ..services import workflow_runner as runner
@@ -113,6 +114,8 @@ def run_workflow(workflow_id: str, body: RunIn, c: Ctx = Depends(project_ctx)):
         raise
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    except GpuBusy:         # a training lease owns the card: the app handler owns this 503 message
+        raise
     except RuntimeError:
         log.exception("workflow model unavailable")
         raise HTTPException(503, "model unavailable") from None

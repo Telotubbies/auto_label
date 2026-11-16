@@ -11,8 +11,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters.base import parse_ref
-from ..models import Project, Workflow, WorkflowVersion, now
+from ..adapters import ADAPTERS, parse_ref
+from ..models import Project, TrainedModel, Workflow, WorkflowVersion, now
 
 MAX_BLOCKS = 12
 BLOCK_TYPES = ("model", "filter", "crop", "ocr", "rule", "sink")
@@ -129,6 +129,23 @@ def validate_blocks(blocks: Any) -> list[dict]:
     return out
 
 
+def _check_models(db: Session, project: Project, blocks: list[dict]) -> None:
+    """A saved ref must resolve now: a known adapter family or a ready trained model of this workspace.
+
+    Without this the user only learns at the first run, and a foreign id would leak as "unknown".
+    """
+    for i, block in enumerate(blocks):
+        if block["type"] not in ("model", "ocr"):
+            continue
+        family, rest = parse_ref(block["model_ref"])
+        if family == "trained":
+            model = db.get(TrainedModel, rest)
+            if model is None or model.workspace_id != project.workspace_id or model.status != "ready":
+                _fail(i, f"unknown trained model {rest!r}")
+        elif family not in ADAPTERS:
+            _fail(i, f"no adapter for family {family!r}")
+
+
 def _name(name: Any) -> str:
     if not isinstance(name, str) or not name.strip():
         raise ValueError("name is required")
@@ -161,6 +178,7 @@ def version_out(v: WorkflowVersion) -> dict:
 def create(db: Session, project: Project, name: str, blocks: Any, user_id: str | None) -> Workflow:
     name = _name(name)
     canonical = validate_blocks(blocks)
+    _check_models(db, project, canonical)
     if _duplicate(db, project.id, name):
         raise ValueError("a workflow with this name already exists")
     wf = Workflow(workspace_id=project.workspace_id, project_id=project.id, name=name,
@@ -184,6 +202,7 @@ def update(db: Session, wf: Workflow, name: str | None, blocks: Any, user_id: st
     if blocks is not None:
         canonical = validate_blocks(blocks)
         if canonical != wf.blocks:
+            _check_models(db, db.get(Project, wf.project_id), canonical)
             wf.blocks, blocks_changed = canonical, True
     if blocks_changed:
         wf.version += 1

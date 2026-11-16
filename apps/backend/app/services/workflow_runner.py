@@ -26,6 +26,7 @@ from .workflows import validate_blocks
 
 MAX_ITEMS = 50
 MAX_DETECTIONS = 500
+MAX_CALLS_PER_RUN = 60
 
 
 def _detection(pred: dict, item: dict, ref: str) -> list[dict]:
@@ -144,8 +145,11 @@ def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, 
     annotations_added = calls = 0
     clamped = False
     ws = db.get(Workspace, project.workspace_id)
-    budget = int(metering.remaining(db, ws, "ai_calls"))
     billable = blocks[-1]["kind"] == "annotations"
+    planned = min(sum(b["type"] in ("model", "ocr") for b in blocks), MAX_CALLS_PER_RUN)
+    metering.check(db, ws, "ai_calls", planned)     # 402 up front instead of a silent empty run
+    # One request stays bounded: never spend more than MAX_CALLS_PER_RUN or what the plan has left.
+    budget = min(int(metering.remaining(db, ws, "ai_calls")), MAX_CALLS_PER_RUN)
 
     def infer(resolved, item: dict, **kw):
         """One metered call; None once the allowance is spent."""
