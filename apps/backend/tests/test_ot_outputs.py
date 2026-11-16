@@ -18,7 +18,7 @@ from app import models
 from app.db import SessionLocal
 from app.main import app
 from app.ot import drivers
-from app.services import ot
+from app.services import flags, ot
 from app.streams.rules import Engine
 
 WS, PR = "labeldesk-demo", "ppe-detection"
@@ -288,6 +288,24 @@ def test_dispatch_skips_disabled_outputs_and_filter_misses(ids, monkeypatch):
     assert rec.writes == []
 
 
+def test_dispatch_never_reaches_another_workspace(ids, monkeypatch):
+    """A truncated or replayed event must never fire another tenant's actuator."""
+    ws_id, project_id = ids
+    rec = Recorder()
+    monkeypatch.setattr(drivers, "write", rec)
+    with SessionLocal() as db:
+        out = _output(ws_id, project_id)
+        db.add(out)
+        db.commit()
+        rows = ot.dispatch_event(db, project_id, {"kind": "zone", "class": "defect"},
+                                 event_ts=ot._now(), workspace_id="another-workspace")
+        db.commit()
+        db.delete(db.get(models.OtOutput, out.id))       # cascades any wrongly created delivery
+        db.commit()
+    assert rows == []
+    assert rec.writes == []
+
+
 def test_rule_engine_events_flow_into_the_same_dispatcher(ids, monkeypatch):
     """The stream worker's Engine output is the input contract; no second event shape."""
     ws_id, project_id = ids
@@ -364,6 +382,31 @@ def test_async_dispatcher_records_in_the_background_and_honours_the_flag(ids, mo
         db.delete(rows[0])
         db.delete(db.get(models.OtOutput, out_id))
         db.commit()
+
+
+def test_a_disabled_flag_drops_the_firing(ids, monkeypatch):
+    """An admin switching task_40 off stops actuation even while a stream keeps running."""
+    ws_id, project_id = ids
+    rec = Recorder()
+    monkeypatch.setattr(drivers, "write", rec)
+    monkeypatch.setenv("LD_FLAGS_ON", "task_10b,task_20c,task_22,task_23,task_33")
+    with SessionLocal() as db:
+        flags.set_flag(db, ws_id, "task_40", False)
+        out = _output(ws_id, project_id, pulse_ms=10)
+        db.add(out)
+        db.commit()
+        out_id = out.id
+
+    dispatcher = ot.AsyncDispatcher()
+    assert dispatcher.submit(ws_id, project_id, {"kind": "zone", "class": "defect"}, ot._now(), "cam-off")
+    dispatcher.join()
+    with SessionLocal() as db:
+        statuses = [r.status for r in db.scalars(
+            select(models.OtDelivery).where(models.OtDelivery.output_id == out_id)).all()]
+        db.delete(db.get(models.OtOutput, out_id))
+        db.commit()
+    assert statuses == []
+    assert rec.writes == []
 
 
 def test_async_dispatcher_drops_when_full_and_does_not_actuate(ids, monkeypatch):
