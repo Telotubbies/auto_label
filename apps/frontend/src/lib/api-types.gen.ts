@@ -327,6 +327,15 @@ export interface MfaVerifyIn {
   mfa_token: string
 }
 
+export interface OcrExportIn {
+  format?: string
+  mask_pii?: boolean
+}
+
+export interface OcrTemplateIn {
+  template: string
+}
+
 export interface PlanIn {
   plan: string
 }

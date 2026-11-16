@@ -6,7 +6,7 @@
 export const SHORTCUT_STORAGE_KEY = 'ld:editor-shortcuts'
 export const SHORTCUT_VERSION = 1
 
-export type ShortcutId = 'pan' | 'bbox' | 'polygon' | 'obb' | 'keypoints' | 'smart' | 'delete' | 'save'
+export type ShortcutId = 'pan' | 'bbox' | 'polygon' | 'obb' | 'keypoints' | 'ocr' | 'smart' | 'delete' | 'save'
 export type ShortcutMap = Record<ShortcutId, string>
 
 export interface KeyEventLike {
@@ -29,6 +29,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: 'polygon', label: 'Polygon tool', key: 'p' },
   { id: 'obb', label: 'Rotated box tool', key: 'o' },
   { id: 'keypoints', label: 'Keypoints tool', key: 'k' },
+  { id: 'ocr', label: 'OCR text tool', key: 't' },
   { id: 'smart', label: 'Smart Polygon (SAM)', key: 's' },
   { id: 'delete', label: 'Delete selected annotation', key: 'delete' },
   { id: 'save', label: 'Save annotations', key: 'ctrl+s' },

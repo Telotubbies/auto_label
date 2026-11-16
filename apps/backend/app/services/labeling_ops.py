@@ -18,6 +18,7 @@ from ..models import (
 )
 from ..security import sign_path
 from . import labeler_stats
+from .flags import is_enabled
 from .labeling import (
     MAX_DRAFT_ANNOTATIONS,
     MAX_IMAGE_ANNOTATIONS,
@@ -215,7 +216,7 @@ def submit_consensus(db: Session, c: Ctx, job: ConsensusJob, image_id: str,
     if len(raw) > MAX_DRAFT_ANNOTATIONS:          # the merge runs synchronously in the API process
         raise HTTPException(413, f"at most {MAX_DRAFT_ANNOTATIONS} annotations per consensus draft")
     check_image_cap(db, job.id, image_id, c.user.id, len(raw))
-    checked = [_check_ann(a) for a in raw]
+    checked = [_check_ann(a, is_enabled("task_32", db, c.ws.id)) for a in raw]
     _check_class_ids(c, checked)
     assignment.annotations = checked
     assignment.submitted = now()
@@ -418,7 +419,8 @@ def create_honeypot(db: Session, c: Ctx, image_id: str, annotations: list[dict] 
     img = db.get(Image, image_id)
     if not img or img.deleted_at is not None or img.project_id != c.project.id:
         raise HTTPException(404, "image not found")
-    checked = [_check_ann(a) for a in (annotations if annotations is not None else img.annotations or [])]
+    checked = [_check_ann(a, is_enabled("task_32", db, c.ws.id))
+               for a in (annotations if annotations is not None else img.annotations or [])]
     _check_class_ids(c, checked)
     if not checked:
         raise HTTPException(400, "honeypot needs at least one ground-truth annotation")
