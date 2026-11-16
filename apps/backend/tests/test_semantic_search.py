@@ -12,7 +12,7 @@ os.environ["LD_SAM_ENABLED"] = "0"
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.db import SessionLocal
 from app.main import app
@@ -71,6 +71,24 @@ def seed_image(pid: str, name: str, *, sha: str, split: str = "train", tags: lis
             db.add(ImageClass(image_id=row.id, class_id=class_id, project_id=pid, n=1))
         db.commit()
         return row.id
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _own_project_headroom():
+    """The demo workspace's Free plan cannot fit this module's two projects plus whatever earlier
+    modules leak, and the projects would push later modules past the limit, so raise the plan for
+    this module and drop what it created before restoring it."""
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        ws_id, before = ws.id, ws.plan
+        ws.plan = "pro"
+        db.commit()
+    yield
+    with SessionLocal() as db:              # images, classes and collections cascade with the project
+        db.execute(delete(Project).where(Project.workspace_id == ws_id,
+                                         Project.slug.in_((SLUG, OTHER))))
+        db.get(Workspace, ws_id).plan = before
+        db.commit()
 
 
 @pytest.fixture(scope="module")

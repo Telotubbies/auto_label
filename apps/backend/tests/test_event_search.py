@@ -99,6 +99,24 @@ def _frame(name: str, created: float) -> str:
 
 
 @pytest.fixture(scope="module", autouse=True)
+def _own_project_headroom():
+    """The demo workspace's Free plan cannot fit this module's two projects plus whatever earlier
+    modules leak, and the projects would push later modules past the limit, so raise the plan for
+    this module and drop what it created before restoring it."""
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        ws_id, before = ws.id, ws.plan
+        ws.plan = "pro"
+        db.commit()
+    yield
+    with SessionLocal() as db:              # children (images, video, stream, index rows) cascade
+        db.execute(delete(Project).where(Project.workspace_id == ws_id,
+                                         Project.slug.in_((PROJECT, OTHER_PROJECT))))
+        db.get(Workspace, ws_id).plan = before
+        db.commit()
+
+
+@pytest.fixture(scope="module", autouse=True)
 def footage(client):
     """Four frames in one window; names carry the metadata the lexical fallback can match."""
     now = time.time()
