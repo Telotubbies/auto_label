@@ -235,20 +235,24 @@ class UltralyticsAdapter:
         shutil.rmtree(ds, ignore_errors=True)
         return TrainResult(weights=dst.relative_to(DATA_DIR).as_posix(), run_dir=str(run_dir), history=history)
 
-    def export(self, weights: str, fmt: str = "engine", *, half: bool = True, dest: Path | None = None) -> Path:
-        """Build a runtime artifact from a checkpoint. TensorRT needs a CUDA GPU and the tensorrt package."""
-        if fmt != "engine":
-            raise ValueError(f"unsupported export format {fmt!r}")
+    def export(self, weights: str, fmt: str = "engine", *, half: bool = True, dest: Path | None = None,
+               options: dict | None = None, data: str | None = None) -> Path:
+        """Build a runtime artifact from a checkpoint (TensorRT engine or an edge preset format)."""
         import ultralytics
 
-        kw = {"format": fmt, "half": half}
-        if TRAIN_DEVICE:
-            kw["device"] = TRAIN_DEVICE
+        kw = {"format": fmt, **(options or {})}
+        if fmt == "engine":
+            kw["half"] = half
+            if TRAIN_DEVICE:
+                kw["device"] = TRAIN_DEVICE
+        if data:
+            kw["data"] = data
         onnx = Path(weights).with_suffix(".onnx")
         try:
             out = Path(ultralytics.YOLO(str(weights)).export(**kw))
         finally:
-            onnx.unlink(missing_ok=True)                  # ultralytics leaves the intermediate ONNX behind
+            if fmt != "onnx":
+                onnx.unlink(missing_ok=True)              # ultralytics leaves the intermediate ONNX behind
         if dest is None:
             return out
         dest.parent.mkdir(parents=True, exist_ok=True)

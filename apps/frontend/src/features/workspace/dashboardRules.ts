@@ -84,7 +84,7 @@ export function markTourSeen(storage: Pick<Storage, 'setItem'>, key: string): vo
 
 const JOB_LABEL: Record<string, string> = {
   train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export',
-  export_engine: 'TensorRT export', health: 'Health check', insights_images: 'Image stats',
+  export_engine: 'TensorRT export', export_preset: 'Edge export', health: 'Health check', insights_images: 'Image stats',
   insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',
 }
 

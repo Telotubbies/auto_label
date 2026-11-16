@@ -1047,6 +1047,17 @@
             "default": "engine",
             "title": "Format",
             "type": "string"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
           }
         },
         "title": "ExportModelIn",
@@ -13199,6 +13210,61 @@
         ]
       }
     },
+    "/api/ws/{ws}/projects/{project}/models/edge-presets": {
+      "get": {
+        "description": "Edge targets this worker can build; a preset that never ran on the device stays UNVERIFIED.",
+        "operationId": "edge_presets_api_ws__ws__projects__project__models_edge_presets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edge Presets",
+        "tags": [
+          "training"
+        ]
+      }
+    },
     "/api/ws/{ws}/projects/{project}/models/{mid}": {
       "delete": {
         "operationId": "delete_model_api_ws__ws__projects__project__models__mid__delete",
@@ -13325,7 +13391,7 @@
     },
     "/api/ws/{ws}/projects/{project}/models/{mid}/export": {
       "post": {
-        "description": "Queue a TensorRT engine build; the worker caches it and registers runtime_refs.engine.",
+        "description": "Queue a TensorRT engine build or an edge preset; the worker caches the artifact.",
         "operationId": "export_model_api_ws__ws__projects__project__models__mid__export_post",
         "parameters": [
           {

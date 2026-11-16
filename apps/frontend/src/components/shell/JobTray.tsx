@@ -10,7 +10,7 @@ import { Glass } from '../glass'
 import { Progress } from '../ui'
 
 const JOB_LABEL: Record<Job['kind'] | 'insights_images' | 'insights_leakage' | 'insights_embedding', string> = {
-  train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', health: 'Health check',
+  train: 'Training', autolabel: 'Auto-label', version: 'Version', export: 'Export', export_engine: 'TensorRT export', export_preset: 'Edge export', health: 'Health check',
   insights_images: 'Image stats', insights_leakage: 'Leakage scan', insights_embedding: 'Embedding map',
 }
 const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])

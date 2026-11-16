@@ -119,7 +119,7 @@ export interface Board { columns: Record<Status, BoardCard[]>; members: { id: st
 
 export interface JobStage { status: 'done' | 'running' | 'failed'; t: number; note?: string }
 export interface Job {
-  id: string; kind: 'version' | 'export' | 'export_engine' | 'train' | 'autolabel' | 'health' | 'insights_images' | 'insights_leakage' | 'insights_embedding'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
+  id: string; kind: 'version' | 'export' | 'export_engine' | 'export_preset' | 'train' | 'autolabel' | 'health' | 'insights_images' | 'insights_leakage' | 'insights_embedding'; status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
   progress: number; params: Record<string, any>; result: Record<string, any> & { stages?: Record<string, JobStage> }; error: string; created: number
   started: number | null; finished: number | null; project?: string; project_name?: string; url?: string | null
 }
@@ -136,6 +136,15 @@ export interface Version {
   id: string; number: number; name: string; settings: Record<string, any>; status: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled'
   stats: { images?: number; source_images?: number; splits?: Record<string, number>; classes?: Record<string, number>; class_names?: string[] }
   created: number; job: Job | null; exports: Record<string, Job & { url: string | null }>
+}
+/** A device-targeted export preset from the API; the labels are server-owned. */
+export interface EdgePreset {
+  id: string; label: string; hint: string; device: string | null
+  verified: boolean; status: 'VERIFIED' | 'UNVERIFIED'; needs_data: boolean; requires: string | null
+}
+/** A built preset archive: signed zip path plus what the build recorded about it. */
+export interface ModelEdgeExport {
+  url: string; bytes: number; verified: boolean; device: string | null; built: number
 }
 export interface ModelEvalDetection {
   file: string; width: number; height: number
@@ -177,6 +186,8 @@ export interface ModelItem {
   family?: string; variant?: string; license?: string
   /** Exported runtime artifacts: the .pt checkpoint and, once built, the TensorRT engine. */
   runtimeRefs?: { pt?: string; engine?: string }
+  /** Built edge-export presets by preset id (detail/list), served as signed zip paths. */
+  edgeExports?: Record<string, ModelEdgeExport>
   /** Detail endpoint only: eval file name -> signed "/api/files/…" path. */
   evalImages?: Record<string, string>
 }

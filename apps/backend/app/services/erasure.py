@@ -92,7 +92,8 @@ def project_paths(db: Session, project: Project) -> list[Path]:
             paths.append(DATA_DIR / v.path)
     for m in db.scalars(select(TrainedModel).where(TrainedModel.project_id == project.id)):
         paths += [DATA_DIR / "models" / m.id, DATA_DIR / "train_data" / m.id,
-                  DATA_DIR / "runs" / m.id, DATA_DIR / "engines" / f"{m.id}.engine"]
+                  DATA_DIR / "runs" / m.id, DATA_DIR / "engines" / f"{m.id}.engine",
+                  DATA_DIR / "edge" / m.id]         # C1: edge exports are a full copy of the model
         if m.weights:
             paths.append(DATA_DIR / m.weights)
     for v in db.scalars(select(Version).where(Version.project_id == project.id)):
@@ -132,9 +133,10 @@ def delete_image_files(path: str | None, thumb: str | None) -> tuple[int, bool]:
 
 
 def delete_model_files(model: TrainedModel) -> tuple[int, bool]:
-    """Erase a model's weights, run directory, dataset copy and cached engine."""
+    """Erase a model's weights, run directory, dataset copy, cached engine and edge exports."""
     paths = [DATA_DIR / "models" / model.id, DATA_DIR / "train_data" / model.id,
-             DATA_DIR / "runs" / model.id, DATA_DIR / "engines" / f"{model.id}.engine"]
+             DATA_DIR / "runs" / model.id, DATA_DIR / "engines" / f"{model.id}.engine",
+             DATA_DIR / "edge" / model.id]
     engine = (model.runtime_refs or {}).get("engine")
     if isinstance(engine, str) and engine:
         paths.append(DATA_DIR / engine)         # a pre-built engine may live outside engines/<id>

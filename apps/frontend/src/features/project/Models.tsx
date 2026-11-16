@@ -4,11 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { AlertTriangle, Boxes, ChartLine, Check, Download, Info, Rocket, Trash2, X, Zap } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
 import type { JobStage, LeaderboardRow, ModelItem } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, PageHeader, Progress, Spinner, Stat, StatusPill, Tabs, fmtDate, toast } from '@/components/ui'
 import { EvalPanel } from '@/features/evaluation/EvalPanel'
 import { cn } from '@/lib/utils'
+import EdgeExport from './EdgeExport'
 import { useProject } from './ProjectLayout'
 
 export const pct = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -142,6 +144,7 @@ export default function Models() {
   const nav = useNavigate()
   const qc = useQueryClient()
   const { can, isManager } = useProjectPermissions(ws, project.slug)
+  const task34 = useFlag('task_34')
   const [tab, setTab] = useState('evaluation')
 
   const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug),
@@ -245,6 +248,10 @@ export default function Models() {
                   {isManager && <Button variant="ghost" size="icon" aria-label="Delete model" onClick={() => confirm('Delete this model?') && del(`${api.P(ws, project.slug)}/models/${m.id}`).then(() => qc.invalidateQueries({ queryKey: ['models', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
                 </div>
               </div>
+
+              {task34 && isManager && m.status === 'ready' && (
+                <EdgeExport ws={ws} project={project.slug} model={m} />
+              )}
 
               <Tabs tabs={[{ id: 'evaluation', label: 'Evaluation' }, { id: 'leaderboard', label: 'Leaderboard' }]} active={tab} onChange={setTab} />
 
