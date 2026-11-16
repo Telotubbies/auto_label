@@ -183,9 +183,14 @@ def test_hash_changes_on_relabel_and_class_rename(c):
     assert h1 != m0["version_hash"]
     with SessionLocal() as db:
         lc = db.scalars(select(LabelClass).where(LabelClass.project_id == _project_id())).first()
-        lc.name = lc.name + "_renamed"
-        db.commit()
-    assert manifest(make_version(c, s))["version_hash"] != h1
+        name = lc.name
+        try:
+            lc.name = name + "_renamed"
+            db.commit()
+            assert manifest(make_version(c, s))["version_hash"] != h1
+        finally:
+            lc.name = name          # later tests read this seeded class by name
+            db.commit()
 
 
 def test_manifest_records_the_annotation_source(c):

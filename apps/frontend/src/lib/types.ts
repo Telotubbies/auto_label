@@ -830,3 +830,52 @@ export interface DashboardSummary {
   id: string; name: string; widgets: DashboardWidget[]; share_token: string
   created_by: string | null; created: number; updated: number
 }
+
+// ---------- no-code workflows (Task 31) ---------------------------------------
+export type WorkflowBlockType = 'model' | 'filter' | 'crop' | 'ocr' | 'rule' | 'sink'
+
+/** Canonical block config; optional fields belong to their block type only. */
+export interface WorkflowBlock {
+  type: WorkflowBlockType
+  model_ref?: string
+  /** Model default when null. */
+  conf?: number | null
+  classes?: string[]
+  min_conf?: number
+  expand?: number
+  prompt?: string
+  /** `count` / `zone` for rule blocks, `response` / `annotations` for sinks. */
+  kind?: 'count' | 'zone' | 'response' | 'annotations'
+  class?: string
+  k?: number
+  op?: string
+  for_s?: number
+  points?: number[]
+}
+
+export interface Workflow {
+  id: string; name: string; version: number; blocks: WorkflowBlock[]
+  created_by: string | null; created: number; updated: number
+}
+
+export interface WorkflowVersion {
+  id: string; number: number; name: string; blocks: WorkflowBlock[]
+  note: string; created_by: string | null; created: number
+}
+
+export interface WorkflowDetection {
+  kind: 'bbox' | 'polygon' | 'class'
+  class: string; confidence: number
+  x: number; y: number; w: number; h: number
+  model: string; points?: number[]
+}
+
+export interface WorkflowRunResult {
+  workflow: string; version: number
+  detections: WorkflowDetection[]
+  texts: { block: number; text: string }[]
+  events: { rule: number; kind: string; summary: string }[]
+  annotations_added: number
+  quota_clamped: boolean
+  elapsed_ms: number
+}

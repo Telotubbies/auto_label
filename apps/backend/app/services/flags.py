@@ -25,6 +25,7 @@ FLAGS: dict[str, str] = {
     "task_23": "Review & quality: consensus, honeypots and the review queue",
     "task_28": "Suspect-label queue on the dataset health page",
     "task_29": "Good-only anomaly station: normal-patch bank, heatmap and per-station threshold",
+    "task_31": "No-code workflow builder: versioned block chains run on a project image",
     "task_32": "OCR annotations: Thai document templates, text/key-value/table and exports",
     "task_33": "Alert channels: LINE, Slack and email on stream events",
 }

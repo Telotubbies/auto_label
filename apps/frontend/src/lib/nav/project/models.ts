@@ -7,5 +7,6 @@ export const modelsNav: NavGroup<ProjectNavItem> = {
     { to: 'anomaly', label: 'Anomaly', icon: 'anomaly', perm: 'project.read', roles: ['manager', 'reviewer'], flag: 'task_29', type: 'anomaly-detection' },
     { to: 'model-insights', label: 'Model insights', icon: 'modelInsights', perm: 'project.review' },
     { to: 'models', label: 'Models', icon: 'models', perm: 'project.models' },
+    { to: 'workflows', label: 'Workflows', icon: 'workflow', perm: 'project.models', flag: 'task_31' },
   ],
 }

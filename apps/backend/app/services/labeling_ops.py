@@ -130,6 +130,46 @@ def merged_assignment_for(db: Session, image_id: str, user_id: str) -> Consensus
                      .order_by(ConsensusJob.created.desc(), ConsensusJob.id.desc()).limit(1))
 
 
+def assigned(c: Ctx, img: Image) -> Image:
+    """Labelers may only touch images assigned to them; reviewers/admins see everything.
+
+    A live consensus assignment is an explicit assignment too: jobs round-robin images
+    across every workspace member, so those annotators must reach images they do not own.
+    """
+    if (c.project_role == "labeler" and img.assignee_id != c.user.id
+            and latest_assignment(c.db, img.id, c.user.id) is None
+            and merged_assignment_for(c.db, img.id, c.user.id) is None):
+        raise HTTPException(403, "this image is not assigned to you")
+    return img
+
+
+def save_annotations(db: Session, c: Ctx, img: Image, checked: list[dict]) -> dict:
+    """The one full-set write path (labeler canvas and the workflow annotations sink).
+
+    A labeler may only save an assigned image, a honeypot attempt is scored but never written over
+    the answer key, the first save moves the image to "annotating", and every save is one LabelEvent.
+    """
+    assigned(c, img)
+    if c.project_role == "labeler":
+        if merged_assignment_for(db, img.id, c.uid) is not None and img.status != "annotating":
+            raise HTTPException(409, "this consensus job is already merged")
+        if honeypot_for_image(db, img.id) is not None:
+            # score the attempt but never write it over the answer key: a reopen shows the empty canvas again
+            record_save(db, c.ws.id, img, c.uid, [], checked)
+            db.commit()
+            return {"saved": len(checked), "status": "honeypot"}
+    before = list(img.annotations or [])
+    set_annotations(db, img, checked)
+    if img.status == "unassigned" and img.n_annotations:
+        img.status, img.assignee_id = "annotating", img.assignee_id or c.uid
+    img.updated = now()
+    if c.project is not None:
+        c.project.updated = now()
+    record_save(db, c.ws.id, img, c.uid, before, checked)
+    db.commit()
+    return {"saved": img.n_annotations, "status": img.status}
+
+
 def record_save(db: Session, ws_id: str, img: Image, user_id: str, before: list[dict], after: list[dict],
                 assignment: ConsensusAssignment | None = None) -> LabelEvent | None:
     """One save = one LabelEvent + AI-acceptance counters; consensus drafts and honeypots update here too.

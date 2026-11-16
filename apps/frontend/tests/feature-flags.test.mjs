@@ -31,11 +31,12 @@ test('the gated surfaces declare a flag', () => {
   assert.equal(flags['stream-analytics'], 'task_20c')
   assert.equal(flags.anomaly, 'task_29')
   assert.equal(flags.suspects, 'task_28')
+  assert.equal(flags.workflows, 'task_31')
 })
 
 test('surfaces whose flag is off disappear from the project nav', () => {
   const off = targets(visibleProjectNav(MANAGER, 'manager', new Set()))
-  for (const to of ['streams', 'qa', 'lineage', 'dashboards', 'stream-analytics', 'anomaly', 'suspects']) {
+  for (const to of ['streams', 'qa', 'lineage', 'dashboards', 'stream-analytics', 'anomaly', 'suspects', 'workflows']) {
     assert.ok(!off.includes(to), `${to} must be hidden while its flag is off`)
   }
   assert.ok(off.includes('browse'), 'ungated surfaces must stay visible')
@@ -57,6 +58,6 @@ test('turning a surface flag on restores exactly that surface', () => {
 test('the route registry gates every flagged route with the workspace flag', () => {
   const routes = readRoutes()
   assert.match(routes, /function FlagGate/)
-  for (const flag of ['task_10b', 'task_20c', 'task_22', 'task_23', 'task_28', 'task_29']) {
+  for (const flag of ['task_10b', 'task_20c', 'task_22', 'task_23', 'task_28', 'task_29', 'task_31']) {
     assert.match(routes, new RegExp(`<FlagGate flag="${flag}"`), `${flag} must wrap its routes`)  }
 })
