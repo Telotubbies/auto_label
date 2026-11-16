@@ -31,6 +31,7 @@ from ..gpu import GpuBusy
 from ..models import Project, Stream, StreamEvent, Workspace, new_id
 from ..services import metering
 from ..services.safefetch import UnresolvableHost, _public_ip
+from . import alert_bridge
 from .allowlist import allowed_stream_ip
 from .creds import mask_query, open_source
 from .event_fields import filter_fields
@@ -845,6 +846,17 @@ class _Worker:
                                    summary=ev.get("summary", ""), snapshot_path=snapshot,
                                    clean_path=clean, predictions=payload,
                                    **filter_fields(rule_json, payload)))
+        # The event row is committed here; alerting is a side effect and must not delay capture.
+        alert_bridge.notify(self.workspace_id, {
+            "title": str(rule_json.get("label") or "Stream event"),
+            "summary": ev.get("summary", ""),
+            "stream_name": self.name,
+            "stream_id": self.id,
+            "project_id": self.project_id,
+            "event_id": eid,
+            "created": ts,
+            "snapshot_path": snapshot,
+        })
 
     def _unlink_frames(self, *rels: str) -> None:
         """Remove snapshot bytes written by a ``_record`` that lost the race with a trash."""

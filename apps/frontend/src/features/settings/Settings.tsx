@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { flagsKey, useWorkspaceFlags } from '@/lib/flags'
 import PrivacyWorkspace from '@/features/governance/Privacy'
 import { WorkspaceRoles } from '@/features/governance/Roles'
+import Alerts from './Alerts'
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: 'Owner', admin: 'Admin', billing: 'Billing', member: 'Member', reviewer: 'Reviewer', annotator: 'Labeler',
@@ -1119,6 +1120,8 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
   // workspace role arrives after /me loads (deep links would keep admin tabs hidden).
   const role = useApp((s) => s.role)
   const { ws = '' } = useParams()
+  const flagsQ = useWorkspaceFlags()
+  const alertsEnabled = flagsQ.data?.enabled.includes('task_33') ?? false
   const isAdmin = role === 'owner' || role === 'admin'
   if (firstRun) return <FirstRun />
   const base = `/${ws}/settings`
@@ -1130,6 +1133,7 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
     { to: 'members', label: 'Members', show: true },
     { to: 'roles', label: 'Roles', show: isAdmin },
     { to: 'privacy', label: 'Privacy', show: isAdmin },
+    { to: 'alerts', label: 'Alerts', show: isAdmin && alertsEnabled },
     { to: 'api', label: 'API Keys', show: isAdmin },
     { to: 'usage', label: 'Plan & Usage', show: true },
     { to: 'trash', label: 'Trash', show: isAdmin },
@@ -1152,6 +1156,7 @@ export default function Settings({ firstRun }: { firstRun?: boolean }) {
             <Route path="members" element={<Members />} />
             <Route path="roles" element={<WorkspaceRoles />} />
             <Route path="privacy" element={<PrivacyWorkspace />} />
+            <Route path="alerts" element={flagsQ.isPending ? null : alertsEnabled ? <Alerts /> : <Navigate to={`/${ws}/settings/account`} replace />} />
             <Route path="api" element={<ApiKeys />} />
             <Route path="usage" element={<Usage />} />
             <Route path="trash" element={<Trash />} />

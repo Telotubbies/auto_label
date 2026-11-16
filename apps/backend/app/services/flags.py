@@ -24,6 +24,7 @@ FLAGS: dict[str, str] = {
     "task_22": "Video authoring: frame timeline and track forward",
     "task_23": "Review & quality: consensus, honeypots and the review queue",
     "task_29": "Good-only anomaly station: normal-patch bank, heatmap and per-station threshold",
+    "task_33": "Alert channels: LINE, Slack and email on stream events",
 }
 
 
