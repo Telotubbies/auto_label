@@ -1,6 +1,7 @@
 """Workflow execution: model → filter → crop → second model/OCR → rule engine → sink."""
 import os
 import tempfile
+import time
 
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-wf-run-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
@@ -13,7 +14,7 @@ from PIL import Image as PImage
 from sqlalchemy import delete, select
 
 from app.bootstrap import init_db
-from app.config import CREDIT_COST, DATA_DIR
+from app.config import CREDIT_COST, DATA_DIR, PLANS
 from app.db import SessionLocal
 from app.deps import Ctx
 from app.models import Image, LabelClass, LabelEvent, Member, Project, UsageEvent, User, Workspace
@@ -334,6 +335,121 @@ def test_run_stops_at_the_remaining_allowance_and_still_reaches_the_sink(monkeyp
     assert out["quota_clamped"] is True
     assert len([s for s in seen if s[0] != "resolve"]) == 2
     assert [d["class"] for d in out["detections"]] == ["pallet"]
+
+
+def test_a_run_that_fails_on_the_second_block_meters_the_call_it_made(monkeypatch):
+    """N1: the call that ran before the failure is billed and recorded, not lost with the session."""
+    def fn(ref, im, **kw):
+        if ref == "trained:broken":
+            raise RuntimeError("vLLM went away")
+        return det(ref, "person", 0.5, 0.5, 0.2, 0.2, size=im.size)
+
+    install(monkeypatch, fn)
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:ok"},
+        {"type": "model", "model_ref": "trained:broken"},
+        {"type": "sink", "kind": "annotations"},
+    ])
+    rel = "workflow-test/broken-run.jpg"
+    path = DATA_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    PImage.new("RGB", (100, 100)).save(path, "JPEG")
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        row = Image(project_id=project.id, name="broken-run.jpg", sha256="4" * 64, width=100, height=100,
+                    path=rel, thumb=rel, size=10)
+        db.add(row)
+        db.commit()
+        used = metering.used(db, ws, "ai_calls")
+        credits = ws.credits_used
+        try:
+            with pytest.raises(RuntimeError):
+                runner.run(db, project, blocks, PImage.open(path).convert("RGB"), image_row=row,
+                           c=_ctx(db, project, "demo@labeldesk.dev"))
+            db.expire_all()
+            assert metering.used(db, ws, "ai_calls") == used + 1
+            assert db.get(Workspace, ws.id).credits_used == pytest.approx(credits + CREDIT_COST["infer"])
+            assert db.get(Image, row.id).n_annotations == 0
+            assert db.scalar(select(LabelEvent).where(LabelEvent.image_id == row.id)) is None
+        finally:
+            db.execute(delete(LabelEvent).where(LabelEvent.image_id == row.id))
+            db.execute(delete(Image).where(Image.id == row.id))
+            db.commit()
+
+
+def test_a_failed_run_cannot_be_replayed_for_free(monkeypatch):
+    """N1: the failed run's spent call reaches the meter, so the identical retry is refused."""
+    made: list[str] = []
+
+    def fn(ref, im, **kw):
+        if ref == "trained:broken":
+            raise RuntimeError("GPU fell over")
+        made.append(ref)
+        return det(ref, "person", 0.5, 0.5, 0.2, 0.2, size=im.size)
+
+    install(monkeypatch, fn)
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:ok"},
+        {"type": "model", "model_ref": "trained:broken"},
+        {"type": "sink", "kind": "response"},
+    ])
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        quotas = dict(ws.quotas or {})
+        ws.quotas = {**quotas, "ai_calls": metering.used(db, ws, "ai_calls") + 2}   # room for one run, not two
+        db.commit()
+        try:
+            with pytest.raises(RuntimeError):
+                runner.run(db, project, blocks, PImage.new("RGB", (100, 100)))
+            with pytest.raises(HTTPException) as err:
+                runner.run(db, project, blocks, PImage.new("RGB", (100, 100)))
+        finally:
+            ws.quotas = quotas
+            db.commit()
+    assert err.value.status_code == 402
+    assert made == ["trained:ok"]       # the retry never got a model call
+
+
+def test_a_run_that_runs_out_of_credits_mid_way_persists_what_it_spent(monkeypatch):
+    """N1: the mid-run 402 keeps the calls already paid for and meters the one that could not be paid."""
+    install(monkeypatch, lambda ref, im, **kw: det(ref, "person", 0.5, 0.5, 0.2, 0.2, size=im.size))
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:outer"},
+        {"type": "model", "model_ref": "trained:inner"},
+        {"type": "sink", "kind": "annotations"},
+    ])
+    rel = "workflow-test/no-credits.jpg"
+    path = DATA_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    PImage.new("RGB", (100, 100)).save(path, "JPEG")
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        row = Image(project_id=project.id, name="no-credits.jpg", sha256="5" * 64, width=100, height=100,
+                    path=rel, thumb=rel, size=10)
+        db.add(row)
+        db.commit()
+        used, credits, period = metering.used(db, ws, "ai_calls"), ws.credits_used, ws.credits_period
+        limit = PLANS.get(ws.plan, PLANS["free"])["credits"]
+        ws.credits_period, ws.credits_used = time.strftime("%Y-%m"), limit - CREDIT_COST["infer"]
+        db.commit()
+        try:
+            with pytest.raises(HTTPException) as err:
+                runner.run(db, project, blocks, PImage.open(path).convert("RGB"), image_row=row,
+                           c=_ctx(db, project, "demo@labeldesk.dev"))
+            db.expire_all()
+            assert err.value.status_code == 402
+            # the call that ran and the one that found no credit are both metered; one credit was spent
+            assert metering.used(db, ws, "ai_calls") == used + 2
+            assert db.get(Workspace, ws.id).credits_used == pytest.approx(limit)
+            assert db.get(Image, row.id).n_annotations == 0
+        finally:
+            ws.credits_period, ws.credits_used = period, credits
+            db.execute(delete(LabelEvent).where(LabelEvent.image_id == row.id))
+            db.execute(delete(Image).where(Image.id == row.id))
+            db.commit()
 
 
 def test_a_run_that_spends_its_last_call_still_writes_the_annotations(monkeypatch):

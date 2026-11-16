@@ -152,76 +152,81 @@ def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, 
     budget = min(int(metering.remaining(db, ws, "ai_calls")), MAX_CALLS_PER_RUN)
 
     def infer(resolved, item: dict, **kw):
-        """One metered call; None once the allowance is spent."""
+        """One metered call; None once the allowance is spent. Only a call that returned is billed."""
         nonlocal calls, clamped
         if calls >= budget:
             clamped = True
             return None
+        pred = resolved.predict(item["image"], **kw)
+        # price a call only once it returned: a predict that raised is counted, not charged
+        calls += 1
         if billable:
             charge(db, ws, CREDIT_COST["infer"])
-        pred = resolved.predict(item["image"], **kw)
-        calls += 1
         return pred
 
-    for i, block in enumerate(blocks):
-        kind = block["type"]
-        if kind in ("model", "ocr") and calls >= budget:
-            clamped = True          # stop spending, but keep what was computed: the sink still runs
-            continue
-        if kind == "model":
-            resolved = resolve(block["model_ref"], db, workspace_id=project.workspace_id)
-            kw: dict = {}
-            if block.get("conf") is not None:
-                kw["conf"] = block["conf"]
-            if block.get("classes"):
-                kw["classes"] = block["classes"]
-            produced: list[dict] = []
-            for item in items:
-                pred = infer(resolved, item, **kw)
-                if pred is None:
-                    break
-                validate_prediction(pred)
-                produced.extend(_detection(pred, item, block["model_ref"]))
-                if len(produced) >= MAX_DETECTIONS:
-                    break
-            detections = produced[:MAX_DETECTIONS]
-        elif kind == "filter":
-            wanted = set(block["classes"])
-            min_conf = block.get("min_conf", 0)
-            detections = [d for d in detections
-                          if (not wanted or d["class"] in wanted) and d["confidence"] >= min_conf]
-        elif kind == "crop":
-            items = _crop(detections, block.get("expand", 0), image)
-            detections = []
-        elif kind == "ocr":
-            resolved = resolve(block["model_ref"], db, workspace_id=project.workspace_id)
-            for item in items:
-                pred = infer(resolved, item, prompt=block["prompt"])
-                if pred is None:
-                    break
-                validate_prediction(pred)
-                text = (pred.get("text") or "").strip()
-                if text:
-                    texts.append({"block": i, "text": text})
-        elif kind == "rule":
-            rules, zones = _rule(block)
-            # A count/zone rule on one still frame is a single engine step; timers start at 0.
-            for d in detections:
-                d["w"], d["h"] = _avoid_zero(d["w"]), _avoid_zero(d["h"])
-            events.extend(Engine(rules, zones, cooldown_s=0, track_ttl_s=0)
-                          .step(time.time(), _engine_preds(detections)))
-        elif kind == "sink" and block["kind"] == "annotations":
-            if image_row is None:
-                raise ValueError("the annotations sink needs a project image")
-            if c is None:
-                raise ValueError("the annotations sink needs an authenticated user")
-            count, anns = _annotations(db, project, detections)
-            if anns:
-                saved = labeling_ops.save_annotations(db, c, image_row, (image_row.annotations or []) + anns)
-                annotations_added = 0 if saved["status"] == "honeypot" else count
-    if calls:
-        metering.record(db, ws.id, "ai_calls", calls, project_id=project.id, kind="workflow")
-        db.commit()
+    try:
+        for i, block in enumerate(blocks):
+            kind = block["type"]
+            if kind in ("model", "ocr") and calls >= budget:
+                clamped = True      # stop spending, but keep what was computed: the sink still runs
+                continue
+            if kind == "model":
+                resolved = resolve(block["model_ref"], db, workspace_id=project.workspace_id)
+                kw: dict = {}
+                if block.get("conf") is not None:
+                    kw["conf"] = block["conf"]
+                if block.get("classes"):
+                    kw["classes"] = block["classes"]
+                produced: list[dict] = []
+                for item in items:
+                    pred = infer(resolved, item, **kw)
+                    if pred is None:
+                        break
+                    validate_prediction(pred)
+                    produced.extend(_detection(pred, item, block["model_ref"]))
+                    if len(produced) >= MAX_DETECTIONS:
+                        break
+                detections = produced[:MAX_DETECTIONS]
+            elif kind == "filter":
+                wanted = set(block["classes"])
+                min_conf = block.get("min_conf", 0)
+                detections = [d for d in detections
+                              if (not wanted or d["class"] in wanted) and d["confidence"] >= min_conf]
+            elif kind == "crop":
+                items = _crop(detections, block.get("expand", 0), image)
+                detections = []
+            elif kind == "ocr":
+                resolved = resolve(block["model_ref"], db, workspace_id=project.workspace_id)
+                for item in items:
+                    pred = infer(resolved, item, prompt=block["prompt"])
+                    if pred is None:
+                        break
+                    validate_prediction(pred)
+                    text = (pred.get("text") or "").strip()
+                    if text:
+                        texts.append({"block": i, "text": text})
+            elif kind == "rule":
+                rules, zones = _rule(block)
+                # A count/zone rule on one still frame is a single engine step; timers start at 0.
+                for d in detections:
+                    d["w"], d["h"] = _avoid_zero(d["w"]), _avoid_zero(d["h"])
+                events.extend(Engine(rules, zones, cooldown_s=0, track_ttl_s=0)
+                              .step(time.time(), _engine_preds(detections)))
+            elif kind == "sink" and block["kind"] == "annotations":
+                if image_row is None:
+                    raise ValueError("the annotations sink needs a project image")
+                if c is None:
+                    raise ValueError("the annotations sink needs an authenticated user")
+                count, anns = _annotations(db, project, detections)
+                if anns:
+                    saved = labeling_ops.save_annotations(db, c, image_row, (image_row.annotations or []) + anns)
+                    annotations_added = 0 if saved["status"] == "honeypot" else count
+    finally:
+        # A run that dies mid-way still spent its calls: record them, and the credits already charged,
+        # before the failure propagates, or the same failing request could be replayed for free.
+        if calls:
+            metering.record(db, ws.id, "ai_calls", calls, project_id=project.id, kind="workflow")
+            db.commit()
     return {"detections": _public(detections), "texts": texts, "events": events,
             "annotations_added": annotations_added, "quota_clamped": clamped,
             "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)}
