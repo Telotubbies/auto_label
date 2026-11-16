@@ -330,7 +330,7 @@ def run(job: Job, progress: Callable[[float], None] | None = None) -> dict:
             if progress:
                 progress((i + 1) / max(1, total))
 
-        if processed == 0:
+        if processed == 0 and not clamped:         # I1: a clamp before image 1 is a done, zero-work job
             raise RuntimeError(
                 f"inference failed for every image ({failed} unreadable or unsupported): {_error_message(last_error)}"
             )
@@ -345,7 +345,7 @@ def run(job: Job, progress: Callable[[float], None] | None = None) -> dict:
             if out_batch is not None:
                 result["batch_id"] = out_batch.id
         else:
-            out_dir = DATA_DIR / "batch_inference" / job.id
+            out_dir = DATA_DIR / "batch_inference" / project.id / job.id   # I2: inside the project's erasure boundary
             out_dir.mkdir(parents=True, exist_ok=True)
             path = out_dir / ("predictions.csv" if fmt == "csv" else "predictions.coco.json")
             if fmt == "csv":

@@ -18,13 +18,13 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.adapters import ADAPTERS, Availability
 from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
-from app.models import (Connector, Image, LabelClass, Member, Project, User, Video, Workspace, WorkspaceFlag)
+from app.models import Batch, Connector, Image, Job, LabelClass, Member, Project, User, Video, Workspace, WorkspaceFlag
 from app.security import issue_access
 from app.services import batch_inference, flags, metering
 
@@ -573,3 +573,247 @@ def test_jobs_are_listed_for_the_project_only(c, project):
     r = c.get(f"{project['base']}/batch-inference")
     assert r.status_code == 200 and isinstance(r.json(), list)
     assert all(j["kind"] == "batch_infer" for j in r.json())
+
+
+# --- quota clamp, erasure and the brief's edge cases ---------------------------------
+
+
+def direct_job(project, **params) -> str:
+    """A running job row as if a worker had claimed it; the in-process worker cannot lose a race."""
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        job = Job(workspace_id=_ws_id(), project_id=project["id"], kind="batch_infer", status="running",
+                  params={"model_ref": "ultralytics:yolo26n", "classes": [], **params}, created_by=user.id)
+        db.add(job)
+        db.commit()
+        return job.id
+
+
+def _set_ai_calls(quota: float) -> dict:
+    """Override the workspace's AI-call allowance; returns the previous overrides to restore."""
+    with SessionLocal() as db:
+        ws = db.get(Workspace, _ws_id())
+        before = dict(ws.quotas or {})
+        ws.quotas = {**before, "ai_calls": quota}
+        db.commit()
+    return before
+
+
+def _restore_quotas(before: dict) -> None:
+    with SessionLocal() as db:
+        db.get(Workspace, _ws_id()).quotas = before or None
+        db.commit()
+
+
+def test_an_exhausted_allowance_completes_the_job_with_zero_work(c, project, monkeypatch):
+    """I1: clamping before image 1 is a done, zero-work job — not 'every image was unreadable'."""
+    from app import worker
+
+    with SessionLocal() as db:
+        ws = db.get(Workspace, _ws_id())
+        used = metering.used(db, ws, "ai_calls", since=metering.month_start())
+    before = _set_ai_calls(used)                       # nothing left on the plan
+    fake = FakeDetector([box()])
+    monkeypatch.setitem(ADAPTERS, "ultralytics", fake)
+    jid = direct_job(project, output="csv", source={"kind": "batch", "batch_id": project["batch_id"]})
+    try:
+        worker.run_one(jid)
+        with SessionLocal() as db:
+            row = db.get(Job, jid)
+        assert row.status == "done", row.error
+        assert row.error == ""
+        assert row.result["images"] == 0 and row.result["predictions"] == 0 and row.result["failed"] == 0
+        assert row.result["quota_clamped"] is True
+        assert fake.calls == 0                                    # not one billable call was attempted
+    finally:
+        _restore_quotas(before)
+        with SessionLocal() as db:
+            db.delete(db.get(Job, jid))
+            db.commit()
+
+
+def test_project_purge_erases_batch_inference_exports(c, monkeypatch):
+    """I2: an export under DATA_DIR/batch_inference belongs to its project and no other."""
+    import shutil
+
+    from app.services import erasure
+
+    name = f"batch-export-{uuid.uuid4().hex[:8]}"
+    p = c.post(f"/api/ws/{WS}/projects", json={"name": name, "type": "object-detection"}).json()
+    base = f"/api/ws/{WS}/projects/{p['slug']}"
+    up = c.post(f"{base}/upload", files=[("files", ("export.jpg", jpeg((33, 44, 55))))])
+    assert up.status_code == 200, up.text
+    monkeypatch.setitem(ADAPTERS, "ultralytics", FakeDetector([box()]))
+    job = run(
+        c,
+        base,
+        {"model_ref": "ultralytics:yolo26n", "output": "csv",
+         "source": {"kind": "batch", "batch_id": up.json()["batch"]["id"]}},
+    )
+    assert job["status"] == "done", job
+    export = DATA_DIR / job["result"]["file"]
+    assert export.exists() and export.parent == DATA_DIR / "batch_inference" / p["id"] / job["id"]
+    other = DATA_DIR / "batch_inference" / f"other-{uuid.uuid4().hex[:8]}" / "job" / "predictions.csv"
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_bytes(b"keep")
+    try:
+        with SessionLocal() as db:
+            freed, ok = erasure.delete_project_data(db, db.get(Project, p["id"]))
+        assert ok and freed > 0
+        assert not (DATA_DIR / "batch_inference" / p["id"]).exists()
+        assert other.exists(), "another project's export must survive the purge"
+    finally:
+        shutil.rmtree(other.parents[1], ignore_errors=True)
+        c.delete(base)
+
+
+def test_empty_batch_source_is_rejected(c, project):
+    with SessionLocal() as db:
+        b = Batch(project_id=project["id"], name="empty batch")
+        db.add(b)
+        db.commit()
+        bid = b.id
+    try:
+        r = c.post(f"{project['base']}/batch-inference",
+                   json={"model_ref": "ultralytics:yolo26n", "source": {"kind": "batch", "batch_id": bid}})
+        assert r.status_code == 400 and "no images" in r.json()["detail"]
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(Batch, bid))
+            db.commit()
+
+
+def test_video_source_must_be_ready_and_have_frames(c, project):
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        v = Video(project_id=project["id"], workspace_id=_ws_id(), name="clip.mp4",
+                  path=f"videos/{suffix}.mp4", status="extracting")
+        db.add(v)
+        db.commit()
+        vid = v.id
+    payload = {"model_ref": "ultralytics:yolo26n", "source": {"kind": "video", "video_id": vid}}
+    try:
+        r = c.post(f"{project['base']}/batch-inference", json=payload)
+        assert r.status_code == 400 and "still being extracted" in r.json()["detail"]
+        with SessionLocal() as db:
+            db.get(Video, vid).status = "ready"
+            db.commit()
+        r = c.post(f"{project['base']}/batch-inference", json=payload)
+        assert r.status_code == 400 and "no images" in r.json()["detail"]
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(Video, vid))
+            db.commit()
+
+
+def test_connector_prefix_with_no_images_fails_readably(c, project, monkeypatch):
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        conn = Connector(workspace_id=_ws_id(), name=f"bucket-{suffix}", kind="s3", config={"bucket": "demo"})
+        db.add(conn)
+        db.commit()
+        cid = conn.id
+    monkeypatch.setattr(batch_inference.connectors, "list_objects", lambda conn, prefix="", limit=100: [])
+    monkeypatch.setitem(ADAPTERS, "ultralytics", FakeDetector([box()]))
+    try:
+        job = run(c, project["base"],
+                  {"model_ref": "ultralytics:yolo26n",
+                   "source": {"kind": "connector", "connector_id": cid, "prefix": "in/", "limit": 2}})
+        assert job["status"] == "failed"
+        assert job["error"] == "no image objects found at that prefix"
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(Connector, cid))
+            db.commit()
+
+
+def test_foreign_workspace_connector_is_404_on_enqueue_and_stops_the_worker(c, project):
+    from app import worker
+
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        ws = Workspace(id="w" + suffix, slug=f"foreign-{suffix}", name="Foreign", owner_id=user.id)
+        db.add(ws)
+        db.flush()
+        conn = Connector(workspace_id=ws.id, name=f"bucket-{suffix}", kind="s3", config={"bucket": "demo"})
+        db.add(conn)
+        db.commit()
+        cid = conn.id
+    jid = None
+    try:
+        r = c.post(f"{project['base']}/batch-inference",
+                   json={"model_ref": "ultralytics:yolo26n",
+                         "source": {"kind": "connector", "connector_id": cid, "limit": 1}})
+        assert r.status_code == 404 and r.json()["detail"] == "connector not found"
+        # the worker re-checks: a row that somehow references it never reads the bucket
+        jid = direct_job(project, output="csv",
+                         source={"kind": "connector", "connector_id": cid, "prefix": "", "limit": 1})
+        worker.run_one(jid)
+        with SessionLocal() as db:
+            row = db.get(Job, jid)
+            assert row.status == "failed" and row.error == "connector not found"
+    finally:
+        with SessionLocal() as db:
+            if jid:
+                db.delete(db.get(Job, jid))
+            db.delete(db.get(Connector, cid))
+            db.delete(db.get(Workspace, ws.id))
+            db.commit()
+
+
+def test_a_cancelling_job_stops_before_the_next_image(c, project, monkeypatch):
+    """A real DB-driven cancel keeps the image already written and leaves the rest untouched."""
+    def annotations_now() -> int:
+        with SessionLocal() as db:
+            return sum(len(db.get(Image, i).annotations or []) for i in project["images"])
+
+    class CancellingDetector(FakeDetector):
+        def predict(self, *args, **kwargs):
+            out = super().predict(*args, **kwargs)
+            with SessionLocal() as db:
+                for row in db.scalars(select(Job).where(Job.kind == "batch_infer", Job.status == "running")):
+                    row.status = "cancelling"
+                db.commit()
+            return out
+
+    before = annotations_now()
+    fake = CancellingDetector([box()])
+    monkeypatch.setitem(ADAPTERS, "ultralytics", fake)
+    job = run(c, project["base"],
+              {"model_ref": "ultralytics:yolo26n", "output": "dataset",
+               "source": {"kind": "batch", "batch_id": project["batch_id"]}})
+    assert job["status"] == "cancelled", job
+    assert fake.calls == 1, "the job must stop before the next billable call"
+    assert annotations_now() == before + 1, "the finished image stays; no later image is written"
+
+
+def test_connector_materialisation_respects_the_plan_image_limit(c, project, monkeypatch):
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as db:
+        conn = Connector(workspace_id=_ws_id(), name=f"bucket-{suffix}", kind="s3", config={"bucket": "demo"})
+        db.add(conn)
+        db.commit()
+        cid = conn.id
+        have = db.scalar(select(func.count(Image.id)).join(Project).where(
+            Project.workspace_id == _ws_id(), Image.deleted_at.is_(None)))
+    monkeypatch.setattr(batch_inference, "plan", lambda ws: {"images": int(have) + 1})
+    monkeypatch.setattr(batch_inference.connectors, "list_objects",
+                        lambda conn, prefix="", limit=100: [{"key": f"in/{i}.jpg"} for i in range(2)])
+    monkeypatch.setattr(batch_inference.connectors, "fetch_bytes",
+                        lambda conn, key: jpeg((7, int(key[-5]) * 20, 9)))
+    monkeypatch.setitem(ADAPTERS, "ultralytics", FakeDetector([box()]))
+    try:
+        job = run(c, project["base"],
+                  {"model_ref": "ultralytics:yolo26n", "output": "dataset",
+                   "source": {"kind": "connector", "connector_id": cid, "prefix": "in/", "limit": 2}})
+        assert job["status"] == "failed", job
+        assert "image limit" in job["error"]
+        with SessionLocal() as db:
+            after = db.scalar(select(func.count(Image.id)).join(Project).where(
+                Project.workspace_id == _ws_id(), Image.deleted_at.is_(None)))
+        assert after == int(have) + 1, "the cap let exactly one new image through"
+    finally:
+        with SessionLocal() as db:
+            db.delete(db.get(Connector, cid))
+            db.commit()

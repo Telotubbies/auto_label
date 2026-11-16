@@ -86,7 +86,8 @@ def project_paths(db: Session, project: Project) -> list[Path]:
     """Every file/directory prefix that belongs to ``project``."""
     paths = [DATA_DIR / "projects" / project.id,
              DATA_DIR / "snapshots" / project.id,
-             DATA_DIR / "workspaces" / project.workspace_id / "drift" / project.id]
+             DATA_DIR / "workspaces" / project.workspace_id / "drift" / project.id,
+             DATA_DIR / "batch_inference" / project.id]      # I2: batch-inference CSV/COCO exports
     for v in db.scalars(select(Video).where(Video.project_id == project.id)):
         if v.path:
             paths.append(DATA_DIR / v.path)
