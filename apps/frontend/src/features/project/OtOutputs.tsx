@@ -164,7 +164,12 @@ function OutputRow({ ws, project, output, canEdit, onHistory }: {
         {output.last_error && <p className="text-xs text-destructive">{output.last_error}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {canEdit && <Switch label={`Enable ${output.name}`} checked={output.enabled} onChange={(v) => void toggle(v)} />}
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <Switch label={`Enable ${output.name}`} checked={output.enabled} onChange={(v) => void toggle(v)} />
+            <span className="text-xs text-muted-foreground">{output.enabled ? 'Enabled' : 'Disabled'}</span>
+          </div>
+        )}
         {canEdit && <Button variant="outline" size="sm" onClick={test} disabled={busy || !output.enabled}
           title={output.enabled ? 'Send one reject pulse' : 'Enable the output first'}><Zap className="h-3.5 w-3.5" aria-hidden />Test signal</Button>}
         <Button variant="outline" size="sm" onClick={onHistory}><History className="h-3.5 w-3.5" aria-hidden />History</Button>

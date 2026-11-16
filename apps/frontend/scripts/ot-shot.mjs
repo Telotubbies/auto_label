@@ -1,4 +1,4 @@
-// Task 40 screenshots: sign in, seed two OT outputs through the API, capture light/dark/375.
+// Task 40 screenshots: sign in, seed two OT outputs through the API, capture light/dark/375/flag-off.
 // Usage: node scripts/ot-shot.mjs <webUrl> <apiUrl> <outDir>
 // Requires the API on the apiUrl and the Vite dev server on the webUrl.
 import { chromium } from 'playwright'
@@ -11,11 +11,8 @@ mkdirSync(out, { recursive: true })
 
 const browser = await chromium.launch()
 const results = []
-for (const [name, width, scheme] of [['light', 1440, 'light'], ['dark', 1440, 'dark'], ['375', 375, 'light']]) {
-  const context = await browser.newContext({
-    viewport: { width, height: 1000 }, colorScheme: scheme, reducedMotion: 'reduce', deviceScaleFactor: 1,
-  })
-  const page = await context.newPage()
+
+async function signIn(page, context, scheme) {
   await page.addInitScript((mode) => localStorage.setItem('ld:theme', JSON.stringify({ mode })), scheme)
   await page.goto(`${web}/login`, { waitUntil: 'domcontentloaded' })
   await page.fill('#login-email', 'demo@labeldesk.dev')
@@ -24,10 +21,19 @@ for (const [name, width, scheme] of [['light', 1440, 'light'], ['dark', 1440, 'd
   await page.waitForFunction(() => !!localStorage.getItem('ld_token'), null, { timeout: 15000 })
   const auth = await context.request.post(`${api}/api/auth/login`,
     { data: { email: 'demo@labeldesk.dev', password: 'demo1234' } })
-  const token = (await auth.json()).token
-  const headers = { Authorization: `Bearer ${token}` }
+  return { Authorization: `Bearer ${(await auth.json()).token}` }
+}
+const setFlag = (context, headers, enabled) =>
+  context.request.put(`${api}/api/ws/${WS}/flags/task_40`, { headers, data: { enabled } })
+
+for (const [name, width, scheme] of [['light', 1440, 'light'], ['dark', 1440, 'dark'], ['375', 375, 'light']]) {
+  const context = await browser.newContext({
+    viewport: { width, height: 1000 }, colorScheme: scheme, reducedMotion: 'reduce', deviceScaleFactor: 1,
+  })
+  const page = await context.newPage()
+  const headers = await signIn(page, context, scheme)
   // Reproducible on a fresh workspace: enable the flag before capturing the tab.
-  const flag = await context.request.put(`${api}/api/ws/${WS}/flags/task_40`, { headers, data: { enabled: true } })
+  const flag = await setFlag(context, headers, true)
   if (!flag.ok()) console.error('flag enable failed', flag.status(), await flag.text())
   const base = `${api}/api/ws/${WS}/projects/${PR}/ot-outputs`
   const existing = await context.request.get(base, { headers })
@@ -60,6 +66,24 @@ for (const [name, width, scheme] of [['light', 1440, 'light'], ['dark', 1440, 'd
   await page.screenshot({ path: file, fullPage: true })
   results.push(file)
   await context.close()
+}
+
+// Flag-off pass: off is the shipped default, so neither the tab nor the panel may render.
+const offContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', deviceScaleFactor: 1 })
+const offPage = await offContext.newPage()
+const offHeaders = await signIn(offPage, offContext, 'light')
+try {
+  await setFlag(offContext, offHeaders, false)
+  await offPage.goto(`${web}/${WS}/${PR}/settings?tab=ot`, { waitUntil: 'domcontentloaded' })
+  await offPage.waitForTimeout(900)
+  if (await offPage.getByRole('heading', { name: 'PLC / OT output' }).count()) throw new Error('flag off, but the OT panel rendered')
+  if (await offPage.getByRole('button', { name: 'OT output' }).count()) throw new Error('flag off, but the OT tab rendered')
+  const file = `${out}/ot-outputs-flag-off.png`
+  await offPage.screenshot({ path: file, fullPage: true })
+  results.push(file)
+} finally {
+  await setFlag(offContext, offHeaders, true)
+  await offContext.close()
 }
 await browser.close()
 console.log(results.join('\n'))
