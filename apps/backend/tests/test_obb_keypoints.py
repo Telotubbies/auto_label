@@ -132,13 +132,13 @@ def test_obb_corners_are_clipped_to_the_canvas():
 
 def test_check_ann_accepts_obb_and_keypoints_with_tracking():
     obb = _check_ann(_ann({"kind": "obb", "cx": 0.5, "cy": 0.5, "w": 0.2, "h": 0.1, "angle": 0.3},
-                          keyframe=True, trackId="t" * 80))
+                          keyframe=True, trackId="t" * 80), ocr_enabled=False)
     assert obb["shape"] == {"kind": "obb", "cx": 0.5, "cy": 0.5, "w": 0.2, "h": 0.1, "angle": 0.3}
     assert obb["keyframe"] is True
     assert obb["trackId"] == "t" * 64
 
     kps = _check_ann(_ann({"kind": "keypoints", "points": [0.1, 0.2, 0, 0.3, 0.4, 1, 0.5, 0.6, 2]},
-                          keyframe=False, trackId="person-7"))
+                          keyframe=False, trackId="person-7"), ocr_enabled=False)
     assert kps["shape"]["kind"] == "keypoints"
     assert kps["shape"]["points"] == pytest.approx([0.1, 0.2, 0, 0.3, 0.4, 1, 0.5, 0.6, 2])
     assert kps["shape"]["points"][2] == 0 and isinstance(kps["shape"]["points"][2], int)
@@ -159,7 +159,7 @@ def test_check_ann_accepts_obb_and_keypoints_with_tracking():
 ])
 def test_check_ann_rejects_malformed_obb_and_keypoints(shape):
     with pytest.raises(HTTPException) as err:
-        _check_ann(_ann(shape))
+        _check_ann(_ann(shape), ocr_enabled=False)
     assert err.value.status_code == 400
 
 

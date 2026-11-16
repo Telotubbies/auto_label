@@ -24,7 +24,9 @@ from ..models import (SPLITS, STATUSES, Batch, Comment, Honeypot, Image, ImageCl
                       TrainedModel, User, new_id, now, set_annotations)
 from ..ratelimit import limit
 from ..security import sign_path
-from ..services import erasure, faceblur, imaging, importers, insights, labeling, labeling_ops, metering, ml, segment
+from ..services import (erasure, faceblur, imaging, importers, insights, labeling, labeling_ops, metering, ml,
+                        ocr as ocr_service, segment)
+from ..services.flags import is_enabled
 from ..services.quality import analyze as analyze_quality, sql_filter as quality_filter
 from .projects import classes_out, ensure_class
 
@@ -462,7 +464,7 @@ def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and -0.5 <= v <= 1.5   # normalised, small overshoot ok
 
 
-def _check_ann(a: dict) -> dict:
+def _check_ann(a: dict, ocr_enabled: bool) -> dict:
     if not isinstance(a, dict):
         raise HTTPException(400, "annotation must be an object")
     s = a.get("shape") or {}
@@ -512,6 +514,16 @@ def _check_ann(a: dict) -> dict:
     track = a.get("trackId")
     if isinstance(track, str) and track.strip():
         out["trackId"] = track.strip()[:64]
+    raw_ocr = a.get("ocr")
+    if raw_ocr is not None:
+        if not ocr_enabled:
+            raise HTTPException(400, "OCR annotations are disabled")
+        if s.get("kind") != "bbox":
+            raise HTTPException(400, "OCR annotations need a bbox shape")
+        try:
+            out["ocr"] = ocr_service.clean_ocr(raw_ocr)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     return out
 
 
@@ -538,7 +550,7 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
     if assignment is not None and assignment.submitted is not None:
         # this draft is already part of the image's consensus total; keep that total bounded too
         labeling_ops.check_image_cap(db, assignment.job_id, img.id, u.id, len(body.annotations))
-    checked = [_check_ann(a) for a in body.annotations]
+    checked = [_check_ann(a, is_enabled("task_32", db, c.ws.id)) for a in body.annotations]
     _check_class_ids(c, checked)
     if assignment is not None:
         # consensus mode: autosave keeps the draft private and does NOT submit it; the Image row is

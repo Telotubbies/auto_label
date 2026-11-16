@@ -1,22 +1,25 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Circle, Group, Image as KImage, Layer, Line, Rect, Stage, Transformer } from 'react-konva'
+import { Circle, Group, Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva'
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, Bot, Check, ChevronLeft,
   ChevronRight, FileCode, Hand, History, Info, Keyboard,
-  LoaderCircle, MessageSquare, Plus, Redo2, RotateCw, Send, SlidersHorizontal,
+  LoaderCircle, MessageSquare, Plus, Redo2, RotateCw, ScanText, Send, SlidersHorizontal,
   Sparkles, SquareDashed, Spline, Tag, TriangleAlert, Undo2, Waypoints,
   X, type LucideIcon,
 } from 'lucide-react'
 import { ApiError, api, fileUrl, get, patch, post, put } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
+import { OCR_CLASS, emptyOcr, maskPii, ocrText } from '@/lib/ocr'
 import { useProjectPermissions } from '@/lib/perms'
-import type { Annotation, LabelClass, Shape, Skeleton } from '@/lib/types'
+import type { Annotation, LabelClass, OcrData, OcrKind, Shape, Skeleton } from '@/lib/types'
 import { Badge, Button, Input, Select, StatusPill, Tabs, toast } from '@/components/ui'
 import { Glass } from '@/components/glass'
 import { cn } from '@/lib/utils'
 import { AttributesPanel, CommentsPanel, HistoryPanel, RawDataPanel, type EditorComment, type LogEntry } from './Panels'
 import { ObjectRows, OrderControls } from './ObjectList'
+import { OcrPanel } from './OcrPanel'
 import { moveAnnotation, type OrderAction } from './annotationOrder'
 import { cullAnnotations, obbCorners, viewportBounds } from './culling'
 import { ShortcutModal } from './ShortcutModal'
@@ -229,6 +232,7 @@ export default function Editor() {
   const qc = useQueryClient()
   const [sp] = useSearchParams()
   const { can } = useProjectPermissions(ws, project)
+  const ocrOn = useFlag('task_32')
   const reviewMode = sp.get('review') === 'true'
   const listQuery = useMemo(() => ({
     status: sp.get('status') ?? '', batch_id: sp.get('batch') ?? '', split: sp.get('split') ?? '', class_id: sp.get('class_id') ?? '',
@@ -284,6 +288,12 @@ export default function Editor() {
   }, [isCls, isKp])
 
   const [anns, setAnns] = useState<Annotation[]>([])
+  // Async OCR helpers (class creation awaits) read the annotations as of commit time.
+  const annsRef = useRef<Annotation[]>([])
+  annsRef.current = anns
+  const imageIdRef = useRef(imageId)
+  imageIdRef.current = imageId
+  const [ocrMask, setOcrMask] = useState(true)
   const [loadedFor, setLoadedFor] = useState('')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -397,10 +407,22 @@ export default function Editor() {
   const cls = (id: string) => classes.find((c) => c.id === id) ?? { id, name: '?', color: '#999', count: 0 }
   const record = (action: string, detail?: string) => setLog((l) => [...l.slice(-60), { id: `${Date.now()}-${l.length}`, action, detail, at: Date.now() }])
   const push = (next: Annotation[], action = 'Edit annotations', detail?: string) => {
-    setHistory((h) => [...h.slice(-50), anns]); setFuture([]); setAnns(next); setDirty(true); record(action, detail)
+    const prev = annsRef.current
+    setHistory((h) => [...h.slice(-50), prev]); setFuture([]); setAnns(next); setDirty(true); record(action, detail)
+    annsRef.current = next
   }
-  const undo = () => { if (!history.length) return; setFuture((f) => [anns, ...f]); setAnns(history[history.length - 1]); setHistory((h) => h.slice(0, -1)); setDirty(true); record('Undo') }
-  const redo = () => { if (!future.length) return; setHistory((h) => [...h, anns]); setAnns(future[0]); setFuture((f) => f.slice(1)); setDirty(true); record('Redo') }
+  const undo = () => {
+    if (!history.length) return
+    const prev = history[history.length - 1]
+    setFuture((f) => [anns, ...f]); setAnns(prev); setHistory((h) => h.slice(0, -1)); setDirty(true); record('Undo')
+    annsRef.current = prev
+  }
+  const redo = () => {
+    if (!future.length) return
+    const next = future[0]
+    setHistory((h) => [...h, anns]); setAnns(next); setFuture((f) => f.slice(1)); setDirty(true); record('Redo')
+    annsRef.current = next
+  }
   const addShape = (shape: Shape, action: string, classId = selClass) => {
     if (!classId) { toast.err('Create a class first'); return }
     push([...anns, { id: uid(), classId, shape, source: 'human' }], action, cls(classId).name)
@@ -484,13 +506,68 @@ export default function Editor() {
     resetSmart()
   }
   const lockedMsg = () => toast.err('This annotation is locked — unlock it in Objects first')
+  // One class per OCR kind, created on first use. The server's template apply also creates
+  // them, but a box can be drawn before anyone applies a template.
+  const ocrClassIds = useRef<Partial<Record<OcrKind, string>>>({})
+  const ensureOcrClass = async (kind: OcrKind): Promise<string | null> => {
+    const name = OCR_CLASS[kind]
+    const cached = ocrClassIds.current[kind]
+    if (cached && classes.some((c) => c.id === cached)) return cached
+    const known = classes.find((c) => c.name === name)
+    if (known) { ocrClassIds.current[kind] = known.id; return known.id }
+    try {
+      const c = await post<LabelClass>(`${api.P(ws, project)}/classes`, { name })
+      ocrClassIds.current[kind] = c.id
+      qc.invalidateQueries({ queryKey: ['classes', ws, project] })
+      return c.id
+    } catch (e) {
+      // Another tab (or the template apply) created it first: adopt the existing class.
+      if (e instanceof ApiError && e.status === 409) {
+        try {
+          const rows = await api.classes(ws, project)
+          qc.setQueryData(['classes', ws, project], rows)
+          const c = rows.find((r) => r.name === name)
+          if (c) { ocrClassIds.current[kind] = c.id; return c.id }
+        } catch { /* fall through to the toast */ }
+      }
+      toast.err(e as Error)
+      return null
+    }
+  }
+  const pushOcr = (box: Extract<Shape, { kind: 'bbox' }>, kind: OcrKind, action: string) => {
+    const forImage = imageId
+    void (async () => {
+      const classId = await ensureOcrClass(kind)
+      if (!classId || imageIdRef.current !== forImage) return
+      const ann: Annotation = { id: uid(), classId, shape: box, ocr: emptyOcr(kind), source: 'human' }
+      push([...annsRef.current, ann], action, OCR_CLASS[kind])
+      setSelId(ann.id)
+    })()
+  }
+  const updateOcr = async (id: string, ocr: OcrData) => {
+    if (locked.has(id)) return lockedMsg()
+    const forImage = imageId
+    const classId = await ensureOcrClass(ocr.kind)
+    if (!classId || imageIdRef.current !== forImage) return
+    const base = annsRef.current
+    if (!base.some((a) => a.id === id)) return   // the annotation was removed while the class was being created
+    push(base.map((a) => (a.id === id ? { ...a, classId, ocr, source: 'human' } : a)),
+      'Edit OCR', OCR_CLASS[ocr.kind])
+  }
+  const addOcrCentred = (kind: OcrKind) =>
+    pushOcr({ kind: 'bbox', x: 0.35, y: 0.35, w: 0.3, h: kind === 'table' ? 0.3 : 0.1 }, kind,
+      kind === 'table' ? 'Add OCR table' : kind === 'keyvalue' ? 'Add OCR key-value' : 'Add OCR text line')
   /** Finalize a box from two stage-space corners, clamped to the image and ignoring slivers. */
-  const finishBox = (x1: number, y1: number, x2: number, y2: number, kind: 'bbox' | 'obb' = 'bbox') => {
+  const finishBox = (x1: number, y1: number, x2: number, y2: number, kind: 'bbox' | 'obb' | 'ocr' = 'bbox') => {
     const nx = clamp01(Math.min(x1, x2) / W), ny = clamp01(Math.min(y1, y2) / H)
     const nx2 = clamp01(Math.max(x1, x2) / W), ny2 = clamp01(Math.max(y1, y2) / H)
     if (nx2 - nx < 0.005 || ny2 - ny < 0.005) return
     if (kind === 'obb') {
       addShape({ kind: 'obb', cx: nx + (nx2 - nx) / 2, cy: ny + (ny2 - ny) / 2, w: nx2 - nx, h: ny2 - ny, angle: 0 }, 'Add rotated box')
+      return
+    }
+    if (kind === 'ocr') {
+      pushOcr({ kind: 'bbox', x: nx, y: ny, w: nx2 - nx, h: ny2 - ny }, 'text', 'Add OCR text line')
       return
     }
     addShape({ kind: 'bbox', x: nx, y: ny, w: nx2 - nx, h: ny2 - ny }, 'Add bounding box')
@@ -525,10 +602,12 @@ export default function Editor() {
     if (insideTransformer(e?.target)) return
     if (tool === 'pan' || isCls) return
     const p = pointer()
-    if (tool === 'bbox' || tool === 'obb') {
+    if (tool === 'bbox' || tool === 'obb' || tool === 'ocr') {
       // Two-click drawing: the first press anchors, the next press (or a real drag) completes.
-      if (boxAnchor) { finishBox(boxAnchor.x, boxAnchor.y, p.x, p.y, tool); setBoxAnchor(null); setDrawing(null) }
-      else { setSelId(null); setBoxAnchor({ x: p.x, y: p.y }); setDrawing({ x: p.x, y: p.y, w: 0, h: 0 }) }
+      if (boxAnchor) {
+        finishBox(boxAnchor.x, boxAnchor.y, p.x, p.y, tool === 'obb' ? 'obb' : tool === 'ocr' ? 'ocr' : 'bbox')
+        setBoxAnchor(null); setDrawing(null)
+      } else { setSelId(null); setBoxAnchor({ x: p.x, y: p.y }); setDrawing({ x: p.x, y: p.y, w: 0, h: 0 }) }
       return
     }
     if (tool === 'keypoints') { addKeypoint(p.x, p.y); return }
@@ -541,7 +620,8 @@ export default function Editor() {
   }
   const onUp = () => {
     if (drawing && boxAnchor && Math.abs(drawing.w) > 4 && Math.abs(drawing.h) > 4) {
-      finishBox(boxAnchor.x, boxAnchor.y, boxAnchor.x + drawing.w, boxAnchor.y + drawing.h, tool === 'obb' ? 'obb' : 'bbox')
+      finishBox(boxAnchor.x, boxAnchor.y, boxAnchor.x + drawing.w, boxAnchor.y + drawing.h,
+        tool === 'obb' ? 'obb' : tool === 'ocr' ? 'ocr' : 'bbox')
       setBoxAnchor(null); setDrawing(null)
     }
   }
@@ -713,6 +793,7 @@ export default function Editor() {
         const available = action === 'polygon' ? projectType === 'instance-segmentation'
           : action === 'obb' ? obbEnabled
           : action === 'keypoints' ? keypointsEnabled
+          : action === 'ocr' ? ocrOn
           : true
         if (available && !isCls) setTool(action)
       }
@@ -739,6 +820,7 @@ export default function Editor() {
       ...(projectType === 'instance-segmentation' ? [{ id: 'polygon', icon: Spline, label: `Polygon (${keyHint('polygon')})` }] : []),
       ...(obbEnabled ? [{ id: 'obb', icon: RotateCw, label: `Rotated Box (${keyHint('obb')})` }] : []),
       ...(keypointsEnabled ? [{ id: 'keypoints', icon: Waypoints, label: `Keypoints (${keyHint('keypoints')})` }] : []),
+      ...(ocrOn ? [{ id: 'ocr', icon: ScanText, label: `OCR text (${keyHint('ocr')})` }] : []),
       { id: 'smart', icon: Sparkles, label: `Smart Polygon (${keyHint('smart')}) — click an object` },
     ]
   const ready = (models.data ?? []).filter((m) => m.status === 'ready')
@@ -787,7 +869,8 @@ export default function Editor() {
       {reviewMode && <div className="flex items-center gap-2 border-b border-warning/50 bg-warning/15 px-4 py-1.5 text-xs font-medium text-foreground"><TriangleAlert className="h-3.5 w-3.5" /> Review mode — approve to add to the dataset, reject to send back.</div>}
       <div className="flex min-h-0 flex-1">
         <div className={cn('w-16 flex-col items-center border-r py-2 md:flex', panelsOpen ? 'flex' : 'hidden')}>
-          {[{ id: 'labels', label: 'Labels', icon: Tag }, { id: 'attrs', label: 'Attributes', icon: SlidersHorizontal }, { id: 'comments', label: 'Comments', icon: MessageSquare }, { id: 'history', label: 'History', icon: History }, { id: 'raw', label: 'Raw', icon: FileCode }].map(({ id, label, icon: Icon }) => (
+          {[{ id: 'labels', label: 'Labels', icon: Tag }, { id: 'attrs', label: 'Attributes', icon: SlidersHorizontal }, { id: 'comments', label: 'Comments', icon: MessageSquare }, { id: 'history', label: 'History', icon: History }, { id: 'raw', label: 'Raw', icon: FileCode },
+            ...(ocrOn ? [{ id: 'ocr', label: 'OCR', icon: ScanText }] : [])].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setRail(id)} className={cn('flex w-full cursor-pointer flex-col items-center gap-1 px-1 py-2.5 text-[10px]', rail === id ? 'text-accent-foreground' : 'text-muted-foreground hover:text-foreground')}>
               <span className={cn('rounded-lg p-1.5', rail === id && 'bg-accent')}><Icon className="h-4 w-4" /></span>{label}
             </button>
@@ -958,6 +1041,12 @@ export default function Editor() {
             <AttributesPanel anns={anns as any} selId={selId} onSelect={setSelId} classOf={cls as any} values={sel?.attributes ?? {}}
               onToggle={(k) => sel && toggleAttribute(sel.id, k)} />
           )}
+          {rail === 'ocr' && ocrOn && (
+            <OcrPanel ws={ws} project={project} imageId={imageId} anns={anns} sel={sel} selId={selId}
+              classes={classes} mask={ocrMask} locked={!!selId && locked.has(selId)} onMaskChange={setOcrMask}
+              onSelect={setSelId}
+              onUpdate={updateOcr} onAdd={addOcrCentred} />
+          )}
           {rail === 'comments' && <CommentsPanel comments={commentsQ.data ?? []} onAdd={addComment} />}
           {rail === 'history' && <HistoryPanel log={log} />}
           {rail === 'raw' && <RawDataPanel payload={{ image: img && { id: img.id, name: img.name, width: img.width, height: img.height, split: img.split, status: img.status, tags: img.tags }, annotations: anns }} />}
@@ -982,12 +1071,25 @@ export default function Editor() {
                   const color = cls(a.classId).color
                   if (a.shape.kind === 'bbox') {
                     const s = a.shape
-                    return <Rect key={a.id} id={a.id} x={s.x * W} y={s.y * H} width={s.w * W} height={s.h * H} stroke={color} strokeWidth={2 / zoom}
-                      dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined}
-                      fill={selId === a.id ? color + '22' : undefined} draggable={tool !== 'pan' && selId === a.id && !locked.has(a.id)}
-                      onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon' || tool === 'keypoints') return; e.cancelBubble = true; setSelId(a.id) }}
-                      onDragEnd={(e) => editShape(a.id, { ...s, x: e.target.x() / W, y: e.target.y() / H })}
-                      onTransformEnd={(e) => { const n = e.target; const sx = n.scaleX(), sy = n.scaleY(); n.scaleX(1); n.scaleY(1); editShape(a.id, { ...s, x: n.x() / W, y: n.y() / H, w: (s.w * sx), h: (s.h * sy) }) }} />
+                    const label = a.ocr && ocrOn ? (ocrMask ? maskPii(ocrText(a)) : ocrText(a)) : ''
+                    const fontSize = Math.min(18, Math.max(12, s.h * H * 0.35))
+                    return (
+                      <Fragment key={a.id}>
+                        <Rect id={a.id} x={s.x * W} y={s.y * H} width={s.w * W} height={s.h * H} stroke={color} strokeWidth={2 / zoom}
+                          dash={isAi(a) ? [8 / zoom, 5 / zoom] : undefined}
+                          fill={selId === a.id ? color + '22' : undefined} draggable={tool !== 'pan' && selId === a.id && !locked.has(a.id)}
+                          onMouseDown={(e) => { if (boxAnchor || locked.has(a.id) || tool === 'smart' || tool === 'polygon' || tool === 'keypoints') return; e.cancelBubble = true; setSelId(a.id) }}
+                          onDragEnd={(e) => editShape(a.id, { ...s, x: e.target.x() / W, y: e.target.y() / H })}
+                          onTransformEnd={(e) => { const n = e.target; const sx = n.scaleX(), sy = n.scaleY(); n.scaleX(1); n.scaleY(1); editShape(a.id, { ...s, x: n.x() / W, y: n.y() / H, w: (s.w * sx), h: (s.h * sy) }) }} />
+                        {label && (
+                          // Above the box: the document's own text sits inside it, so an in-box label hides it.
+                          <Text text={label} x={Math.max(0, s.x * W)} y={Math.max(0, s.y * H - fontSize * 1.25)}
+                            fontSize={fontSize} lineHeight={1.2} fontFamily="sans-serif" fontStyle="bold"
+                            fill={color} stroke="rgba(255,255,255,0.92)" strokeWidth={3} fillAfterStrokeEnabled
+                            wrap="none" listening={false} perfectDrawEnabled={false} />
+                        )}
+                      </Fragment>
+                    )
                   }
                   if (a.shape.kind === 'polygon') {
                     const s = a.shape
@@ -1066,6 +1168,11 @@ export default function Editor() {
           {!isCls && tool === 'obb' && !boxAnchor && (
             <div className={HINT}>
               Click two corners for the rotated box · set the angle in Objects
+            </div>
+          )}
+          {!isCls && tool === 'ocr' && !boxAnchor && (
+            <div className={HINT}>
+              Click two corners for a text line · edit the Thai text in the OCR panel
             </div>
           )}
           {!isCls && tool === 'keypoints' && (

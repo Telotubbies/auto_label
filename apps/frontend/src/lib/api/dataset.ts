@@ -1,8 +1,8 @@
 import type {
-  Annotation, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, Job, LabelClass, SuspectQueue,
-  SuspectStats, SuspectVerdict, Version,
+  Annotation, AutoLabelInput, AutoLabelPreview, Batch, Board, ImageItem, Job, LabelClass, OcrTemplate,
+  SuspectQueue, SuspectStats, SuspectVerdict, Version,
 } from '../types'
-import { get, P, post } from './client'
+import { get, P, post, put } from './client'
 
 /** Dataset surface: ontology, batches, image grid and the board the editor reads. */
 export const datasetApi = {
@@ -22,4 +22,10 @@ export const datasetApi = {
     post<{ stats: SuspectStats }>(`${P(ws, p)}/suspect-labels/${encodeURIComponent(annotationId)}/feedback`, { verdict }),
   autolabelPreview: (ws: string, p: string, body: AutoLabelInput & { sample?: number }) =>
     post<AutoLabelPreview>(`${P(ws, p)}/autolabel/preview`, body),
+  ocrTemplates: (ws: string, p: string) =>
+    get<{ templates: OcrTemplate[]; current: string | null }>(`${P(ws, p)}/ocr/templates`),
+  ocrTemplate: (ws: string, p: string, template: string) =>
+    put<{ current: string }>(`${P(ws, p)}/ocr/template`, { template }),
+  ocrExport: (ws: string, p: string, body: { format: 'markdown' | 'json' | 'paddleocr'; mask_pii: boolean }) =>
+    post<{ format: string; images: number; annotations: number; url: string }>(`${P(ws, p)}/ocr/export`, body),
 }
