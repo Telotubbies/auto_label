@@ -36,9 +36,10 @@ export function workspaceIndexPath(role: Role | null): string {
 
 export function visibleProjectNav(
   can: (perm: string) => boolean, role?: ProjectRole | null, flags?: ReadonlySet<string>,
+  projectType?: string,
 ): NavGroup<ProjectNavItem>[] {
   return projectNav
-    .map((g) => ({ ...g, items: g.items.filter((i) => canSeeProjectItem(i, can, role, flags)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => canSeeProjectItem(i, can, role, flags, projectType)) }))
     .filter((g) => g.items.length > 0)
 }
 

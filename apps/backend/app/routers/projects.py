@@ -14,7 +14,7 @@ from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, 
                       Version, now, set_annotations)
 from ..naming import clean_class_name
 from ..security import sign_path
-from ..services import health
+from ..services import flags, health
 
 router = APIRouter(prefix="/api/ws/{ws}/projects", tags=["projects"])
 PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#14b8a6", "#ef4444",
@@ -119,6 +119,8 @@ def create_project(body: ProjectIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
     if body.type not in PROJECT_TYPES:
         raise HTTPException(400, f"type must be one of {PROJECT_TYPES}")
+    if body.type == "anomaly-detection" and not flags.is_enabled("task_29", c.db, c.ws.id):
+        raise HTTPException(400, "anomaly detection is not enabled for this workspace")
     n = c.db.scalar(select(func.count(Project.id)).where(Project.workspace_id == c.ws.id, Project.deleted_at.is_(None)))
     if n >= plan(c.ws)["projects"]:
         raise HTTPException(402, f"project limit reached on the {plan(c.ws)['label']} plan")

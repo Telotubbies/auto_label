@@ -14,6 +14,7 @@ from .insights import (Audit, ConsensusAssignment, ConsensusJob, Dashboard, Hone
 from .project import (Batch, Comment, Folder, Image, ImageClass, LabelClass, Project, Version, Video,
                       set_annotations)
 from .streams import Stream, StreamEvent
-from .training import DeploymentAlias, DeploymentEvent, DriftRun, DriftSample, Job, TrainedModel
+from .training import (AnomalyStation, DeploymentAlias, DeploymentEvent, DriftRun, DriftSample, Job,
+                      TrainedModel)
 
 DOMAIN_MODULES = (identity, project, training, streams, insights)

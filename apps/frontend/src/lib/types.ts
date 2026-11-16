@@ -2,7 +2,7 @@
 export type Role = 'owner' | 'admin' | 'billing' | 'member' | 'reviewer' | 'annotator'
 export type ProjectRole = 'manager' | 'reviewer' | 'labeler' | 'viewer'
 export type RoleLevel = 'workspace' | 'project'
-export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classification' | 'keypoint-detection' 
+export type ProjectType = 'object-detection' | 'instance-segmentation' | 'classification' | 'keypoint-detection' | 'anomaly-detection' 
 export type Split = 'train' | 'valid' | 'test'
 export type Status = 'unassigned' | 'annotating' | 'review' | 'done'
 
@@ -164,6 +164,32 @@ export interface DeploymentAlias {
   previous_model_id: string | null; previous_model_name: string | null
   updated: number | null; updated_by: string | null
 }
+export type AnomalyStatus = 'untrained' | 'queued' | 'training' | 'ready' | 'failed'
+
+export interface AnomalyStation {
+  id: string; name: string; threshold: number; status: AnomalyStatus
+  artifact: string | null
+  metrics: {
+    normal_images?: number; patches?: number; grid?: number; backend?: string
+    train_p50?: number; train_p99?: number; suggested_threshold?: number
+  }
+  error: string; created: number; updated: number
+}
+
+export interface AnomalyRegion { x: number; y: number; w: number; h: number; score: number; cells: number }
+
+export interface AnomalyVlm { available: boolean; anomaly?: boolean; agrees?: boolean; reason?: string }
+
+export interface AnomalyResult {
+  station_id: string; image_id: string
+  score: number; threshold: number; is_anomaly: boolean
+  heatmap: { grid: number; values: number[][] }
+  regions: AnomalyRegion[]
+  backend: string
+  vlm: AnomalyVlm | null
+  image: { id: string; name: string; width: number; height: number; url: string }
+}
+
 export interface DeploymentReadyModel { id: string; name: string; arch: string }
 export interface DriftSummary {
   run_id: string

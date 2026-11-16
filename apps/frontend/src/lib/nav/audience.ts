@@ -22,9 +22,10 @@ export function inAudience<T extends string>(roles: readonly T[] | undefined, ro
 }
 
 export function canSeeProjectItem(
-  item: Pick<ProjectNavItem, 'perm' | 'roles' | 'flag'>, can: (perm: string) => boolean,
-  role?: ProjectRole | null, flags?: ReadonlySet<string>,
+  item: Pick<ProjectNavItem, 'perm' | 'roles' | 'flag' | 'type'>, can: (perm: string) => boolean,
+  role?: ProjectRole | null, flags?: ReadonlySet<string>, projectType?: string,
 ): boolean {
   if (item.flag && flags && !flags.has(item.flag)) return false
+  if (item.type && projectType && item.type !== projectType) return false
   return can(item.perm) && inAudience(item.roles, role)
 }

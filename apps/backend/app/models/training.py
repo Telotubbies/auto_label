@@ -53,6 +53,27 @@ class TrainedModel(Base):
     created: Mapped[float] = mapped_column(Float, default=now)
 
 
+class AnomalyStation(Base):
+    """One production station (camera/line) with its own good-only detector and threshold.
+
+    A station owns exactly one patch-bank artifact: retraining replaces it. The threshold is
+    kept per station because lighting and tolerance differ between lines.
+    """
+    __tablename__ = "anomaly_stations"
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    threshold: Mapped[float] = mapped_column(Float, default=1.0)
+    status: Mapped[str] = mapped_column(String(16), default="untrained")   # untrained|queued|training|ready|failed
+    artifact: Mapped[str] = mapped_column(String(1024), default="")
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
 class DeploymentAlias(Base):
     """One inference alias per project (`production`, `staging`) -> a ready trained model."""
     __tablename__ = "deployment_aliases"

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, UserPlus } from 'lucide-react'
+import { Activity, Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, UserPlus } from 'lucide-react'
 import { api, del, fileUrl, get, patch, post } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import type { Project } from '@/lib/types'
 import { Badge, Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, fmtAgo, toast } from '@/components/ui'
@@ -15,6 +16,7 @@ const TYPES = [
   { id: 'instance-segmentation', icon: Shapes, desc: 'Detect objects and their exact shape with polygons.', tags: ['Polygons', 'Measuring'] },
   { id: 'classification', icon: Scan, desc: 'Assign a label to the whole image.', tags: ['Image Labels', 'Filtering'] },
   { id: 'keypoint-detection', icon: Scan, desc: 'Place named joints and draw skeletons for pose, faces or products.', tags: ['Keypoints', 'Skeletons'] },
+  { id: 'anomaly-detection', icon: Activity, desc: 'Learn what a good product looks like and flag deviations with a heatmap.', tags: ['Good-only', 'Heatmap'] },
 ]
 
 type Folder = { id: string; name: string; projectCount: number }
@@ -23,6 +25,7 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
   const { ws = '' } = useParams()
   const nav = useNavigate()
   const qc = useQueryClient()
+  const anomalyOn = useFlag('task_29')
   const [f, setF] = useState({ name: '', type: 'object-detection', visibility: 'private', license: 'CC BY 4.0', annotation_group: '', classes: '', folder_id: '' })
   const [busy, setBusy] = useState(false)
   const create = async () => {
@@ -48,7 +51,7 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
       <div className="mt-4"><Field label="Classes (optional)" hint="Comma separated — you can add more while labeling."><Input placeholder="person, helmet, vest" value={f.classes} onChange={(e) => setF({ ...f, classes: e.target.value })} /></Field></div>
       <h2 className="mb-3 mt-6 text-sm font-semibold">Project Type</h2>
       <div className="grid gap-3 md:grid-cols-3">
-        {TYPES.map((t) => (
+        {TYPES.filter((t) => t.id !== 'anomaly-detection' || anomalyOn).map((t) => (
           <button key={t.id} onClick={() => setF({ ...f, type: t.id })}
             className={cn('cursor-pointer rounded-lg border p-4 text-left transition-colors', f.type === t.id ? 'border-primary bg-accent/30' : 'hover:bg-muted')}>
             <div className="mb-1.5 flex items-center gap-2 font-semibold"><t.icon className="h-4 w-4 text-primary" />{typeLabel(t.id)}</div>
