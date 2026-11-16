@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, FolderGit2, Plus, Trash2 } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Version } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Progress, Select, StatusPill, Switch, fmtDate, toast } from '@/components/ui'
@@ -30,6 +31,8 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [rebalance, setRebalance] = useState(false)
   const [split, setSplit] = useState({ train: 70, valid: 20, test: 10 })
   const [pre, setPre] = useState({ resize: true, w: 640, h: 640, mode: 'stretch', grayscale: false, contrast: false, filter_null: false })
+  const tilingOn = useFlag('task_30')
+  const [tile, setTile] = useState({ on: false, size: 1024, overlap: 20 })
   const [aug, setAug] = useState<Record<string, number | boolean>>({ outputs: 3 })
   const dataset = project.statusCounts?.done ?? 0
   const create = async () => {
@@ -37,7 +40,7 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
       await post(`${api.P(ws, project.slug)}/versions`, {
         name, settings: {
           split: rebalance ? split : null,
-          preprocessing: { ...(pre.resize ? { resize: { width: pre.w, height: pre.h, mode: pre.mode } } : {}), grayscale: pre.grayscale, contrast: pre.contrast, filter_null: pre.filter_null },
+          preprocessing: { ...(pre.resize ? { resize: { width: pre.w, height: pre.h, mode: pre.mode } } : {}), grayscale: pre.grayscale, contrast: pre.contrast, filter_null: pre.filter_null, ...(tile.on ? { tiling: { tile_size: tile.size, overlap: tile.overlap / 100 } } : {}) },
           augmentation: aug,
         },
       })
@@ -49,7 +52,7 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Modal open={open} onClose={onClose} wide title="Generate a dataset version">
       <div className="mb-5 flex gap-2">
-        {steps.map((s, i) => <button key={s} onClick={() => setStep(i)} className={cn('flex-1 cursor-pointer border-b-2 pb-2 text-left text-xs font-medium', i === step ? 'border-primary text-primary' : i < step ? 'border-primary/40' : 'border-border text-muted-foreground')}>{i + 1}. {s}</button>)}
+        {steps.map((s, i) => <button key={s} onClick={() => setStep(i)} className={cn('min-w-0 flex-1 cursor-pointer break-words border-b-2 pb-2 text-left text-xs font-medium', i === step ? 'border-primary text-primary' : i < step ? 'border-primary/40' : 'border-border text-muted-foreground')}>{i + 1}. {s}</button>)}
       </div>
       {step === 0 && <div className="text-sm"><p><b>{dataset}</b> approved images will be frozen into this version.</p><p className="mt-2 text-muted-foreground">Only images in the Dataset column of the Annotate board are included. Versions never change once generated, so trained models stay reproducible.</p></div>}
       {step === 1 && (
@@ -78,6 +81,18 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
           <label className="flex items-center gap-2"><Switch checked={pre.grayscale} onChange={(v) => setPre({ ...pre, grayscale: v })} /> Grayscale</label>
           <label className="flex items-center gap-2"><Switch checked={pre.contrast} onChange={(v) => setPre({ ...pre, contrast: v })} /> Auto-adjust contrast</label>
           <label className="flex items-center gap-2"><Switch checked={pre.filter_null} onChange={(v) => setPre({ ...pre, filter_null: v })} /> Drop images with no annotations</label>
+          {tilingOn && (
+            <>
+              <label className="flex items-center gap-2"><Switch checked={tile.on} onChange={(v) => setTile({ ...tile, on: v })} /> Tile large images (SAHI)</label>
+              {tile.on && (
+                <div className="grid grid-cols-2 gap-3 pl-11">
+                  <Field label="Tile size (px)"><Input type="number" min={64} max={4096} value={tile.size} onChange={(e) => setTile({ ...tile, size: +e.target.value })} /></Field>
+                  <Field label={`Overlap ${tile.overlap}%`}><input type="range" min={0} max={80} value={tile.overlap} onChange={(e) => setTile({ ...tile, overlap: +e.target.value })} className="w-full accent-primary" aria-label="Tile overlap" /></Field>
+                  <p className="col-span-2 text-xs text-muted-foreground">Each source image becomes overlapping tiles; annotations are clipped into every tile that contains them. Tiles are cut before resize.</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
       {step === 3 && (
@@ -101,6 +116,7 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
             <li>{dataset} source images{rebalance ? `, rebalanced ${split.train}/${split.valid}/${split.test}` : ', existing splits'}</li>
             <li>{pre.resize ? `Resize ${pre.w}×${pre.h} (${pre.mode})` : 'No resize'}{pre.grayscale ? ', grayscale' : ''}</li>
+            {tile.on && <li>Tiled at {tile.size}px with {tile.overlap}% overlap</li>}
             <li>{anyAug ? `Augmented ×${aug.outputs}: ${AUGS.filter((a) => aug[a.key]).map((a) => a.label).join(', ')}` : 'No augmentation'}</li>
           </ul>
         </div>
@@ -108,7 +124,7 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
       <div className="mt-6 flex justify-between border-t pt-4">
         <Button variant="ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</Button>
         {step < 4 ? <Button onClick={() => setStep(step + 1)}>Continue</Button>
-          : <Button disabled={!dataset || (rebalance && split.train + split.valid + split.test !== 100)} onClick={create}>Create Version</Button>}
+          : <Button disabled={!dataset || (rebalance && split.train + split.valid + split.test !== 100) || (tile.on && (tile.size < 64 || tile.size > 4096))} onClick={create}>Create Version</Button>}
       </div>
     </Modal>
   )
