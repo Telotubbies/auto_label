@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from ..deps import Ctx, project_ctx
 from ..models import Image
-from ..services import imaging
+from ..services import imaging, labeling_ops
 from ..services import workflow_runner as runner
 from ..services import workflows as svc
 from ..services.flags import require_flag
@@ -99,12 +99,16 @@ def run_workflow(workflow_id: str, body: RunIn, c: Ctx = Depends(project_ctx)):
     img = c.db.get(Image, body.image_id)
     if img is None or img.deleted_at or img.project_id != c.project.id:
         raise HTTPException(404, "image not found")
+    if wf.blocks and wf.blocks[-1].get("kind") == "annotations":
+        # the sink writes the dataset: check the write permission and the assignment before spending calls
+        c.perm("project.annotate")
+        labeling_ops.assigned(c, img)
     try:
         image = imaging.load(img.path)
     except Exception:
         raise HTTPException(400, "not a valid image") from None
     try:
-        result = runner.run(c.db, c.project, wf.blocks, image, image_row=img)
+        result = runner.run(c.db, c.project, wf.blocks, image, image_row=img, c=c)
     except HTTPException:
         raise
     except ValueError as e:

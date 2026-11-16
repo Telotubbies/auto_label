@@ -57,16 +57,8 @@ def _labeler(c: Ctx) -> bool:
 
 
 def _assigned(c: Ctx, img: Image) -> tuple[Ctx, Image]:
-    """Labelers may only touch images assigned to them; reviewers/admins see everything.
-
-    A live consensus assignment is an explicit assignment too: jobs round-robin images
-    across every workspace member, so those annotators must reach images they do not own.
-    """
-    if (c.project_role == "labeler" and img.assignee_id != c.user.id
-            and labeling_ops.latest_assignment(c.db, img.id, c.user.id) is None
-            and labeling_ops.merged_assignment_for(c.db, img.id, c.user.id) is None):
-        raise HTTPException(403, "this image is not assigned to you")
-    return c, img
+    """Assignment guard shared with every other writer of a full annotation set (I2)."""
+    return c, labeling_ops.assigned(c, img)
 
 
 def _visible(q, c: Ctx):
@@ -547,25 +539,7 @@ def save_annotations(image_id: str, body: AnnotationsIn, u: User = Depends(curre
         labeling_ops.record_save(db, c.ws.id, img, u.id, before, checked, assignment)
         db.commit()
         return {"saved": len(checked), "status": "consensus", "jobId": assignment.job_id}
-    if _labeler(c):
-        # A rejected merge goes back to the labeler (status "annotating"); any other state is frozen.
-        if (labeling_ops.merged_assignment_for(db, img.id, u.id) is not None
-                and img.status != "annotating"):
-            raise HTTPException(409, "this consensus job is already merged")
-        if labeling_ops.honeypot_for_image(db, img.id) is not None:
-            # score the attempt but never write it over the answer key: a reopen shows the empty canvas again
-            labeling_ops.record_save(db, c.ws.id, img, u.id, [], checked)
-            db.commit()
-            return {"saved": len(checked), "status": "honeypot"}
-    before = list(img.annotations or [])
-    set_annotations(db, img, checked)
-    if img.status == "unassigned" and img.n_annotations:
-        img.status, img.assignee_id = "annotating", img.assignee_id or u.id
-    img.updated = now()
-    c.project.updated = now()
-    labeling_ops.record_save(db, c.ws.id, img, u.id, before, checked)
-    db.commit()
-    return {"saved": img.n_annotations, "status": img.status}
+    return labeling_ops.save_annotations(db, c, img, checked)
 
 
 class ImagePatch(BaseModel):

@@ -8,13 +8,16 @@ os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 
 import pytest
+from fastapi import HTTPException
 from PIL import Image as PImage
 from sqlalchemy import delete, select
 
 from app.bootstrap import init_db
-from app.config import DATA_DIR
+from app.config import CREDIT_COST, DATA_DIR
 from app.db import SessionLocal
-from app.models import Image, LabelClass, Project, Workspace
+from app.deps import Ctx
+from app.models import Image, LabelClass, LabelEvent, Member, Project, UsageEvent, User, Workspace
+from app.services import metering
 from app.services import workflow_runner as runner
 from app.services.workflows import validate_blocks
 
@@ -30,6 +33,12 @@ def _schema():
 def _project(db) -> Project:
     ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
     return db.scalar(select(Project).where(Project.workspace_id == ws.id, Project.slug == PR))
+
+
+def _ctx(db, project: Project, email: str = "labeler@labeldesk.dev") -> Ctx:
+    ws = db.get(Workspace, project.workspace_id)
+    user = db.scalar(select(User).where(User.email == email))
+    return Ctx(user=user, ws=ws, role=db.get(Member, (ws.id, user.id)).role, db=db, project=project)
 
 
 class FakeResolved:
@@ -194,15 +203,137 @@ def test_annotations_sink_writes_project_annotations(monkeypatch):
                     path=rel, thumb=rel, size=10)
         db.add(row)
         db.commit()
+        c = _ctx(db, project, "demo@labeldesk.dev")
+        credits = c.ws.credits_used
         try:
-            out = runner.run(db, project, blocks, PImage.open(path).convert("RGB"), image_row=row)
+            out = runner.run(db, project, blocks, PImage.open(path).convert("RGB"), image_row=row, c=c)
             assert out["annotations_added"] == 1
+            # a dataset write is billed like hosted inference: one credit unit per model call
+            assert c.ws.credits_used == pytest.approx(credits + CREDIT_COST["infer"])
             db.expire_all()
             saved = db.get(Image, row.id)
             assert len(saved.annotations) == 1
             assert saved.annotations[0]["classId"] == person.id
             assert saved.annotations[0]["source"] == "trained:a"
+            # the canonical save path also moves the image into annotation and audits the save
+            assert saved.status == "annotating" and saved.assignee_id == c.uid
+            event = db.scalar(select(LabelEvent).where(LabelEvent.image_id == row.id))
+            assert event is not None and event.user_id == c.uid and event.annotations == 1
         finally:
+            db.execute(delete(LabelEvent).where(LabelEvent.image_id == row.id))
+            db.execute(delete(Image).where(Image.id == row.id))
+            db.commit()
+
+
+def test_annotations_sink_refuses_an_image_assigned_to_someone_else(monkeypatch):
+    install(monkeypatch, lambda ref, im, **kw: det(ref, "person", 0.5, 0.5, 0.2, 0.2, size=im.size))
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:a"},
+        {"type": "sink", "kind": "annotations"},
+    ])
+    rel = "workflow-test/foreign.jpg"
+    path = DATA_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    PImage.new("RGB", (100, 100)).save(path, "JPEG")
+    with SessionLocal() as db:
+        project = _project(db)
+        owner = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
+        row = Image(project_id=project.id, name="foreign.jpg", sha256="2" * 64, width=100, height=100,
+                    path=rel, thumb=rel, size=10, assignee_id=owner.id)
+        db.add(row)
+        db.commit()
+        try:
+            with pytest.raises(HTTPException) as err:
+                runner.run(db, project, blocks, PImage.open(path).convert("RGB"), image_row=row,
+                           c=_ctx(db, project))
+            assert err.value.status_code == 403
+            db.expire_all()
+            assert db.get(Image, row.id).n_annotations == 0
+        finally:
+            db.execute(delete(Image).where(Image.id == row.id))
+            db.commit()
+
+
+def test_run_meters_one_ai_call_per_model_call(monkeypatch):
+    def fn(ref, im, **kw):
+        if ref != "trained:outer":
+            return det(ref, "box", 0.5, 0.5, 0.2, 0.2, size=im.size)
+        out = det(ref, "pallet", 0.2, 0.2, 0.1, 0.1, size=im.size)
+        out["predictions"] += det(ref, "pallet", 0.6, 0.6, 0.1, 0.1, size=im.size)["predictions"]
+        return out
+
+    install(monkeypatch, fn)
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:outer"},
+        {"type": "crop", "expand": 0},
+        {"type": "model", "model_ref": "trained:inner"},
+        {"type": "sink", "kind": "response"},
+    ])
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        before = metering.used(db, ws, "ai_calls")
+        out = runner.run(db, project, blocks, PImage.new("RGB", (100, 100)))
+        assert out["quota_clamped"] is False
+        # one call on the root image + one on each of its two crops
+        assert metering.used(db, ws, "ai_calls") == before + 3
+        row = db.scalars(select(UsageEvent).where(UsageEvent.workspace_id == ws.id,
+                                                 UsageEvent.metric == "ai_calls")
+                         .order_by(UsageEvent.created.desc())).first()
+        assert row.quantity == 3 and row.meta["kind"] == "workflow" and row.project_id == project.id
+
+
+def test_run_clamps_at_the_ai_call_allowance(monkeypatch):
+    seen = install(monkeypatch, lambda ref, im, **kw: det(ref, "person", 0.5, 0.5, 0.1, 0.1, size=im.size))
+    blocks = validate_blocks([{"type": "model", "model_ref": "trained:a"},
+                              {"type": "sink", "kind": "response"}])
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        quotas = dict(ws.quotas or {})
+        ws.quotas = {**quotas, "ai_calls": metering.used(db, ws, "ai_calls")}
+        db.commit()
+        try:
+            out = runner.run(db, project, blocks, PImage.new("RGB", (100, 100)))
+        finally:
+            ws.quotas = quotas
+            db.commit()
+    assert out["quota_clamped"] is True
+    assert out["detections"] == []
+    assert [s for s in seen if s[0] != "resolve"] == []
+
+
+def test_a_run_that_spends_its_last_call_still_writes_the_annotations(monkeypatch):
+    """The clamp stops model calls, not the sink: work already paid for reaches the dataset."""
+    install(monkeypatch, lambda ref, im, **kw: det(ref, "person", 0.5, 0.5, 0.2, 0.2, size=im.size))
+    blocks = validate_blocks([
+        {"type": "model", "model_ref": "trained:a"},
+        {"type": "sink", "kind": "annotations"},
+    ])
+    rel = "workflow-test/last-call.jpg"
+    path = DATA_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    PImage.new("RGB", (100, 100)).save(path, "JPEG")
+    with SessionLocal() as db:
+        project = _project(db)
+        ws = db.get(Workspace, project.workspace_id)
+        row = Image(project_id=project.id, name="last-call.jpg", sha256="3" * 64, width=100, height=100,
+                    path=rel, thumb=rel, size=10)
+        db.add(row)
+        db.commit()
+        quotas = dict(ws.quotas or {})
+        ws.quotas = {**quotas, "ai_calls": metering.used(db, ws, "ai_calls") + 1}   # exactly one call left
+        db.commit()
+        try:
+            out = runner.run(db, project, blocks, PImage.open(path).convert("RGB"), image_row=row,
+                             c=_ctx(db, project, "demo@labeldesk.dev"))
+            assert out["quota_clamped"] is False
+            assert out["annotations_added"] == 1
+            db.expire_all()
+            assert db.get(Image, row.id).n_annotations == 1
+        finally:
+            ws.quotas = quotas
+            db.execute(delete(LabelEvent).where(LabelEvent.image_id == row.id))
             db.execute(delete(Image).where(Image.id == row.id))
             db.commit()
 

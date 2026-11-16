@@ -16,7 +16,18 @@ from sqlalchemy import delete, select
 from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
-from app.models import Image, Member, Project, User, Workflow, WorkflowVersion, Workspace
+from app.models import (
+    CustomRole,
+    Image,
+    LabelEvent,
+    Member,
+    Project,
+    ProjectMember,
+    User,
+    Workflow,
+    WorkflowVersion,
+    Workspace,
+)
 from app.security import issue_access
 from app.services import workflow_runner
 
@@ -215,6 +226,65 @@ def test_run_executes_the_pipeline_on_a_project_image(client, monkeypatch):
         assert body["detections"][0]["x"] == pytest.approx(0.375)
     finally:
         with SessionLocal() as db:
+            db.execute(delete(Image).where(Image.id == image_id))
+            db.commit()
+
+
+def test_run_with_the_annotations_sink_saves_like_the_labeler_path(client, monkeypatch):
+    w = _create(client, blocks=[{"type": "model", "model_ref": "trained:abc"},
+                                {"type": "sink", "kind": "annotations"}])
+    image_id = _image_row()
+
+    class Fake:
+        def predict(self, im, **kw):
+            return {"model": "trained:abc", "time": 0, "image": {"width": im.width, "height": im.height},
+                    "predictions": [{"class": "person", "class_id": 0, "confidence": 0.9,
+                                     "x": im.width / 2, "y": im.height / 2,
+                                     "width": im.width / 4, "height": im.height / 4}]}
+
+    monkeypatch.setattr(workflow_runner, "resolve", lambda ref, db, *, workspace_id=None: Fake())
+    try:
+        r = client.post(f"{BASE}/{w['id']}/run", json={"image_id": image_id})
+        assert r.status_code == 200, r.text
+        assert r.json()["annotations_added"] == 1
+        with SessionLocal() as db:
+            img = db.get(Image, image_id)
+            assert img.n_annotations == 1
+            # the sink runs through the labeler save path: status transition + label event
+            assert img.status == "annotating" and img.assignee_id is not None
+            assert len(db.scalars(select(LabelEvent).where(LabelEvent.image_id == image_id)).all()) == 1
+    finally:
+        with SessionLocal() as db:
+            db.execute(delete(LabelEvent).where(LabelEvent.image_id == image_id))
+            db.execute(delete(Image).where(Image.id == image_id))
+            db.commit()
+
+
+def test_run_rejects_the_annotations_sink_without_project_annotate(client, monkeypatch):
+    """project.infer alone never writes the dataset: the sink needs project.annotate (I2)."""
+    w = _create(client, blocks=[{"type": "model", "model_ref": "trained:abc"},
+                                {"type": "sink", "kind": "annotations"}])
+    image_id = _image_row()
+    with SessionLocal() as db:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == WS))
+        project = db.scalar(select(Project).where(Project.slug == PR))
+        user = db.scalar(select(User).where(User.email == "labeler@labeldesk.dev"))
+        bundle = CustomRole(workspace_id=ws.id, name="infer-only", level="project", permissions=["project.infer"])
+        db.add(bundle)
+        db.flush()
+        db.add(ProjectMember(project_id=project.id, user_id=user.id, role="viewer", custom_role_id=bundle.id))
+        db.commit()
+        bundle_id, uid, pid = bundle.id, user.id, project.id
+    try:
+        r = client.post(f"{BASE}/{w['id']}/run", json={"image_id": image_id},
+                        headers={"Authorization": f"Bearer {issue_access(uid)}"})
+        assert r.status_code == 403 and "project.annotate" in r.json()["detail"]
+        with SessionLocal() as db:
+            assert db.get(Image, image_id).n_annotations == 0
+    finally:
+        with SessionLocal() as db:
+            db.execute(delete(ProjectMember).where(ProjectMember.project_id == pid, ProjectMember.user_id == uid))
+            db.execute(delete(CustomRole).where(CustomRole.id == bundle_id))
             db.execute(delete(Image).where(Image.id == image_id))
             db.commit()
 

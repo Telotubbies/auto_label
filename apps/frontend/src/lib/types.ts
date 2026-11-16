@@ -861,5 +861,6 @@ export interface WorkflowRunResult {
   texts: { block: number; text: string }[]
   events: { rule: number; kind: string; summary: string }[]
   annotations_added: number
+  quota_clamped: boolean
   elapsed_ms: number
 }

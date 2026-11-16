@@ -17,8 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..adapters import resolve, validate_prediction
-from ..models import LabelClass, Project, new_id, set_annotations
+from ..config import CREDIT_COST
+from ..deps import Ctx, charge
+from ..models import LabelClass, Project, Workspace, new_id
 from ..streams.rules import Engine
+from . import labeling_ops, metering
 from .workflows import validate_blocks
 
 MAX_ITEMS = 50
@@ -124,18 +127,43 @@ def _public(detections: list[dict]) -> list[dict]:
     return [{k: v for k, v in d.items() if not k.startswith("_")} for d in detections]
 
 
-def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, image_row=None) -> dict:
-    """Run the workflow; returns final detections, OCR text, rule events and the sink result."""
+def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, image_row=None,
+        c: Ctx | None = None) -> dict:
+    """Run the workflow; returns final detections, OCR text, rule events and the sink result.
+
+    Each model/OCR call is one metered AI call, and the run stops at the allowance instead of
+    overrunning it (like the autolabel job). A dataset write is billed like hosted inference and
+    goes through the labeler save path, so assignment, honeypot, status and the audit all apply.
+    """
     blocks = validate_blocks(blocks)
     t0 = time.perf_counter()
     items = [{"image": image, "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}]
     detections: list[dict] = []
     texts: list[dict] = []
     events: list[dict] = []
-    annotations_added = 0
+    annotations_added = calls = 0
+    clamped = False
+    ws = db.get(Workspace, project.workspace_id)
+    budget = int(metering.remaining(db, ws, "ai_calls"))
+    billable = blocks[-1]["kind"] == "annotations"
+
+    def infer(resolved, item: dict, **kw):
+        """One metered call; None once the allowance is spent."""
+        nonlocal calls, clamped
+        if calls >= budget:
+            clamped = True
+            return None
+        if billable:
+            charge(db, ws, CREDIT_COST["infer"])
+        pred = resolved.predict(item["image"], **kw)
+        calls += 1
+        return pred
 
     for i, block in enumerate(blocks):
         kind = block["type"]
+        if kind in ("model", "ocr") and calls >= budget:
+            clamped = True          # stop spending, but keep what was computed: the sink still runs
+            continue
         if kind == "model":
             resolved = resolve(block["model_ref"], db, workspace_id=project.workspace_id)
             kw: dict = {}
@@ -145,7 +173,9 @@ def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, 
                 kw["classes"] = block["classes"]
             produced: list[dict] = []
             for item in items:
-                pred = resolved.predict(item["image"], **kw)
+                pred = infer(resolved, item, **kw)
+                if pred is None:
+                    break
                 validate_prediction(pred)
                 produced.extend(_detection(pred, item, block["model_ref"]))
                 if len(produced) >= MAX_DETECTIONS:
@@ -162,7 +192,9 @@ def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, 
         elif kind == "ocr":
             resolved = resolve(block["model_ref"], db, workspace_id=project.workspace_id)
             for item in items:
-                pred = resolved.predict(item["image"], prompt=block["prompt"])
+                pred = infer(resolved, item, prompt=block["prompt"])
+                if pred is None:
+                    break
                 validate_prediction(pred)
                 text = (pred.get("text") or "").strip()
                 if text:
@@ -174,13 +206,18 @@ def run(db: Session, project: Project, blocks: list[dict], image: PImage.Image, 
                 d["w"], d["h"] = _avoid_zero(d["w"]), _avoid_zero(d["h"])
             events.extend(Engine(rules, zones, cooldown_s=0, track_ttl_s=0)
                           .step(time.time(), _engine_preds(detections)))
-        elif kind == "sink":
-            if block["kind"] == "annotations":
-                if image_row is None:
-                    raise ValueError("the annotations sink needs a project image")
-                annotations_added, anns = _annotations(db, project, detections)
-                if anns:
-                    set_annotations(db, image_row, (image_row.annotations or []) + anns)
-                    db.commit()
+        elif kind == "sink" and block["kind"] == "annotations":
+            if image_row is None:
+                raise ValueError("the annotations sink needs a project image")
+            if c is None:
+                raise ValueError("the annotations sink needs an authenticated user")
+            count, anns = _annotations(db, project, detections)
+            if anns:
+                saved = labeling_ops.save_annotations(db, c, image_row, (image_row.annotations or []) + anns)
+                annotations_added = 0 if saved["status"] == "honeypot" else count
+    if calls:
+        metering.record(db, ws.id, "ai_calls", calls, project_id=project.id, kind="workflow")
+        db.commit()
     return {"detections": _public(detections), "texts": texts, "events": events,
-            "annotations_added": annotations_added, "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)}
+            "annotations_added": annotations_added, "quota_clamped": clamped,
+            "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1)}

@@ -19,6 +19,7 @@ function ResultPanel({ result }: { result: WorkflowRunResult }) {
         <Badge>{result.texts.length} text blocks</Badge>
         <Badge>{result.events.length} events</Badge>
         {result.annotations_added > 0 && <Badge>{result.annotations_added} annotations saved</Badge>}
+        {result.quota_clamped && <Badge>stopped at the AI-call allowance</Badge>}
         <Badge>{result.elapsed_ms} ms</Badge>
       </div>
       {result.detections.length > 0 && (
