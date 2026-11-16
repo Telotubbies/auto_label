@@ -22,6 +22,7 @@ STEPS = (
     ("label_events", dataset.LABEL_EVENTS),
     ("consensus_jobs", dataset.CONSENSUS_JOBS),
     ("refresh_tokens", identity.REFRESH_TOKENS),
+    ("streams", streams.STREAMS),
     ("stream_events", streams.STREAM_EVENTS),
 )
 

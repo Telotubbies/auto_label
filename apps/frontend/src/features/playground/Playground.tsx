@@ -4,8 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Image as KImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva'
 import { Camera, ImageUp, Play, Sparkles, TriangleAlert } from 'lucide-react'
 import { api, fileUrl } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import type { PlaygroundPrediction, PlaygroundResult, PlaygroundSample, RegistryItem } from '@/lib/types'
-import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Spinner, toast } from '@/components/ui'
+import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Spinner, Switch, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { RuntimeStates } from './RuntimeStates'
 import { SampleStrip } from './SampleStrip'
@@ -162,6 +163,8 @@ export default function Playground() {
   const [classes, setClasses] = useState('')
   const [prompt, setPrompt] = useState('')
   const [confidence, setConfidence] = useState(0.25)
+  const tilingOn = useFlag('task_30')
+  const [tile, setTile] = useState({ on: false, size: 1024, overlap: 20 })
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<PlaygroundResult[] | null>(null)
   const img = useHtmlImage(preview)
@@ -204,6 +207,7 @@ export default function Playground() {
     fd.append('confidence', String(confidence))
     if (classes.trim()) fd.append('classes', classes.trim())
     if (prompt.trim()) fd.append('prompt', prompt.trim())
+    if (tile.on) { fd.append('tile_size', String(tile.size)); fd.append('tile_overlap', String(tile.overlap / 100)) }
     setBusy(true)
     try { setResults((await api.playgroundPredict(ws, fd)).results) } catch (e) { toast.err(e as Error) } finally {
       setBusy(false)
@@ -280,6 +284,27 @@ export default function Playground() {
             <input type="range" min={1} max={99} value={Math.round(confidence * 100)}
               onChange={(e) => setConfidence(+e.target.value / 100)} className="w-full accent-primary" aria-label="Confidence threshold" />
           </Field>
+          {tilingOn && (
+            <div className="space-y-3 rounded-lg border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={tile.on} onChange={(v) => setTile({ ...tile, on: v })} /> Tiled inference (SAHI)
+              </label>
+              {tile.on && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Tile size (px)">
+                    <Input type="number" min={64} max={4096} value={tile.size}
+                      onChange={(e) => setTile({ ...tile, size: +e.target.value })} />
+                  </Field>
+                  <Field label={`Overlap ${tile.overlap}%`}>
+                    <input type="range" min={0} max={80} value={tile.overlap}
+                      onChange={(e) => setTile({ ...tile, overlap: +e.target.value })} className="w-full accent-primary"
+                      aria-label="Tile overlap" />
+                  </Field>
+                  <p className="col-span-2 text-xs text-muted-foreground">Runs the model on overlapping crops and merges boxes. Best for large images with small objects.</p>
+                </div>
+              )}
+            </div>
+          )}
           <Button className="w-full" disabled={!file || !refs.length || busy || blocked} onClick={run}>
             {busy ? <><Spinner /> Running…</> : <><Play className="h-4 w-4" /> Run {refs.length || ''} model{refs.length === 1 ? '' : 's'}</>}
           </Button>

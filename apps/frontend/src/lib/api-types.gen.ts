@@ -78,6 +78,8 @@ export interface AppRoutersWorkspacesRoleIn {
 export interface AssistIn {
   confidence?: number
   model_id: string
+  tile_overlap?: number
+  tile_size?: number
 }
 
 export interface AutoLabelIn {
@@ -91,6 +93,8 @@ export interface AutoLabelIn {
   only_unannotated?: boolean
   prompt?: string | null
   send_to_review?: boolean
+  tile_overlap?: number
+  tile_size?: number
   vlm_verify?: boolean
 }
 
@@ -106,6 +110,8 @@ export interface AutoLabelPreviewIn {
   prompt?: string | null
   sample?: number
   send_to_review?: boolean
+  tile_overlap?: number
+  tile_size?: number
   vlm_verify?: boolean
 }
 
@@ -133,12 +139,16 @@ export interface BodyPredictApiWsWsPlaygroundPredictPost {
   file: string
   model_refs?: string
   prompt?: string | null
+  tile_overlap?: number
+  tile_size?: number
 }
 
 export interface BodyTestPredictApiWsWsProjectsProjectModelsMidPredictPost {
   confidence?: number | null
   file: string
   overlap?: number
+  tile_overlap?: number
+  tile_size?: number
 }
 
 export interface BodyUploadApiWsWsProjectsProjectUploadPost {
@@ -443,6 +453,7 @@ export interface StreamIn {
   rules?: unknown[]
   sample_fps?: number
   source: string
+  tiling?: Record<string, unknown> | null
   zones?: unknown[]
 }
 
@@ -452,6 +463,7 @@ export interface StreamPatch {
   rules?: unknown[] | null
   sample_fps?: number | null
   source?: string | null
+  tiling?: Record<string, unknown> | null
   zones?: unknown[] | null
 }
 

@@ -497,7 +497,8 @@ def _analytics(c: Ctx) -> dict:
         "sizes": [{"bucket": k, "images": v} for k, v in sizes.items()],
         "aspect": [{"bucket": k, "images": v} for k, v in ratios.items()],
         "splits": dict(splits), "statuses": dict(statuses), "heatmap": heat,
-        "checks": checks, "recommendations": health.recommendations(checks),
+        "checks": checks, "recommendations": health.recommendations(
+            checks, tiling=flags.is_enabled("task_30", c.db, c.ws.id)),
     }
 
 

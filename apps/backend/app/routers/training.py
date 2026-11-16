@@ -17,6 +17,8 @@ from ..errors import safe_error, safe_reason
 from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace
 from ..security import sign_path
 from ..services import active_learning, deployments, drift, imaging, metering, ml, safefetch, topology
+from ..services.flags import is_enabled
+from ..services.tiling import Tiling, sliced_predict
 from .projects import job_out
 
 router = APIRouter(tags=["training"])
@@ -310,19 +312,38 @@ def delete_model(mid: str, c: Ctx = Depends(project_ctx)):
     return {"ok": True}
 
 
+def _tiling_or_404(c: Ctx, tile_size: int, tile_overlap: float) -> Tiling | None:
+    """Parse request tiling values; a disabled task_30 surface answers 404 like a missing route."""
+    if not tile_size:
+        return None
+    try:
+        cfg = Tiling.parse({"tile_size": tile_size, "overlap": tile_overlap})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not is_enabled("task_30", c.db, c.ws.id):
+        raise HTTPException(404, "not found")
+    return cfg
+
+
 @router.post(P + "/models/{mid}/predict")
 async def test_predict(mid: str, file: UploadFile = File(...), confidence: float | None = Form(None),
-                       overlap: float = Form(0.5), c: Ctx = Depends(project_ctx)):
+                       overlap: float = Form(0.5), tile_size: int = Form(0), tile_overlap: float = Form(0.2),
+                       c: Ctx = Depends(project_ctx)):
     c.perm("project.infer")
     m = _model(c, mid)
     if m.status != "ready":
         raise HTTPException(409, "model is not ready")
+    tiling = _tiling_or_404(c, tile_size, tile_overlap)      # before the credit: off looks missing
     charge(c.db, c.ws, CREDIT_COST["infer"]); c.db.commit()
     im = imaging.open_image(await file.read())
     kw = {"iou": overlap, "classes": m.classes}
     if confidence is not None:                     # no slider value: Resolved uses the model's best-F1 threshold
         kw["conf"] = confidence
-    return resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id).predict(im, **kw)
+    model = resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id)
+    try:
+        return sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+        raise HTTPException(400, str(e)) from e
 
 
 class ExportModelIn(BaseModel):
@@ -370,6 +391,8 @@ class AutoLabelIn(BaseModel):
     image_ids: list[str] = []
     class_ids: list[str] = []
     confidence: float | None = None   # None = the model's best-F1 threshold (0.4 when it has no eval)
+    tile_size: int = 0                # task_30: sliced inference; 0 = whole image
+    tile_overlap: float = 0.2
     only_unannotated: bool = True
     send_to_review: bool = True
 
@@ -384,11 +407,16 @@ def _autolabel_target(c: Ctx, body: AutoLabelIn):
         raise HTTPException(400, "choose a trained model")
     if body.method == "sam" and not c.db.scalar(select(LabelClass.id).where(LabelClass.project_id == c.project.id)):
         raise HTTPException(400, "add classes first — SAM uses class names as text prompts")
+    tiling = _tiling_or_404(c, body.tile_size, body.tile_overlap)
+    if tiling and body.method == "sam":
+        raise HTTPException(400, "tiling needs a detection or segmentation model")
     ref = body.model_ref or (f"trained:{body.model_id}" if body.method == "model" else "sam3:sam3.1")
     try:
         r = resolve(ref, c.db, workspace_id=c.ws.id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if tiling and r.adapter.family in ("sam3", "vlm"):
+        raise HTTPException(400, "tiling needs a detection or segmentation model")
     if r.adapter.family in ("sam3", "vlm") and c.project.type == "classification":
         raise HTTPException(400, f"{'SAM' if r.adapter.family == 'sam3' else 'VLM'} auto-label needs "
                                  "a detection or segmentation project")
@@ -535,8 +563,17 @@ def _hosted_model(db: Session, ws: Workspace, ref: str) -> TrainedModel:
 
 
 async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Request, confidence: float | None,
-                        overlap: float, image: str | None, file: UploadFile | None) -> dict:
+                        overlap: float, image: str | None, file: UploadFile | None,
+                        tile_size: int = 0, tile_overlap: float = 0.2) -> dict:
     """Shared path for id-based and alias-based hosted prediction: meter, infer, feed drift/AL."""
+    tiling = None
+    if tile_size:
+        try:
+            tiling = Tiling.parse({"tile_size": tile_size, "overlap": tile_overlap})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if not is_enabled("task_30", db, ws.id):
+            raise HTTPException(404, "not found")   # before the quota/credit: off looks missing
     metering.check(db, ws, "ai_calls", 1)
     charge(db, ws, CREDIT_COST["infer"])
     data = await _image_from_request(request, file, image)
@@ -544,7 +581,11 @@ async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Re
     kw = {"iou": overlap, "classes": m.classes}
     if confidence is not None:                     # omitted: the model's evaluated best-F1 threshold
         kw["conf"] = confidence
-    out = resolve(f"trained:{m.id}", db, workspace_id=ws.id).predict(im, **kw)
+    model = resolve(f"trained:{m.id}", db, workspace_id=ws.id)
+    try:
+        out = sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+        raise HTTPException(400, str(e)) from e
     audit(db, ws.id, None, "infer.hosted", m.name, n=len(out["predictions"]))
     metering.record(db, ws.id, "ai_calls", 1, project_id=m.project_id, model_id=m.id, kind="hosted")
     db.commit()                                    # the paid inference is safe before any monitoring work
@@ -564,9 +605,11 @@ async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Re
              openapi_extra={"x-scopes": ["infer"]})
 async def hosted_predict(model_id: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
                          overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
+                         tile_size: int = Query(0, ge=0, le=4096), tile_overlap: float = Query(0.2, ge=0, le=0.9),
                          db: Session = Depends(get_db)):
     ws = key_ws(db, api_key, request, "infer")
-    return await _hosted_infer(db, ws, _hosted_model(db, ws, model_id), request, confidence, overlap, image, file)
+    return await _hosted_infer(db, ws, _hosted_model(db, ws, model_id), request, confidence, overlap, image, file,
+                               tile_size, tile_overlap)
 
 
 @router.post("/api/v1/{ws_slug}/{project}/upload", operation_id="upload_images_v1",

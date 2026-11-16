@@ -6,6 +6,7 @@ import httpx
 
 from .. import config
 from ..services import ml
+from ..services.tiling import Tiling, sliced_predict
 from .base import ADAPTERS
 from .catalog import resolve
 
@@ -109,6 +110,14 @@ def _ref(params: dict) -> str:
     raise ValueError("choose a model_ref or a trained model")
 
 
+def _tile_cfg(params: dict) -> Tiling | None:
+    """Version/preview params carry either a tiling dict or the flat tile_size pair."""
+    raw = params.get("tiling")
+    if raw is None and params.get("tile_size"):
+        raw = {"tile_size": params["tile_size"], "overlap": params.get("tile_overlap", 0.2)}
+    return Tiling.parse(raw)
+
+
 def label_image(im, *, project_type: str, params: dict, classes: list, db, workspace_id: str,
                 sam_ok: bool | None = None) -> list[dict]:
     """Run the selected model over one image and return editor annotations (never writes).
@@ -116,6 +125,9 @@ def label_image(im, *, project_type: str, params: dict, classes: list, db, works
     sam_ok is the batch's one-time SAM probe; pass it on loops so a job does not re-probe per image."""
     r = resolve(_ref(params), db, workspace_id=workspace_id)
     family = r.adapter.family
+    tile_cfg = _tile_cfg(params)
+    if tile_cfg and family in ("sam3", "vlm"):
+        raise ValueError("tiling needs a detection or segmentation model")
     conf = float(raw) if (raw := params.get("confidence")) is not None else None
     conf_kw = {} if conf is None else {"conf": conf}      # None = let Resolved.conf (best-F1) decide
     prompt = params.get("prompt")
@@ -161,7 +173,8 @@ def label_image(im, *, project_type: str, params: dict, classes: list, db, works
             anns.append(_ann(refined, cid, im, project_type, "vlm+sam3"))
         return anns
 
-    out = r.predict(im, classes=[c.name for c in wanted] or None, **conf_kw)
+    out = (sliced_predict(r, im, tile_cfg, classes=[c.name for c in wanted] or None, **conf_kw) if tile_cfg
+           else r.predict(im, classes=[c.name for c in wanted] or None, **conf_kw))
     if "top" not in out and project_type == "instance-segmentation" \
             and (sam_ok if sam_ok is not None else sam_available()):
         for p in out.get("predictions", []):

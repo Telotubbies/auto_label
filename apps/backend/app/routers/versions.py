@@ -7,7 +7,8 @@ from ..config import CREDIT_COST, DATA_DIR
 from ..deps import Ctx, audit, charge, project_ctx
 from ..models import Job, Version
 from ..security import sign_path
-from ..services import erasure, exporters
+from ..services import erasure, exporters, tiling
+from ..services.flags import is_enabled
 from .projects import job_out
 
 router = APIRouter(prefix="/api/ws/{ws}/projects/{project}/versions", tags=["versions"])
@@ -50,6 +51,16 @@ class VersionIn(BaseModel):
 @router.post("")
 def create_version(body: VersionIn, c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
+    pre = body.settings.get("preprocessing") or {}
+    try:
+        tiling_cfg = tiling.Tiling.parse(pre.get("tiling"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if tiling_cfg:
+        if c.project.type == "classification":
+            raise HTTPException(400, "tiling needs a detection or segmentation project")
+        if not is_enabled("task_30", c.db, c.ws.id):
+            raise HTTPException(404, "not found")       # before the credit charge: off looks missing
     charge(c.db, c.ws, CREDIT_COST["version"])
     n = (c.db.scalar(select(func.max(Version.number)).where(Version.project_id == c.project.id)) or 0) + 1
     v = Version(project_id=c.project.id, number=n, name=body.name.strip(), settings=body.settings, created_by=c.user.id)

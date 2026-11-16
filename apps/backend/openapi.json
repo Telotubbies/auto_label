@@ -146,6 +146,16 @@
           "model_id": {
             "title": "Model Id",
             "type": "string"
+          },
+          "tile_overlap": {
+            "default": 0.2,
+            "title": "Tile Overlap",
+            "type": "number"
+          },
+          "tile_size": {
+            "default": 0,
+            "title": "Tile Size",
+            "type": "integer"
           }
         },
         "required": [
@@ -241,6 +251,16 @@
             "default": true,
             "title": "Send To Review",
             "type": "boolean"
+          },
+          "tile_overlap": {
+            "default": 0.2,
+            "title": "Tile Overlap",
+            "type": "number"
+          },
+          "tile_size": {
+            "default": 0,
+            "title": "Tile Size",
+            "type": "integer"
           },
           "vlm_verify": {
             "default": false,
@@ -343,6 +363,16 @@
             "default": true,
             "title": "Send To Review",
             "type": "boolean"
+          },
+          "tile_overlap": {
+            "default": 0.2,
+            "title": "Tile Overlap",
+            "type": "number"
+          },
+          "tile_size": {
+            "default": 0,
+            "title": "Tile Size",
+            "type": "integer"
           },
           "vlm_verify": {
             "default": false,
@@ -494,6 +524,16 @@
               }
             ],
             "title": "Prompt"
+          },
+          "tile_overlap": {
+            "default": 0.2,
+            "title": "Tile Overlap",
+            "type": "number"
+          },
+          "tile_size": {
+            "default": 0,
+            "title": "Tile Size",
+            "type": "integer"
           }
         },
         "required": [
@@ -524,6 +564,16 @@
             "default": 0.5,
             "title": "Overlap",
             "type": "number"
+          },
+          "tile_overlap": {
+            "default": 0.2,
+            "title": "Tile Overlap",
+            "type": "number"
+          },
+          "tile_size": {
+            "default": 0,
+            "title": "Tile Size",
+            "type": "integer"
           }
         },
         "required": [
@@ -1956,6 +2006,18 @@
             "title": "Source",
             "type": "string"
           },
+          "tiling": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiling"
+          },
           "zones": {
             "items": {},
             "title": "Zones",
@@ -2027,6 +2089,18 @@
               }
             ],
             "title": "Source"
+          },
+          "tiling": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiling"
           },
           "zones": {
             "anyOf": [
@@ -4633,6 +4707,30 @@
                 }
               ],
               "title": "Image"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tile_size",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 4096,
+              "minimum": 0,
+              "title": "Tile Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tile_overlap",
+            "required": false,
+            "schema": {
+              "default": 0.2,
+              "maximum": 0.9,
+              "minimum": 0,
+              "title": "Tile Overlap",
+              "type": "number"
             }
           }
         ],

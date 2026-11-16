@@ -18,6 +18,7 @@ class Stream(Base):
     sample_fps: Mapped[float] = mapped_column(Float, default=5.0)
     zones: Mapped[list] = mapped_column(JSON, default=list)
     rules: Mapped[list] = mapped_column(JSON, default=list)
+    tiling: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)   # task_30: per-frame slices
     status: Mapped[str] = mapped_column(String(32), default="stopped")
     last_error: Mapped[str] = mapped_column(Text, default="")
     created: Mapped[float] = mapped_column(Float, default=now)

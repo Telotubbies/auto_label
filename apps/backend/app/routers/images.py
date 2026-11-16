@@ -28,6 +28,7 @@ from ..services import (erasure, faceblur, imaging, importers, insights, labelin
                         ocr as ocr_service, segment)
 from ..services.flags import is_enabled
 from ..services.quality import analyze as analyze_quality, sql_filter as quality_filter
+from ..services.tiling import Tiling, sliced_predict
 from .projects import classes_out, ensure_class
 
 router = APIRouter(tags=["images"])
@@ -727,6 +728,8 @@ def smart_polygon(image_id: str, body: SmartIn, u: User = Depends(current_user),
 class AssistIn(BaseModel):
     model_id: str
     confidence: float = 0.4
+    tile_size: int = 0
+    tile_overlap: float = 0.2
 
 
 @router.post("/api/images/{image_id}/label-assist")
@@ -735,12 +738,25 @@ def label_assist(image_id: str, body: AssistIn, u: User = Depends(current_user),
     m = db.get(TrainedModel, body.model_id)
     if not m or m.workspace_id != c.ws.id or m.status != "ready":
         raise HTTPException(404, "model not ready")
+    tiling = None
+    if body.tile_size:
+        try:
+            tiling = Tiling.parse({"tile_size": body.tile_size, "overlap": body.tile_overlap})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if not is_enabled("task_30", db, c.ws.id):
+            raise HTTPException(404, "not found")
     from .projects import classes_out
     by_name = {x["name"]: x["id"] for x in classes_out(db, c.project)}
     for name in m.classes:              # model classes missing from this project get created
         if name not in by_name:
             by_name[name] = ensure_class(db, c.project, name).id
     db.commit()
-    pred = resolve(f"trained:{m.id}", db, workspace_id=c.ws.id).predict(
-        imaging.load(img.path), conf=body.confidence, classes=m.classes)
+    model = resolve(f"trained:{m.id}", db, workspace_id=c.ws.id)
+    kw = {"conf": body.confidence, "classes": m.classes}
+    im = imaging.load(img.path)
+    try:
+        pred = sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
+    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+        raise HTTPException(400, str(e)) from e
     return {"annotations": ml.to_annotations(pred, by_name)}
