@@ -188,11 +188,11 @@ def collect_candidates(db: Session, project: Project, start: float, end: float,
     return out
 
 
-def _image_vector(im, sha: str | None) -> list[float] | None:
+def _image_vector(path: str, sha: str | None) -> list[float] | None:
     try:
-        return embeddings.embed_image(im, sha)
-    except Exception:  # noqa: BLE001 - CLIP is optional; lexical ranking still works
-        log.info("event search: CLIP image embedding unavailable", exc_info=True)
+        return embeddings.embed_image(imaging.load(path), sha)
+    except Exception:  # noqa: BLE001 - CLIP is optional; a purged/partial frame still ranks lexically
+        log.info("event search: frame image or CLIP embedding unavailable", exc_info=True)
         return None
 
 
@@ -256,7 +256,7 @@ def index_candidates(db: Session, project: Project, candidates: list[dict],
         if should_stop is not None and should_stop():
             break
         if clip and not row.embedding:
-            vector = _image_vector(imaging.load(row.path), sha_by_id.get(row.source_id))
+            vector = _image_vector(row.path, sha_by_id.get(row.source_id))
             if vector is not None:
                 row.embedding = vector
                 stats["embeddings"] += 1

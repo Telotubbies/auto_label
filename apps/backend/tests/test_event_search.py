@@ -328,6 +328,27 @@ def test_data_path_refuses_paths_outside_the_data_dir():
     assert event_search.data_path(str(DATA_DIR.parent / "escape.jpg")) is None
 
 
+def test_unreadable_frame_file_does_not_fail_the_search(admin, monkeypatch, footage):
+    """A purged or half-extracted frame costs its own vector, not the whole job."""
+    monkeypatch.setattr(event_search.embeddings, "available", lambda: True)
+    monkeypatch.setattr(event_search.embeddings, "embed_image", lambda im, sha: [1.0, 0.0])
+    monkeypatch.setattr(event_search, "_text_vector", lambda text: [1.0, 0.0])
+    now = footage["now"]
+    gone = _frame("helmet-gone-frame.jpg", now - 570)
+    (DATA_DIR / "event-search" / "helmet-gone-frame.jpg").unlink()
+
+    job = _run(admin, {"query": "helmet", "from_ts": now - 900, "to_ts": now})
+    result = job["result"]
+    assert result["ranking"] == "clip+lexical"
+    assert result["embeddings"] == result["candidates"] - 1   # only the unreadable frame is skipped
+    # it still ranks on its stored words instead of taking the job down with it
+    assert {*footage["ids"].values(), gone} <= {r["source_id"] for r in result["results"]}
+
+    with SessionLocal() as db:                             # leave the module window at four live frames
+        db.get(Image, gone).deleted_at = time.time()
+        db.commit()
+
+
 def test_indexing_stops_after_a_cancellation(admin, monkeypatch, footage):
     monkeypatch.setattr(event_search.embeddings, "available", lambda: True)
     embedded: list[str] = []
