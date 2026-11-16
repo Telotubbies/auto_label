@@ -12,10 +12,10 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import Ctx, audit, ws_ctx
 from ..models import Audit, User
+from ..services.csvsafe import cell
 
 router = APIRouter(prefix="/api/ws/{ws}", tags=["audit"])
 CSV_HEADER = ["id", "created", "user", "action", "target", "meta"]
-FORMULA_PREFIXES = ("=", "+", "-", "@")
 MAX_ROWS = 50_000
 
 
@@ -59,19 +59,13 @@ def _user_label(a: Audit, name: str | None) -> str:
     return name or ("API" if a.user_id is None else a.user_id)
 
 
-def _cell(value) -> str:
-    """CSV formula-injection guard: spreadsheet apps must never execute an exported cell."""
-    text = "" if value is None else str(value)
-    return "'" + text if text[:1] in FORMULA_PREFIXES else text
-
-
 def _csv(rows: list[tuple[Audit, str | None]]) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\r\n")            # RFC 4180
     writer.writerow(CSV_HEADER)
     for a, name in rows:
-        writer.writerow([_cell(a.id), _cell(a.created), _cell(_user_label(a, name)), _cell(a.action),
-                         _cell(a.target), _cell(json.dumps(a.meta or {}, ensure_ascii=False))])
+        writer.writerow([cell(a.id), cell(a.created), cell(_user_label(a, name)), cell(a.action),
+                         cell(a.target), cell(json.dumps(a.meta or {}, ensure_ascii=False))])
     return "\ufeff" + buf.getvalue()                            # BOM so Excel reads Thai correctly
 
 

@@ -1321,7 +1321,7 @@ def test_trash_waits_for_an_in_flight_snapshot_and_leaves_no_files(c, monkeypatc
     from sqlalchemy import func, select
 
     from app.db import SessionLocal
-    from app.models import StreamEvent
+    from app.models import Project, StreamEvent
     from app.streams import manager as manager_module
     from app.streams.manager import manager
 
@@ -1358,7 +1358,12 @@ def test_trash_waits_for_an_in_flight_snapshot_and_leaves_no_files(c, monkeypatc
 
         t = threading.Thread(target=trash, daemon=True)
         t.start()
-        time.sleep(0.6)                          # the trash must be blocked on the worker's write lock
+        def trashed() -> bool:
+            with SessionLocal() as db:
+                row = db.get(Project, pid)
+            return row is None or row.deleted_at is not None
+
+        _poll(trashed, timeout=20)               # the commit the worker's write must lose against
         blocked = t.is_alive()
         release.set()
         t.join(20)

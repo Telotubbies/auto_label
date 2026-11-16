@@ -115,6 +115,15 @@ export interface AutoLabelPreviewIn {
   vlm_verify?: boolean
 }
 
+export interface BatchInferenceIn {
+  classes?: string[]
+  confidence?: number | null
+  model_ref: string
+  name?: string
+  output?: "csv" | "coco" | "dataset"
+  source: SourceIn
+}
+
 export interface BoardMove {
   assignee_id?: string | null
   batch_id?: string | null
@@ -446,6 +455,15 @@ export interface SmartIn {
   epsilon?: number
   negatives?: number[][]
   points: number[][]
+}
+
+export interface SourceIn {
+  batch_id?: string | null
+  connector_id?: string | null
+  kind: "batch" | "video" | "connector" | "workflow"
+  limit?: number
+  prefix?: string
+  video_id?: string | null
 }
 
 export interface StreamIn {
