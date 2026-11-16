@@ -36,6 +36,20 @@ export interface FeatureFlag { key: string; description: string; enabled: boolea
 
 export interface WorkspaceFlags { enabled: string[]; flags: FeatureFlag[] }
 
+export type AlertKind = 'line' | 'slack' | 'email'
+export interface AlertQuietHours { start: string; end: string; tz: string }
+export interface AlertSettings { throttle_s?: number; quiet_hours?: AlertQuietHours | null }
+export interface AlertChannel {
+  id: string; kind: AlertKind; name: string; active: boolean
+  config: { to?: string; channel_token?: string; webhook_url?: string; recipients?: string[] }
+  settings: AlertSettings; last_sent: number | null; created: number
+}
+export interface AlertDelivery {
+  id: string; status: 'ok' | 'failed' | 'skipped'; reason: string; last_status: number | null
+  event: { title?: string; summary?: string; stream_name?: string; stream_id?: string; created?: number }
+  created: number
+}
+
 /** Keypoint schema owned by one class: named joints plus the bones drawn between them. */
 export interface Skeleton { names: string[]; edges: [number, number][]; flip_idx?: number[] }
 export interface LabelClass { id: string; name: string; color: string; count: number; skeleton?: Skeleton | null }

@@ -160,6 +160,20 @@ export interface BulkIn {
   value?: string | null
 }
 
+export interface ChannelIn {
+  config: Record<string, unknown>
+  kind: string
+  name: string
+  settings?: Record<string, unknown> | null
+}
+
+export interface ChannelPatch {
+  active?: boolean | null
+  config?: Record<string, unknown> | null
+  name?: string | null
+  settings?: Record<string, unknown> | null
+}
+
 export interface ClaimIn {
   kinds?: string[]
   name?: string
