@@ -22,8 +22,9 @@ from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
 from app.models import Image, Job, LabelClass, Member, Project, ProjectMember, User, Version, Workspace
-from app.security import hash_password, issue_access
+from app.security import hash_password
 from app.services import exporters, imaging, versioning
+from conftest import login
 
 
 def _write_image(name: str, w: int = 64, h: int = 64) -> str:
@@ -45,8 +46,11 @@ def _user(prefix: str) -> str:
 
 
 def _client(user_id: str) -> TestClient:
+    """Sign in as that seeded guard account through the real route: it carries the guard password."""
+    with SessionLocal() as db:
+        email = db.get(User, user_id).email
     c = TestClient(app)
-    c.headers["Authorization"] = f"Bearer {issue_access(user_id)}"
+    c.headers.update(login(c, email, "longpassword1"))
     return c
 
 

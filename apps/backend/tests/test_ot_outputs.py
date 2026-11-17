@@ -20,6 +20,8 @@ from app.main import app
 from app.ot import drivers
 from app.services import flags, ot
 from app.streams.rules import Engine
+from conftest import login_as
+
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}/ot-outputs"
@@ -32,7 +34,6 @@ COIL = {"host": "127.0.0.1", "port": 502, "unit_id": 1, "register": "coil", "add
 def _ot_net(monkeypatch):
     """Loopback only: OT_ALLOW_CIDR is empty in production, so every target is refused by default."""
     monkeypatch.setattr(ot.config, "OT_ALLOW_CIDR", (ipaddress.ip_network("127.0.0.0/8"),))
-
 
 
 class Recorder:
@@ -61,9 +62,7 @@ class Mono:
 
 
 def _login(client: TestClient, email: str) -> dict:
-    r = client.post("/api/auth/login", json={"email": email, "password": PW})
-    assert r.status_code == 200, r.text
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return login_as(client, email)
 
 
 @pytest.fixture(scope="module")

@@ -4,16 +4,10 @@ import uuid
 
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 
-import pytest
 
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.models import Job, Project, Workspace
 from app import worker
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
 
 
 def test_safe_error_hides_machine_paths():

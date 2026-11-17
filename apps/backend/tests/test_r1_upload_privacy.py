@@ -12,16 +12,11 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 
 from app.config import DATA_DIR
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.deps import Ctx
 from app.models import Batch, Image, Project, User, Workspace
 from app.routers import images
 from app.services import imaging
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
 
 
 @pytest.fixture()

@@ -22,6 +22,7 @@ from app.main import app
 from app.models import Job, Member, Project, TrainedModel, User, Version, Workspace, WorkspaceFlag
 from app.security import issue_access
 from app.services import edge
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -32,9 +33,7 @@ PRESETS = f"{BASE}/models/edge-presets"
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        c.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        c.headers.update(login(c))
         yield c
 
 

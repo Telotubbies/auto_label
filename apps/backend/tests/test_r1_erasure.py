@@ -2,15 +2,14 @@
 import os
 import uuid
 
-from app.config import DATA_DIR
-from app.db import Base, SessionLocal, engine
-from app.models import Image, Project, TrainedModel, User, Version, Workspace
 import pytest
+from fastapi.testclient import TestClient
 
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
+from app.config import DATA_DIR
+from app.db import SessionLocal
+from app.main import app
+from app.models import Image, Project, TrainedModel, User, Version, Workspace
+from conftest import login as shared_login
 
 
 def _touch(rel: str) -> None:
@@ -110,14 +109,8 @@ def test_version_delete_erases_its_bytes_only():
 
 
 def _login(email: str, password: str = "longpassword1"):
-    from fastapi.testclient import TestClient
-
-    from app.main import app
-
     client = TestClient(app)
-    r = client.post("/api/auth/login", json={"email": email, "password": password})
-    assert r.status_code == 200, r.text
-    client.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    client.headers.update(shared_login(client, email, password))
     return client
 
 

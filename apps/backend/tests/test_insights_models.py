@@ -27,8 +27,8 @@ from app.models import (
     Version,
     Workspace,
 )
-from app.security import issue_access
 from app.services import insights
+from conftest import login
 
 WS = "insights-20b-qa"
 NAME = "insights-20b"
@@ -59,7 +59,7 @@ def c():
                 db.flush()
                 db.add(Member(workspace_id=ws.id, user_id=user.id, role="admin"))
                 db.commit()
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 

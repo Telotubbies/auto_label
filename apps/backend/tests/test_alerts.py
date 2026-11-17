@@ -31,6 +31,7 @@ from app.services import alerts, safefetch
 from app.streams import alert_bridge
 from app.streams import manager as stream_manager
 from app.streams.manager import _Worker
+from conftest import login as shared_login
 
 WS = "labeldesk-demo"
 BASE = f"/api/ws/{WS}/alerts"
@@ -40,9 +41,7 @@ BANGKOK = ZoneInfo("Asia/Bangkok")
 def login(email="demo@labeldesk.dev", pw="demo1234"):
     # unique client host: the login limiter is keyed by ip+email and every module logs in
     c = TestClient(app, client=("alerts-test", 50001))
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

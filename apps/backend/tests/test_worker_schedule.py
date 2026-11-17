@@ -3,23 +3,11 @@
 import os
 import threading
 
-import pytest
-
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 
 from app import worker
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    """I8: this module must not depend on another module's TestClient having created the schema."""
-    from sqlalchemy import inspect
-
-    from app.db import Base, engine
-    Base.metadata.create_all(engine)
-    assert "workers" in inspect(engine).get_table_names()
 
 
 def test_schedule_ops_runs_while_a_job_is_claimed(monkeypatch):

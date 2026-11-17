@@ -7,18 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from app.db import Base, SessionLocal, engine, get_db
+from app.db import SessionLocal, get_db
 from app.main import app
 from app.models import Job, Project, TrainedModel, UsageEvent, User, Version, Webhook, WebhookDelivery, Workspace
 from app.models import now
 from app.services import finalize
 
 TOKEN = {"X-Worker-Token": os.environ["LD_WORKER_TOKEN"]}
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
 
 
 @pytest.fixture(autouse=True)

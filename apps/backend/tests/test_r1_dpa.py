@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from conftest import login
 
 BASE = "/api/ws/labeldesk-demo"
 
@@ -15,9 +16,7 @@ BASE = "/api/ws/labeldesk-demo"
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        r = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"})
-        assert r.status_code == 200, r.text
-        c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+        c.headers.update(login(c))
         yield c
 
 

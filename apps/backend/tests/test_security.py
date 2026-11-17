@@ -13,6 +13,7 @@ from PIL import Image as PImage
 from app import ratelimit
 from app.main import app
 from app.services import safefetch
+from conftest import login as shared_login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -20,9 +21,7 @@ BASE = f"/api/ws/{WS}/projects/{PR}"
 
 def login(email, pw="demo1234"):
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

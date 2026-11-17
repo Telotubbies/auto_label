@@ -17,6 +17,7 @@ from app.main import app
 from app.models import Image, Job, Member, Project, ProjectMember, TrainedModel, User, Version, Workspace
 from app.security import hash_password
 from app.services import insights
+from conftest import login as shared_login
 
 WS = "labeldesk-demo"
 HELD_OUT = "held-out-other-labeler.jpg"
@@ -24,9 +25,7 @@ HELD_OUT = "held-out-other-labeler.jpg"
 
 def _login(email, pw="demo1234"):
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

@@ -21,8 +21,8 @@ from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.gpu import GpuBusy, GpuScheduler
 from app.main import app
-from app.models import Job, Project, TrainedModel, User, Version, Workspace
-from app.security import issue_access
+from app.models import Job, Project, TrainedModel, Version, Workspace
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -41,12 +41,8 @@ STAGE_ORDER = [
 
 @pytest.fixture(scope="module")
 def client():
-    # lifespan seeds the demo workspace; mint the token directly so this module does not
-    # spend one of the shared login rate-limit slots the other test modules need.
     with TestClient(app) as c:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        c.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        c.headers.update(login(c))
         yield c
 
 

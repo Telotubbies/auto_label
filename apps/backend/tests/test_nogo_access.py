@@ -36,6 +36,7 @@ from app.models import (
     set_annotations,
 )
 from app.security import issue_access
+from conftest import login
 
 
 # --- I1: model_ref cannot name an arbitrary local file ------------------------------------
@@ -124,8 +125,7 @@ def box(cls: str, x: float = 0.1, y: float = 0.1, aid: str = "b1") -> dict:
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        tok = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        c.headers["Authorization"] = f"Bearer {tok}"
+        c.headers.update(login(c))
         yield c
 
 

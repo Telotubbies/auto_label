@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.security import issue_access
 from app.services import workflow_runner
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}/workflows"
@@ -79,9 +80,7 @@ def _ready_model():
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        c.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        c.headers.update(login(c))
         yield c
 
 

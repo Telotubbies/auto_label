@@ -27,6 +27,7 @@ from app.main import app
 from app.models import Job, Member, Project, TrainedModel, User, Version, Workspace
 from app.routers import training as training_router
 from app.security import issue_access
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -35,9 +36,7 @@ BASE = f"/api/ws/{WS}/projects/{PR}"
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        c.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        c.headers.update(login(c))
         yield c
 
 

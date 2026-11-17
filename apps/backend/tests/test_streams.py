@@ -22,6 +22,7 @@ from PIL import Image as PImage
 
 from app.config import DATA_DIR
 from app.main import app
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}/streams"
@@ -35,8 +36,7 @@ def c():
     # unique client host: the in-process login limiter is keyed by ip+email and every test
     # module logs in, so a shared host would starve later modules of their login budget
     with TestClient(app, client=("streams-test", 50000)) as client:
-        tok = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        client.headers["Authorization"] = f"Bearer {tok}"
+        client.headers.update(login(client))
         yield client
     from app.streams.manager import manager
     manager.stop_all()

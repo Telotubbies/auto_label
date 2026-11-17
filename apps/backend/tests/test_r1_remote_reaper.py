@@ -2,18 +2,12 @@
 import os
 import uuid
 
-import pytest
 from sqlalchemy import select
 
 from app import config
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.models import Job, Project, TrainedModel, User, Version, Webhook, WebhookDelivery, Workspace, now
 from app.services import remote_reaper
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
 
 
 def _case(kind="train", status="running", started_age=0.0, result=None, model_status="training",

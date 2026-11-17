@@ -18,6 +18,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import User, Webhook, WebhookDelivery, Workspace, now
 from app.services import webhooks
+from conftest import login as shared_login
 
 WS = "labeldesk-demo"
 BASE = f"/api/ws/{WS}/webhooks"
@@ -25,9 +26,7 @@ BASE = f"/api/ws/{WS}/webhooks"
 
 def login(email, pw="demo1234"):
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

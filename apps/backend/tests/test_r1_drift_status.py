@@ -8,13 +8,8 @@ import pytest
 from sqlalchemy import select
 
 from app import worker
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.models import DriftRun, DriftSample, Image, Job, Project, TrainedModel, User, Version, Workspace
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
 
 
 def _project():

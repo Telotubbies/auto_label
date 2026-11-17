@@ -13,12 +13,6 @@ from app.models import Image, ImageClass, Project, UsageEvent, User, Video, Work
 from app.security import hash_password
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    from app.db import Base, engine
-    Base.metadata.create_all(engine)
-
-
 def _workspace_with_images(n=2, size=12345):
     with SessionLocal() as db:
         suffix = uuid.uuid4().hex[:8]

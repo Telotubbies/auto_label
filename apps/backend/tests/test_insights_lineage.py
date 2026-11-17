@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.security import issue_access
 from app.services import insights_stream, versioning
+from conftest import login
 
 WS = "labeldesk-demo"
 SLUG = "lineage-qa"
@@ -46,9 +47,7 @@ DAY = 86400
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app, client=("lineage-test", 50000)) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 

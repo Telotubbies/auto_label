@@ -21,6 +21,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import Connector, Image, Project, User, Workspace
 from app.services import connectors
+from conftest import login as shared_login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 API = f"/api/ws/{WS}"
@@ -34,9 +35,7 @@ def jpeg(color=(30, 90, 150)):
 
 def login(email="demo@labeldesk.dev", pw="demo1234"):
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

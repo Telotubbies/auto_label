@@ -26,6 +26,7 @@ from app.main import app
 from app.models import Image, Job, Member, Project, User, Video, Workspace, now
 from app.security import issue_access
 from app.services import health, quality
+from conftest import login
 
 WS = "labeldesk-demo"
 NAME = "image-quality-qa"
@@ -34,9 +35,7 @@ NAME = "image-quality-qa"
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 

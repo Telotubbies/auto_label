@@ -12,18 +12,12 @@ import pytest
 from PIL import Image as PImage
 from sqlalchemy import update
 
-from app import bootstrap, worker
+from app import worker
 from app.adapters.base import Cancelled
 from app.config import DATA_DIR
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.models import Image, Job, Project, TrainedModel, User, Version, Workspace
 from app.services import exporters, versioning
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
-    bootstrap.init_db()
 
 
 def _project(images: int = 0) -> dict:
