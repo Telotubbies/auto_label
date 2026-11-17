@@ -2,7 +2,7 @@ import { lazy } from 'react'
 import { Navigate, Route } from 'react-router-dom'
 import { LEGACY_PROJECT_PATHS } from '@/lib/nav'
 import ProjectLayout from '@/features/project/ProjectLayout'
-import Dataset from '@/features/project/Dataset'
+import DatasetStage from '@/features/project/DatasetStage'
 import { projectDataRoutes } from './data.routes'
 import { projectLabelRoutes } from './label.routes'
 import { projectModelRoutes } from './models.routes'
@@ -35,7 +35,7 @@ const PROJECT_CHILDREN = (
     {projectDeployRoutes}
     {projectSettingsRoutes}
     {/* `/dataset` is the v3 name for the grid; T-479 mounts the tabbed stage on this path. */}
-    <Route path="dataset" element={<Dataset />} />
+    <Route path="dataset" element={<DatasetStage />} />
     {/* Nav v2 folds Access into Project settings; old deep links keep their tab. */}
     {Object.entries(LEGACY_PROJECT_PATHS).map(([from, to]) => (
       <Route key={from} path={from} element={<Navigate to={`../${to}`} replace />} />
