@@ -121,7 +121,10 @@ def _table(host: str) -> dict[str, tuple[str, str, str, dict]]:
 
 
 ROUTE_NAMES = tuple(_table("no-such-host"))
-ADMIN_ROUTES = tuple(name for name in ROUTE_NAMES if name != "estimate")   # PLAN §12.5
+# PLAN §12.5: the calculator and the catalogue it sizes against are read-only and carry no host
+# data, so a plain member reads them (T-1110 row 14). Everything else is workspace-admin work.
+MEMBER_ROUTES = ("estimate", "catalog")
+ADMIN_ROUTES = tuple(name for name in ROUTE_NAMES if name not in MEMBER_ROUTES)
 
 
 def _call(client: TestClient, entry: tuple[str, str, str, dict]):
@@ -223,12 +226,22 @@ def test_every_inference_route_refuses_a_member(name, as_member, as_labeler, c, 
 
 
 def test_the_calculator_stays_open_to_members(as_member, c):
-    """PLAN §12.5: a member reads the estimate; it reads no host, no catalogue row and stores nothing."""
+    """PLAN §12.5: a member reads the estimate and the catalogue it sizes against.
+
+    Neither reads a host and neither stores anything; the catalogue is the GPU preset list the
+    calculator's card picker needs, and T-1110 row 14 closed the gap where a member got an empty
+    picker because the same list was admin-only.
+    """
     r = _call(as_member, _table("no-such-host")["estimate"])
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["fits"] is True
     assert "hosts" not in body and "inventory" not in json.dumps(body)
+
+    catalog = _call(as_member, _table("no-such-host")["catalog"])
+    assert catalog.status_code == 200, catalog.text
+    assert catalog.json()["gpus"], "the member's calculator needs the preset list"
+    assert "argv" not in catalog.text and "sha256:" not in catalog.text
 
 
 def test_every_route_is_404_outside_the_configured_scope(c, monkeypatch, as_member):

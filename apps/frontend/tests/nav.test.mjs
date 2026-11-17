@@ -548,9 +548,12 @@ test('test_inference_is_a_reserved_workspace_page', () => {
   assert.equal(WORKSPACE_PAGE_LABELS.inference, 'Inference')
 })
 
-test('test_inference_route_is_lazy_and_admin_gated', () => {
+test('test_inference_route_is_lazy_and_member_gated', () => {
   assert.match(appSrc, /lazy\(\(\) => import\('@\/features\/inference\/InferenceHub'\)\)/)
-  assert.match(appSrc, /<Route path="inference" element=\{<Gate min="admin"><InferenceHub \/><\/Gate>\} \/>/)
+  // T-1110 (row 14): PLAN §12.5 opens the read-only Calculator to a member; the hub itself serves
+  // that member the Calculator alone and keeps the other three surfaces for admins. The audience is
+  // named exactly, because the rank rule would also have admitted a reviewer and an annotator.
+  assert.match(appSrc, /<Route path="inference" element=\{<Gate roles=\{\['owner', 'admin', 'member'\]\}><InferenceHub \/><\/Gate>\} \/>/)
 })
 
 test('test_inference_is_a_flag_gated_item_in_both_rails', () => {
@@ -558,7 +561,7 @@ test('test_inference_is_a_flag_gated_item_in_both_rails', () => {
     const item = rail.flatMap((g) => g.items).find((i) => i.to === 'inference')
     assert.equal(item?.label, 'Inference')
     assert.equal(item?.flag, 'task_inference')
-    assert.deepEqual(item?.roles, ['owner', 'admin'])
+    assert.deepEqual(item?.roles, ['owner', 'admin', 'member'])
   }
 })
 

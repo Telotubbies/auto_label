@@ -118,7 +118,7 @@ export default function CalculatorTab() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="space-y-3 p-4 sm:p-6">
+      <Card className="min-w-0 space-y-3 p-4 sm:p-6">
         <div className="grid gap-3 sm:grid-cols-2">
           <Row id="calc-preset" label="Model source">
             <Select {...field('preset')} value={form.preset}
@@ -253,7 +253,7 @@ export default function CalculatorTab() {
         <Button className="w-full lg:hidden" onClick={ask}>Show estimate</Button>
       </Card>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <div className={cn('space-y-4', !visible && 'hidden lg:block')}>
           {error ? (
             <Card className="p-4 sm:p-6">

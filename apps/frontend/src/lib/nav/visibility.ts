@@ -19,7 +19,8 @@ export const v2WorkspaceNav: NavGroup<WorkspaceNavItem>[] = [
     { to: 'playground', label: 'Playground', icon: 'playground', roles: STAFF },
     { to: 'deployments', label: 'Deployments', icon: 'deployments', roles: STAFF },
     // T-1000: the Inference hub rides BUILD while this rail ships; `task_inference` owns it.
-    { to: 'inference', label: 'Inference', icon: 'models', roles: OWNER_ADMIN, flag: 'task_inference' },
+    // T-1110 (row 14): a member reaches the Calculator here; the hub keeps the other tabs for admins.
+    { to: 'inference', label: 'Inference', icon: 'models', roles: ['owner', 'admin', 'member'], flag: 'task_inference' },
   ] },
   { id: 'govern', label: 'GOVERN', items: [
     // Labels follow the Settings tab they open, so the sidebar and the page never name one screen twice.

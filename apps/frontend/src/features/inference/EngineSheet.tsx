@@ -77,72 +77,77 @@ export default function EngineSheet({ ws, host, open, onClose, rows = [], select
   return (
     <Modal open={open} onClose={busy ? () => {} : onClose}
       title={uninstall ? `Uninstall ${uninstall.name}?` : 'Review install plan'}>
-      <div className="flex min-h-[calc(100dvh-4rem)] flex-col sm:min-h-0">
-        <p className="text-sm text-muted-foreground">
-          Host <span className="font-medium text-foreground">{host.host}</span>
-        </p>
-
-        {uninstall ? (
-          <p className="mt-3 text-sm">
-            This removes <span className="font-medium">{uninstall.name} {uninstall.version}</span> and the
-            virtual environment it owns on <span className="font-medium">{host.host}</span>. Shared system
-            packages are not touched.
+      {/* The dialog spends 4rem on its margins and ~6rem on a title block and padding, so a
+          viewport-tall child put Install below the fold. Cap the sheet inside that chrome and let
+          the body scroll; the acknowledgement and the buttons stay where the eye ends. */}
+      <div className="flex max-h-[calc(100dvh-10rem)] flex-col">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+          <p className="text-sm text-muted-foreground">
+            Host <span className="font-medium text-foreground">{host.host}</span>
           </p>
-        ) : plan.isLoading ? (
-          <p role="status" className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner /> Building the plan…
-          </p>
-        ) : plan.isError ? (
-          <div className="mt-4 space-y-2">
-            <p className="text-sm text-destructive">The plan could not be built.</p>
-            <p className="text-sm text-muted-foreground">{inlineError(plan.error, 'The host changed. Build the plan again.').message}</p>
-            <Button variant="outline" size="sm" onClick={() => void plan.refetch()}>Retry</Button>
-          </div>
-        ) : step && (
-          <>
-            <ul className="mt-3 space-y-2">
-              {step.steps.map((row) => (
-                <li key={row.id} className="rounded-md border p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-sm font-medium">{nameOf(row.id)}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{row.version} · {row.runtime}</span>
-                  </div>
-                  {row.status === 'installed'
-                    ? <p className="mt-1 text-sm text-muted-foreground">Already installed at {row.installed_version ?? row.version}.</p>
-                    : row.status === 'blocked'
-                      ? <p className="mt-1 text-sm text-destructive">{row.reason ?? 'Blocked on this host.'}</p>
-                      : <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">{argvText(row)}</pre>}
-                </li>
-              ))}
-            </ul>
 
-            <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
-              <div>
-                <dt className="text-xs text-muted-foreground">Total download</dt>
-                <dd className="tabular-nums">{gb(step.total_disk_mb)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Disk free now</dt>
-                <dd className="tabular-nums">{step.disk_free_gb === null ? 'unknown' : `${step.disk_free_gb} GB`}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Disk after</dt>
-                <dd className="tabular-nums">{step.disk_after_gb === null ? 'unknown' : `${step.disk_after_gb} GB`}</dd>
-              </div>
-            </dl>
+          {uninstall ? (
+            <p className="text-sm">
+              This removes <span className="font-medium">{uninstall.name} {uninstall.version}</span> and the
+              virtual environment it owns on <span className="font-medium">{host.host}</span>. Shared system
+              packages are not touched.
+            </p>
+          ) : plan.isLoading ? (
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner /> Building the plan…
+            </p>
+          ) : plan.isError ? (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">The plan could not be built.</p>
+              <p className="text-sm text-muted-foreground">{inlineError(plan.error, 'The host changed. Build the plan again.').message}</p>
+              <Button variant="outline" size="sm" onClick={() => void plan.refetch()}>Retry</Button>
+            </div>
+          ) : step && (
+            <>
+              <ul className="space-y-2">
+                {step.steps.map((row) => (
+                  <li key={row.id} className="rounded-md border p-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-sm font-medium">{nameOf(row.id)}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{row.version} · {row.runtime}</span>
+                    </div>
+                    {row.status === 'installed'
+                      ? <p className="mt-1 text-sm text-muted-foreground">Already installed at {row.installed_version ?? row.version}.</p>
+                      : row.status === 'blocked'
+                        ? <p className="mt-1 text-sm text-destructive">{row.reason ?? 'Blocked on this host.'}</p>
+                        : <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">{argvText(row)}</pre>}
+                  </li>
+                ))}
+              </ul>
 
-            {!!step.warnings.length && (
-              <ul className="mt-3 space-y-1 text-sm text-warning">
-                {step.warnings.map((line) => <li key={line}>{line}</li>)}
-              </ul>
-            )}
-            {!!step.blocked.length && (
-              <ul className="mt-3 space-y-1 text-sm text-destructive">
-                {step.blocked.map((row) => <li key={row.id}>{nameOf(row.id)}: {row.reason}</li>)}
-              </ul>
-            )}
-          </>
-        )}
+              <dl className="grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Total download</dt>
+                  <dd className="tabular-nums">{gb(step.total_disk_mb)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Disk free now</dt>
+                  <dd className="tabular-nums">{step.disk_free_gb === null ? 'unknown' : `${step.disk_free_gb} GB`}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Disk after</dt>
+                  <dd className="tabular-nums">{step.disk_after_gb === null ? 'unknown' : `${step.disk_after_gb} GB`}</dd>
+                </div>
+              </dl>
+
+              {!!step.warnings.length && (
+                <ul className="space-y-1 text-sm text-warning">
+                  {step.warnings.map((line) => <li key={line}>{line}</li>)}
+                </ul>
+              )}
+              {!!step.blocked.length && (
+                <ul className="space-y-1 text-sm text-destructive">
+                  {step.blocked.map((row) => <li key={row.id}>{nameOf(row.id)}: {row.reason}</li>)}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
 
         <div className="mt-auto pt-4">
           {error && (

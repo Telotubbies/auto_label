@@ -101,7 +101,7 @@ test('test_calculator_fits_and_states_its_assumptions', async ({ page, request }
   await signInAs(page, seeded.email)
   await page.getByRole('link', { name: 'Inference' }).click()
   await expect(page.getByRole('heading', { name: 'Inference' })).toBeVisible()
-  await page.getByRole('button', { name: 'Calculator' }).click()
+  await page.getByRole('tab', { name: 'Calculator' }).click()
 
   await page.getByLabel('Model source').selectOption('qwen2.5-vl-7b')
   await page.getByLabel('Card').selectOption('rtx4090')
@@ -322,4 +322,108 @@ test('test_labeler_has_no_rail_entry_and_direct_url_redirects', async ({ page, r
   await expect(page).toHaveURL(new RegExp(`/${WS}$`))
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Inference' })).toHaveCount(0)
+})
+
+// ---------------------------------------------------------------------------------------------
+// T-1110: the nine Important findings from the T-1021 UI QA pass, proved in the browser where the
+// finding was a measurement. `e2e` runs at 1440 x 900 unless a test sets its own viewport.
+// ---------------------------------------------------------------------------------------------
+
+test('test_the_tab_bar_is_a_tablist', async ({ page, request }) => {
+  // Row 4: the bar announced four buttons and marked the current one by colour alone.
+  await setFlags(request, ['task_inference'])
+  await stubInference(page)
+  await signInAs(page, seeded.email)
+  await openHub(page, 'engines')
+
+  await expect(page.getByRole('tablist')).toBeVisible()
+  const engines = page.getByRole('tab', { name: 'Engines' })
+  await expect(engines).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'Models' })).toHaveAttribute('aria-selected', 'false')
+
+  // One tab stop for the bar; the arrows move between tabs (ARIA tabs pattern).
+  await engines.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Models' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(/tab=models/)
+})
+
+test('test_hosts_failure_says_so_and_retries', async ({ page, request }) => {
+  // Row 5: a failed /hosts read used to say "No host has reported".
+  await setFlags(request, ['task_inference'])
+  let down = true
+  await stubInference(page, (tail) => (tail === 'hosts' && down ? { status: 500, body: { detail: 'boom' } } : null))
+  await signInAs(page, seeded.email)
+  await openHub(page, 'engines')
+
+  await expect(page.getByText('Hosts did not load.')).toBeVisible()
+  await expect(page.getByLabel('Host', { exact: true })).toHaveCount(0)
+
+  down = false
+  await page.getByRole('button', { name: 'Retry' }).first().click()
+  await expect(page.getByLabel('Host', { exact: true })).toHaveValue('host-gpu-demo')
+  await expect(page.getByText('Hosts did not load.')).toHaveCount(0)
+})
+
+test('test_install_sheet_fits_a_375_viewport_and_traps_focus', async ({ page, request }) => {
+  // Rows 2 and 3: the sheet was taller than a 375 px viewport, so Install sat below the fold; and
+  // focus stayed on the page behind it, walked out of the dialog after four stops and was never
+  // given back.
+  await page.setViewportSize({ width: 375, height: 812 })
+  await setFlags(request, ['task_inference'])
+  await stubInference(page)
+  await signInAs(page, seeded.email)
+  await openHub(page, 'engines')
+
+  await page.getByRole('checkbox', { name: 'Select vLLM' }).check()
+  const trigger = page.getByRole('button', { name: 'Review install plan' })
+  await trigger.click()
+
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toBeVisible()
+  const install = sheet.getByRole('button', { name: 'Install' })
+  await expect(install).toBeVisible()
+  // The whole primary button and the acknowledgement are inside the 812 px viewport, not merely
+  // touching its edge: the finding was that Install sat below the fold.
+  for (const locator of [install, sheet.getByRole('checkbox')]) {
+    const box = await locator.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y + box!.height).toBeLessThanOrEqual(812)
+  }
+
+  // Focus enters the dialog, and Tab from the last control comes back to the first (Close).
+  await expect(sheet).toBeFocused()
+  await sheet.getByRole('button', { name: 'Cancel' }).focus()
+  await page.keyboard.press('Tab')
+  await expect(sheet.getByRole('button', { name: 'Close' })).toBeFocused()
+
+  // Escape closes it and focus returns to the control that opened it.
+  await page.keyboard.press('Escape')
+  await expect(sheet).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+})
+
+test('test_calculator_does_not_scroll_sideways_at_375', async ({ page, request }) => {
+  // Row 1: the results table stretched its grid track, so the whole panel scrolled 50 px sideways
+  // once an estimate was shown. Measured on the scroller the page actually uses.
+  await page.setViewportSize({ width: 375, height: 812 })
+  await setFlags(request, ['task_inference'])
+  await stubInference(page)
+  await signInAs(page, seeded.email)
+  await openHub(page, 'calculator')
+
+  await page.getByLabel('Model source').selectOption('qwen2.5-vl-7b')
+  await page.getByRole('button', { name: 'Show estimate' }).click()
+  await expect(page.getByText('Fits', { exact: true })).toBeVisible()
+
+  const measured = await page.evaluate(() => {
+    const main = document.querySelector('main')
+    const root = document.scrollingElement ?? document.documentElement
+    return {
+      document: root.scrollWidth,
+      viewport: window.innerWidth,
+      main: main ? [main.scrollWidth, main.clientWidth] : null,
+    }
+  })
+  expect(measured.document).toBeLessThanOrEqual(measured.viewport)
+  if (measured.main) expect(measured.main[0]).toBeLessThanOrEqual(measured.main[1])
 })

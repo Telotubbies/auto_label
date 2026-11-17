@@ -52,7 +52,7 @@ Four surfaces, all under `/:workspace/inference` (tab in the URL as `?tab=`):
 | --- | --- | --- | --- |
 | **Engines** | Can this host run vLLM / Ollama / llama.cpp / SGLang, and what exactly will be installed? | owner, admin | one `engine_apply` job + audit, per confirmed action |
 | **Models** | Which model fits this host, and what does it cost in disk? | owner, admin | one `model_pull` job + audit |
-| **Calculator** | Does this model fit this card, and how fast will it roughly be? | any member (API); page is admin-gated in this release | nothing |
+| **Calculator** | Does this model fit this card, and how fast will it roughly be? | any member (API and page) | nothing |
 | **Segmentation** | Which segmentation model is provisioned here, and which project may use it? | owner, admin | nothing; the handoff is a link |
 
 What runs where:
@@ -81,8 +81,9 @@ an admin role.
 | `LD_INFERENCE_WORKSPACE` | API process env, a workspace slug or id; unset = not pinned | every other workspace's hub (`404`) on a shared deployment | `echo $LD_INFERENCE_WORKSPACE` on the API host |
 | `LD_ALLOW_ENGINE_INSTALL=1` | worker process env | every install and download; without it the job fails `installs_disabled` | the host row shows installs enabled in `workers.inventory` |
 
-The fourth gate is the role: every hub route except the calculator answers `403` to a member, and a
-project manager role never grants it.
+The fourth gate is the role: the calculator and the catalogue it sizes against are read-only and
+open to every member, who sees the Calculator tab alone; every other hub route answers `403` to a
+member, and a project manager role never grants any of them.
 
 Why all three: the flag keeps an unfinished surface out of the product, the workspace pin keeps a
 multi-tenant deployment from letting one tenant install software on another tenant's host, and the

@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  diskPct, emptyCopy, engineLine, installedModels, lowDisk, removeCopy, sortBySize,
+  LOW_DISK, diskPct, emptyCopy, engineLine, installedModels, lowDisk, removeCopy, sortBySize,
 } from '../src/features/inference/assets.ts'
 
 test('test_disk_percentage_and_low_disk_threshold', () => {
@@ -11,10 +11,26 @@ test('test_disk_percentage_and_low_disk_threshold', () => {
   // Under 10% is the warning state; exactly 10% is not (the bar is share free, not share used).
   assert.equal(lowDisk({ models_free_gb: 9, models_total_gb: 100 }), true)
   assert.equal(lowDisk({ models_free_gb: 10, models_total_gb: 100 }), false)
+  // T-1110 (row 6): PLAN §9 alerts on "< 10 GB or < 10%" — the share alone labelled a 1.8 TB
+  // disk with 28 GB free as low while 28 GB is a lot of room on an 80 GB disk.
+  assert.equal(lowDisk({ models_free_gb: 28, models_total_gb: 1800 }), true)
+  assert.equal(lowDisk({ models_free_gb: 28, models_total_gb: 280 }), false)
+  assert.equal(lowDisk({ models_free_gb: 9.9, models_total_gb: 5000 }), true)
+  assert.equal(lowDisk({ models_free_gb: 8, models_total_gb: 50 }), true)   // 16% free, but under 10 GB
+  assert.equal(lowDisk({ models_free_gb: 500, models_total_gb: 1863 }), false)
   // A host that reported no disk has no needle and no warning: the panel says nothing rather than guess.
   assert.equal(diskPct(null), null)
   assert.equal(diskPct({ models_free_gb: 812 }), null)
   assert.equal(lowDisk(undefined), false)
+})
+
+test('test_low_disk_remedy_names_what_v1_offers', () => {
+  // T-1110 (row 8): the remedy named LD_MODELS_MAX_GB, which owner decision §12.4 removed
+  // ("No GB cap setting in v1"), and the backticks rendered as literal characters. v1's remedy is
+  // removing a model from the panel this sentence lives in.
+  assert.match(LOW_DISK, /Under 10 GB or 10% free/, 'the rule the alert applies is stated')
+  assert.match(LOW_DISK, /Remove a model/, 'the remedy is the one v1 has')
+  assert.doesNotMatch(LOW_DISK, /LD_|`/, 'no setting that v1 does not ship, and no literal markup')
 })
 
 test('test_installed_models_are_sorted_by_size_desc', () => {

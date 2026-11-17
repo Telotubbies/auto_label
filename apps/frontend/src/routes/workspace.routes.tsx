@@ -20,7 +20,7 @@ export const workspaceRoutes = (
     <Route path="deployments" element={<Deployments />} />
     <Route path="activity" element={<Activity />} />
     <Route path="audit" element={<Gate min="admin"><AuditLog /></Gate>} />
-    <Route path="inference" element={<Gate min="admin"><InferenceHub /></Gate>} />
+    <Route path="inference" element={<Gate roles={['owner', 'admin', 'member']}><InferenceHub /></Gate>} />
     <Route path="admin" element={<SuperAdminGate><AdminConsole /></SuperAdminGate>} />
     <Route path="legal" element={<Navigate to="dpa" replace />} />
     <Route path="legal/dpa" element={<Dpa />} />
