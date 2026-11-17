@@ -159,7 +159,7 @@ def heavy_clone(sandbox: Sandbox, tmp_path: Path) -> Sandbox:
     [
         ("frontend", ["apps/frontend"], ["ml"]),
         ("backend", ["apps/backend", "tools", "packages/sdk"], ["ml"]),
-        ("full", ["apps", "deploy", "packages/sdk", "ml"], []),
+        ("full", ["apps", "deploy", "packages/sdk"], ["ml"]),
     ],
 )
 def test_cloned_worktree_omits_data_and_ml_weights(
@@ -268,17 +268,11 @@ def test_new_allocates_the_next_free_slot(sandbox: Sandbox) -> None:
     assert not (second / "ml").exists()
 
 
-def test_new_ml_profile_checks_out_ml_code_but_not_data(sandbox: Sandbox) -> None:
+def test_ml_profile_is_gone_because_ml_lives_in_its_own_repo(sandbox: Sandbox) -> None:
     result = sandbox.tool("new", "ml", "M1", "train", "ml")
 
-    assert result.returncode == 0, result.stderr
-    worktree = sandbox.worktree("ml", "M1-train")
-    assert (worktree / "ml/yolo26_ppe/models/x.pt").is_file()
-    assert (worktree / "ml/sam3_auto_label/run.py").is_file()
-    assert (worktree / "tools/keep.txt").is_file()
-    assert (worktree / "docs/README.md").is_file()
-    assert not (worktree / "data").exists()
-    assert not (worktree / "apps").exists()
+    assert result.returncode != 0, "the ml profile was removed with ADR 0004"
+    assert "ml" in (result.stderr + result.stdout)
 
 
 def test_new_rejects_a_profile_path_missing_from_the_tree(sandbox: Sandbox) -> None:

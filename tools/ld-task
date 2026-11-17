@@ -28,8 +28,7 @@ BACKEND_APP = "apps/backend"
 SPARSE_PROFILES = {
     "frontend": [FRONTEND_APP, "docs"],
     "backend": [BACKEND_APP, "packages/sdk", "tools", "docs"],
-    "full": ["apps", "packages", "ml", "tools", "deploy", "docs"],
-    "ml": ["ml", "tools", "docs"],
+    "full": ["apps", "packages", "tools", "deploy", "docs"],
 }
 
 TEAMS = ("frontend", "backend", "ml", "platform")
@@ -521,7 +520,7 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("team", help="frontend, backend, ml or platform")
     new.add_argument("id", help="short task id, for example Z4")
     new.add_argument("slug", help="lowercase task slug, for example tooling")
-    new.add_argument("profile", help="sparse profile: frontend, backend, full or ml")
+    new.add_argument("profile", help="sparse profile: frontend, backend or full (ML lives in the labeldesk-ml repo)")
 
     done = subparsers.add_parser("done", help="remove a merged, clean task worktree and its temp tree")
     done.add_argument("id", help="task id or full branch name as shown by list")
