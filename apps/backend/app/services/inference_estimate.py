@@ -136,6 +136,38 @@ def _assumptions(body: EstimateIn, gpu: dict, sequences: int, tp: int,
     ]
 
 
+def _memory(weights_b: float, kv_b: float, sequences: int, tp: int, overhead: float,
+            usable: float, vram_gb: float) -> tuple[float, float, float]:
+    """Activations, total per GPU and usable VRAM: PLAN §2.3 items 4–6, in one place."""
+    activations_b = max(0.05 * weights_b, 256 * MIB) * (1 + 0.02 * sequences)
+    total_b = weights_b / tp + kv_b / tp + activations_b + overhead * GIB
+    usable_b = usable * vram_gb * GIB
+    return activations_b, total_b, usable_b
+
+
+def fit(params_b: float, quant: Quant, engine: str, layers: float, kv_heads: float,
+        head_dim: float, context: float, vram_gb: float, sequences: int = 1) -> dict:
+    """The memory verdict for one catalogue variant on one GPU; the catalogue's fit check.
+
+    Same formulas as :func:`estimate`, with tensor parallel 1 and no throughput: a catalogue row
+    asks only whether the weights, KV and overhead fit the card.
+    """
+    if quant not in BYTES_PER_WEIGHT:
+        raise ValueError("Unknown quantisation.")
+    if engine not in ENGINE_OVERHEAD_GIB:
+        raise ValueError("Unknown engine.")
+    weights_b = params_b * 1e9 * BYTES_PER_WEIGHT[quant]
+    kv_b = (2 * layers * kv_heads * head_dim * (1.0 if quant == "fp8" else 2.0)
+            * context * sequences)
+    _, total_b, usable_b = _memory(weights_b, kv_b, sequences, 1, ENGINE_OVERHEAD_GIB[engine],
+                                   ENGINE_USABLE[engine], vram_gb)
+    short = (total_b - usable_b) / GIB
+    return {"fits": total_b <= usable_b, "total_gb": round(total_b / GIB, 2),
+            "usable_gb": round(usable_b / GIB, 2), "shortfall_gb": round(max(0.0, short), 1),
+            "verdict": (f"Fits with {-short:.1f} GB spare." if short <= 0
+                        else f"Does not fit: {short:.1f} GB short.")}
+
+
 def estimate(body: EstimateIn) -> dict:
     """The per-GPU memory, fits verdict, decode ceilings and TTFT for one validated request."""
     model = body.model
@@ -171,10 +203,9 @@ def estimate(body: EstimateIn) -> dict:
     weights_b = params * 1e9 * BYTES_PER_WEIGHT[body.quant]
     kv_token_b = 2 * layers * kv_heads * head_dim * (1.0 if body.quant == "fp8" else 2.0)
     kv_b = kv_token_b * context * sequences
-    activations_b = max(0.05 * weights_b, 256 * MIB) * (1 + 0.02 * sequences)
+    activations_b, total_b, usable_b = _memory(weights_b, kv_b, sequences, int(tp), overhead,
+                                               usable, gpu["vram_gb"])
     overhead_b = overhead * GIB
-    total_b = weights_b / tp + kv_b / tp + activations_b + overhead_b
-    usable_b = usable * gpu["vram_gb"] * GIB
     fits = total_b <= usable_b
 
     memory_tps = sequences * 0.7 * gpu["bw_gbs"] * 1e9 / ((weights_b + kv_b) / tp)

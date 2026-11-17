@@ -1,6 +1,6 @@
 import type {
   EngineAvailability, EngineInstallIn, EnginePlan, InferenceCatalog, InferenceEstimate, InferenceEstimateIn,
-  InferenceHost, Job,
+  InferenceHost, InferenceModels, Job, ModelPlan, ModelPlanIn,
 } from '../types'
 import { get, post } from './client'
 
@@ -32,3 +32,11 @@ export const inferenceInstallEngines = (ws: string, body: EngineInstallIn) =>
 /** Queue the removal of one installed engine; a second confirm is required. */
 export const inferenceUninstallEngine = (ws: string, body: { host: string; id: string; confirm: boolean }) =>
   post<{ job: Job }>(`/ws/${ws}/inference/engines/uninstall`, body)
+
+/** The model catalogue joined with one host's installed state, fit verdict and blocks (T-1010). */
+export const inferenceModels = (ws: string, host: string) =>
+  get<InferenceModels>(`/ws/${ws}/inference/models?host=${encodeURIComponent(host)}`)
+
+/** The download dry run: files, bytes, disk after, the gate and every block reason (T-1010). */
+export const inferencePlanModel = (ws: string, body: ModelPlanIn) =>
+  post<ModelPlan>(`/ws/${ws}/inference/models/plan`, body)
