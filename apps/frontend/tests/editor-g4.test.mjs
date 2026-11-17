@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { classListQuery, classResultText, hotkeyClass, isClassListVisible, visibleClasses } from '../src/features/editor/classFilter.ts'
 import {
-  DEFAULT_SHORTCUTS, captureBinding, duplicateIds, isAcceptedBinding, keyLabel, loadShortcuts,
+  DEFAULT_SHORTCUTS, FIXED_SHORTCUTS, captureBinding, duplicateIds, isAcceptedBinding, keyLabel, loadShortcuts,
   resolveShortcut, saveShortcuts, validateBinding,
 } from '../src/features/editor/shortcuts.ts'
 
@@ -163,4 +163,18 @@ test('"/" is reserved for the class search and never persists', () => {
   const loaded = loadShortcuts(storage)
   assert.equal(loaded.pan, DEFAULT_SHORTCUTS.pan, 'a stored "/" must not load')
   assert.equal(loaded.bbox, DEFAULT_SHORTCUTS.bbox, 'a stored digit must not load')
+})
+
+test('the documented default keys are still the defaults', () => {
+  assert.deepEqual(
+    {
+      bbox: DEFAULT_SHORTCUTS.bbox, polygon: DEFAULT_SHORTCUTS.polygon, smart: DEFAULT_SHORTCUTS.smart,
+      keypoints: DEFAULT_SHORTCUTS.keypoints, pan: DEFAULT_SHORTCUTS.pan,
+    },
+    { bbox: 'b', polygon: 'p', smart: 's', keypoints: 'k', pan: 'v' },
+  )
+  const fixed = FIXED_SHORTCUTS.map((s) => s.keys)
+  for (const keys of ['← / →', 'Enter', 'Esc', 'Ctrl + Z']) {
+    assert.ok(fixed.includes(keys), `${keys} left the fixed shortcut sheet`)
+  }
 })
