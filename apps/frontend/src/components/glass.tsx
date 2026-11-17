@@ -3,13 +3,16 @@ import { cn } from '@/lib/utils'
 
 type GlassProps<T extends ElementType> = {
   as?: T
-  /** chrome: sidebar, top bar, toolbars, tray (blur 16). overlay: dialogs, popovers, palette (blur 20, denser tint). */
+  /** chrome: sidebar, top bar, toolbars, tray (blur 16). overlay: dialogs, popovers, palette (blur 20, --glass-tint 80%/84%). */
   strength?: 'chrome' | 'overlay'
 } & Omit<ComponentPropsWithoutRef<T>, 'as' | 'strength'>
 
 /**
  * Liquid Glass surface. Solid unless the browser supports backdrop-filter AND the user has not asked for reduced
  * transparency (see .glass in index.css). Use on chrome only, never on content (canvas, grids, tables, charts).
+ * The roles it reads are the shipped ones: chrome takes --glass-tint (popover 58% light / 62% dark),
+ * --glass-solid (92% fallback), --glass-edge and --glass-hi, plus --glass-sheen; overlay adds .glass-overlay,
+ * which raises --glass-tint to 80% light / 84% dark. No variable is created here.
  */
 export function Glass<T extends ElementType = 'div'>({ as, strength = 'chrome', className, ...props }: GlassProps<T>) {
   const Tag: ElementType = as ?? 'div'

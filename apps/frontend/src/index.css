@@ -3,6 +3,29 @@
 @font-face { font-family: 'IBM Plex Sans'; font-weight: 100 700; font-stretch: 85% 100%; src: url(/fonts/IBMPlexSans-VF.ttf) format('truetype'); font-display: swap; }
 @font-face { font-family: 'Anuphan'; font-weight: 100 700; src: url(/fonts/Anuphan-VF.ttf) format('truetype'); font-display: swap; }
 
+/* ===== v3 frame vocabulary -> the shipped tokens =====
+   The v3 frames decide layout, flow and copy; this app's Liquid Glass decides colour (design/labeldesk-v3/
+   VISUAL-OVERRIDE.md §1, §5). So every role a frame names resolves to a variable that already exists below,
+   in light, dark and high contrast, and no screen has to invent a colour:
+
+     surface          -> --card              solid content: cards, tables, charts, the canvas seat
+     raised surface   -> --popover           the layer above content: popovers, sheets, glass base
+     subtle surface   -> --muted             wells, quiet bands, bars
+     outline          -> --border            dividers and hairlines (--input stays the control border)
+     text             -> --foreground        body and headings
+     muted text       -> --muted-foreground  secondary text; never a lighter grey
+     primary          -> --primary           the one primary action, the active stage, the focus ring
+     glass fill       -> --glass-tint        blur-mode fill of chrome
+     glass solid      -> --glass-solid       reduced-transparency and no-blur fallback
+     glass edge       -> --glass-edge        1 px inner border
+     glass highlight  -> --glass-hi          1 px inner top highlight
+
+   A second variable was refused for each row on purpose: two names for one role is how a dark-mode bug
+   becomes unfixable, and lib/theme.ts derives every role from the HCT seed at runtime, so a literal
+   palette in a frame would be wrong by the second user. The v3 vocabulary --surface, --text, --glass-fill
+   and --glass-blur therefore stay words in the design file, not properties in this one. Spacing needs no
+   token either: Tailwind's 4 px step already is 4/8/12/16/20/24/32/40/48/64. */
+
 /* Fallback values (light, seed #3b6cf6). theme.ts overwrites all of these at startup from the Material HCT scheme. */
 :root {
   --background: oklch(98.5% 0.006 265);
@@ -106,7 +129,9 @@
   /* ===== Liquid Glass (chrome only) =====
      Solid by default. Blur turns on only where supported, and is switched back off for prefers-reduced-transparency
      and the Settings toggle (html[data-reduce-transparency], needed because Safari ignores the media query).
-     Literal blur values: Safari wants the -webkit- prefix and static numbers. Max blur 20px; motion never animates blur. */
+     Literal blur values: Safari wants the -webkit- prefix and static numbers. Max blur 20px; motion never animates blur.
+     The four glass roles a frame may name: --glass-tint (blur fill), --glass-solid (fallback), --glass-edge
+     (1 px border), --glass-hi (top highlight). No further glass variable is added. */
   .glass {
     --glass-solid: color-mix(in oklab, var(--popover) 92%, var(--foreground));
     --glass-tint: color-mix(in oklab, var(--popover) 58%, transparent);
