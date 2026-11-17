@@ -6,6 +6,7 @@ Binding for every contributor and agent. Reviewers check each item; a violation 
 
 - Read the code around you first and match its naming, comment density and idiom.
 - One responsibility per file. Files that grow past ~400 lines get split along a real seam.
+- The layout rule: deployable code in `apps/`, importable code in `packages/`, the offline ML pipeline in `ml/` ([ADR 0003](adr/0003-repository-layout-v2.md)).
 - YAGNI: build what the brief asks, nothing speculative.
 - No secrets, tokens or absolute machine paths in code or tests.
 - Every change ships with tests; the full suite stays green; test output stays free of new warnings.
