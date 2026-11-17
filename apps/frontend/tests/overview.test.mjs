@@ -134,6 +134,18 @@ test('test_primary_label_follows_the_earliest_open_step', () => {
   assert.equal(label({ statusCounts: { unassigned: 0, annotating: 0, review: 0, done: 24 } }), 'Test the model')
 })
 
+test('test_board_cards_keep_a_readable_width_at_1440', () => {
+  // T-1109 / Q1-A1-04: at 1440 two 232 px rails, 64 px of page padding, the 360 px aside and its
+  // 24 px gap leave ~513 px for five cards — 93 px each, so the sentences wrap one word per line.
+  // The aside may only share the row once the board still gives every card 160 px and 12 px gaps:
+  // 2·232 + 64 + 360 + 24 + 5·160 + 4·12 = 1768. The chosen 1800 px clears that floor.
+  const beside = overviewSrc.match(/min-\[(\d+)px\]:grid-cols-\[/)
+  assert.ok(beside, 'the aside sits beside the board only above an explicit breakpoint')
+  assert.ok(Number(beside[1]) >= 1768, `the side-by-side breakpoint is ${beside[1]}px, below 1768 px, so cards fall under 160 px`)
+  assert.match(overviewSrc, /mt-6 min-\[\d+px\]:mt-0/, 'the aside only loses its top margin when it sits beside the board')
+  assert.match(overviewSrc, /md:grid-cols-5/, 'the pipeline stays five cards in one row from md up')
+})
+
 test('test_loading_paints_five_skeletons_of_one_height', () => {
   // The loading branch builds one skeleton per stage from the same order, at a fixed height.
   assert.match(overviewSrc, /isPending/)
