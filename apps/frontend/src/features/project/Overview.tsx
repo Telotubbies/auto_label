@@ -7,6 +7,8 @@ import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import { useProject } from './ProjectLayout'
 import { board, overviewFacts, STAGE_ORDER } from './overviewModel'
+import { primary } from './overviewFacts'
+import { OverviewAside } from './OverviewAside'
 import { StageCard } from './StageCard'
 
 /**
@@ -33,14 +35,16 @@ export default function Overview() {
     canDeploy: !perms.ready || perms.can('project.models'),
   })
   const retry = () => { void versions.refetch(); void models.refetch(); void jobs.refetch() }
+  // One primary, named by the project's state and the caller's role; a labeler gets the board.
+  const next = primary(facts, perms.role)
   return (
     <div className="anim-page">
       <PageHeader
         title={project.name}
-        desc={`${typeLabel(project.type)} · ${approved} approved`}
+        desc={`${typeLabel(project.type).toLowerCase()} · ${project.images} uploaded · ${approved} approved`}
         actions={
-          <Button variant="primary" onClick={() => nav(projectPath(ws, project.slug, facts.primary.to))}>
-            {facts.primary.label}
+          <Button variant="primary" onClick={() => nav(projectPath(ws, project.slug, next.to))}>
+            {next.label}
           </Button>
         }
       />
@@ -57,8 +61,8 @@ export default function Overview() {
               ))}
             </ol>
           )}
-          {/* T-484 owns the 360 px column (health ring, latest run, blocked-by, activity). */}
-          <aside className="hidden xl:block xl:w-[360px]" aria-hidden />
+          {/* The 360 px column: health, latest run, blockers and activity. Below xl it follows the board. */}
+          <div className="mt-6 xl:mt-0"><OverviewAside ws={ws} project={project} /></div>
         </div>
       </div>
     </div>
