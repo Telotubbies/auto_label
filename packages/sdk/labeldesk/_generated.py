@@ -2,8 +2,10 @@
 
 OPERATIONS = {
     "export_version": {"method": "post", "path": "/api/v1/projects/{project}/versions/{vid}/export", "scopes": ["read"], "params": ["project", "vid"]},
+    "get_image": {"method": "get", "path": "/api/v1/images/{image_id}", "scopes": ["read"], "params": ["image_id"]},
     "get_job": {"method": "get", "path": "/api/v1/jobs/{job_id}", "scopes": ["read"], "params": ["job_id"]},
     "get_model": {"method": "get", "path": "/api/v1/models/{model_id}", "scopes": ["read"], "params": ["model_id"]},
+    "get_project": {"method": "get", "path": "/api/v1/projects/{project}", "scopes": ["read"], "params": ["project"]},
     "list_images": {"method": "get", "path": "/api/v1/projects/{project}/images", "scopes": ["read"], "params": ["project"]},
     "list_models": {"method": "get", "path": "/api/v1/models", "scopes": ["read"], "params": []},
     "list_projects": {"method": "get", "path": "/api/v1/projects", "scopes": ["read"], "params": []},
@@ -13,4 +15,5 @@ OPERATIONS = {
     "upload_images": {"method": "post", "path": "/api/v1/projects/{project}/upload", "scopes": ["upload"], "params": ["project"]},
     "upload_images_v1": {"method": "post", "path": "/api/v1/{ws_slug}/{project}/upload", "scopes": ["upload"], "params": ["ws_slug", "project"]},
     "whoami": {"method": "get", "path": "/api/v1/whoami", "scopes": ["read"], "params": []},
+    "write_annotations": {"method": "put", "path": "/api/v1/images/{image_id}/annotations", "scopes": ["write"], "params": ["image_id"]},
 }

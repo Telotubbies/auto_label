@@ -424,7 +424,7 @@ def board_move(body: BoardMove, c: Ctx = Depends(project_ctx)):
 
 def _image_with_annotations(c: Ctx, img: Image) -> dict:
     """Annotations this caller may see: a private consensus draft, an empty honeypot canvas, or the image labels."""
-    assignment = labeling_ops.latest_assignment(c.db, img.id, c.user.id)
+    assignment = labeling_ops.latest_assignment(c.db, img.id, c.uid)   # uid is None for an API key
     job_id = None
     hide_key = False
     if assignment is not None:                  # consensus drafts stay private until the job is merged

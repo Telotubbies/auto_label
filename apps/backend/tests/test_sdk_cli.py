@@ -26,7 +26,10 @@ GEN_SDK = REPO_ROOT / "tools" / "gen_sdk.py"
 EXPECTED_SCOPES = {
     "whoami": "read",
     "list_projects": "read",
+    "get_project": "read",
     "list_images": "read",
+    "get_image": "read",
+    "write_annotations": "write",
     "upload_images": "upload",
     "upload_images_v1": "upload",
     "list_versions": "read",
@@ -67,7 +70,7 @@ def test_generated_operations_match_openapi():
     got = load_gen_sdk().operations(app.openapi())
     assert got == _generated.OPERATIONS, "run `python tools/gen_sdk.py` — the committed SDK is stale"
     assert set(got) == set(EXPECTED_SCOPES)
-    assert len(got) == 12
+    assert len(got) == 15
     for op, spec in got.items():
         assert spec["scopes"] == [EXPECTED_SCOPES[op]], op
         assert spec["path"].startswith("/api/v1"), op

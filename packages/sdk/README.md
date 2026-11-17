@@ -17,7 +17,7 @@ pip install -e packages/sdk
 | `LABELDESK_URL` | API root, default `http://localhost:8010` (or pass `--base-url`) |
 
 Create a key in the workspace settings, or `POST /api/ws/{ws}/keys` with an admin token.
-Keys carry scopes: `read`, `upload`, `train`, `infer`.
+Keys carry scopes: `read`, `upload`, `write`, `train`, `infer`.
 
 ## CLI
 

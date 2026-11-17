@@ -34,6 +34,7 @@ FLAGS: dict[str, str] = {
     "task_36": "Batch inference: run one model over a batch, video frames or a bucket prefix",
     "task_38": "Event search: natural-language search over sampled stream frames",
     "task_40": "PLC / OT output (Modbus, OPC-UA, MQTT, GPIO)",
+    "task_992": "MCP endpoint: agents connect over the developer API",
 }
 
 
