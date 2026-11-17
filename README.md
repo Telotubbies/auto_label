@@ -15,7 +15,7 @@ The first is a batch pipeline for turning raw PPE images into verified datasets,
 | Remote GPU worker | `apps/worker` | Implemented |
 | Self-hosted inference | `apps/inference` | Implemented, optional |
 | Python SDK and CLI | `packages/sdk` | Implemented |
-| SAM and YOLO batch pipeline | `ml/sam3_auto_label`, `ml/yolo26_ppe` | Implemented |
+| SAM and YOLO batch pipeline | separate repo [`labeldesk-ml`](https://github.com/Telotubbies/labeldesk-ml), checked out at `../labeldesk-ml` | Implemented |
 
 The application has a working self-hosted deployment path. It is not a hardened multi-tenant service. The limits section below lists the known gaps.
 
@@ -35,9 +35,6 @@ apps/
   inference/       standalone self-hosted inference service
 packages/
   sdk/             Python client and CLI (labeldesk-sdk)
-ml/
-  sam3_auto_label/  SAM 3.1 auto-labeling pipeline
-  yolo26_ppe/       YOLO26 training, evaluation, models, reports
 research/          provider-side reports and investigation notes (not product docs)
 deploy/            Docker Compose stack, Caddyfile, env template
 tools/             scripts used by apps and tests
@@ -47,7 +44,7 @@ data/              raw batches and SAM outputs; large, not for new commits
 ```
 
 Deployable code lives in `apps/`, importable code in `packages/`, the offline ML
-pipeline in `ml/`. [ADR 0003](docs/adr/0003-repository-layout-v2.md) records why.
+pipeline in the sibling repository `labeldesk-ml` ([ADR 0004](docs/adr/0004-ml-own-repo.md)); [ADR 0003](docs/adr/0003-repository-layout-v2.md) records the rest of the layout.
 
 ## Quick start
 
@@ -124,7 +121,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code and [SECURITY.md](S
 
 ## Known limits
 
-- The v3 4-class YOLO26m detection model reaches 0.693 mAP50, below the project target of 0.85. The canonical numbers are in `ml/yolo26_ppe/reports/inputs/final_eval_results.json`.
+- The v3 4-class YOLO26m detection model reaches 0.693 mAP50, below the project target of 0.85. The canonical numbers are in `yolo26_ppe/reports/inputs/final_eval_results.json` in the `labeldesk-ml` repository.
 - There is no root license file. Redistribution rights are not established by this repository. Third-party notices are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 - The root pipeline CLI has no dependency manifest of its own, so `questionary`, `rich`, `pytest`, `ruff`, and `mypy` must be installed separately for the documented commands.
 - The frontend types in `apps/frontend/src/lib/types.ts` are written by hand. Generated types from the OpenAPI schema are planned but not in place.
