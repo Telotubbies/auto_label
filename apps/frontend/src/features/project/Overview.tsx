@@ -49,21 +49,6 @@ export default function Overview() {
         }
       />
       <div className="px-8 pb-10">
-        {loading ? (
-          <ol aria-label="Project pipeline" aria-busy="true" className="grid gap-3 md:grid-cols-5">
-            {STAGE_ORDER.map((id) => <li key={id}><Card className="h-[168px] animate-pulse" /></li>)}
-          </ol>
-        ) : (
-          <ol aria-label="Project pipeline" className="grid gap-3 md:grid-cols-5">
-            {board(facts.stages).map((stage) => (
-              <StageCard key={stage.id} stage={stage} ws={ws} project={project.slug} onRetry={retry} />
-            ))}
-          </ol>
-        )}
-        {/* T-484 fills this row: what-needs-you beside the 360 px health/run/activity column. */}
-        <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
-          <div />
-          <aside className="hidden xl:block" aria-hidden />
         <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
           {loading ? (
             <ol aria-label="Project pipeline" aria-busy="true" className="grid gap-3 md:grid-cols-5">

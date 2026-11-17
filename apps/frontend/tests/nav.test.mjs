@@ -504,6 +504,8 @@ test('every stage tab is a child of its stage', () => {
   }
   assert.deepEqual(tabsFor('train'), [], 'Train is a destination, not a tab host')
   assert.deepEqual(stages.sort(), ['dataset', 'deploy'])
+})
+
 // T-483: the project index is the overview while `task_470` (ui_v3) is on, and the old grid
 // redirect is what renders when the frame is off. One source assertion for both states.
 test('the project index renders the overview, not the dataset grid', () => {

@@ -10,7 +10,6 @@ import { projectPath } from '@/lib/routes'
 import type { Project } from '@/lib/types'
 import { ProjectPanel, projectNavGroups } from '@/components/shell'
 import { cn } from '@/lib/utils'
-import { projectPath } from '@/lib/routes'
 import { Button, EmptyState, Spinner } from '@/components/ui'
 
 export function useProject() {
