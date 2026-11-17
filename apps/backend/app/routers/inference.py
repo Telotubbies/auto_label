@@ -10,7 +10,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..deps import Ctx, ws_ctx
-from ..services import host_inventory, inference_access, inference_catalog, inference_compat
+from ..services import host_inventory, inference_access, inference_catalog, inference_compat, inference_estimate
 from ..services.flags import require_flag
 
 FLAG = "task_inference"
@@ -71,3 +71,17 @@ def engines(host: str, c: Ctx = Depends(in_scope)):
              sum(row["compatibility"]["status"] == "blocked" for row in rows),
              (time.perf_counter() - started) * 1000)
     return {"host": host_row, "engines": rows}
+
+
+@router.post("/estimate")
+def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(ws_ctx)):
+    """Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5)."""
+    started = time.perf_counter()
+    try:
+        result = inference_estimate.estimate(body)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    log.info("inference.estimate ws=%s role=%s outcome=ok fits=%s total_gb=%.1f ms=%.1f",
+             c.ws.slug, c.ws_role, result["fits"], result["total_gb"],
+             (time.perf_counter() - started) * 1000)
+    return result

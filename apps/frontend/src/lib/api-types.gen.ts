@@ -265,6 +265,21 @@ export interface DashboardPatch {
   widgets?: Record<string, unknown>[] | null
 }
 
+export interface EstimateIn {
+  batch: number
+  context: number
+  engine: string
+  gpu: GpuIn
+  gpu_count?: number
+  model: ModelIn
+  output_tokens?: number | null
+  prompt_tokens?: number | null
+  quant: "fp32" | "bf16" | "fp16" | "fp8" | "int8" | "int4" | "gguf_q8" | "gguf_q4_k_m"
+  tensor_parallel?: number
+  usable?: number | null
+  users?: number
+}
+
 export interface ExportIn {
   format: string
 }
@@ -288,6 +303,13 @@ export interface FolderIn {
 
 export interface ForgotIn {
   email: string
+}
+
+export interface GpuIn {
+  bw_gbs?: number | null
+  fp16_tflops?: number | null
+  preset?: string | null
+  vram_gb?: number | null
 }
 
 export interface HashesIn {
@@ -364,6 +386,14 @@ export interface MfaSetupIn {
 export interface MfaVerifyIn {
   code: string
   mfa_token: string
+}
+
+export interface ModelIn {
+  active_params_b?: number | null
+  head_dim: number
+  kv_heads: number
+  layers: number
+  params_b: number
 }
 
 export interface OcrExportIn {
