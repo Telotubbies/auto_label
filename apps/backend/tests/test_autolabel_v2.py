@@ -343,3 +343,19 @@ def test_review_sort_paginates_with_offset(c, scratch):
     ids = [x["id"] for x in page1 + page2]
     assert ids[:2] == scratch["images"][:2]              # low confidence, then vlm+sam3
     assert len(ids) == 4 and set(ids) == set(scratch["images"])
+
+
+def test_autolabel_job_lands_in_review_and_keeps_its_source(c, scratch, monkeypatch):
+    """T-003 / 3-F3.33, 3-F3.25 — a batch job's work waits in the Review column, still attributed."""
+    monkeypatch.setitem(ADAPTERS, "ultralytics", FakeDetector())
+    up = c.post(f"{scratch['base']}/upload", files=[("files", ("review-lands.jpg", jpeg((15, 15, 15))))],
+                data={"split": "train", "batch_name": "review lands"})
+    assert up.status_code == 200 and up.json()["uploaded"] == 1, up.text
+    img_id = up.json()["images"][0]["id"]
+    j = run_job(c, scratch["base"], {"model_ref": "ultralytics:yolo26n", "only_unannotated": False,
+                                     "image_ids": [img_id]})
+    assert j["status"] == "done", j
+    got = c.get(f"/api/images/{img_id}").json()
+    assert got["status"] == "review"
+    assert got["annotations"] and all(a["source"] == "ultralytics:yolo26n" for a in got["annotations"])
+    assert all(a["confidence"] == pytest.approx(0.9) for a in got["annotations"])
