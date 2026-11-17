@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, Eye, LoaderCircle, Sparkles, TriangleAlert } from 'lucide-react'
 import { api, fileUrl, post } from '@/lib/api'
@@ -6,11 +6,13 @@ import type { AutoLabelInput, Job, RegistryItem } from '@/lib/types'
 import { Badge, Button, Field, Input, Modal, Select, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useProject } from './ProjectLayout'
+import { pickInitialRef } from './autolabelLabel'
 
 /** Capabilities an auto-label model must have at least one of. */
 const AUTOLABEL_CAPS = ['detect', 'segment', 'open-vocab']
 const SAM_REF = 'sam3:sam3.1'
 const SAMPLE_SIZES = [3, 4, 5] as const
+const UNKNOWN_INITIAL = 'The model from the link is not available in this project; the default is selected.'
 
 const canAutoLabel = (m: RegistryItem) => m.capabilities.some((c) => AUTOLABEL_CAPS.includes(c))
 
@@ -24,10 +26,12 @@ function errorHint(message: string): string {
   return ''
 }
 
-export function AutoLabelDialog({ open, onClose, batchId, imageIds }: {
+export function AutoLabelDialog({ open, onClose, batchId, imageIds, initialRef }: {
   open: boolean; onClose: () => void; batchId: string | null
   /** Limit the run to a hand-picked selection; empty means the whole batch/project. */
   imageIds?: string[]
+  /** A model ref handed over by a link; ignored when the registry no longer lists it. */
+  initialRef?: string | null
 }) {
   const { project, ws } = useProject()
   const qc = useQueryClient()
@@ -53,15 +57,27 @@ export function AutoLabelDialog({ open, onClose, batchId, imageIds }: {
   const [confidence, setConfidence] = useState(40)
   const [onlyUnannotated, setOnlyUnannotated] = useState(true)
   const [sample, setSample] = useState(4)
+  const [notice, setNotice] = useState('')
+  const seeded = useRef(false)
 
   // opening the dialog or switching project starts from a clean slate (class ids are project-scoped)
   useEffect(() => {
     if (!open) return
     setModelRef(''); setClassIds(null); setPrompt(''); setVlmVerify(false)
-    setConfidence(40); setOnlyUnannotated(true); setSample(4)
+    setConfidence(40); setOnlyUnannotated(true); setSample(4); setNotice('')
+    seeded.current = false
     previewMutation.reset(); runMutation.reset()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on open/project transitions
   }, [open, project.slug])
+
+  // a link's model is applied once per open, before the first paint after the registry answers
+  useLayoutEffect(() => {
+    if (!open || seeded.current || !initialRef || !registryQ.data) return
+    seeded.current = true
+    const ref = pickInitialRef(initialRef, items)
+    if (ref) setModelRef(ref)
+    else setNotice(UNKNOWN_INITIAL)
+  }, [open, project.slug, initialRef, items, registryQ.data])
 
   const classes = classesQ.data ?? []
   const available = items.filter((m) => m.available)
@@ -151,7 +167,7 @@ export function AutoLabelDialog({ open, onClose, batchId, imageIds }: {
         ) : (
           <>
             <Field label="Model">
-              <Select className="w-full" value={selectedRef} onChange={(e) => { setModelRef(e.target.value); touch() }}>
+              <Select className="w-full" value={selectedRef} onChange={(e) => { setModelRef(e.target.value); setNotice(''); touch() }}>
                 {!selected && <option value="" disabled>No available model</option>}
                 {groups.trained.length > 0 && (
                   <optgroup label="Your models">
@@ -176,6 +192,7 @@ export function AutoLabelDialog({ open, onClose, batchId, imageIds }: {
                 )}
               </Select>
             </Field>
+            {notice && <p role="status" className="-mt-2 text-xs text-muted-foreground">{notice}</p>}
             {selected && (
               <div className="-mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                 <span>License: {selected.license}</span>

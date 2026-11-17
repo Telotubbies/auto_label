@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { splitColor } from '@/lib/theme'
 import { useProject } from './ProjectLayout'
 import { AutoLabelDialog } from './AutoLabelDialog'
+import { autolabelParam } from './autolabelLabel'
 import { colsForWidth, rowHeightForWidth } from './datasetGrid'
 import { countLine } from './datasetCopy'
 
@@ -77,6 +78,15 @@ export default function Dataset() {
   const batches = useQuery({ queryKey: ['batches', ws, project.slug], queryFn: () => api.batches(ws, project.slug) })
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [auto, setAuto] = useState(false)
+  const [autoRef, setAutoRef] = useState<string | null>(null)
+  // a link from the Inference Hub opens the dialog once, then leaves a clean URL behind
+  useEffect(() => {
+    const ref = autolabelParam(sp)
+    if (!ref) return
+    setAutoRef(ref); setAuto(true)
+    const n = new URLSearchParams(sp); n.delete('autolabel'); setSp(n, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read the link once on mount
+  }, [])
   const items = useMemo(() => imgs.data?.pages.flatMap((p) => p.items) ?? [], [imgs.data])
   const total = imgs.data?.pages[0]?.total
   // A filter that hides every image is not an empty project; the two states must not say the same thing.
@@ -200,7 +210,7 @@ export default function Dataset() {
           ))}
         </div>
       </div>
-      <AutoLabelDialog open={auto} onClose={() => setAuto(false)} batchId={null} imageIds={sel.size ? [...sel] : undefined} />
+      <AutoLabelDialog open={auto} onClose={() => { setAuto(false); setAutoRef(null) }} batchId={null} imageIds={sel.size ? [...sel] : undefined} initialRef={autoRef} />
     </div>
   )
 }
