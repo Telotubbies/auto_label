@@ -239,7 +239,7 @@ def test_prompt_arguments_are_declared():
 # --- the live layer: a foreign project slug is a 404, not an empty resource ------------------
 
 WS, FOREIGN = "mcp-meta-ws", "mcp-meta-foreign"
-FOREIGN_SLUG = "foreign"
+FOREIGN_SLUG = "meta-foreign-project"
 
 
 @pytest.fixture(scope="module")
@@ -257,7 +257,6 @@ def live():
             db.flush()
             db.add_all([Member(workspace_id=ws.id, user_id=owner.id, role="admin"),
                         Member(workspace_id=foreign.id, user_id=other.id, role="admin"),
-                        Project(workspace_id=ws.id, slug="parcels", name="Parcels", settings={}),
                         Project(workspace_id=foreign.id, slug=FOREIGN_SLUG, name="Foreign", settings={})])
             db.flush()
             set_flag(db, ws.id, "task_992", True)
