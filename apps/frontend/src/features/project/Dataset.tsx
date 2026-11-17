@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -10,8 +10,16 @@ import { Badge, Button, Dropdown, EmptyState, Input, PageHeader, Select, Spinner
 import { cn } from '@/lib/utils'
 import { useProject } from './ProjectLayout'
 import { AutoLabelDialog } from './AutoLabelDialog'
+import { colsForWidth, rowHeightForWidth } from './datasetGrid'
+import { countLine } from './datasetCopy'
 
 const SPLIT_TONE: Record<string, string> = { train: 'bg-violet-600', valid: 'bg-blue-600', test: 'bg-orange-500' }
+
+// Stable across renders, so React does not resubscribe the width listener on every re-render.
+const subscribeResize = (onChange: () => void) => {
+  window.addEventListener('resize', onChange)
+  return () => window.removeEventListener('resize', onChange)
+}
 
 const rangeText = (min: string, max: string, unit = '') => {
   const suffix = unit ? ` ${unit}` : ''
@@ -71,12 +79,18 @@ export default function Dataset() {
   const [auto, setAuto] = useState(false)
   const items = useMemo(() => imgs.data?.pages.flatMap((p) => p.items) ?? [], [imgs.data])
   const total = imgs.data?.pages[0]?.total
+  // A filter that hides every image is not an empty project; the two states must not say the same thing.
+  const filtered = project.images > (total ?? 0)
   const clsById = useMemo(() => Object.fromEntries((classes.data ?? []).map((c) => [c.id, c])), [classes.data])
 
   const parentRef = useRef<HTMLDivElement>(null)
-  const cols = 5
+  // The virtualiser slices `cols` items per row, so the slice follows the same breakpoints the row's
+  // classes use. One resize listener is enough; the width itself is all the helpers need.
+  const width = useSyncExternalStore(subscribeResize, () => window.innerWidth, () => 1440)
+  const cols = colsForWidth(width)
+  const rowH = rowHeightForWidth(width)
   const rows = Math.ceil(items.length / cols)
-  const v = useVirtualizer({ count: rows, getScrollElement: () => parentRef.current, estimateSize: () => 190, overscan: 4 })
+  const v = useVirtualizer({ count: rows, getScrollElement: () => parentRef.current, estimateSize: () => rowH, overscan: 4 })
   const lastRow = v.getVirtualItems().at(-1)?.index ?? 0
   // load the next page when the user scrolls within a few rows of the end
   useEffect(() => {
@@ -106,7 +120,7 @@ export default function Dataset() {
 
   return (
     <div className="anim-page flex h-full flex-col">
-      <PageHeader title="Dataset" desc={`${total ?? '…'} ${total === 1 ? 'image' : 'images'}${f.status === 'done' ? ' in the dataset' : ''}`}
+      <PageHeader title="Dataset" desc={total === undefined ? '…' : countLine(total, project.images)}
         actions={can('project.review') && <Button variant="outline" onClick={() => setAuto(true)}><Sparkles className="h-4 w-4" /> Auto Label</Button>} />
       <div className="flex flex-wrap items-center gap-2 px-8 pb-3">
         <div className="relative w-56"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8" placeholder="Search filename" value={f.q} onChange={(e) => setF('q', e.target.value)} /></div>
@@ -150,19 +164,21 @@ export default function Dataset() {
           </div>
         </div>
       )}
-      <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
+      <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 sm:px-8">
         {(imgs.isLoading || !selectionResolved) && <div className="py-20 text-center"><Spinner /></div>}
-        {imgs.isSuccess && !items.length && <EmptyState title="No images match these filters." hint={f.status === 'done' ? 'Images enter the dataset once approved on the Annotate board.' : undefined}
+        {imgs.isError && <p role="alert" className="py-6 text-sm text-destructive">Could not load images.{' '}
+          <button type="button" className="cursor-pointer underline" onClick={() => imgs.refetch()}>Try again</button></p>}
+        {imgs.isSuccess && !items.length && <EmptyState title={filtered ? 'No images match these filters.' : 'No images yet'} hint={f.status === 'done' ? 'Images enter the dataset once approved on the Annotate board.' : undefined}
           action={can('project.upload') && <Button size="sm" onClick={() => nav('../upload')}>Upload images</Button>} />}
         <div style={{ height: v.getTotalSize(), position: 'relative' }}>
           {v.getVirtualItems().map((row) => (
-            <div key={row.key} className="absolute left-0 grid w-full grid-cols-5 gap-3" style={{ top: row.start, height: 180 }}>
+            <div key={row.key} className="absolute left-0 grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" style={{ top: row.start, height: rowH }}>
               {items.slice(row.index * cols, row.index * cols + cols).map((im) => (
                 <div key={im.id} role="button" tabIndex={0} aria-label={`Open ${im.name} in the editor`}
                   className={cn('group relative cursor-pointer overflow-hidden rounded-lg border-2 bg-muted', sel.has(im.id) ? 'border-primary' : 'border-transparent hover:border-border')}
                   onClick={() => openEditor(im)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(im) } }}>
-                  <img src={fileUrl(im.thumbnail)} alt={im.name} loading="lazy" className="h-36 w-full object-cover" />
+                  <img src={fileUrl(im.thumbnail)} alt={im.name} loading="lazy" className="w-full object-cover" style={{ height: rowH - 36 }} />
                   <div className="absolute left-1.5 top-1.5 flex gap-1">
                     <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white', SPLIT_TONE[im.split])}>{im.split}</span>
                     {im.annotationCount === 0 && <span className="rounded bg-gray-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">NULL</span>}
