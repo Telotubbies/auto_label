@@ -108,11 +108,12 @@ def test_an_unknown_host_is_421_or_403():
     assert response.status_code in (403, 421)
 
 
-def test_the_body_cap_is_four_mib():
+def test_the_body_cap_is_four_mib(caplog):
     with TestClient(app_for(api_with())) as client:
         response = client.post("/mcp", content=b"x" * (5 * 1024 * 1024), headers=bearer(READ_KEY))
 
     assert response.status_code == 413
+    assert "4 MiB cap" in caplog.text
 
 
 @pytest.fixture(scope="module")
