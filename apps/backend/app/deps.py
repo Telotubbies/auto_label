@@ -128,7 +128,7 @@ def apply_project_role(c: Ctx, p: Project) -> None:
         c.project_custom = ()
 
 
-def _workspace_ctx(db: Session, u: User, ws_slug: str) -> Ctx:
+def _workspace_ctx(request: Request, db: Session, u: User, ws_slug: str) -> Ctx:
     ws = db.scalar(select(Workspace).where(Workspace.slug == ws_slug))
     if not ws:
         raise HTTPException(404, "workspace not found")
@@ -137,15 +137,20 @@ def _workspace_ctx(db: Session, u: User, ws_slug: str) -> Ctx:
         raise HTTPException(403, "not a member of this workspace")
     if ws.require_mfa and not u.mfa_enabled:
         raise HTTPException(403, "this workspace requires two-factor authentication — set it up in your account settings")
+    # The request log line names the caller; a dependency runs off the event loop, so the scope is
+    # the one place the middleware can read it back (a contextvar set here never returns).
+    request.state.user_id = u.id
+    request.state.workspace_id = ws.id
     return _ctx_for_member(db, u, ws, m)
 
 
-def ws_ctx(ws: str, u: User = Depends(current_user), db: Session = Depends(get_db)) -> Ctx:
-    return _workspace_ctx(db, u, ws)
+def ws_ctx(ws: str, request: Request, u: User = Depends(current_user), db: Session = Depends(get_db)) -> Ctx:
+    return _workspace_ctx(request, db, u, ws)
 
 
-def project_ctx(ws: str, project: str, u: User = Depends(current_user), db: Session = Depends(get_db)) -> Ctx:
-    ctx = _workspace_ctx(db, u, ws)
+def project_ctx(ws: str, project: str, request: Request, u: User = Depends(current_user),
+                db: Session = Depends(get_db)) -> Ctx:
+    ctx = _workspace_ctx(request, db, u, ws)
     p = db.scalar(select(Project).where(Project.workspace_id == ctx.ws.id, Project.slug == project,
                                         Project.deleted_at.is_(None)))
     if not p:

@@ -35,6 +35,7 @@ from .models import Job, now
 from .services import (drift, imaging, insights_embedding, insights_jobs, metering,  # noqa: F401
                        remote_reaper, versioning, webhooks)
 from .services.evaluate import evaluate            # noqa: F401  seam
+from .services.heartbeat import worker_id as _worker_id
 
 # The names marked "seam" above are bound here on purpose: the handlers in app.handlers resolve
 # their dependencies through this module (``w.ADAPTERS``, ``w.scheduler``, ``w.plan`` …), so a
@@ -130,12 +131,16 @@ class _Watchdog:
 
 def _claim():
     with SessionLocal() as db:
-        for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(LOCAL_JOB_KINDS)).order_by(Job.created).limit(5)):
+        rows = db.execute(select(Job.id, Job.kind).where(Job.status == "queued",
+                                                        Job.kind.in_(LOCAL_JOB_KINDS))
+                          .order_by(Job.created).limit(5))
+        for jid, kind in rows:
             # compare-and-set so two workers never run the same job
             n = db.execute(update(Job).where(Job.id == jid, Job.status == "queued")
                            .values(status="running", started=now(), executor="local")).rowcount
             db.commit()
             if n:
+                log.info("job.claim %s", kind, extra={"job_id": jid, "worker_id": _worker_id()})
                 return jid
     return None
 
@@ -203,10 +208,13 @@ def run_one(jid: str):
         _set(jid, status=final, progress=100.0 if final == "done" else job.progress, error=err,
              result=result, finished=now())
         _notify(job, final, err)
+        log.info("job.%s %s", final, job.kind, extra={"job_id": jid, "worker_id": _worker_id()})
     except Cancelled:
         _set(jid, status="cancelled", finished=now())     # stopped on purpose before anything was produced
+        log.info("job.cancelled %s", job.kind, extra={"job_id": jid, "worker_id": _worker_id()})
     except Exception as e:
-        log.error("job %s (%s) failed\n%s", jid, job.kind, traceback.format_exc())
+        log.error("job %s (%s) failed\n%s", jid, job.kind, traceback.format_exc(),
+                  extra={"job_id": jid, "worker_id": _worker_id()})
         err = safe_error(e, job.kind)
         _set(jid, status="failed", error=err, finished=now())
         _notify(job, "failed", err)
@@ -323,8 +331,10 @@ def start_background() -> threading.Event:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from .bootstrap import init_db
+    from .logging_setup import install
+
+    install()                     # the standalone worker writes the same JSON line as the API
     init_db()
     # Production runs the worker as its own process (LD_EMBEDDED_WORKER=0), so retries need a flusher here too.
     threading.Thread(target=webhooks.flush_loop, args=(threading.Event(),), daemon=True,

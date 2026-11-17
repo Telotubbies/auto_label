@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { requestRef } from '@/lib/api/client'
 import { X } from 'lucide-react'
 import { dateLocale } from '@/lib/theme'
 import { Glass } from './glass'
@@ -180,11 +181,14 @@ export function StatusPill({ status }: { status: string }) {
 }
 
 // --- toasts ------------------------------------------------------------------
-type Toast = { id: number; text: ReactNode; tone: 'ok' | 'err' }
+type Toast = { id: number; text: ReactNode; tone: 'ok' | 'err'; ref?: string }
 let pushToast: (t: Omit<Toast, 'id'>) => void = () => {}
 export const toast = {
   ok: (text: ReactNode) => pushToast({ text, tone: 'ok' }),
-  err: (text: ReactNode | Error) => pushToast({ text: text instanceof Error ? text.message : (text as ReactNode), tone: 'err' }),
+  // `ref` is the request id line: a user quotes it and the API log line is one grep away.
+  err: (text: ReactNode | Error) => pushToast({
+    text: text instanceof Error ? text.message : (text as ReactNode), tone: 'err', ref: requestRef(text),
+  }),
 }
 export function Toaster() {
   const [items, setItems] = useState<Toast[]>([])
@@ -198,7 +202,10 @@ export function Toaster() {
   return (
     <div className="fixed bottom-4 left-1/2 z-[200] flex -translate-x-1/2 flex-col gap-2">
       {items.map((t) => (
-        <Glass strength="overlay" key={t.id} role={t.tone === 'ok' ? 'status' : 'alert'} className={cn('anim-toast max-w-sm rounded-xl px-4 py-3 text-sm text-popover-foreground', t.tone === 'err' && 'border-destructive')}>{t.text}</Glass>
+        <Glass strength="overlay" key={t.id} role={t.tone === 'ok' ? 'status' : 'alert'} className={cn('anim-toast max-w-sm rounded-xl px-4 py-3 text-sm text-popover-foreground', t.tone === 'err' && 'border-destructive')}>
+          {t.text}
+          {t.ref && <div className="mt-1 text-xs text-muted-foreground">{t.ref}</div>}
+        </Glass>
       ))}
     </div>
   )

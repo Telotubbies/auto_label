@@ -24,8 +24,19 @@ export const tokens = {
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
+  /** The API's `X-Request-Id`: quote it and the failure's log line is one grep away. */
+  requestId?: string
+  constructor(status: number, message: string, requestId?: string) {
+    super(message); this.status = status; this.requestId = requestId
+  }
 }
+
+/** The line under an error toast. Empty for an error that never reached the API. */
+export const requestRef = (e: unknown) => (e instanceof ApiError && e.requestId ? `Ref ${e.requestId}` : '')
+
+/** One id per logical call, reused across the refresh retry (falls back off a secure context). */
+const newRequestId = () =>
+  (crypto.randomUUID?.() ?? `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`).slice(0, 16)
 
 let refreshing: Promise<boolean> | null = null
 async function tryRefresh(): Promise<boolean> {
@@ -49,21 +60,22 @@ async function tryRefresh(): Promise<boolean> {
 const detail = (d: any, fallback: string) =>
   typeof d?.detail === 'string' ? d.detail : Array.isArray(d?.detail) ? d.detail.map((x: any) => x.msg).join(', ') : fallback
 
-export async function req<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+export async function req<T>(path: string, init: RequestInit = {}, retry = true, id = newRequestId()): Promise<T> {
   const isForm = init.body instanceof FormData
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) }
   if (!isForm && init.body) headers['Content-Type'] = 'application/json'
   if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`
   // Lets auth endpoints revoke every other device while keeping this one signed in.
   if (tokens.session) headers['X-Session'] = tokens.session
+  headers['X-Request-Id'] = id
   const r = await fetch(`${API_ORIGIN}/api${path}`, { ...init, headers })
   if (r.status === 401 && retry && tokens.refresh) {
-    if (await tryRefresh()) return req<T>(path, init, false)
+    if (await tryRefresh()) return req<T>(path, init, false, id)   // the retry keeps the user's id
     tokens.clear(); window.dispatchEvent(new Event('ld:logout'))
   }
   if (!r.ok) {
     const d = await r.json().catch(() => ({}))
-    throw new ApiError(r.status, detail(d, r.statusText))
+    throw new ApiError(r.status, detail(d, r.statusText), r.headers.get('X-Request-Id') ?? undefined)
   }
   return r.json()
 }
@@ -81,12 +93,13 @@ export const del = <T>(path: string, body?: unknown) =>
  * One XHR attempt: fetch has no upload progress events, and a retry needs a fresh request.
  * Resolves with the status and raw body so the caller can decide about a 401.
  */
-function postForm(path: string, form: FormData, onProgress: (f: number) => void) {
+function postForm(path: string, form: FormData, onProgress: (f: number) => void, id: string) {
   return new Promise<{ status: number; text: string; statusText: string }>((resolve) => {
     const x = new XMLHttpRequest()
     x.open('POST', `${API_ORIGIN}/api${path}`)
     if (tokens.access) x.setRequestHeader('Authorization', `Bearer ${tokens.access}`)
     if (tokens.session) x.setRequestHeader('X-Session', tokens.session)
+    x.setRequestHeader('X-Request-Id', id)
     x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
     x.onload = () => resolve({ status: x.status, text: x.responseText, statusText: x.statusText })
     x.onerror = () => resolve({ status: 0, text: '', statusText: '' })
@@ -95,16 +108,17 @@ function postForm(path: string, form: FormData, onProgress: (f: number) => void)
 }
 
 /** Upload with progress. A long upload can outlive the access token, so a 401 refreshes and resends once. */
-export async function upload<T>(path: string, form: FormData, onProgress: (f: number) => void): Promise<T> {
-  let r = await postForm(path, form, onProgress)
+export async function upload<T>(path: string, form: FormData, onProgress: (f: number) => void,
+                                id = newRequestId()): Promise<T> {
+  let r = await postForm(path, form, onProgress, id)
   if (r.status === 401) {
-    if (tokens.refresh && (await tryRefresh())) r = await postForm(path, form, onProgress)
+    if (tokens.refresh && (await tryRefresh())) r = await postForm(path, form, onProgress, id)
     else { tokens.clear(); window.dispatchEvent(new Event('ld:logout')) }
   }
   if (r.status < 200 || r.status >= 300) {
     let d: any = {}
     try { d = JSON.parse(r.text) } catch { /* not JSON */ }
-    throw new ApiError(r.status, detail(d, r.status === 0 ? 'network error' : r.statusText))
+    throw new ApiError(r.status, detail(d, r.status === 0 ? 'network error' : r.statusText), id)
   }
   return JSON.parse(r.text || '{}')
 }
@@ -124,15 +138,20 @@ export const qs = (q: Record<string, string | number | boolean | null | undefine
  * Download a token-protected file. The bearer token stays in an Authorization header (never in the URL),
  * so audit exports and future CSV links never leak it through history, logs or Referer.
  */
-export async function download(path: string, fallbackName: string, retry = true): Promise<void> {
+export async function download(path: string, fallbackName: string, retry = true,
+                               id = newRequestId()): Promise<void> {
   const headers: Record<string, string> = {}
   if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`
   if (tokens.session) headers['X-Session'] = tokens.session
+  headers['X-Request-Id'] = id
   const r = await fetch(`${API_ORIGIN}/api${path}`, { headers })
-  if (r.status === 401 && retry && tokens.refresh && (await tryRefresh())) return download(path, fallbackName, false)
+  if (r.status === 401 && retry && tokens.refresh && (await tryRefresh())) {
+    return download(path, fallbackName, false, id)
+  }
   if (!r.ok) {
     const d: { detail?: unknown } = await r.json().catch(() => ({}))
-    throw new ApiError(r.status, typeof d.detail === 'string' ? d.detail : r.statusText)
+    throw new ApiError(r.status, typeof d.detail === 'string' ? d.detail : r.statusText,
+                       r.headers.get('X-Request-Id') ?? undefined)
   }
   const disposition = r.headers.get('Content-Disposition') ?? ''
   const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition)
