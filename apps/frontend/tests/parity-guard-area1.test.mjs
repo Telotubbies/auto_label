@@ -28,7 +28,7 @@ test('the project nav keeps the lifecycle order', () => {
 })
 
 test('creating a project lands on upload, and a returning visit lands on browse', () => {
-  assert.match(homeSrc, /nav\(`\/\$\{ws\}\/\$\{p\.slug\}\/upload`\)/,
+  assert.match(homeSrc, /nav\(projectPath\(ws, p\.slug, 'upload'\)\)/,
     '1-F2.1: Create must navigate straight to the project upload page')
   assert.match(projectRoutes, /<Navigate to="browse" replace \/>/,
     '1-F3.2: opening a project again lands on its dataset, not on a blank index')

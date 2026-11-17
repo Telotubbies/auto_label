@@ -28,9 +28,9 @@ test('an empty workspace starts at create-project and keeps later links unwired'
 
 test('image and label steps point at the first project once one exists', () => {
   const steps = onboardingSteps(facts({ images: 0, annotations: 0 }))
-  assert.equal(steps[1].to, '/acme/ppe/upload')
-  assert.equal(steps[2].to, '/acme/ppe/annotate')
-  assert.equal(steps[3].to, '/acme/ppe/train')
+  assert.equal(steps[1].to, '/acme/p/ppe/upload')
+  assert.equal(steps[2].to, '/acme/p/ppe/annotate')
+  assert.equal(steps[3].to, '/acme/p/ppe/train')
 })
 
 test('the invite step disappears for roles that cannot invite', () => {
@@ -43,7 +43,7 @@ test('a labeler gets no upload or train shortcut the project gate would bounce',
   assert.equal(steps.find((s) => s.key === 'images').to, null)
   assert.equal(steps.find((s) => s.key === 'model').to, null)
   // Labeling is still their job, so that shortcut stays.
-  assert.equal(steps.find((s) => s.key === 'labels').to, '/acme/ppe/annotate')
+  assert.equal(steps.find((s) => s.key === 'labels').to, '/acme/p/ppe/annotate')
 })
 
 test('a viewer gets no label shortcut the annotate route would bounce', () => {
