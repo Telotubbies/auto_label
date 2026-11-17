@@ -2,7 +2,7 @@ import type {
   EngineAvailability, EngineInstallIn, EnginePlan, InferenceCatalog, InferenceEstimate, InferenceEstimateIn,
   InferenceHost, InferenceJob, InferenceModels, InferenceSegmentation, Job, ModelPlan, ModelPlanIn,
 } from '../types'
-import { get, post } from './client'
+import { del, get, post, qs } from './client'
 
 /** Inference hub (T-1001): the hosts this deployment can install engines on. Later hub cards append. */
 export const inferenceApi = {
@@ -51,6 +51,12 @@ export const inferenceModels = (ws: string, host: string) =>
 /** The download dry run: files, bytes, disk after, the gate and every block reason (T-1010). */
 export const inferencePlanModel = (ws: string, body: ModelPlanIn) =>
   post<ModelPlan>(`/ws/${ws}/inference/models/plan`, body)
+
+/** Queue the removal of one installed model (T-1011); a model the host no longer reports is a 404. */
+export const inferenceRemoveModel = (ws: string,
+  body: { host: string; id: string; variant: string; confirm: boolean }) =>
+  del<{ job: Job }>(`/ws/${ws}/inference/models/${encodeURIComponent(body.id)}`
+    + qs({ host: body.host, variant: body.variant, confirm: body.confirm }))
 
 /** Queue one confirmed download (T-1012); a busy host or an installed variant comes back as a 409. */
 export const inferenceDownloadModel = (ws: string, body: ModelPlanIn) =>
