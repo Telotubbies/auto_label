@@ -3,7 +3,7 @@ import { requestRef } from '@/lib/api/client'
 import { X } from 'lucide-react'
 import { dateLocale } from '@/lib/theme'
 import { Glass } from './glass'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 export function Button({ variant = 'primary', size = 'md', className, ...props }: {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'upgrade'
@@ -93,7 +93,19 @@ export function Dropdown({ trigger, items, align = 'left' }: {
   )
 }
 
-export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; wide?: boolean }) {
+type ModalProps = {
+  open: boolean
+  onClose: () => void
+  children: ReactNode
+  wide?: boolean
+} & (
+  // A dialog must have a name: from its visible title, or from an aria-label when it has none.
+  | { title: ReactNode; 'aria-label'?: string }
+  | { title?: undefined; 'aria-label': string }
+)
+
+export function Modal({ open, onClose, title, children, wide, 'aria-label': ariaLabel }: ModalProps) {
+  const titleId = useId()
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', h)
@@ -102,9 +114,9 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   if (!open) return null
   return (
     <div className="anim-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-scrim/40" onMouseDown={onClose}>
-      <Glass strength="overlay" role="dialog" aria-modal="true" className={cn('anim-modal relative my-8 w-full rounded-2xl text-popover-foreground shadow-2xl', wide ? 'max-w-5xl' : 'max-w-lg')} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
+      <Glass strength="overlay" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : ariaLabel} className={cn('anim-modal relative my-8 w-full rounded-2xl text-popover-foreground shadow-2xl', wide ? 'max-w-5xl' : 'max-w-lg')} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
         <button onClick={onClose} aria-label="Close" className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:bg-accent cursor-pointer"><X className="h-5 w-5" /></button>
-        {title && <div className="px-6 pt-5 text-xl font-semibold">{title}</div>}
+        {title && <div id={titleId} className="px-6 pt-5 text-xl font-semibold">{title}</div>}
         <div className="p-6">{children}</div>
       </Glass>
     </div>
