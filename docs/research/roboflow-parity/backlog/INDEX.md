@@ -3,23 +3,35 @@
 Planning-lane output, 2026-11-17. Base branch `feat/labeldesk-v2` at `fe8ef1a`. Read-only lane: no
 application code, tests or git state were touched; this folder is the only write.
 
-**What this is.** 381 task cards that close every one of the 334 rows in
+**What this is.** 552 task cards in two layers. The first, **waves A–E**, closes every one of the 334 rows in
 [`PARITY.md`](../PARITY.md): 262 gap rows (163 PARTIAL + 99 MISSING) plus the 72 HAVE rows, which are
-pinned by seven regression-guard cards. Every card is one agent for 1–3 hours, names the exact files it
+pinned by seven regression-guard cards. The second, **wave F**, turns all 101 features of
+[`BEYOND.md`](../../beyond-roboflow/BEYOND.md) — 2 HAVE, 58 PARTIAL, 41 MISSING; 14 Must, 61 Should, 26 Could —
+into cards: the layer above parity, where a buyer compares us to CVAT, Encord, Ultralytics, NVIDIA or Edge Impulse,
+or to the Thai factory down the road. Every card is one agent for 1–3 hours, names the exact files it
 creates or edits, and specifies the tests that must fail first.
+
+**Visual standard (owner, 2026-11-17).** The app's existing Liquid Glass look is binding:
+[`VISUAL-OVERRIDE.md`](../../../../design/labeldesk-v3/VISUAL-OVERRIDE.md), `apps/frontend/src/index.css` and
+`apps/frontend/src/components/glass.tsx`. The v3 frames decide layout, IA, flow, states and copy — never a second
+palette, a second token set or new glass values. §7.4 records every card revised for this rule.
 
 **Sources, in order of authority**
 1. [`PARITY.md`](../PARITY.md) — the 334 rows, status, priority, size.
 2. `01-workspace-projects.md` … `07-workspace-admin.md` — per-feature flow, screens, empty/loading/error
    states, edge cases.
 3. [`design/labeldesk-v3/REDESIGN.md`](../../../../design/labeldesk-v3/REDESIGN.md) — wave E's names, IA,
-   routes, tokens and state rules.
+   routes and state rules, read together with `VISUAL-OVERRIDE.md`: the frames give layout and flow, the running app
+   gives the visual system.
 4. [`_BRIEF.md`](_BRIEF.md) — the contract every card was written against (template, id bands, wave map,
    cross-area ownership, shared-file rules).
-5. The code itself; every path in a card was verified against the repo.
+5. [`BEYOND.md`](../../beyond-roboflow/BEYOND.md) and its six group files (`01-…` … `06-…`) — wave F's 101
+   features, each with its flow, evidence and recorded gap.
+6. The code itself; every path in a card was verified against the repo.
 
-**Owner directive this backlog implements (2026-11-17):** all 334 features, down to each recorded click,
-state and edge case, in LabelDesk names, copy and icons only — never Roboflow text, logos or assets.
+**Owner directive this backlog implements (2026-11-17):** all 334 parity features, down to each recorded click,
+state and edge case, in LabelDesk names, copy and icons only — never Roboflow text, logos or assets — plus every
+feature of `BEYOND.md` (Must, Should and Could), styled with the glass system the app already ships.
 
 ---
 
@@ -54,17 +66,26 @@ that fully solves the card, no speculative code.
 | B | Editor, train, evaluation and workflow core | 149 | 419 | 124 |
 | C | Data and people — dataset depth, members, keys, audit, connectors | 97 | 278.5 | 88 |
 | D | Commercial and enterprise (owner-gated; provider-agnostic) | 52 | 151 | 27 |
-| E | LabelDesk-native redesign (17 frame + 12 finish) | 29 | 76.5 | 4 |
-| **Total** | | **381** | **1,076.5** | **334/334 mapped** |
+| E | LabelDesk-native redesign (17 frame + 12 finish) | 29 | 75 | 4 |
+| **F** | **BEYOND — the capability layer above parity (owner-gated where legal)** | **171** | **488** | **101 BEYOND features** |
+| **Total** | | **552** | **1,563** | **334/334 parity + 101/101 BEYOND mapped** |
+
+Wave F's 171 cards are 1.7 per BEYOND feature: the same density this backlog already carries for parity (1.3
+cards per row), with two or three cards only where a feature crosses schema → service → screen. Each is ≤ 3
+agent-hours; none hides a six-hour job. Native Thai (G5.22) is four cards at the head of the wave because every
+later band adds strings to the catalogue it creates.
 
 The per-wave row counts exceed 334 because a row can legitimately split across waves (for example
 `3-F3.55` has a wave-A save-conflict half and a wave-B state half) and because HAVE rows appear in both
 G and a later wave when their own gap cell names real work. The completeness check in §9 asserts the
 exact 334-id set, once each, with no unknown id.
 
-**Sizing honesty.** 1,076.5 agent-hours is implementation only. House practice adds review, fix rounds,
-rebases and merge gates; budget **1,250–1,350 agent-hours** end to end. The largest concentration is
-wave B (419 h), which is also where the product lives, so wave B is the schedule risk, not wave D.
+**Sizing honesty.** 1,563 agent-hours is implementation only: 1,075 for parity and 488 for BEYOND. House practice
+adds review, fix rounds, rebases and merge gates, so budget **1,850–1,950 agent-hours** end to end
+(parity 1,250–1,350 plus wave F 600–650). The largest single concentration is wave B (419 h), which is also where
+the product lives, so wave B is the schedule risk, not wave D. Wave F's 488 h are spread over seven bands that share
+almost no exclusive file, so it parallelises better than B even though it is larger. Wave E dropped 1.5 h in the
+owner's visual revision (T-470, T-472), which is why the wave-E row reads 75.
 
 ---
 
@@ -73,6 +94,11 @@ wave B (419 h), which is also where the product lives, so wave B is the schedule
 - **Branding.** LabelDesk names, copy and icons only. A competitor name may appear once as a source
   label (`(RF: *…*)`), never as text a user reads. New copy is written in LabelDesk's voice; Thai strings
   are real Thai, not transliterations.
+- **Glass is the visual standard.** Chrome (top bar, rails, floating toolbars, sheets, popovers, overlay) uses `Glass`
+  from `components/glass.tsx`; content (canvas, dense tables, charts, cards) stays solid on `Card`. Tones come from the
+  shipped roles — `bg-success/15 text-success`, `--primary`, `--muted-foreground` — through `chipTone` /
+  `statusTone` / `classColor`. No card adds a CSS variable, a palette, a hex literal, an arbitrary font size or an
+  icon library. Type is `text-sm` / `text-xs`. This binds every wave, not only E and F.
 - **Provider-agnostic commercial wave.** No payment provider, plan price or self-host licence has been
   chosen (see §4). Every wave-D money card ships a `BillingProvider` interface plus a deterministic
   `MockProvider`, flags the surface off by default (`task_billing`), charges nothing, and renders
@@ -91,7 +117,13 @@ wave B (419 h), which is also where the product lives, so wave B is the schedule
   case that must return 404 and change nothing.
 - **R7 security review** is required where a card touches auth, SSO/OAuth, RBAC, keys or secrets,
   billing money or webhooks, unauthenticated routes, folder-scoped access, destructive account actions,
-  SIEM export, or untrusted uploads/URLs (safefetch). The card says so; 106 cards carry `yes`.
+  SIEM export, or untrusted uploads/URLs (safefetch). The card says so; 106 parity cards carry `yes`, and 62 of
+  wave F's 171 do.
+- **Wave F is owner-gated where law or money decides.** A card that touches Thai VAT invoicing, PDPA/DSAR personal
+  data, a retention floor or legal hold, breach notification, an SLA credit, a licence or a public trust claim plans
+  an interface plus a mock or dry run, ships flag-off, prints `Pricing not set` / `not certified` / `no measured
+  history yet` where a fact would go, and **charges nothing**. Its Notes open with the decision the owner (or a Thai
+  lawyer and accountant) must make first.
 
 ---
 
@@ -128,6 +160,20 @@ wave B (419 h), which is also where the product lives, so wave B is the schedule
 Nothing in this backlog blocks on a secondary decision; the three blocking ones gate only the money
 surfaces, which are flagged off.
 
+### 4.3 Decisions wave F needs (owner or a Thai professional)
+
+Wave F ships without all of them — each card plans the mechanism, a mock and a flag-off state — but nothing in it
+may claim a legal or commercial fact until these are answered.
+
+| # | Decision | Default a card ships meanwhile | Cards |
+| --- | --- | --- | --- |
+| 14 | **Thai tax and e-invoicing.** Does the company issue a 7% VAT tax invoice itself, through a Revenue-Department-approved e-tax service, or through a merchant of record? What are the document series, withholding rules, and does the accountant accept a PromptPay QR on the invoice? | Invoice *shape* only: company/tax-id fields, VAT as its own line, a dry-run number, `Pricing not set`, no filing | T-755–T-758 |
+| 15 | **PDPA position.** Who is controller and who is processor for each camera deployment; what is the DSAR deadline the product counts (30 days is the plan); which retention floors are contractual? Needs a Thai lawyer before any of it is asserted in copy | Case object, countdown, draft register, dry-run erasure and a certificate template labelled draft | T-747, T-750–T-754, T-760–T-761 |
+| 16 | **Notification channels.** Which LINE Official Account sends alerts, who owns it, and what the acknowledgement ladder escalates to | One channel row, a token in `secretbox`, mock delivery in tests | T-714, T-720 |
+| 17 | **Offline licence and partner model.** Is an air-gapped install sold, leased or free; does a partner resell child workspaces and at what margin | A signed licence-file verifier (offline, no phone-home by default) and a partner console with `ยังไม่กำหนดราคา` | T-732, T-733 |
+| 18 | **Who writes the Thai copy.** In-house, agency, or the implementing agent? Whether the workspace default is Thai or browser-derived | The card authors real Thai for every string they add; browser-derived default; the switch ships | T-600–T-603 and every card's `lib/i18n.ts` keys |
+| 19 | **The line's fail-safe.** When the model is down or the PLC link drops, does the line reject by default or stop by default? A missed NG part is a liability, not a bug | `stop` by default, both modes configurable, no silent pass, the policy shown on the station screen | T-688, T-689 |
+
 ---
 
 ## 5. What was deliberately not planned
@@ -138,8 +184,16 @@ surfaces, which are flagged off.
 - **A second inference server.** Self-hosting links to and documents `apps/inference`; no card rewrites it.
 - **Vendor SDKs.** No card adds one. Where a vendor is the only real answer, the card ships an interface
   and a mock, and §4 records the decision.
-- **Re-implementing HAVE flows.** The guard cards assert them; they do not rewrite them.
+- **Re-implementing HAVE flows.** The guard cards assert them; they do not rewrite them. The two BEYOND features
+  that are HAVE (`G1.1` consensus, `G2.10` suspect labels) get cards only for the part their own gap cell names.
 - **A rewrite of the login screen** (see §4.2 #13).
+- **Six BEYOND features its own §4 names as non-goals** — planogram (`G6.10`), fruit grading (`G6.12`),
+  parameter sweeps (`G2.1`), the plugin marketplace (`G1.12`, `G2.17`) and on-camera analytics (`G3.18`). The owner
+  directive plans every row, so all six still have cards; each card's Notes open with `Owner-hold:` and each ships
+  behind its flag, so nothing is scheduled by accident. (`G1.14` 3D/LiDAR and `G1.15` DICOM were dropped from the
+  BEYOND matrix before it reached this lane, and have no card.)
+- **A second locale.** `G5.23` (an i18n framework with RTL) folds into `G5.22`: Thai first, one catalogue and one
+  switch, no framework for markets we do not sell to.
 
 ---
 
@@ -149,13 +203,20 @@ Waves are ordered by user value, but three structural facts decide the real sche
 
 ```
 Phase 0  G  T-001…T-007        regression guards, baseline green (19 h)
-Phase 1  E  E-frame (17)       tokens, routes /p/, rails, stage frame, top bar, palette  (45.5 h)
+Phase 1  E  E-frame (17)       tokens, routes /p/, rails, stage frame, top bar, palette  (43 h)
 Phase 2  A  47 cards           trial blockers                        (132.5 h)
 Phase 3  B  149 cards          editor / train / eval / workflow core (419 h)
 Phase 4  C  97 cards           data and people                       (278.5 h)
-Phase 5  D  52 cards           commercial and enterprise (owner-gated) (151 h)
-Phase 6  E  E-finish (12)      polish, mobile, a11y proof, copy deck  (31 h)
+Phase 5  F  171 cards          BEYOND capability layer (Thai first)  (488 h)
+Phase 6  D  52 cards           commercial and enterprise (owner-gated) (151 h)
+Phase 7  E  E-finish (12)      polish, mobile, a11y proof, copy deck  (32 h)
 ```
+
+**Why F runs before D.** Both sit after wave C and before E-finish, but wave D is inert until the owner answers §4.1
+(provider, prices, licence) while wave F's Musts are product: Thai UI, the label-quality loop, the line-side loop,
+defensible auto-label and the vertical packs. F also has no dependency on a vendor, so it can start the day C merges.
+If the owner answers §4.1 early, D and F may run in parallel — they touch different files, and §7's matrix names the
+few shared registries.
 
 **E-frame, before wave A.** Routes, rails and tokens are the ground every later screen stands on:
 `T-470` tokens, `T-471` type floor, `T-472` glass, `T-473` Thai truncation, `T-474` `/p/` routes,
@@ -172,7 +233,10 @@ lane's exclusive file.
 **Wave C families:** dataset and query (`T-060`–`T-104`), metadata/connectors (`T-070`–`T-086`), people
 and keys (`T-174`, `T-380`–`T-403`), audit/policy (`T-400`–`T-411`). Wave D families: billing
 (`T-412`–`T-426`), identity and data protection (`T-427`–`T-449`), enterprise surfaces
-(`T-352`–`T-359`, `T-439`–`T-449`).
+(`T-352`–`T-359`, `T-439`–`T-449`). **Wave F families:** Thai (`T-600`–`T-603`), label quality
+(`T-610`–`T-633`), auto-label (`T-640`–`T-665`), industrial (`T-670`–`T-697`), Thai market (`T-710`–`T-733`),
+enterprise (`T-740`–`T-779`), training depth (`T-780`–`T-805`). Every F band owns its own new modules, so the seven
+can run concurrently once Thai's catalogue has landed; they meet only in the registries §7 lists.
 
 **Serialisation rules**
 1. **Migrations.** One migration-bearing branch merges at a time. If a card's Files include
@@ -992,7 +1056,7 @@ Commercial and enterprise. Money is provider-agnostic and flagged off; identity,
 
 LabelDesk-native redesign. 17 frame cards run in phase 1 (before wave A) because every later screen assumes /p/ routes, stage rails and v3 tokens; 12 finish cards run last.
 
-**29 cards · 76.5 agent-hours · 4 PARITY rows listed.**
+**29 cards · 75 agent-hours · 4 PARITY rows listed.**
 
 #### E.1 Rows and the cards that close them
 
@@ -1007,10 +1071,10 @@ LabelDesk-native redesign. 17 frame cards run in phase 1 (before wave A) because
 
 | Task | Title | Parity rows | Hours | R7 | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| [T-470](T-470.md) | Tokens v3: surfaces, outline, glass and type scale | — | 3 | no | none |
-| [T-471](T-471.md) | Enforce a 13 px text floor and freeze stray values | — | 2.5 | no | T-470 (the `text-small` / `text-micro` utilities must exist) |
-| [T-472](T-472.md) | Glass parity: 24 px blur, 62/66 fill, 96% fallback | — | 2 | no | T-470 (the `--glass-fill` / `--glass-blur` tokens) |
-| [T-473](T-473.md) | Thai-safe truncation: two lines, then an explicit more | — | 2.5 | no | T-470 (`text-small` / the type scale) |
+| [T-470](T-470.md) | Token contract: reuse the shipped glass roles, add none | — | 2 | no | none |
+| [T-471](T-471.md) | Enforce a 13 px text floor and freeze stray values | — | 2.5 | no | T-470 (the mapping says which shipped role each label reads) |
+| [T-472](T-472.md) | Glass: pin the shipped look and widen the fallback | — | 1.5 | no | T-470 (the mapping names `--glass-tint` / `--glass-solid` as the glass roles) |
+| [T-473](T-473.md) | Thai-safe truncation: two lines, then an explicit more | — | 2.5 | no | T-470 (the mapping names the roles a label reads) |
 | [T-474](T-474.md) | `/p/` project routes, with legacy URLs redirected | — | 3 | no | T-473 (independently mergeable; listed for merge order inside the E frame) |
 | [T-475](T-475.md) | Every internal link through one path helper | — | 2.5 | no | T-474 (`projectPath` and the route tree must exist) |
 | [T-476](T-476.md) | Workspace rail: six destinations, governance in Settings | — | 3 | no | T-474 (`/p/` routes must exist before the rail links change shape); T-400 (it owns the Settings → Audit log tab and the `/audit` redirect — this card must not add them) |
@@ -1027,15 +1091,327 @@ LabelDesk-native redesign. 17 frame cards run in phase 1 (before wave A) because
 | [T-487](T-487.md) | Page header, chip, empty state and error sheet primitives | — | 2.5 | no | T-470 (tokens), T-471 (type scale) |
 | [T-488](T-488.md) | Skeletons that match the geometry they replace | — | 2 | no | T-487 (the primitives file), T-485 (Home's sections) |
 | [T-489](T-489.md) | Focus order, 44 px hit areas and labelled stage dots | — | 2.5 | no | T-478 (the stage rows exist), T-487 (the primitives) |
-| [T-490](T-490.md) | axe and keyboard proof, with the contrast table as a test | — | 3 | no | T-489 (labels and hit areas), T-487 (primitives) |
+| [T-490](T-490.md) | axe and keyboard proof, with contrast measured on the real tokens | — | 3 | no | T-489 (labels and hit areas), T-487 (primitives), T-472 (the glass fill the pairs are measured on) |
 | [T-491](T-491.md) | 375 px: bottom tabs, a stacked overview, no sideways scroll | — | 3 | no | T-480 (the bar), T-483 (the overview board) |
 | [T-492](T-492.md) | Phone editor: a read-only preview with a desktop handoff | — | 2.5 | no | T-491 (the mobile shell), T-498 (the editor header) |
 | [T-493](T-493.md) | One icon registration for every rail, stage and screen | — | 2 | no | T-478 (stage rows take an icon from the registry), T-476 (the rail's final list) |
-| [T-494](T-494.md) | LabelDesk copy deck for the ten screens, in real Thai | — | 2.5 | no | T-487 (the primitives that render the copy), T-485 (Home's empty states) |
+| [T-494](T-494.md) | LabelDesk copy deck for the ten screens, in real Thai | — | 2.5 | no | T-487 (the primitives that render the copy), T-485 (Home's empty states), T-600 (the catalogue and `t()` this card fills) |
 | [T-495](T-495.md) | One colour source for status, split and class chips | — | 2 | no | T-470 (tokens), T-487 (`chipTone`), T-062 (it owns `Dataset.tsx`), T-314 (it rebuilds `Deploy.tsx` and moves the class-colour mapping) |
 | [T-496](T-496.md) | Annotate board: three lanes of batch rows, one way in | — | 3 | no | T-129 (bulk review confirm sheet), T-164 (read-only and empty states), T-479 (stage tabs), T-495 (colour source) |
 | [T-497](T-497.md) | Editor rail: two tabs, and an inspector for the rest | `3-F3.1` | 3 | no | T-489 (44 px targets), T-471 (type floor for the rail labels) |
 | [T-498](T-498.md) | Editor header: next image, review state, assists at the pointer | `3-F3.1` | 3 | no | T-497 (the rail), T-489 (hit areas), T-490 (the keyboard harness proves the path) |
+
+
+### Wave F — BEYOND: the capability layer above parity
+
+Where parity ends and a buyer starts comparing us to somebody else. Thai-first (G5.22) heads the wave because every
+later screen adds strings to the catalogue it creates; then label quality, defensible auto-label, the line-side loop,
+Thai vertical packs, enterprise trust, and training depth. Thirty-three cards are owner-gated or owner-held (legal,
+tax, money, a licence, or a BEYOND §4 non-goal) and ship flag-off with a mock or a dry run; the line's fail-safe
+policy (§4.3 #19) is the one further owner decision, and its card states it in place of a test.
+
+**171 cards · 488 agent-hours · 101 BEYOND features listed (2 HAVE, 58 PARTIAL, 41 MISSING).**
+The per-card table with role, R7 flag and dependencies is in [`.parts/wave-f.md`](.parts/wave-f.md), which is also the
+part index the PM merges.
+
+#### F.1 Bands, in merge order
+
+
+| Band | First | Last | Cards | Hours |
+| --- | --- | --- | --- | --- |
+| Thai-first foundation — G5.22 | T-600 | T-603 | 4 | 10.5 |
+| A · label quality loop — G1.x | T-610 | T-633 | 24 | 67.5 |
+| D · auto-label you can defend — G4.x | T-640 | T-665 | 26 | 73 |
+| C · line-side loop — G3.x | T-670 | T-697 | 28 | 80.5 |
+| F · Thai market and verticals — G6.x | T-710 | T-733 | 24 | 69 |
+| E · data protection and money — G5.3…G5.16 | T-740 | T-758 | 19 | 55.5 |
+| E · platform trust and adoption — G5.7…G5.24 | T-760 | T-779 | 20 | 58 |
+| B · training and MLOps depth — G2.x | T-780 | T-805 | 26 | 74 |
+| **Total** | | | **171** | **488** |
+
+#### F.2 Features and the cards that close them
+
+
+| BEYOND id | Feature | Status | Pri | Size | Task ids | Hours |
+| --- | --- | --- | --- | --- | --- | --- |
+| G1.1 | Duplicate passes merged by majority, with a reviewer override | HAVE | Should | S | T-611 | 3 |
+| G1.2 | Answer-key rows seeded into the live queue at a rate | PARTIAL | Should | M | T-612, T-613 | 5.5 |
+| G1.3 | Score at submit, with capped retries and hints | MISSING | Could | M | T-614, T-615 | 5.5 |
+| G1.4 | Quality dashboard down to class and confusion pairs | PARTIAL | Must | M | T-616, T-617 | 5.5 |
+| G1.5 | Work queue with priority, stage scope and a cap per labeler | MISSING | Must | M | T-618, T-619 | 5.5 |
+| G1.6 | Labeling stage graph (human, model, consensus) | MISSING | Should | L | T-620, T-621, T-622 | 8.5 |
+| G1.9 | Object tracks with keyframes, an out-of-frame state, split and merge | PARTIAL | Should | M | T-623, T-624 | 5.5 |
+| G1.10 | Review screen with side-by-side answer key and a mismatch list | PARTIAL | Should | M | T-625, T-626 | 5.5 |
+| G1.11 | Trial project that scores a labeler before real work | MISSING | Could | M | T-627, T-628 | 5.5 |
+| G1.12 | Event-triggered extension runtime on label events | PARTIAL | Could | L | T-629, T-630 | 5.5 |
+| G1.13 | Label form defined as a document, not a task type | MISSING | Could | L | T-631, T-632 | 6 |
+| G1.16 | Time-in-stage and labelling speed accounting | PARTIAL | Should | S | T-633 | 3 |
+| G1.17 | Quality metric chosen per field, with thresholds | PARTIAL | Could | S | T-610 | 3 |
+| G2.1 | Sweep a version across a parameter space | MISSING | Could | L | T-802, T-803 | 6 |
+| G2.2 | The run keeps its exact configuration, exportable and re-importable | PARTIAL | Should | S | T-780 | 3 |
+| G2.3 | One ledger row per run with configuration as sortable columns | PARTIAL | Should | M | T-781 | 3 |
+| G2.4 | Promotion is a request naming an approver | PARTIAL | Should | M | T-782, T-783 | 5 |
+| G2.5 | Lineage carries its inputs and can re-run from any node | PARTIAL | Should | M | T-784 | 3 |
+| G2.6 | A model card ships with the weights | MISSING | Should | M | T-789, T-790 | 5.5 |
+| G2.7 | A slice of the score opens into the images that caused it | PARTIAL | Should | M | T-785, T-786 | 5.5 |
+| G2.8 | The hold-out score is audited for leakage | PARTIAL | Should | M | T-787, T-788 | 5.5 |
+| G2.9 | Coverage report for the conditions the model will meet | PARTIAL | Could | L | T-792 | 3 |
+| G2.10 | Suspect labels ranked by model confidence | HAVE | Could | S | T-793 | 2 |
+| G2.11 | Benchmark sheet: latency and throughput per export format and device | MISSING | Should | M | T-791 | 3 |
+| G2.12 | Queues with priorities, pools and quotas instead of one worker | PARTIAL | Should | L | T-798, T-799 | 6 |
+| G2.13 | Bring your own GPU, and watch it in our dashboard | PARTIAL | Could | M | T-800, T-801 | 5.5 |
+| G2.14 | A failed run explains itself and retries with the same arguments | PARTIAL | Should | M | T-795 | 3 |
+| G2.15 | Per-run host telemetry, not just loss curves | PARTIAL | Could | S | T-794 | 3 |
+| G2.16 | A published run report a non-engineer can read | PARTIAL | Should | M | T-796, T-797 | 6 |
+| G2.17 | An extension point for our own and the customer's analysis | MISSING | Could | L | T-804, T-805 | 6 |
+| G3.1 | Camera onboarding: discovery, profile choice, credential pre-test | PARTIAL | Should | M | T-672 | 3 |
+| G3.2 | Site → line → station → camera hierarchy | PARTIAL | Must | M | T-670, T-671 | 6 |
+| G3.3 | Operator verdict with reason codes and a piece id | PARTIAL | Should | M | T-675, T-676 | 5.5 |
+| G3.4 | Rules that follow a schedule instead of always being on | MISSING | Should | S | T-677 | 3 |
+| G3.5 | Alarm ownership, snooze, cross-camera grouping and a queue | PARTIAL | Should | M | T-678, T-679 | 6 |
+| G3.6 | Evidence clip with pre/post-roll and a hold | MISSING | Should | M | T-680, T-681 | 5.5 |
+| G3.7 | Store-and-forward while the edge or the server is offline | MISSING | Should | L | T-673, T-674 | 6 |
+| G3.8 | Device-bound engine registry with a golden replay | PARTIAL | Should | M | T-682, T-683 | 5.5 |
+| G3.9 | Training that knows its deployment target | MISSING | Should | L | T-684, T-685 | 5.5 |
+| G3.10 | Prune / INT8 / QAT with an accuracy delta | PARTIAL | Should | M | T-686, T-687 | 6 |
+| G3.11 | Reject signal to the machine over Modbus / OPC-UA / MQTT | MISSING | Must | M | T-688, T-689 | 5.5 |
+| G3.12 | Barcode / QR / lot-code decoding | MISSING | Should | M | T-690 | 3 |
+| G3.13 | OCR / OCV verification against an expected value | PARTIAL | Should | S | T-691 | 2.5 |
+| G3.14 | Measurement in real units with calibration and a tolerance verdict | MISSING | Should | M | T-692 | 3 |
+| G3.15 | Shift calendar, first-pass yield and reason breakdown | PARTIAL | Should | M | T-693 | 3 |
+| G3.16 | Camera quality guard: readiness probe plus a per-camera baseline | PARTIAL | Should | S | T-694 | 2.5 |
+| G3.17 | Event envelope contract, broker transport, dead-letter and replay | PARTIAL | Should | M | T-695, T-696 | 6 |
+| G3.18 | On-camera analytics partitioning (metadata in, not pixels) | MISSING | Could | L | T-697 | 3 |
+| G4.1 | A per-class prompt pack (synonyms, exclusions) that can seed the class list | PARTIAL | Must | M | T-640, T-641 | 6 |
+| G4.3 | Confidence bands with an escalation threshold and per-band counts | PARTIAL | Must | M | T-642, T-643 | 5.5 |
+| G4.4 | A VLM second pass that flags a box instead of deleting it | PARTIAL | Must | M | T-644 | 3 |
+| G4.5 | A judge rubric returning a verdict, a reason and a score per label | MISSING | Should | M | T-645, T-646 | 5.5 |
+| G4.6 | A question checklist that answers into per-image attributes | MISSING | Should | M | T-647, T-648 | 5.5 |
+| G4.7 | Caption and keyword extraction written back as tags | PARTIAL | Could | S | T-649 | 2.5 |
+| G4.8 | Named clusters on the embedding map, with lasso-to-label | PARTIAL | Should | M | T-650 | 3 |
+| G4.9 | A per-class coverage and gap report with targets | PARTIAL | Should | M | T-651 | 3 |
+| G4.10 | Active learning with margin sampling, a quota and a stated budget | PARTIAL | Should | M | T-652, T-653 | 5.5 |
+| G4.11 | A discovery sweep that names classes nobody asked for | MISSING | Could | L | T-654, T-655 | 5.5 |
+| G4.12 | Track a concept from one text prompt across a video with stable IDs | PARTIAL | Should | M | T-656, T-657 | 5.5 |
+| G4.13 | A disagreement queue between two auto-label models | MISSING | Should | M | T-658 | 3 |
+| G4.14 | A teacher → student loop with an agreement gate | PARTIAL | Should | M | T-659 | 3 |
+| G4.15 | Synthetic and composited fills for a rare class, with provenance | MISSING | Could | L | T-660, T-661 | 5.5 |
+| G4.16 | Harvest the boxes the checker rejected as hard negatives | MISSING | Could | S | T-662 | 2.5 |
+| G4.17 | A labelling job the agent plans, trials, then escalates | MISSING | Should | L | T-663, T-664 | 5.5 |
+| G4.18 | Ask the dataset a structural question in words | MISSING | Should | M | T-665 | 3 |
+| G5.3 | Sign-in policy: session life, step-up, MFA, network rules | PARTIAL | Should | M | T-740, T-741, T-742, T-743 | 11.5 |
+| G5.4 | Ownership transfer and an offboarding sweep | MISSING | Must | M | T-744, T-745 | 6 |
+| G5.5 | Tamper-evident audit trail with a retention floor | PARTIAL | Should | M | T-746, T-747 | 6 |
+| G5.6 | Object-scoped activity history | PARTIAL | Should | M | T-748, T-749 | 6 |
+| G5.7 | Retention policy builder with dry-run and legal hold | PARTIAL | Should | M | T-760, T-761 | 6 |
+| G5.8 | Sandbox and production separation | MISSING | Could | M | T-762, T-763 | 6 |
+| G5.9 | DSAR workbench: find, export and erase one person | PARTIAL | Must | M | T-750, T-751, T-752 | 8.5 |
+| G5.10 | Processing register: purpose, lawful basis, consent, transfers | PARTIAL | Should | M | T-753, T-754 | 6 |
+| G5.11 | Sub-processor register with change notice and an objection window | MISSING | Should | S | T-764 | 3 |
+| G5.12 | Trust centre | PARTIAL | Should | M | T-765 | 3 |
+| G5.13 | Breach notification runbook with a 72-hour clock | PARTIAL | Should | M | T-766, T-767 | 6 |
+| G5.15 | Customer-owned bucket and customer-managed keys | MISSING | Could | L | T-768, T-769 | 6 |
+| G5.16 | Thai invoiced billing: PromptPay, bank transfer, VAT tax invoice, PO, dunning | MISSING | Must | M | T-755, T-756, T-757, T-758 | 11.5 |
+| G5.17 | Per-project budget with a pre-flight estimate and pause | PARTIAL | Should | M | T-770, T-771 | 5.5 |
+| G5.18 | Public status page with incident history | PARTIAL | Should | M | T-772, T-773 | 5.5 |
+| G5.19 | SLA with measured uptime and a self-serve credit claim | MISSING | Could | M | T-774, T-775 | 5.5 |
+| G5.20 | In-product help: what's new, docs search, feedback | MISSING | Should | S | T-776 | 3 |
+| G5.21 | Guided onboarding and admin adoption analytics | PARTIAL | Could | M | T-777, T-778 | 5.5 |
+| G5.22 | Thai locale end to end, including generated documents | PARTIAL | Must | L | T-600, T-601, T-602, T-603 | 10.5 |
+| G5.24 | WCAG 2.2 AA with an automated gate | PARTIAL | Could | M | T-779 | 3 |
+| G6.1 | Lot-bound inspection record with an OK / NG / rework disposition | PARTIAL | Must | M | T-710, T-711 | 5.5 |
+| G6.2 | First-pass yield and defect Pareto per lot, line and shift | MISSING | Must | M | T-712, T-713 | 6 |
+| G6.4 | Shift handover brief at the end of a shift | MISSING | Should | S | T-719 | 3 |
+| G6.5 | Glove-first Thai operator screen at the station | MISSING | Should | L | T-715, T-716 | 6 |
+| G6.6 | Vertical starter packs (PPE safety, IC/PCB defect) installed in one step | PARTIAL | Must | M | T-717, T-718 | 5.5 |
+| G6.7 | LINE alert with evidence and an acknowledgement ladder | PARTIAL | Should | M | T-714, T-720 | 5.5 |
+| G6.8 | Daily safety summary PDF for an inspector | MISSING | Should | M | T-721, T-722 | 5.5 |
+| G6.10 | Shelf-gap and planogram slot compliance | MISSING | Could | L | T-723 | 3 |
+| G6.11 | Price-tag read-back against a price master | PARTIAL | Could | M | T-724 | 3 |
+| G6.12 | Fruit grading station by size and defect | MISSING | Could | L | T-725 | 3 |
+| G6.13 | Exporter lot report with grade mix and photographs | MISSING | Could | M | T-726 | 3 |
+| G6.14 | Offline field capture with deferred sync and geotag | MISSING | Should | M | T-727 | 3 |
+| G6.15 | Evidence package for police or insurer | PARTIAL | Should | M | T-729, T-730 | 5.5 |
+| G6.16 | Redaction of faces and plates across capture, live view and export | PARTIAL | Should | M | T-728, T-731 | 5.5 |
+| G6.20 | Air-gapped on-premises install with an offline licence | PARTIAL | Should | L | T-732 | 3 |
+| G6.22 | Partner console for an SI: child workspaces, licence pool, statement | MISSING | Could | L | T-733 | 3 |
+
+#### F.3 Cards
+
+
+| Task | Title | BEYOND rows | Hours | R7 | Depends on |
+| --- | --- | --- | --- | --- | --- |
+| [T-600](T-600.md) | One message catalogue and a real language switch | G5.22 | 3 | no | none (it lands before every other wave-F screen, which needs its plumbing) |
+| [T-601](T-601.md) | Thai dates, numbers and the count formatters every screen uses | G5.22 | 2.5 | no | T-600 (the locale preference and `localeTag()`) |
+| [T-602](T-602.md) | Exports and documents speak the same language as the screen | G5.22 | 2.5 | no | T-600 (catalogue), T-601 (formatters) |
+| [T-603](T-603.md) | Thai typography under real strings: no stretch, no mid-word cut | G5.22 | 2.5 | no | T-600 (catalogue), T-601 (formatters), T-473 (`.clamp-2`, `lib/text.ts`) |
+| [T-610](T-610.md) | Choose a quality metric and threshold per class | G1.17 | 3 | no | T-600 (the message catalogue every new string is keyed into) |
+| [T-611](T-611.md) | Let a reviewer overrule a consensus majority | G1.1 | 3 | no | none (extends the shipped `task_23` surface) |
+| [T-612](T-612.md) | Seed the answer key into a batch at a rate | G1.2 | 3 | no | T-610 (the per-class threshold the score uses) |
+| [T-613](T-613.md) | Show the answer-key pool and every attempt | G1.2 | 2.5 | no | T-612 (the pool routes and the attempt history), T-600 (the message catalogue) |
+| [T-614](T-614.md) | Score a submission with three attempts and hints | G1.3 | 3 | no | T-610 (per-class thresholds), T-612 (the attempt log the cap counts) |
+| [T-615](T-615.md) | Ask for the score before an image goes to review | G1.3 | 2.5 | no | T-614 (the score route), T-600 (the message catalogue) |
+| [T-616](T-616.md) | Measure agreement per class and swapped pairs | G1.4 | 3 | no | T-610 (the per-class threshold the report scores at) |
+| [T-617](T-617.md) | Put agreement, swaps and reviewers on one screen | G1.4 | 2.5 | no | T-616 (the report route), T-600 (the message catalogue) |
+| [T-618](T-618.md) | Give every image a priority, a stage and a cap | G1.5 | 3 | no | none (the queue is the base the stage graph in T-620 builds on) |
+| [T-619](T-619.md) | Open a queue instead of hunting board cards | G1.5 | 2.5 | no | T-618 (the queue API), T-600 (the message catalogue) |
+| [T-620](T-620.md) | Define the label path as named stages | G1.6 | 2.5 | no | T-618 (`Image.stage` and the queue read the same field), T-610 (the shared threshold vocabulary) |
+| [T-621](T-621.md) | Move an image along the stage path | G1.6 | 3 | no | T-620 (the graph), T-618 (the queue rows it moves) |
+| [T-622](T-622.md) | Draw the label path and publish it | G1.6 | 3 | no | T-620 (the graph), T-621 (move and reroute), T-600 (the message catalogue) |
+| [T-623](T-623.md) | Give a tracked object an identity and an exit | G1.9 | 3 | no | none (extends `task_22` and `services/video.py`) |
+| [T-624](T-624.md) | List the tracks beside the video timeline | G1.9 | 2.5 | no | T-623 (the track routes), T-600 (the message catalogue) |
+| [T-625](T-625.md) | Show what disagrees with the answer key | G1.10 | 2.5 | yes | T-610 (per-class thresholds), T-614 (the matcher this extends) |
+| [T-626](T-626.md) | Review an image against the answer key | G1.10 | 3 | no | T-625 (the conflicts route), T-600 (the message catalogue) |
+| [T-627](T-627.md) | Score a labeler on a trial set before live work | G1.11 | 3 | yes | T-612 (the approved answer-key pool), T-614 (the matcher and attempt log), T-625 (per-class conflict rows) |
+| [T-628](T-628.md) | Read a trial scorecard before hiring | G1.11 | 2.5 | no | T-627 (the trial routes), T-600 (the message catalogue) |
+| [T-629](T-629.md) | Run a customer's checker when a label is saved | G1.12 · owner-gated | 3 | yes | T-611 (a label event exists to trigger on), T-610 (the class vocabulary the payload uses) |
+| [T-630](T-630.md) | Install and watch an extension package | G1.12 · owner-gated | 2.5 | no | T-629 (the extension routes), T-600 (the message catalogue) |
+| [T-631](T-631.md) | Store the label form as a document | G1.13 | 3 | no | none (annotations are already free JSON on `Image`) |
+| [T-632](T-632.md) | Build the form and render it in the editor | G1.13 | 3 | no | T-631 (the form document and its validation), T-600 (the message catalogue) |
+| [T-633](T-633.md) | Account for hours per stage and objects per hour | G1.16 | 3 | no | T-618 (`Image.stage`, the field time is attributed to), T-620 (the stage vocabulary), T-600 (the message catalogue) |
+| [T-640](T-640.md) | Store a prompt pack on the class, apply its exclusions | G4.1 | 3 | yes | none (it lands the egress consent seam every later VLM card reads) |
+| [T-641](T-641.md) | Edit the class pack, and build classes from a list | G4.1 | 3 | no | T-640 (the pack column, validation and collision rule) |
+| [T-642](T-642.md) | Confidence bands, the escalation threshold, per-band counts | G4.3 | 3 | no | none (independent of the prompt pack; land after T-640 so `handlers/training.py` stays linear) |
+| [T-643](T-643.md) | The review policy panel and two queues on the board | G4.3 | 2.5 | no | T-642 (the bands, the preview totals, the `bucket=review` tag) |
+| [T-644](T-644.md) | Keep a doubted box, flag it, store the crop | G4.4 | 3 | yes | T-640 (the egress gate) and T-642 (the image outcome this verdict rides on) |
+| [T-645](T-645.md) | Judge rubric: verdict, reason and score per label | G4.5 | 3 | yes | T-640 (the egress gate), T-644 (the verdict shape a judge row sits beside) |
+| [T-646](T-646.md) | A Judge tab with a rubric picker and a results table | G4.5 | 2.5 | no | T-645 (the rubric engine, the runs and their scope shapes) |
+| [T-647](T-647.md) | Question sets that answer into per-image attributes | G4.6 | 3 | yes | T-645 (the egress gate and the adapter call pattern) |
+| [T-648](T-648.md) | Question set editor, answer columns and the filter chip | G4.6 | 2.5 | no | T-647 (the question store, the answer job and the `attr` filter) |
+| [T-649](T-649.md) | Describe a batch: caption and keywords become tags | G4.7 | 2.5 | yes | T-645 (the egress gate) |
+| [T-650](T-650.md) | Named clusters on the map, with lasso-to-label | G4.8 | 3 | no | none (reads the feature cache `services/insights_embedding.py` already writes) |
+| [T-651](T-651.md) | Per-class coverage and gap report with targets | G4.9 | 3 | no | T-650 (cluster membership, for "missing from N clusters") |
+| [T-652](T-652.md) | Margin sampling, a per-class floor and a stated budget | G4.10 | 3 | no | none (the engine, the cap and the pick batch already ship) |
+| [T-653](T-653.md) | The active-learning card: reasons, cap and budget | G4.10 | 2.5 | no | T-652 (reasons, floor, exploration and the budget line) |
+| [T-654](T-654.md) | A discovery sweep that names classes nobody asked for | G4.11 | 3 | yes | T-645 (the egress gate and the constrained-answer pattern) |
+| [T-655](T-655.md) | The Discover objects panel: rank, inspect, promote | G4.11 | 2.5 | no | T-654 (the sweep, its crops and the ignore list) |
+| [T-656](T-656.md) | Track a concept from one phrase, with stable ids | G4.12 | 3 | no | none (reuses `services/track.py` and the `task_22` video surface) |
+| [T-657](T-657.md) | The track list: review a track as a unit | G4.12 | 2.5 | no | T-656 (the track routes, the ids and the delete action) |
+| [T-658](T-658.md) | A disagreement queue between two auto-label models | G4.13 | 3 | yes | none (reuses `resolve()` and the image rows the batch already scopes) |
+| [T-659](T-659.md) | Teacher → student: agreement table and a promotion gate | G4.14 | 3 | no | T-644 (the source and verdict stamps on a teacher label) |
+| [T-660](T-660.md) | Synthetic fills for a thin class, with provenance | G4.15 | 3 | no | T-651 (the thin-class entry point and its target) |
+| [T-661](T-661.md) | The Add examples dialog: method, preview, provenance | G4.15 | 2.5 | no | T-660 (the build job, the recipes and the tags) |
+| [T-662](T-662.md) | Harvest rejected boxes as hard negatives | G4.16 | 2.5 | no | T-644 (the `box_checks` rows and their crops) |
+| [T-663](T-663.md) | A labelling job the agent plans, trials, then runs | G4.17 | 3 | yes | T-645 (the egress gate), T-642 (the review bands the plan escalates with) |
+| [T-664](T-664.md) | The new-job sheet: write, trial, approve, report | G4.17 | 2.5 | no | T-663 (the plan, trial, approve and report endpoints) |
+| [T-665](T-665.md) | Ask the dataset a structural question in words | G4.18 | 3 | yes | T-645 (the egress gate and the constrained-answer pattern) |
+| [T-670](T-670.md) | Give a plant sites, lines and stations | G3.2 | 3 | no | none (every later station card attaches here) |
+| [T-671](T-671.md) | A station page that owns its cameras and model | G3.2 | 3 | no | T-670 (sites, lines, stations, camera attachment and the station counts) |
+| [T-672](T-672.md) | Discover cameras and prove the password first | G3.1 | 3 | yes | none (it extends the existing stream create dialog; `Streams.tsx` is its only screen) |
+| [T-673](T-673.md) | Spool events to disk before the quota drops them | G3.7 | 3 | no | T-670 (a spooled event names its station, so the drained row is attributable) |
+| [T-674](T-674.md) | Drain the spool and show what is buffered | G3.7 | 3 | no | T-673 (the spool table, the writer and the ceiling policy) |
+| [T-675](T-675.md) | Record a verdict with a reason code and a piece id | G3.3 | 3 | no | T-670 (a verdict names its station and takes the station's reason codes) |
+| [T-676](T-676.md) | An operator screen for one gesture per piece | G3.3 | 2.5 | no | T-675 (the verdict route and the reason list), T-674 (`SpoolBadge` for the local-only notice) |
+| [T-677](T-677.md) | Let a rule follow a production schedule | G3.4 | 3 | no | T-670 (the optional shift template is stored on the station) |
+| [T-678](T-678.md) | Group alarms across cameras with an owner and a snooze | G3.5 | 3 | no | T-670 (a group names its station, so four cameras on one cell collapse and four lines do not) |
+| [T-679](T-679.md) | A queue screen that acks, assigns and snoozes | G3.5 | 3 | no | T-678 (grouping, ack, assign and snooze), T-670 (the station a group names) |
+| [T-680](T-680.md) | Assemble an evidence clip with pre- and post-roll | G3.6 | 3 | no | T-670 (a clip names its station in the event payload), T-675 (a verdict travels with the clip) |
+| [T-681](T-681.md) | Hold a clip as evidence past retention | G3.6 | 2.5 | no | T-680 (the clip file and its 409 shortfall contract) |
+| [T-682](T-682.md) | Pin a model build to the device it was built for | G3.8 | 2.5 | no | T-670 (a device serves a station, and the station page links the pairing) |
+| [T-683](T-683.md) | Replay a golden set before a build may serve | G3.8 | 3 | no | T-682 (the builds, their profiles and the device pairing) |
+| [T-684](T-684.md) | Give a training run a deployment target and a budget | G3.9 | 2.5 | no | T-682 (the device families and their TRT/CUDA bands are the same vocabulary) |
+| [T-685](T-685.md) | Pick a configuration from measured accuracy and latency | G3.9 | 3 | no | T-684 (the target profile and the budget on a run) |
+| [T-686](T-686.md) | Prune and quantise a model with a measured delta | G3.10 | 3 | no | T-682 (the build path and its profile), T-684 (the target the result is judged against) |
+| [T-687](T-687.md) | Read the optimisation report and compare with production | G3.10 | 3 | no | T-686 (the optimise job and its report), T-682 (the build profile it names) |
+| [T-688](T-688.md) | Decide what the line does when the model is down | G3.11 | 3 | yes | T-670 (a station owns the outputs), T-673 (a spooled event still counts as "the model was working") |
+| [T-689](T-689.md) | Show and test the fault policy for a station | G3.11 | 2.5 | yes | T-688 (the policy routes, the watchdog and the fault rows), T-671 (the station page that reads the banner) |
+| [T-690](T-690.md) | Decode a barcode or QR into a checked lot code | G3.12 | 3 | no | T-670 (a code rule belongs to a station's camera), T-675 (a verdict names the piece the code read) |
+| [T-691](T-691.md) | Verify printed text against an expected value | G3.13 | 2.5 | no | T-670 (a check is registered per station and field) |
+| [T-692](T-692.md) | Measure in millimetres against a tolerance band | G3.14 | 3 | no | T-671 (the station page and its calibration section), T-670 (the station the scale belongs to) |
+| [T-693](T-693.md) | Read first-pass yield per shift and station | G3.15 | 3 | no | T-670 (station and shift windows), T-675 (the verdicts that make a yield) |
+| [T-694](T-694.md) | Guard a camera against a drifted scene | G3.16 | 2.5 | no | T-670 (a drift belongs to a station's camera), T-680 (the clamp-and-cooldown pattern this reuses) |
+| [T-695](T-695.md) | A versioned event envelope with a dead-letter queue | G3.17 | 3 | yes | T-670 (site/line/station in the envelope), T-675 (verdict and reason in the envelope) |
+| [T-696](T-696.md) | Publish events to a plant broker with a delivery log | G3.17 | 3 | yes | T-695 (the envelope, the sink model, the dead-letter and the replay) |
+| [T-697](T-697.md) | Pair a device that sends metadata instead of pixels | G3.18 · owner-gated | 3 | yes | T-695 (the envelope shape a device reuses), T-670 (a device serves a station) |
+| [T-710](T-710.md) | Bind every disposition to a lot that survives the audit | G6.1 | 3 | no | T-670 (a unit is inspected at a station), T-675 (the verdict vocabulary this record extends) |
+| [T-711](T-711.md) | The lot bar: OK, NG or rework on the station screen | G6.1 | 2.5 | no | T-710 (the lot routes), T-600 (the message catalogue), T-601 (date and count formatters) |
+| [T-712](T-712.md) | First-pass yield and the defect Pareto by lot and shift | G6.2 | 3 | no | T-710 (the dispositions), T-670 (line and station), T-693 (the shift windows and their yield definition) |
+| [T-713](T-713.md) | A yield board with a Pareto and a lot drill-down | G6.2 | 3 | no | T-712 (the yield routes), T-600 (catalogue), T-601 (date, count and percent formatters) |
+| [T-714](T-714.md) | LINE evidence with an acknowledgement ladder | G6.7 | 3 | yes | T-670 (who is on shift for tier two); the LINE channel it extends ships in `task_33` |
+| [T-715](T-715.md) | Pair a panel to a station and boot it in Thai | G6.5 | 3 | yes | T-670 (the station and its line), T-710 (the lot the panel is inspecting), T-690 (the lot code it scans) |
+| [T-716](T-716.md) | The glove-first kiosk: one instruction, two targets | G6.5 | 3 | no | T-715 (pairing and the boot payload), T-711 (the disposition vocabulary it presents) |
+| [T-717](T-717.md) | One step installs a vertical pack's classes and station | G6.6 | 3 | no | T-640 (the class prompt field the pack writes), T-670 (the station it creates), T-250 (the model family the station names) |
+| [T-718](T-718.md) | The pack gallery: what it installs, item by item | G6.6 | 2.5 | no | T-717 (the catalogue and install route), T-600 (catalogue copy) |
+| [T-719](T-719.md) | A shift handover brief the outgoing shift can send | G6.4 | 3 | yes | T-712 (yield so far), T-710 (open NG and rework), T-714 (the acknowledgement state it counts) |
+| [T-720](T-720.md) | Acknowledge an incident and edit the ladder | G6.7 | 2.5 | no | T-714 (the ack state and the escalation policy), T-600 (catalogue), T-601 (dates) |
+| [T-721](T-721.md) | One document sheet engine and the safety summary | G6.8 | 3 | no | T-601 (dates and counts), T-602 (the locale of a generated document), T-675 (the verdict vocabulary the incident table prints) |
+| [T-722](T-722.md) | Preview the daily safety sheet and sign it | G6.8 | 2.5 | no | T-721 (the sheet route and its supervisor gate), T-600 (catalogue), T-601 (dates) |
+| [T-723](T-723.md) | Planogram slots and a shelf-gap exception list | G6.10 · owner-gated | 3 | no | T-670 (the station the bay belongs to), T-711 (the disposition vocabulary a gap is not) |
+| [T-724](T-724.md) | Read tags against a price master and list mismatches | G6.11 | 3 | no | T-602 (the CSV writer conventions), `task_32` (the OCR payload this card reads) |
+| [T-725](T-725.md) | A grading station that measures size and assigns a grade | G6.12 · owner-gated | 3 | no | T-710 (the lot unit the grade is stored on), T-670 (the station), T-602 (document locale conventions) |
+| [T-726](T-726.md) | An exporter lot report with grade mix and photographs | G6.13 | 3 | no | T-721 (the one document engine), T-710 (the lot and its units), T-725 (the grades the mix counts) |
+| [T-727](T-727.md) | Field capture that queues offline and syncs later | G6.14 | 3 | no | none (it extends the shipped upload and hash-check path in `routers/images.py`; no station, lot or new transport) |
+| [T-728](T-728.md) | Plate blur, static masks and a fail-closed policy | G6.16 | 3 | yes | T-680 (the clip the export policy governs), T-690 (a plate read is the same optional-driver shape) |
+| [T-729](T-729.md) | An evidence package with a hash manifest and a cover | G6.15 | 3 | yes | T-728 (the redaction policy the package honours), T-680 (the clip), T-681 (the hold), T-721 (the cover sheet) |
+| [T-730](T-730.md) | The evidence dialog: window, items and redaction | G6.15 | 2.5 | no | T-729 (the package routes), T-728 (the export policy it offers), T-721 (the cover sheet it previews) |
+| [T-731](T-731.md) | Camera privacy controls and the export choice | G6.16 | 2.5 | no | T-728 (the policy fields and the preview route), T-730 (the export choice in the evidence dialog), T-600 (catalogue) |
+| [T-732](T-732.md) | An offline licence file that verifies on the box | G6.20 · owner-gated | 3 | yes | none (a deployment-wide state; `apps/inference` and `deploy/` are the install surfaces it documents) |
+| [T-733](T-733.md) | A partner console: children, a pool and a statement | G6.22 · owner-gated | 3 | yes | T-430 (the tenancy model it must not fork), T-670 (the camera count a licence is measured in) |
+| [T-740](T-740.md) | Session policy store enforced at refresh and reuse | G5.3 | 3 | yes | none (the screen is T-743; step-up is T-741) |
+| [T-741](T-741.md) | Step-up re-authentication before destructive actions | G5.3 | 3 | yes | T-740 (the same sign-in policy store; a step-up ticket is bounded by it) |
+| [T-742](T-742.md) | Office and VPN address rules with a named refusal | G5.3 | 2.5 | yes | T-740 (the same policy surface and admin gate) |
+| [T-743](T-743.md) | Sign-in policy screen with live consequence lines | G5.3 | 3 | yes | T-740 (policy + member-session routes), T-741 (the step-up sheet it reuses), T-742 (the range rules) |
+| [T-744](T-744.md) | Ownership transfer with two confirmations and one audit row | G5.4 | 3 | yes | T-741 (the step-up sheet gates the hand-over) |
+| [T-745](T-745.md) | Offboarding sweep: everything that depends on a member | G5.4 | 3 | yes | T-744 (both edit `routers/workspaces.py`; the sweep is the second half of the same flow) |
+| [T-746](T-746.md) | Hash chain over the audit rows and a verify route | G5.5 | 3 | yes | none (T-747 renders it and adds the floor) |
+| [T-747](T-747.md) | Retention floor no one can lower, and the Integrity tab | G5.5 · owner-gated | 3 | yes | T-746 (the chain and its verify route) |
+| [T-748](T-748.md) | Per-image revisions and an object-scoped history route | G5.6 | 3 | no | none (T-749 renders it) |
+| [T-749](T-749.md) | History rail: field deltas and restore as a new revision | G5.6 | 3 | no | T-748 (the revisions and the two routes) |
+| [T-750](T-750.md) | DSAR case object with a 30-day statutory clock | G5.9 · owner-gated | 2.5 | yes | T-744 (the `models/compliance.py` module it appends to) |
+| [T-751](T-751.md) | Find and export one person: scoped search and bundle | G5.9 · owner-gated | 3 | yes | T-750 (the case object and the router it appends to) |
+| [T-752](T-752.md) | Erase one person and print a signed certificate | G5.9 · owner-gated | 3 | yes | T-751 (find and export), T-750 (the case), T-744 (the `Members` sheet patterns it reuses) |
+| [T-753](T-753.md) | Processing register rows, transfers and consent records | G5.10 · owner-gated | 3 | yes | T-750 (the compliance router), T-752 (the Compliance page's first tab) |
+| [T-754](T-754.md) | Register screen and the export an auditor takes away | G5.10 · owner-gated | 3 | yes | T-753 (the routes), T-752 (the Compliance page shell) |
+| [T-755](T-755.md) | Thai invoice object: VAT lines and dry-run numbering | G5.16 · owner-gated | 3 | yes | T-412 (the `BillingInvoice` row and `pricing.py` the plan prices live in) |
+| [T-756](T-756.md) | The tax-invoice document, print-first and draft-marked | G5.16 · owner-gated | 3 | yes | T-755 (the invoice row and its satang totals), T-754 (the print stylesheet block) |
+| [T-757](T-757.md) | PromptPay and transfer instructions under a mock provider | G5.16 · owner-gated | 2.5 | yes | T-755 (the invoice row and `due_at`), T-412 (the mock provider boundary) |
+| [T-758](T-758.md) | Invoice request, dunning clock and credit notes in one list | G5.16 · owner-gated | 3 | yes | T-755 (the invoice rows), T-756 (the document), T-757 (the payment instructions and reminders) |
+| [T-760](T-760.md) | Retention rules a customer writes, one per data class | G5.7 · owner-gated | 3 | yes | none (it is the base T-761 previews and freezes) |
+| [T-761](T-761.md) | Preview a sweep, then freeze a project under hold | G5.7 · owner-gated | 3 | yes | T-760 (the rules the preview evaluates) |
+| [T-762](T-762.md) | A sandbox that is a mode, behind a driver seam | G5.8 | 3 | yes | none (it defines the seam T-763 fills) |
+| [T-763](T-763.md) | Test keys, a refused attach, a signed promotion | G5.8 | 3 | yes | T-762 (the environment column and the driver) |
+| [T-764](T-764.md) | A sub-processor register with an objection window | G5.11 · owner-gated | 3 | yes | none (the trust page T-765 links to it) |
+| [T-765](T-765.md) | A trust page that says what is not certified | G5.12 · owner-gated | 3 | yes | T-764 (the register it links to), the DPA route that already ships |
+| [T-766](T-766.md) | An incident with a 72-hour clock and a scope count | G5.13 · owner-gated | 3 | yes | none (T-767 drafts and sends from it) |
+| [T-767](T-767.md) | Draft the controller notice, send it, keep the evidence | G5.13 · owner-gated | 3 | yes | T-766 (the incident, its clock and its scope count) |
+| [T-768](T-768.md) | A storage driver seam and an honest "not available" | G5.15 · owner-gated | 3 | yes | none (T-769 fills the form behind it) |
+| [T-769](T-769.md) | Connect a bucket, prove a write, and hold a key reference | G5.15 · owner-gated | 3 | yes | T-768 (the driver seam, the columns and the mode route) |
+| [T-770](T-770.md) | A per-project budget that refuses before it spends | G5.17 | 3 | no | none (T-771 renders it) |
+| [T-771](T-771.md) | Show the cost before the click, and who can raise the cap | G5.17 | 2.5 | no | T-770 (the budget routes and the estimate) |
+| [T-772](T-772.md) | A public status page fed by probes we already compute | G5.18 · owner-gated | 3 | yes | T-766 (the incident model its banner reads) |
+| [T-773](T-773.md) | Incident history, subscribers and the postmortem | G5.18 · owner-gated | 2.5 | yes | T-766 (the incident record), T-772 (the page and the sampler) |
+| [T-774](T-774.md) | Measure uptime, and say when there is not enough | G5.19 · owner-gated | 3 | yes | T-772 (the samples), T-765 (the trust page section) |
+| [T-775](T-775.md) | A credit claim that exists only once a schedule does | G5.19 · owner-gated | 2.5 | yes | T-774 (the measured month), T-765 (the page it sits on) |
+| [T-776](T-776.md) | One help panel: what's new, docs, a report | G5.20 | 3 | yes | none (it opens beside every screen) |
+| [T-777](T-777.md) | A checklist that advances only on real work | G5.21 | 3 | no | none (T-778 reads the same state) |
+| [T-778](T-778.md) | Who actually labels, and who never logged in | G5.21 | 2.5 | yes | T-777 (the same workspace state and the counts helper) |
+| [T-779](T-779.md) | Keyboard resize, a skip link, and a failing gate | G5.24 | 3 | no | T-490 (the scan harness), T-765 (the trust page that carries the statement), T-762 (it edits the same layout file) |
+| [T-780](T-780.md) | One run keeps its whole configuration | G2.2 | 3 | no | none (it is the base every other G2 card reads) |
+| [T-781](T-781.md) | Every run as one sortable ledger row | G2.3 | 3 | no | T-780 (the configuration columns come from the stored snapshot) |
+| [T-782](T-782.md) | Promotion becomes a request with an approver | G2.4 | 2.5 | no | none (the alias pointer and event table already exist) |
+| [T-783](T-783.md) | The promotion queue a second person answers | G2.4 | 2.5 | no | T-782 (the request contract and its routes) |
+| [T-784](T-784.md) | A run node that says what went in and can be re-run | G2.5 | 3 | no | T-780 (the configuration and the `?fromModel=` seeding it exposes) |
+| [T-785](T-785.md) | A slice keeps its file list, saved and re-runnable | G2.7 | 3 | no | none (evaluation detections and the manifest already exist) |
+| [T-786](T-786.md) | Click a slice and land on the images to relabel | G2.7 | 2.5 | no | T-785 (the slice, saved-slice and batch routes) |
+| [T-787](T-787.md) | Score the hold-out with the duplicates removed | G2.8 | 3 | no | none (pHash grouping and evaluation already ship) |
+| [T-788](T-788.md) | The leak chip and the two numbers side by side | G2.8 | 2.5 | no | T-787 (the audit route and the cleaned-split setting) |
+| [T-789](T-789.md) | A model card that ships beside the weights | G2.6 | 3 | no | T-785 (slice numbers), T-787 (the audited hold-out) for the auto-filled facts only |
+| [T-790](T-790.md) | Write the card on the model page | G2.6 | 2.5 | no | T-789 (the card contract, its publish rule and the bundle route) |
+| [T-791](T-791.md) | Answer "how fast on our box" with a per-format table | G2.11 | 3 | no | T-780 (benchmark rows sit beside the run's configuration) |
+| [T-792](T-792.md) | Coverage: the conditions this data cannot separate | G2.9 | 3 | no | none (the embedding job and its 2-D projection already ship) |
+| [T-793](T-793.md) | Work the suspect queue in batches, and reach Train from it | G2.10 | 2 | no | none (queue, ranking, verdicts and precision all ship behind `task_28`) |
+| [T-794](T-794.md) | Per-run host telemetry, not just loss curves | G2.15 | 3 | no | none (the GPU ledger already samples used VRAM and the holder) |
+| [T-795](T-795.md) | A failed run explains itself and retries unchanged | G2.14 | 3 | no | T-780 (`?fromModel=` restores the arguments the retry needs) |
+| [T-796](T-796.md) | A report block document with a public link | G2.16 | 3 | yes | T-781 (the runs block reads the ledger), T-785 (the slice block) |
+| [T-797](T-797.md) | Build the report, print it as a PDF | G2.16 | 3 | yes | T-796 (the report contract, publish and the public route) |
+| [T-798](T-798.md) | Pools, priorities and a quota the scheduler enforces | G2.12 | 3 | no | none (the queue, the worker claim and the GPU ledger already ship) |
+| [T-799](T-799.md) | The queue page and the pool picker | G2.12 | 3 | no | T-798 (pools, ordering, quota and interrupt routes) |
+| [T-800](T-800.md) | Mint a one-run command for the customer's own GPU | G2.13 | 3 | yes | T-798 (the pool a remote runner advertises and claims from) |
+| [T-801](T-801.md) | Run on my hardware, and see it in the dashboard | G2.13 | 2.5 | no | T-800 (the mint route, the run token and the state route) |
+| [T-802](T-802.md) | A parameter space becomes a set of trial runs | G2.1 · owner-gated | 3 | no | T-780 (each trial stores its own configuration), T-781 (the trial rows are ledger rows) |
+| [T-803](T-803.md) | The sweep panel and the trial rows | G2.1 · owner-gated | 3 | no | T-802 (the sweep routes, the estimate and pruning) |
+| [T-804](T-804.md) | A narrow extension point for our analysis and theirs | G2.17 · owner-gated | 3 | yes | T-781 (an extension reads ledger fields), T-789 (the card can cite an extension's metric) |
+| [T-805](T-805.md) | The Extensions list and the panel slot it fills | G2.17 · owner-gated | 3 | no | T-804 (the registry, validator and run route) |
 
 ---
 
@@ -1045,9 +1421,9 @@ LabelDesk-native redesign. 17 frame cards run in phase 1 (before wave A) because
 lists it. Everything else is shared, and shared means: smallest possible edit, one line or one block,
 merge in the order below, rebase before your review continues.
 
-The matrix below was computed from all 381 cards (not from their labels). Where a card called a file
-exclusive that another card also edits, the label was corrected in the card and the file appears here as
-shared. **If a file is in this table, it is shared, whatever a card says.**
+The matrix below was computed from all 552 cards — 381 parity plus 171 wave F — and not from their labels. Where a
+card called a file exclusive that another card also edits, the label was corrected in the card and the file appears
+here as shared. **If a file is in this table, it is shared, whatever a card says.**
 
 - **Generated artefacts** (`openapi.json`, `api-types.gen.ts`): never hand-edited; regenerate after the
   merge that changed the contract. A conflict here is resolved by re-running
@@ -1114,6 +1490,42 @@ shared. **If a file is in this table, it is shared, whatever a card says.**
 | `apps/backend/app/routers/workspaces.py` | 36 | append one line per card, ascending id |
 | `apps/backend/app/models/__init__.py` | 35 | append one line per card, ascending id |
 
+
+### Wave F additions
+
+171 cards, 98 new flag keys, and the first shared **catalogue**. Two rules keep this band mergeable:
+
+| Registry / generated file | Wave-F cards | Rule |
+| --- | --- | --- |
+| `apps/frontend/src/lib/i18n.ts` (T-600 creates it) | 106 | one key block per card, appended ascending; no card creates a second dictionary |
+| `apps/backend/app/services/flags.py` | 106 | one `FLAGS` line per new key, ascending |
+| `apps/backend/openapi.json` | 125 | generated — regenerate after each contract merge |
+| `apps/frontend/src/lib/api-types.gen.ts` | 134 | generated with the above, never hand-edited |
+| `apps/frontend/src/lib/types.ts` | 96 | one interface block per card, ascending |
+| `apps/backend/app/routers/__init__.py` | 63 | one import and one `ROUTERS` entry |
+| `apps/backend/app/models/__init__.py` | 43 | one import, one re-export, one `DOMAIN_MODULES` entry |
+| `apps/frontend/src/lib/api.ts` | 53 | one `...xApi` spread |
+
+| Human-edited hot file | Wave-F cards (merge order) |
+| --- | --- |
+| `apps/frontend/src/features/settings/Settings.tsx` | T-600, T-601, T-645, T-732, T-741, T-743, T-744, T-745, T-758, T-762, T-763, T-768, T-771, T-775, T-778, T-799, T-805 |
+| `apps/backend/app/config.py` | T-645, T-647, T-649, T-654, T-656, T-658, T-659, T-660, T-663, T-683, T-685, T-686, T-751, T-752, T-757, T-791 |
+| `apps/frontend/src/lib/api/models.ts` | T-624, T-659, T-780, T-783, T-786, T-788, T-790, T-791, T-794, T-795, T-799, T-801, T-803 |
+| `apps/frontend/src/lib/api/dataset.ts` | T-602, T-641, T-648, T-649, T-653, T-655, T-657, T-658, T-661, T-662, T-664, T-793 |
+| `apps/frontend/src/features/project/Models.tsx` | T-659, T-683, T-687, T-780, T-783, T-790, T-791, T-794, T-795, T-801, T-805 |
+| `apps/backend/app/schema/streams.py` | T-670, T-675, T-678, T-680, T-688, T-690, T-694, T-714, T-723, T-728 |
+| `apps/backend/app/schema/dataset.py` | T-611, T-618, T-633, T-640, T-647, T-649, T-725, T-727, T-761 |
+| `apps/backend/app/schema/identity.py` | T-618, T-640, T-733, T-740, T-742, T-747, T-762, T-768, T-777 |
+| `apps/backend/app/routers/images.py` | T-614, T-631, T-647, T-649, T-660, T-662, T-692, T-727, T-728 |
+| `apps/backend/app/routers/training.py` | T-642, T-658, T-659, T-770, T-780, T-798, T-800, T-802 |
+| `apps/backend/app/worker.py` | T-674, T-714, T-757, T-772, T-795, T-798 |
+| `apps/frontend/src/features/project/AnnotateBoard.tsx` | T-643, T-644, T-653, T-658, T-664 |
+| `apps/frontend/src/features/editor/Editor.tsx` | T-615, T-626, T-632, T-644, T-648, T-692, T-749 |
+
+The full file → cards map for this wave, including every new module that a second card appends to, is in
+[`.parts/wave-f.md`](.parts/wave-f.md) §"Shared-file users". Twelve exclusive-file collisions were found between
+bands and resolved in the cards (§7.1a).
+
 ### 7.1 Exclusive-file collisions found and resolved
 
 Eight files were declared exclusive by two cards each. The resolution is recorded in the cards:
@@ -1128,6 +1540,24 @@ Eight files were declared exclusive by two cards each. The resolution is recorde
 | `apps/frontend/tests/folder-tree.test.mjs` | T-025, T-096 | T-025 creates, T-096 appends |
 | `apps/backend/app/services/folder_access.py` | T-095, T-384 | T-095 creates the enforcement; T-384 adds the grant table |
 | `packages/sdk/labeldesk/config.py` | T-348, T-441 | T-348 creates the credential file module; T-441 stores the default workspace |
+
+
+#### 7.1a Wave F collisions found and resolved
+
+Six bands were authored in parallel, so twelve files were claimed exclusively by two cards. Each resolution was
+written into the later card: it lists the file under **Shared** with the merge order, and the earlier card keeps it.
+
+| File | Cards | Resolution |
+| --- | --- | --- |
+| `apps/backend/app/config.py` | T-629, T-791 | T-791 appends one `LD_LOCAL_JOBS` entry after T-629 |
+| `apps/backend/app/models/extensions.py`, `services/extensions.py`, `routers/extensions.py`, `tests/test_extensions.py` | T-629, T-804 | T-629 creates the module; T-804 appends one class, function, route and test section |
+| `apps/backend/app/routers/queue.py` | T-618, T-798 | T-618 creates the labeling queue router; T-798 appends the run-pool routes |
+| `apps/backend/app/routers/training.py` | T-684, T-770 | T-770 appends the budget checks after T-684's target fields |
+| `apps/backend/app/services/evidence.py` | T-681, T-729 | T-681 creates the clip hold; T-729 appends the package builder |
+| `apps/backend/app/services/retention.py` | T-681, T-761 | T-761 appends the legal-hold guard after T-681's clip hold |
+| `apps/backend/app/worker.py` | T-629, T-674, T-772 | ascending: extensions dispatch, then spool drain, then status sample |
+| `apps/backend/tests/test_coverage.py` | T-651, T-792 | T-651 creates; T-792 appends its section |
+| `apps/frontend/src/lib/api/extensions.ts` | T-630, T-805 | T-630 creates; T-805 appends two calls |
 
 ### 7.2 Cross-area rows (one piece of work, one owner)
 
@@ -1171,15 +1601,28 @@ so the mapping is complete from either direction:
 The redesign lane resolved these in its cards; the owner or the merge captain can overrule any of them.
 They are listed so nobody "fixes" a card back to the old behaviour by accident.
 
+**Owner revision pass, 2026-11-17.** The owner's `VISUAL-OVERRIDE.md` makes the running app's Liquid Glass the
+visual standard: the frames keep layout, IA, flow, states and copy, and lose every claim over colour, surface,
+blur, radius and type. Rows 1, 3, 6 and 8–15 are the cards revised for that rule; nothing in them changes a route,
+a screen's purpose or its flow.
+
 | # | Conflict | Resolution in the cards |
 | --- | --- | --- |
-| 1 | REDESIGN §6.1 lists literal hex tokens; the app derives every role from HCT at runtime (seed `#3b6cf6`) | T-470 keeps HCT as the source and moves the seed to `#5B4BE0`; the hex table becomes the reference/fallback, not a parallel palette |
+| 1 | REDESIGN §6.1 lists literal hex tokens and a new seed (`#5B4BE0`); the app derives every role from HCT at runtime (seed `#3b6cf6`) | **Revised (was: move the seed).** T-470 now adds no variable and changes no seed: it writes one mapping from the frame vocabulary (`surface-container`, `outline`, `text-muted`, `glass-fill`, `glass-blur`) onto the shipped roles, and its test forbids a parallel token family. The hex table stays a design reference, not a palette |
 | 2 | REDESIGN §3.2 draws seven rail labels and calls them "six items" | T-476 ships five destinations plus Admin, with governance as Settings tabs; the count is asserted in `nav.test.mjs` |
-| 3 | Glass numbers differ (redesign 24 px / 62–66 % / 96 % fallback vs app 16–20 px / 58–62 % / 92 %) | T-472 adopts the redesign values and the fallback in the same card; T-490 asserts contrast on the glass text pairs |
+| 3 | Glass numbers differ (redesign 24 px / 62–66 % / 96 % fallback vs app 16–20 px / 58–62 % / 92 %) | **Revised (was: adopt the redesign values).** T-472 now keeps 16/20 px, 58/62 %, 80/84 % and 92 %, pins them in `glass.test.mjs`, and only widens the reduced-transparency fallback to every glass class. T-490 measures contrast on the tokens the browser actually paints |
 | 4 | The global "Train Model" button is injected through a `#topbar-actions` portal in `ProjectLayout` | T-480 deletes the portal rather than hiding it; the stage owns its primary |
 | 5 | Area 7 cards say "the rail already points at this tab" | Their tabs survive; T-476 drops the rail entry. The sentence is corrected at merge, not re-planned |
-| 6 | 179 sub-12 px text occurrences in 30 files | T-471 fixes the shared scale and freezes the remaining count; each owning card clears its own file, so no lane edits another lane's screen |
+| 6 | 179 sub-12 px text occurrences in 30 files | **Revised.** T-471 adds no `--text-*` token: metadata moves to `text-sm` (14/20) and only chips and table headers may use `text-xs` (12/16), so no arbitrary size exists. The frozen map still only shrinks, and each owning card clears its own file |
 | 7 | Dataset Health lives inside the Insights studio, but §3.3 puts Health in the Dataset stage | T-479 mounts the existing component under the stage tab; T-103 owns the chart work and the eventual single home |
+| 8 | REDESIGN §6.4 asks for status/split/class chip tokens beyond the app's roles | **Revised.** T-487's `chipTone` returns the shipped idiom (`bg-success/15 text-success`, `bg-warning/15`, `bg-info/15`, `bg-destructive/15`, `bg-secondary`); no `--*-bg` variable is added, and the page title uses the shipped `text-2xl` instead of a new 28/34 size |
+| 9 | REDESIGN §10.2 turns twelve hex pairs into a contrast table | **Revised.** T-490 reads `index.css`'s `oklch()` fallbacks for the static half and the browser's computed colours for the HCT-derived half; the v3 hex literals are not asserted, because they describe nothing that ships |
+| 10 | The v3 mobile frame wants a `--mobile-tabbar` token | **Revised.** T-491 uses `h-14` plus `pb-[env(safe-area-inset-bottom)]`; no mobile-only custom property enters the token block |
+| 11 | Two cards would each own a "colour source" | **Revised.** T-495 stays the single source (`classColor`, `splitColor`, `statusTone`) and every wave-F card renders a chip through one of them; a new colour constant is a test failure |
+| 12 | T-494 (E-finish) planned `lib/copy.ts`, but wave F's Thai card needs the catalogue earlier | **Revised.** T-600 creates `lib/i18n.ts` and the language switch at the head of wave F; T-494 now depends on it and fills the ten screens' keys instead of creating a second deck |
+| 13 | A tenant's branding could become a second palette | **Revised.** T-434's eleven swatches write the existing role variables through `applyTheme()`'s role map; the preview renders the same glass system with a different seed |
+| 14 | Twenty-two E cards build a surface and said nothing about which primitive it uses | **Verified, one line added.** T-476, T-478–T-486, T-488, T-492, T-496–T-498 now carry a `Glass:` bullet naming `Glass` / `Card` and the token each surface uses; T-474, T-475, T-477 and T-479–T-482 are routes, nav or composition and need none |
+| 15 | T-473 and T-498 still referred to the removed `text-micro` / `text-small` utilities | **Revised.** Both now name `text-sm` / `text-xs`; T-473 depends on T-470's mapping rather than on a type-scale token |
 
 ### 7.5 Ordering exceptions (merge order ≠ id order)
 
@@ -1191,7 +1634,7 @@ T-262 (PreflightList) → T-261 (DataBlock) → T-256 (RecipePanel) → T-255 (T
 ```
 
 Every other family merges ascending within its wave. Two path notes for the captain: `features/project/train/`
-and `features/project/versions/steps/` are new directories created by their first card, and `packages/sdk` files
+and `features/project/versions/steps/` are new directories created by their first card, and `apps/sdk` files
 are shared by id order T-022 → T-075 → T-344 → T-348 → T-441.
 
 ---
@@ -1208,12 +1651,17 @@ are shared by id order T-022 → T-075 → T-344 → T-348 → T-441.
 | 6 | Numbers disagree across screens (uploaded / annotated / approved) | REDESIGN §9 risk R3 | `T-104` and `T-479` pull counts from one API vocabulary; the guard asserts today's counts |
 | 7 | 13 px type floor and glass fallback regress | Token fixes are easy to undo in a later card | `T-471`, `T-472`, `T-490` assert them mechanically |
 | 8 | Wave B's 419 h | It is half the programme | Four parallel families with disjoint exclusive files; E-frame already landed |
+| 9 | Wave F encodes a legal or commercial guess | 33 cards touch tax, PDPA, retention, SLA, licensing or a B2B claim | Every one is owner-gated in §4.3, ships flag-off with a mock or dry run, and asserts no fact: `Pricing not set`, `not certified`, `no measured history yet` |
+| 10 | 98 new flag keys on top of parity's 118 | A flag nobody turns on hides finished work forever | One key per surface, named in the card, with a flag-off acceptance line; wave F reuses eight keys across related cards rather than minting one per card |
+| 11 | Thai strings that are literal translations | Half-translated Thai is worse than English on a factory floor | T-600's catalogue is the only dictionary, T-603's 30 % stress run proves the layout, and every card authors real Thai in the same commit as the English |
+| 12 | Wave F's four owner-held non-goals get scheduled by accident | BEYOND §4 rules them out; the owner asked for every row anyway | Each card's Notes open with `Owner-hold:` and each ships behind its flag; §5 names them |
+| 13 | Two waves touching the same registry (`flags.py`, `i18n.ts`, `openapi.json`) | F runs after C and before E-finish, so a rebase is inevitable | §7's wave-F block gives the merge order per file; generated artefacts are regenerated, never merged |
 
 ---
 
 ## 9. Completeness verification
 
-Computed mechanically from `PARITY.md` and the 381 card headers at assembly time:
+Computed mechanically from `PARITY.md`, `BEYOND.md` and the 552 card headers at assembly time:
 
 - PARITY rows parsed: **334** — 72 HAVE, 163 PARTIAL, 99 MISSING (matches `PARITY.md:437`).
 - Gap rows with at least one card: **262 / 262**.
@@ -1223,9 +1671,16 @@ Computed mechanically from `PARITY.md` and the 381 card headers at assembly time
 - Unknown parity ids referenced by cards: **0**.
 - Cards exceeding 3 agent-hours: **0**.
 - Files claimed exclusively by two cards: **0** (after §7.1).
+- BEYOND rows parsed: **101** — 2 HAVE, 58 PARTIAL, 41 MISSING (matches `BEYOND.md` §6).
+- BEYOND rows with at least one card: **101 / 101**; the four rows BEYOND §1 assigns to parity (`G5.1`, `G5.2`,
+  `G5.14`) and folds into `G5.22` (`G5.23`) have no card here, by design.
+- Wave F cards: **171**, `T-600`–`T-805`, unique, contiguous inside each band, every one ≤ 3 agent-hours
+  (mean 2.85), every one carrying a `Glass:` line, a flag-off acceptance line and a cross-workspace 404 line.
+- Wave F total: **488 agent-hours**; R7 `yes` on **62** cards; **33** owner-gated or owner-held, plus the line's
+  fail-safe decision recorded on T-688/T-689 (§4.3 #19).
 
 Re-run the check any time with the assembly script logic: read every `T-*.md`, extract the
-`| Parity rows |` cell, and diff the set against `PARITY.md`'s id column.
+`| Parity rows |` cell, and diff the set against `PARITY.md`'s and `BEYOND.md`'s id columns.
 
 ---
 
@@ -1241,6 +1696,14 @@ The programme is done when:
 - [ ] Every shared file was merged in the matrix order, and no branch carried a hand-edited generated
       artefact into a merge.
 - [ ] Wave D remains inert without the three owner decisions: no charge, no vendor name, no price.
+- [ ] Wave F's 101 features each have a card whose acceptance criteria are demonstrably met, and the card's
+      flag-off state is tested.
+- [ ] Wave F remains inert without §4.3's answers: no legal claim, no tax number, no price, no certification,
+      no SLA figure, and no `Owner-hold` card scheduled.
+- [ ] Thai is real on the labeler and operator surfaces: the catalogue has no untranslated key on a converted
+      screen, and T-603's stress run is green.
+- [ ] One design system: no new CSS variable, hex literal, arbitrary font size or second palette exists anywhere
+      in `src`, and the glass tokens are the ones T-472 pins.
 - [ ] A demo pass of waves A–C needs no explanation of a missing state: empty, loading, error and
       permission states all render as the cards describe.
 

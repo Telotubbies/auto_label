@@ -2,8 +2,8 @@
 
 Status: design lane output, 16 Nov 2026. Evidence from a Playwright walkthrough of the running app
 (`http://localhost:5173`, `demo@labeldesk.dev`) at 1440×900, plus a 375×812 pass; screenshots in
-`design/labeldesk-v3/audit/`. Sources read: `docs/STANDARDS.md`, `research/reports/UX UI และฟีเจอร์ SaaS Computer
-Vision.md`, `research/reports/Information architecture แพลตฟอร์ม ML.md`, and the current
+`design/labeldesk-v3/audit/`. Sources read: `docs/STANDARDS.md`, `reports/UX UI และฟีเจอร์ SaaS Computer
+Vision.md`, `reports/Information architecture แพลตฟอร์ม ML.md`, and the current
 `apps/frontend/src` shell, nav, project and editor code.
 
 This document is the blueprint for the FigCraft file `design/labeldesk-v3/labeldesk-v3.figcraft`
@@ -164,13 +164,15 @@ Route change is additive: keep the old paths as `<Navigate replace>` so bookmark
 Rules, in order of precedence:
 
 1. **Content is solid.** Canvas, image grids, tables, charts, code blocks and forms sit on
-   `--surface` / `--surface-container`. No blur, no translucency, no gradient behind data.
+   `--background` / `--card`. No blur, no translucency, no gradient behind data.
 2. **Chrome is glass.** Top bar, project rail, floating toolbars, dialogs, command palette, job tray,
-   toasts, overlay chips. Blur 24 px, saturate 180%, fill 62% light / 66% dark, 1 px inner highlight.
+   toasts, overlay chips. As shipped in `index.css`: blur 16 px chrome / 20 px overlay, saturate 180%,
+   `--glass-tint` 58% light / 62% dark (80% / 84% for overlays), 1 px `--glass-hi` inner highlight and a
+   1 px `--glass-edge`. These numbers come from the code, not from this document.
 3. **Glass never carries text below 4.5:1.** Every glass surface pairs its tint with a solid text
    colour token; the glass is decoration, the contrast comes from the fill.
 4. **Fallback is first-class.** `prefers-reduced-transparency`, the in-app setting, or no
-   `backdrop-filter` ⇒ 96% opaque surface, same geometry, same borders. `prefers-reduced-motion` ⇒
+   `backdrop-filter` ⇒ `--glass-solid`, same geometry, same borders. `prefers-reduced-motion` ⇒
    opacity only, ≤120 ms.
 5. **One expressive moment per screen.** A tinted hero band, a progress ring, or a gradient edge on the
    active stage — not three. Material 3 Expressive gives colour and shape, not noise.
@@ -298,29 +300,60 @@ block wraps; sample images remove the cold empty state.
 
 ## 6. Component and token system
 
-### 6.1 Colour
+### 6.1 Colour — the code is the source (updated 17 Nov 2026)
 
-HCT seed **#5B4BE0** ("pigment violet") → Material 3 tones. Roles, not values, in code.
+**The token values in this table are not the source; `apps/frontend/src/index.css` and `apps/frontend/src/lib/theme.ts`
+are.** `theme.ts` builds a Material 3 (HCT) scheme at startup from the seed and writes every role onto `:root`
+under the names below; `index.css` holds the refresh-safe fallbacks and the Liquid Glass layer. Read the
+running app (`devtools → :root`) before quoting a value; the frame export and the app must agree.
 
-| Token | Light | Dark | Use |
-|---|---|---|---|
-| `--primary` | #5B4BE0 | #C4BCFF | primary action, active stage |
-| `--primary-container` | #E5E0FF | #3A2E9E | tinted hero, selected row |
-| `--secondary` | #00696B | #4FD8DA | progress, "in review" |
-| `--tertiary` | #8F4A00 | #FFB786 | warnings that are not errors |
-| `--success` | #146C43 | #5BD69A | approved, healthy |
-| `--danger` | #B3261E | #FFB4AB | destructive, failed |
-| `--surface` | #FCFBFF | #131218 | page |
-| `--surface-container` | #F4F2FA | #1D1B23 | cards, tables |
-| `--outline` | #7A7688 | #918D9E | dividers, inputs |
-| `--text` / `--text-muted` | #1B1A21 / #5A5766 | #EDEAF4 / #A9A5B8 | 15.8:1 / 6.4:1 |
+Seed **#3b6cf6** · scheme **vibrant** · `theme.ts` `DEFAULT_SEED`. Roles, not values, in code.
+
+| `index.css` variable | Material role | Resolved light | Resolved dark | Use |
+|---|---|---|---|---|
+| `--primary` | primary | #0050E3 | #B5C4FF | primary action, active stage |
+| `--primary-foreground` | on-primary | #FFFFFF | #00287D | label on a primary fill |
+| `--accent` / `--sidebar-accent` | primary-container | #DCE1FF | #003BAE | selected row, tinted band |
+| `--accent-foreground` | on-primary-container | #003BAE | #DCE1FF | text on the tint |
+| `--secondary` / `--secondary-foreground` | secondary-container / on- | #E3DFFF / #454364 | #454364 / #E3DFFF | "in review", quiet chips |
+| `--info` · `--success` · `--warning` · `--destructive` | fixed status hues | #0061A6 · #006013 · #825500 · #BA1A1A | #A0C9FF · #76DD71 · #FFB94E · #FFB4AB | status only, always with icon + word |
+| `--background` | surface | #FAF8FF | #11131C | page |
+| `--card` | surface-container-lowest | #FFFFFF | #1D1F29 | cards, tables, canvases |
+| `--muted` / `--popover` | surface-container-low / -high | #F3F2FF / #E7E7F5 | #191B25 / #272A34 | wells, bars, glass base |
+| `--sidebar` | surface-container | #ECEDFB | #1D1F29 | rail base (`.glass-sidebar`) |
+| `--foreground` | on-surface | #191B25 | #E1E1EF | body text |
+| `--muted-foreground` | on-surface-variant | #434654 | #C4C5D6 | secondary text |
+| `--input` | outline | #747685 | #8E909F | control borders (3:1) |
+| `--border` | outline-variant | #C4C5D6 | #434654 | dividers, hairlines |
+| `--ring` | primary | #0050E3 | #B5C4FF | focus ring, 2 px offset 2 |
+| `--font-ui` | — | `'IBM Plex Sans', 'Anuphan', 'Noto Sans Thai', system-ui` | same | Thai never renders in Inter alone |
 
 Class colours stay **Okabe-Ito** in fixed order, generated beyond 8 with Glasbey, never derived from the
 brand seed (`docs/STANDARDS.md` §5). Charts use the same palette plus viridis for heatmaps. Every class
-chip carries its name, not only a dot.
+chip carries its name, not only a dot. The redesign must not introduce a second palette: the v3 flat values
+in earlier revisions of this file (#5B4BE0, #FCFBFF, #1B1A21 …) are superseded by the table above.
 
-Contrast: body 4.5:1 verified per token pair; 3:1 for ≥24 px and for control outlines; glass fills are
-tested with the text colour they carry (target ≥7:1 on chrome to survive backdrop variation).
+#### Glass tokens (`.glass` in `index.css`, `Glass` in `components/glass.tsx`)
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--glass-tint` | `popover 58%` → #E7E7F5 @ 58% | #272A34 @ 62% | blur-mode fill of chrome |
+| `--glass-solid` | `popover 92% + foreground 8%` | same rule | **fallback**: reduced transparency, no `backdrop-filter`, in-app toggle |
+| `--glass-hi` | #FFFFFF @ 70% | #FFFFFF @ 22% | 1 px inner top highlight |
+| `--glass-edge` | `foreground 14%` | `foreground 14%` | 1 px inner border |
+| `--glass-sheen` | white 55% → 8% → 0 | white 16% → 3% → 0 | top gradient sheen |
+| blur · saturate | 16 px chrome / 20 px overlay · 180% | same | `@supports (backdrop-filter)` only |
+| `.glass-sidebar` | `--sidebar` base, 58% tint | 60% tint | rail |
+| `.glass-overlay` | `popover 80%` | `popover 84%` | dialogs, popovers, palette, job tray |
+| elevation | `inset 0 1px 0 hi, inset 0 -1px 0 rgb(0 0 0 / .05), 0 10px 30px -14px rgb(0 0 0 / .35)` | same | floating chrome only |
+
+Glass is **chrome only**: top bar, rail, floating toolbars, sheets, popovers, overlays. The canvas, image
+grids, tables, charts, code and forms stay on `--card` / `--background` with no blur. `prefers-reduced-transparency`,
+`html[data-reduce-transparency]` and a browser without `backdrop-filter` all resolve to `--glass-solid`.
+
+Contrast: measured from the running app (17 Nov 2026), body 16.3:1 light / 14.3:1 dark; muted 8.9 / 10.9;
+on-primary 6.5 / 7.7; muted text on glass 7.7 / 8.4; input outline 4.5 / 5.2; focus ring 6.1 / 10.9.
+Text always sits on the tint, never on the blur alone. Every v3 frame was re-exported against these values.
 
 ### 6.2 Type — IBM Plex Sans + Anuphan (as standard)
 
@@ -343,7 +376,8 @@ lines max, then an explicit "more".
 
 - Space scale 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64. Page gutter 32 desktop, 16 mobile.
 - Radius: 8 chips, 12 inputs and buttons, 16 cards and rows, 24 dialogs and glass bars, 999 pills.
-- Elevation is **chromatic, not black**: `0 1px 0 rgba(255,255,255,.7) inset, 0 8px 24px -12px rgba(27,26,33,.24)`.
+- Elevation is **chromatic, not black**, exactly as `.glass` in `index.css`:
+  `inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 rgb(0 0 0 / .05), 0 10px 30px -14px rgb(0 0 0 / .35)`.
   No drop shadows on flat cards; only floating chrome and modals get depth.
 - Grid: 12 columns, 24 gutter; content max 1440, reading max 720.
 
@@ -502,11 +536,11 @@ Those belong to T17 and must be tested in the app, not inferred from the mock.
 
 ### 10.3 Design handoff notes
 
-**Tokens.** Use the REDESIGN §6 table as the source. Suggested names in `index.css`:
-`--surface`, `--surface-container`, `--surface-container-high`, `--outline`, `--text`, `--text-muted`,
-`--primary`, `--on-primary`, `--primary-container`, `--on-primary-container`, `--success`, `--warning`,
-`--danger` plus `-bg` variants, `--glass-fill` (62% / 66%), `--glass-blur` (24 px), `--radius-{8,12,16,24}`,
-`--space-{4…64}`. Class colours stay Okabe-Ito in fixed order and always ship with the class name.
+**Tokens.** `apps/frontend/src/index.css` + `lib/theme.ts` are the source; §6.1 lists the variable names and
+their resolved light/dark values. Do not add a second token set: the v3 names in earlier drafts (`--surface`,
+`--text`, `--glass-fill`, …) map onto the existing `--background`, `--foreground`, `--card`, `--muted`,
+`--popover`, `--sidebar`, `--border`, `--input`, `--ring` and the `--glass-*` family. Class colours stay
+Okabe-Ito in fixed order and always ship with the class name.
 
 **Geometry.** Top bar 56; workspace rail 232; project rail 232; content gutter 32 (16 at ≤768);
 page title 28/34 with a 124 px header block; cards radius 16, inputs 12, chips 999; card padding 20;

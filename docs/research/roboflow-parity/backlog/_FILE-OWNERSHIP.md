@@ -4,6 +4,11 @@ Computed from all 381 cards. A file listed here with more than one card is **sha
 merge in the order given, rebase before review continues. Files with exactly one card are that card's
 exclusive property and are not repeated here.
 
+**Wave F (BEYOND, T-600–T-805) is not merged into this table.** Its 171 cards contribute 833 shared entries and 98
+new flag keys; the exhaustive file → cards map, in merge order, is in
+[`.parts/wave-f.md`](.parts/wave-f.md) §"Shared-file users", the registries are tabulated in `INDEX.md` §7, and the
+twelve collisions between bands are resolved in §7.1a.
+
 Shared files: 247. Migration-bearing cards: 57.
 
 | File | Cards (merge order) | Count |
