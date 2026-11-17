@@ -732,3 +732,21 @@ appended to `INDEX.md` as **wave I**.
 
 Merge order is the id order except where a card names a dependency; the file sets are disjoint except
 the shared registries listed in the wave section and in each card.
+
+## 12. Owner decisions (2026-11-17) — these override every wave I card
+
+1. **Docker: allowed.** Engines may install as digest-pinned containers on the worker as well as pip/uv.
+   Prefer the container when the engine ships an official image; record the digest in the catalogue.
+2. **HF token:** `HF_TOKEN` lives in the worker's environment (the recommended option).
+3. **Engines in v1:** **Ollama is the primary engine** (first row, default selection, the first one built
+   and tested), then vLLM, llama.cpp and SGLang. TensorRT-LLM, ONNX Runtime GenAI and Triton are catalogue
+   rows only. This replaces the "Ollama in any form" exclusion in §0 and question 10. The model catalogue
+   lists Ollama tags (e.g. `qwen3:4b`) next to Hugging Face files.
+   **Development rule stays:** lanes, tests and CI never start, call or download anything with a real
+   Ollama on the developer machine; Ollama is exercised only through the mocked installer harness (T-1019)
+   and an HTTP fake of its API.
+4. **Disk policy v1: one model per host.** A host holds at most one downloaded model. Downloading a second
+   one asks the admin to remove the current one first (or replace it in one confirmed step). No GB cap
+   setting in v1.
+5. **Members:** any workspace member can open the **Calculator** (read-only, no host data). Engines,
+   Models, Segmentation installs and downloads stay admin-only.
