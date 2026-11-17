@@ -5,6 +5,7 @@ import { get, P, put } from './client'
 export const coreApi = {
   config: () => get<{
     signup_enabled: boolean
+    max_upload_mb: number
     sam: { enabled: boolean; loaded: boolean; error: string | null }
     vlm: { configured: boolean }
     addons: { available: boolean }
