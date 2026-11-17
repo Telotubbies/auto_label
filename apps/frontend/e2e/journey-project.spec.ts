@@ -5,7 +5,7 @@
 //
 // This file adds no product code: the dialog and the three screens around it are the subject.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { record, seeded, setFlags, signIn } from './fixtures/harness'
+import { axe, record, seeded, setFlags, signIn } from './fixtures/harness'
 
 // One name per run. The seed is not reset between runs, and J2b needs a name only it owns.
 const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -149,6 +149,9 @@ test('J2 create a project and land on upload', async ({ page, request }) => {
 
   await test.step('2. New project: pick object detection, name it, read the address before submit', async () => {
     await openNewProject(page)
+    // T-1106: the dialog is named, not just announced. axe's aria-dialog-name must stay at zero.
+    const violations = await axe(page, '[role="dialog"]')
+    expect(violations.filter((v) => v.id === 'aria-dialog-name'), 'the dialog has an accessible name').toEqual([])
     const card = dialog(page).getByRole('button', { name: /Object Detection/i })
     await expect(card).toBeVisible()
     // The card sells the outcome, not the model family behind it.

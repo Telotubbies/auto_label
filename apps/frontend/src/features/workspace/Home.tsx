@@ -51,7 +51,7 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
     } finally { setBusy(false) }
   }
   return (
-    <Modal open={open} onClose={onClose} wide>
+    <Modal open={open} onClose={onClose} wide aria-label="Create a project">
       <h1 className="mb-5 text-2xl font-bold tracking-tight">Let's create your project.</h1>
       <div className="grid gap-4 md:grid-cols-4">
         <Field label="Project Name" hint={f.name.trim() ? <>Address <span className="font-mono text-foreground">{projectPath(ws, slug)}</span></> : undefined}>
