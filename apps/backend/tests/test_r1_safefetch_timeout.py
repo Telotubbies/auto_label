@@ -2,6 +2,7 @@
 import socket
 import threading
 import time
+import types
 
 import pytest
 
@@ -95,9 +96,59 @@ def test_total_timeout_bounds_a_slow_drip_body(trickle_server, monkeypatch):
     assert time.monotonic() - started < 2, "a byte per tick must not hold the call past its one deadline"
 
 
+@pytest.fixture()
+def drip_header_server():
+    """A loopback peer that sends the whole response one byte per 0.05 s, headers included."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+    srv.settimeout(0.1)
+    stop = threading.Event()
+
+    def serve_conn(conn):
+        with conn:
+            try:
+                for byte in b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi":
+                    if stop.is_set():
+                        break
+                    conn.sendall(bytes([byte]))
+                    time.sleep(0.05)
+            except OSError:                # the client hung up at its deadline
+                pass
+
+    def serve():
+        while not stop.is_set():
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                continue
+            threading.Thread(target=serve_conn, args=(conn,), daemon=True).start()
+
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        yield srv.getsockname()[1]
+    finally:
+        stop.set()
+        srv.close()
+
+
+def test_total_timeout_bounds_a_slow_drip_header(drip_header_server, monkeypatch):
+    """getresponse() restarts the per-read timer per recv, so the header phase must re-check the deadline."""
+    monkeypatch.setattr(safefetch, "_public_ip", lambda host, port: "127.0.0.1")
+    url = f"http://img.example.com:{drip_header_server}/x.jpg"
+    for call in (lambda: safefetch.fetch_bytes(url, max_bytes=10, timeout=0.3),
+                 lambda: safefetch.post(url, b"{}", {}, timeout=0.3)):
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            call()
+        assert time.monotonic() - started < 1.5, "a byte per tick must not hold the call past its one deadline"
+
+
 def test_total_budget_covers_every_redirect_hop(monkeypatch):
     """Each hop must spend the one budget the caller gave, not a fresh one (total timeout)."""
     seen: list[float] = []
+    now = 0.0
+    monkeypatch.setattr(safefetch, "time", types.SimpleNamespace(monotonic=lambda: now))  # no wall-clock race
 
     class Sock:
         def settimeout(self, t):
@@ -110,7 +161,8 @@ def test_total_budget_covers_every_redirect_hop(monkeypatch):
             pass
 
         def getresponse(self):
-            time.sleep(0.1)                 # each hop spends the caller's one budget
+            nonlocal now
+            now += 0.1                      # each hop spends 0.1 s of the caller's one budget
             class R:
                 status = 302
 

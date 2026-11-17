@@ -4,6 +4,7 @@ Only http/https, only public unicast addresses, every redirect hop re-checked,
 connection pinned to the vetted IP (no DNS-rebinding window), size and time capped.
 """
 import http.client
+import io
 import ipaddress
 import socket
 import ssl
@@ -63,6 +64,8 @@ def _remaining(deadline: float) -> float:
 
 def _arm(conn, deadline: float) -> None:
     """Give the next socket read what is left of the total budget; a spent budget fails the call."""
+    # shortcut: getaddrinfo is not interruptible and the TLS handshake is armed once, so a peer dripping
+    # either can still overrun the total; every read after the handshake is re-armed per recv below.
     left = deadline - time.monotonic()
     if left <= 0:
         conn.close()
@@ -70,6 +73,38 @@ def _arm(conn, deadline: float) -> None:
     sock = getattr(conn, "sock", None)
     if sock is not None:
         sock.settimeout(left)
+
+
+class _DeadlineSocket:
+    """Socket proxy whose every read re-checks the one deadline (``getresponse`` restarts the per-read timer)."""
+
+    def __init__(self, sock, deadline: float):
+        self._sock = sock
+        self._deadline = deadline
+
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
+
+    def _rearm(self) -> None:
+        left = self._deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("safefetch total timeout exceeded")
+        self._sock.settimeout(left)
+
+    def recv_into(self, *args):
+        self._rearm()
+        return self._sock.recv_into(*args)
+
+    def makefile(self, mode="rb", *args, **kwargs):
+        # http.client only asks for "rb"; its every read lands in recv_into above
+        return io.BufferedReader(socket.SocketIO(self, "rb"))
+
+
+def _rearm_every_read(conn, deadline: float) -> None:
+    """Wrap the connected socket so the status line and headers cannot drip past the deadline either."""
+    sock = getattr(conn, "sock", None)
+    if sock is not None:
+        conn.sock = _DeadlineSocket(sock, deadline)
 
 
 def _pinned_connection(u, ip: str, port: int, timeout: float):
@@ -98,7 +133,8 @@ def post(url: str, body: bytes, headers: dict, timeout: float = TIMEOUT) -> int:
     try:
         path = (u.path or "/") + (f"?{u.query}" if u.query else "")
         conn.request("POST", path, body=body, headers={"Host": _host_header(u, port), **headers})
-        _arm(conn, deadline)                       # the read shares the same total budget
+        _rearm_every_read(conn, deadline)          # the header read shares the same total budget
+        _arm(conn, deadline)
         r = conn.getresponse()
         if r.status in (301, 302, 303, 307, 308):
             raise BlockedURL("webhook redirects are not followed")
@@ -120,6 +156,7 @@ def _get(url: str, max_bytes: int, timeout: float, max_redirects: int) -> bytes:
         try:
             path = (u.path or "/") + (f"?{u.query}" if u.query else "")
             conn.request("GET", path, headers={"Host": _host_header(u, port), "User-Agent": "LabelDesk/1.0"})
+            _rearm_every_read(conn, deadline)
             _arm(conn, deadline)
             r = conn.getresponse()
             if r.status in (301, 302, 303, 307, 308) and r.getheader("Location") and max_redirects:
