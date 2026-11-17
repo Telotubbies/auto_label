@@ -1,7 +1,9 @@
 import { lazy } from 'react'
 import { Navigate, Route } from 'react-router-dom'
+import { useFlag } from '@/lib/flags'
 import { LEGACY_PROJECT_PATHS } from '@/lib/nav'
 import ProjectLayout from '@/features/project/ProjectLayout'
+import Overview from '@/features/project/Overview'
 import Dataset from '@/features/project/Dataset'
 import { projectDataRoutes } from './data.routes'
 import { projectLabelRoutes } from './label.routes'
@@ -21,12 +23,21 @@ export const projectEditorRoute = <Route path="p/:project/annotate/:imageId" ele
 export const legacyEditorRoute = <Route path=":project/images/:imageId" element={<LegacyProject />} />
 
 /**
+ * The project index: the overview while `task_470` (ui_v3) is on, the dataset grid otherwise,
+ * so turning the frame off restores exactly today's behaviour.
+ */
+function ProjectIndex() {
+  const uiV3 = useFlag('task_470')
+  return uiV3 ? <Overview /> : <Navigate to="browse" replace />
+}
+
+/**
  * One child list, mounted under the `/p/` prefix only: a second copy under the old shape would
  * drift the first time a page is added.
  */
 const PROJECT_CHILDREN = (
   <>
-    <Route index element={<Navigate to="browse" replace />} />
+    <Route index element={<ProjectIndex />} />
     {projectDataRoutes}
     {projectSearchRoutes}
     {projectLabelRoutes}
