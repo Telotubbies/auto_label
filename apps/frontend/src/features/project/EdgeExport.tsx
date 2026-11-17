@@ -5,7 +5,8 @@ import { api, ApiError, fileUrl, post } from '@/lib/api'
 import type { ModelItem } from '@/lib/types'
 import { Badge, Button, Card, Field, Progress, Select, Spinner, toast } from '@/components/ui'
 
-const fmtBytes = (n: number) =>
+/** Download sizes for deployment artifacts, compared in decimal GB, so this keeps its own rule. */
+const fmtPackageBytes = (n: number) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : n >= 1e3 ? `${Math.round(n / 1e3)} KB` : `${n} B`
 
 /** Task 34: build a device-targeted export preset and download its zip. */
@@ -137,7 +138,7 @@ export default function EdgeExport({ ws, project, model }: { ws: string; project
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {fmtBytes(artifact.bytes)}{artifact.device ? ` on ${artifact.device}` : ''}
+                    {fmtPackageBytes(artifact.bytes)}{artifact.device ? ` on ${artifact.device}` : ''}
                   </p>
                 </div>
                 <a href={fileUrl(artifact.url)}>

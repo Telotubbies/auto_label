@@ -5,6 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { AlertTriangle, Boxes, ChartLine, Check, Download, Info, Rocket, Trash2, X, Zap } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
+import { pct1 } from '@/lib/format'
 import { useProjectPermissions } from '@/lib/perms'
 import type { JobStage, LeaderboardRow, ModelItem } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, PageHeader, Progress, Spinner, Stat, StatusPill, Tabs, fmtDate, toast } from '@/components/ui'
@@ -13,10 +14,8 @@ import { cn } from '@/lib/utils'
 import EdgeExport from './EdgeExport'
 import { useProject } from './ProjectLayout'
 
-export const pct = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
-
 export function headline(m: ModelItem) {
-  return m.task === 'classify' ? pct(m.metrics.accuracy_top1) : pct(m.metrics.map50)
+  return m.task === 'classify' ? pct1(m.metrics.accuracy_top1) : pct1(m.metrics.map50)
 }
 
 // ---------- training stages ---------------------------------------------------
@@ -272,13 +271,13 @@ export default function Models() {
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {m.task === 'classify' ? <>
-                      <Stat label="Top-1 accuracy" value={pct(m.metrics.accuracy_top1)} />
-                      <Stat label="Top-5 accuracy" value={pct(m.metrics.accuracy_top5)} />
+                      <Stat label="Top-1 accuracy" value={pct1(m.metrics.accuracy_top1)} />
+                      <Stat label="Top-5 accuracy" value={pct1(m.metrics.accuracy_top5)} />
                     </> : <>
-                      <Stat label="mAP@50" value={pct(m.metrics.map50)} />
-                      <Stat label="mAP@50-95" value={pct(m.metrics.map5095)} />
-                      <Stat label="Precision" value={pct(m.metrics.precision)} />
-                      <Stat label="Recall" value={pct(m.metrics.recall)} />
+                      <Stat label="mAP@50" value={pct1(m.metrics.map50)} />
+                      <Stat label="mAP@50-95" value={pct1(m.metrics.map5095)} />
+                      <Stat label="Precision" value={pct1(m.metrics.precision)} />
+                      <Stat label="Recall" value={pct1(m.metrics.recall)} />
                     </>}
                   </div>
 

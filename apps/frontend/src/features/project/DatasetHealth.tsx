@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowUpRight, BarChart3, Table2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { pctOf } from '@/lib/format'
 import type { Analytics as AnalyticsData } from '@/lib/types'
 import { Button, Card, Spinner, Stat, toast } from '@/components/ui'
 import { useProject } from './ProjectLayout'
@@ -24,7 +25,6 @@ const ASPECT_FILTERS: Record<string, Record<string, string>> = {
 }
 
 const fmt = (n: number) => n.toLocaleString()
-const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0)
 
 /** Clickable horizontal bar. A real <button> keeps mouse, keyboard and screen-reader users on one control. */
 function BarRow({ label, value, width, meta, onClick, ariaLabel, badge }: {
@@ -66,7 +66,7 @@ function LinkRow({ label, value, onClick, ariaLabel }: {
 }
 
 /** Text alternative for the distribution charts (WCAG 2.2: charts have a table view). */
-function DistributionTable({ rows }: { rows: { group: string; bucket: string; value: number; share: number }[] }) {
+function DistributionTable({ rows }: { rows: { group: string; bucket: string; value: number; share: string }[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -87,7 +87,7 @@ function DistributionTable({ rows }: { rows: { group: string; bucket: string; va
               <td className="py-1.5 pr-3 text-muted-foreground">{r.group}</td>
               <td className="py-1.5 pr-3 capitalize">{r.bucket}</td>
               <td className="py-1.5 pr-3 text-right tabular-nums">{fmt(r.value)}</td>
-              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{r.share}%</td>
+              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{r.share}</td>
             </tr>
           ))}
         </tbody>
@@ -161,10 +161,10 @@ export function DatasetHealth() {
   const topClass = a.classes[0]?.count || 1
   const annotated = a.classes.reduce((s, c) => s + c.count, 0)
   const tableRows = [
-    ...a.classes.map((c) => ({ group: 'Class', bucket: c.name, value: c.count, share: pct(c.count, annotated) })),
-    ...a.annotations_per_image.map((d) => ({ group: 'Annotations', bucket: String(d.n), value: d.images, share: pct(d.images, a.images) })),
-    ...sizeData.map((d) => ({ group: 'Image size', bucket: d.bucket, value: d.images, share: pct(d.images, a.images) })),
-    ...aspectData.map((d) => ({ group: 'Aspect ratio', bucket: d.bucket, value: d.images, share: pct(d.images, a.images) })),
+    ...a.classes.map((c) => ({ group: 'Class', bucket: c.name, value: c.count, share: pctOf(c.count, annotated) })),
+    ...a.annotations_per_image.map((d) => ({ group: 'Annotations', bucket: String(d.n), value: d.images, share: pctOf(d.images, a.images) })),
+    ...sizeData.map((d) => ({ group: 'Image size', bucket: d.bucket, value: d.images, share: pctOf(d.images, a.images) })),
+    ...aspectData.map((d) => ({ group: 'Aspect ratio', bucket: d.bucket, value: d.images, share: pctOf(d.images, a.images) })),
   ]
 
   return (
@@ -215,7 +215,7 @@ export function DatasetHealth() {
                 <ul className="mt-2 space-y-0.5">
                   {a.classes.map((c) => (
                     <BarRow key={c.id} label={c.name} value={c.count} width={(c.count / topClass) * 100}
-                      meta={`${pct(c.count, a.annotations)}%`}
+                      meta={pctOf(c.count, a.annotations)}
                       badge={c.count < topClass * 0.2 ? 'low' : undefined}
                       onClick={() => goBrowse({ class: c.id })}
                       ariaLabel={`Show images containing the ${c.name} class in the dataset grid`} />

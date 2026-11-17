@@ -35,7 +35,7 @@ export function SourceChip({ source, confidence, kind }: { source?: string; conf
   )
 }
 
-const fmtTime = (t: number) =>
+const fmtTimeOfDay = (t: number) =>
   new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 function PanelHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
@@ -147,7 +147,7 @@ export function CommentsPanel({ comments, onAdd }: { comments: EditorComment[]; 
                 {c.author.slice(0, 2).toUpperCase()}
               </span>
               <span className="text-xs font-medium">{c.author}</span>
-              <span className="ml-auto text-[10px] text-muted-foreground">{fmtTime(c.at)}</span>
+              <span className="ml-auto text-[10px] text-muted-foreground">{fmtTimeOfDay(c.at)}</span>
             </div>
             <p className="pt-1.5 text-sm">{c.text}</p>
           </div>
@@ -189,7 +189,7 @@ export function HistoryPanel({ log }: { log: LogEntry[] }) {
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-tertiary" />
             <span className="whitespace-nowrap">{e.action}</span>
             {e.detail && <span className="truncate text-xs text-muted-foreground">{e.detail}</span>}
-            <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground">{fmtTime(e.at)}</span>
+            <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground">{fmtTimeOfDay(e.at)}</span>
           </div>
         ))}
       </div>

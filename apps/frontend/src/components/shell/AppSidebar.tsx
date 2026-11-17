@@ -67,7 +67,8 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   const info = useQuery({ queryKey: ['ws', ws], queryFn: () => api.workspace(ws), enabled: !!ws })
   const current = me?.workspaces.find((w) => w.slug === ws)
   const u = info.data?.usage
-  const pct = u ? (u.credits_used / u.limits.credits) * 100 : 0
+  // Bar geometry only: a width, not a display string, so it stays a number.
+  const creditsPct = u ? (u.credits_used / u.limits.credits) * 100 : 0
   const base = `/${ws}`
   const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null)
   const main = groups.filter((g) => g.id !== 'footer')
@@ -144,7 +145,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
         {!rail && u && (
           <Link to={`/${ws}/settings/usage`} className="mb-2 block rounded-lg border border-sidebar-border px-3 py-2 text-[12px] hover:bg-sidebar-accent/60">
             <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium"><Zap className="h-3.5 w-3.5 text-warning" /> {u.plan_label} plan</span><span>{Math.round(u.credits_left)} cr</span></div>
-            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', pct > 80 ? 'bg-destructive' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, pct)}%` }} /></div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', creditsPct > 80 ? 'bg-destructive' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, creditsPct)}%` }} /></div>
           </Link>
         )}
         {footer.map((i) => (

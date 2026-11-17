@@ -4,6 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ChevronLeft, ImageOff, Play, Plus, ScanLine, Send, Square, Trash2, TriangleAlert, VideoOff } from 'lucide-react'
 import { api, fileUrl } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
+import { fmtInt } from '@/lib/format'
 import { useProjectPermissions } from '@/lib/perms'
 import { classColor, dateLocale } from '@/lib/theme'
 import type { StreamCountOp, StreamEvent, StreamEventPage, StreamEventRule, StreamItem, StreamPrediction, StreamRule, StreamRuleKind, StreamZone } from '@/lib/types'
@@ -14,10 +15,9 @@ import { StreamStatusChip, displaySource, isStreamLive } from './Streams'
 import ZoneEditor from './ZoneEditor'
 
 // ---------- shared formatting -------------------------------------------------
-const fmtInt = (n: number) => (Number.isFinite(n) ? n.toLocaleString() : '—')
 const fmtCoord = (n: number) => (Math.round(n * 100) / 100).toFixed(2)
 const fmtLine = (line: number[]) => line.map(fmtCoord).join(', ')
-const fmtTime = (t: number) =>
+const fmtStamp = (t: number) =>
   new Date(t * 1000).toLocaleString(dateLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 const zoneName = (zones: StreamZone[], id: string) => {
@@ -657,7 +657,7 @@ function EventsTimeline({ stream, ws, project, active }: { stream: StreamItem; w
                     <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-secondary-foreground">#{rule_.index + 1}</span>
                     <Badge className="px-1.5 py-0 text-[10px]">{rule_.kind}</Badge>
                     <span className="min-w-0 text-sm font-medium">{eventRuleName(rule_)}</span>
-                    <time className="text-[11px] text-muted-foreground" dateTime={new Date(event.ts * 1000).toISOString()}>{fmtTime(event.ts)}</time>
+                    <time className="text-[11px] text-muted-foreground" dateTime={new Date(event.ts * 1000).toISOString()}>{fmtStamp(event.ts)}</time>
                     <span className="text-[11px] text-muted-foreground">· {fmtAgo(event.ts)}</span>
                   </div>
                   <p className="mt-0.5 text-sm text-muted-foreground [overflow-wrap:anywhere]">{event.summary}</p>
@@ -678,7 +678,7 @@ function EventsTimeline({ stream, ws, project, active }: { stream: StreamItem; w
                   {canReview ? (
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <span>Reviewed</span>
-                      <Switch checked={event.reviewed} label={`Reviewed — event at ${fmtTime(event.ts)}`}
+                      <Switch checked={event.reviewed} label={`Reviewed — event at ${fmtStamp(event.ts)}`}
                         onChange={(v) => review.mutate({ id: event.id, reviewed: v })} />
                       {reviewing && <Spinner className="h-3 w-3" />}
                     </div>
@@ -716,7 +716,7 @@ function EventPreview({ event, onClose }: { event: StreamEvent | null; onClose: 
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <Badge className="tabular-nums">#{event.rule.index + 1}</Badge>
             <Badge>{event.rule.kind}</Badge>
-            <time dateTime={new Date(event.ts * 1000).toISOString()}>{fmtTime(event.ts)}</time>
+            <time dateTime={new Date(event.ts * 1000).toISOString()}>{fmtStamp(event.ts)}</time>
             <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">{event.summary}</span>
             <Badge className={event.reviewed ? 'bg-success/15 text-success' : ''}>{event.reviewed ? 'Reviewed' : 'Unreviewed'}</Badge>
           </div>

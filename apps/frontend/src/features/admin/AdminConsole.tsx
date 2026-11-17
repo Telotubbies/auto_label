@@ -4,6 +4,7 @@ import {
   Activity, Cpu, FolderKanban, Images, Layers, RefreshCw, Search, Server, ShieldCheck, Users,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { pctOf } from '@/lib/format'
 import type { AdminOverview, AdminWorkspace, ComponentStatus, WorkerRow } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Progress, Select, Spinner, Stat, fmtAgo, fmtDate, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -11,7 +12,8 @@ import { cn } from '@/lib/utils'
 const POLL = 8_000
 
 const duration = (s: number) => (s < 60 ? `${Math.round(s)} s` : s < 3_600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3_600)} h`)
-const pct = (used: number, total: number) => (total > 0 ? Math.min(100, (used / total) * 100) : 0)
+// Bar geometry only: a width, not a display string, so it stays a number. Progress clamps to 0…100.
+const barPct = (used: number, total: number) => (total > 0 ? (used / total) * 100 : 0)
 
 const STATUS_DOT: Record<ComponentStatus, string> = {
   operational: 'bg-success',
@@ -41,8 +43,8 @@ function Kpis({ o }: { o: AdminOverview }) {
       <Stat label="Workers online" value={o.workers_online} />
       <Card className="p-4">
         <div className="text-xs font-medium text-muted-foreground">GPU memory</div>
-        <div className="mt-1 text-2xl font-bold tracking-tight">{Math.round(pct(o.gpu.used_mb, o.gpu.budget_mb))}%</div>
-        <Progress className="mt-2" value={pct(o.gpu.used_mb, o.gpu.budget_mb)} />
+        <div className="mt-1 text-2xl font-bold tracking-tight">{pctOf(o.gpu.used_mb, o.gpu.budget_mb)}</div>
+        <Progress className="mt-2" value={barPct(o.gpu.used_mb, o.gpu.budget_mb)} />
         <div className="mt-1 text-xs text-muted-foreground">
           {(o.gpu.used_mb / 1024).toFixed(1)} / {(o.gpu.budget_mb / 1024).toFixed(1)} GB · {o.gpu.leases.length} lease{o.gpu.leases.length === 1 ? '' : 's'}
           {o.gpu.holder ? ` · ${o.gpu.holder}` : ''}
@@ -263,7 +265,7 @@ export default function AdminConsole() {
                           <td className="px-4 py-2.5 tabular-nums">{w.images.toLocaleString()}</td>
                           <td className="min-w-32 px-4 py-2.5">
                             <div className="text-xs tabular-nums">{w.credits_used.toFixed(1)} / {w.credits_limit.toLocaleString()}</div>
-                            <Progress className="mt-1" value={pct(w.credits_used, w.credits_limit)} />
+                            <Progress className="mt-1" value={barPct(w.credits_used, w.credits_limit)} />
                           </td>
                         </tr>
                       )

@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react'
 import { Spinner } from '@/components/ui'
+import { pctOf } from '@/lib/format'
 
-export const pct = (v?: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
+/** QA rates stay whole percent on these screens; the rounding rule itself lives in lib/format. */
+export function pct(v?: number | null) {
+  return v == null ? '—' : pctOf(v, 1)
+}
 export const roleLabel = (r: string) => r.charAt(0).toUpperCase() + r.slice(1)
 
 export function Loading() {

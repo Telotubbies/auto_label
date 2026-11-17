@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, GitCompareArrows } from 'lucide-react'
 import { fileUrl } from '@/lib/api'
+import { pctOf } from '@/lib/format'
 import { classColor } from '@/lib/theme'
 import type { InsightLabeling, InsightVersionDiff, Version } from '@/lib/types'
 import { Badge, Card, EmptyState, Select } from '@/components/ui'
 import { axisChrome, ChartCard, cssColor, PanelError, tooltipStyle, useChartTheme } from './Chart'
 
 const fmt = (n: number) => n.toLocaleString()
-const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0)
 const ratePct = (r: number) => Math.round((r <= 1 ? r * 100 : r) * 10) / 10
 const day = (d: string) => (d.length > 10 ? d.slice(5, 10) : d)
 const SPLIT_COLOR: Record<string, string> = {
@@ -275,7 +275,7 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
             table={{
               caption: 'Label volume by origin; AI segments use the same acceptance definition as the QA page.',
               columns: ['Segment', 'Labels', 'Share'],
-              rows: aiSlices.map((s) => [s.name, s.value, `${pct(s.value, aiTotal)}%`]),
+              rows: aiSlices.map((s) => [s.name, s.value, pctOf(s.value, aiTotal)]),
             }}
             empty={aiTotal ? undefined : 'No labels recorded yet.'}
             footnote="“Kept” means the AI annotation id is still present on an accepted image, even if its box was later edited. It is not a record of human acceptance."
@@ -290,7 +290,7 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
             table={{
               caption: 'AI labels on the images, by source.',
               columns: ['Source', 'AI labels', 'Share'],
-              rows: sources.map((s) => [s.source, s.count, `${pct(s.count, sourceTotal)}%`]),
+              rows: sources.map((s) => [s.source, s.count, pctOf(s.count, sourceTotal)]),
             }}
             empty={sources.length ? undefined : 'No label sources recorded yet.'}
           />
