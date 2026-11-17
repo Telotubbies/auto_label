@@ -8,6 +8,8 @@ import { useApp } from '@/lib/store'
 import type { Role, Usage, UsageMeter, UsageMeterKey } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Spinner, Stat, Switch, fmtAgo, fmtDate, toast } from '@/components/ui'
 import { DEFAULT_SEED, dateLocale, setThemePrefs, useThemePrefs, type Contrast, type ModePref, type Scheme } from '@/lib/theme'
+import { hasSeries, legendProps } from '@/lib/chartSeries'
+import SeriesEmpty from '@/components/charts/SeriesEmpty'
 import { cn } from '@/lib/utils'
 import { flagsKey, useWorkspaceFlags } from '@/lib/flags'
 import PrivacyWorkspace from '@/features/governance/Privacy'
@@ -423,6 +425,9 @@ function Usage() {
     ...d,
     label: typeof d.date === 'string' ? dayLabel(d.date) : d.date,
   }))
+  // A period whose every day is zero has no usage to plot: axes and a flat line at zero read as a
+  // broken page, so the chart box says so instead.
+  const meteredHasUsage = hasSeries(dailyMeters.flatMap((d) => [d.ai_calls, d.gpu_minutes]))
 
   return (
     <div className="space-y-4">
@@ -455,23 +460,27 @@ function Usage() {
             <h2 className="text-sm font-semibold">Metered activity, last 30 days</h2>
             <p className="text-xs text-muted-foreground">AI calls (bars) and GPU minutes (line)</p>
           </div>
-          <div className="mt-3 h-64" role="img" aria-label="AI calls shown as bars and GPU minutes shown as a line for each of the last 30 days. The table view below lists the same figures.">
-            <div className="h-full" aria-hidden="true">
-              <ResponsiveContainer>
-                <ComposedChart data={dailyMeters} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="label" minTickGap={24} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
-                  <YAxis yAxisId="calls" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
-                  <YAxis yAxisId="gpu" orientation="right" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} width={36} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE}
-                    formatter={(value, name) => [name === 'GPU minutes' ? `${num1.format(Number(value))} min` : Number(value).toLocaleString(), name]} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar yAxisId="calls" dataKey="ai_calls" name="AI calls" fill="var(--primary)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                  <Line yAxisId="gpu" type="monotone" dataKey="gpu_minutes" name="GPU minutes" stroke="var(--info)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
+          {meteredHasUsage ? (
+            <div className="mt-3 h-64" role="img" aria-label="AI calls shown as bars and GPU minutes shown as a line for each of the last 30 days. The table view below lists the same figures.">
+              <div className="h-full" aria-hidden="true">
+                <ResponsiveContainer>
+                  <ComposedChart data={dailyMeters} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="label" minTickGap={24} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                    <YAxis yAxisId="calls" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
+                    <YAxis yAxisId="gpu" orientation="right" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} width={36} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE}
+                      formatter={(value, name) => [name === 'GPU minutes' ? `${num1.format(Number(value))} min` : Number(value).toLocaleString(), name]} />
+                    <Legend {...legendProps} />
+                    <Bar yAxisId="calls" dataKey="ai_calls" name="AI calls" fill="var(--primary)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                    <Line yAxisId="gpu" type="monotone" dataKey="gpu_minutes" name="GPU minutes" stroke="var(--info)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-3"><SeriesEmpty title="No metered usage in this period." hint="AI calls and GPU minutes are counted daily." height={256} /></div>
+          )}
           <details className="mt-2">
             <summary className="inline-flex min-h-6 cursor-pointer items-center rounded px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground">Table view</summary>
             <div className="mt-2 max-h-72 overflow-auto rounded-md border" role="region" aria-label="Metered activity table" tabIndex={0}>
@@ -521,7 +530,7 @@ function Usage() {
                   <XAxis dataKey="label" minTickGap={24} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
                   <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Legend {...legendProps} />
                   {ACTIVITY_SERIES.map((s) => <Bar key={s.key} dataKey={s.key} name={s.label} stackId="a" fill={s.color} isAnimationActive={false} />)}
                 </BarChart>
               </ResponsiveContainer>
