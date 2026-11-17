@@ -1,4 +1,4 @@
-﻿import type { RefObject } from 'react'
+import type { RefObject } from 'react'
 import { Link, useMatch, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Cpu, Menu, Monitor, Moon, Sun } from 'lucide-react'

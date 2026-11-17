@@ -1,4 +1,4 @@
-﻿import { expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
 const WS = 'labeldesk-demo'
@@ -6,7 +6,7 @@ const PR = 'ppe-detection'
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'one.jpg')
 const VERSION = 'T-008 core loop'
 
-test('core loop: sign in โ’ project โ’ upload โ’ annotate โ’ version โ’ train entry โ’ deploy', async ({ page }) => {
+test('core loop: sign in → project → upload → annotate → version → train entry → deploy', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
   page.on('pageerror', (e) => consoleErrors.push(e.message))
