@@ -18,17 +18,20 @@ import threading
 import time
 from pathlib import Path
 
+from . import ollama
 from .inventory import collect
 
-ALLOWED_EXECUTABLES = {"uv", "python", "python3", "docker", "rm"}
+ALLOWED_EXECUTABLES = {"uv", "python", "python3", "docker", "rm", "ollama"}
 WRITES_OUTSIDE = {"--target", "--prefix", "-t"}       # options that plant files wherever they point
 SHELL_META = (";", "|", "&", "$(", "`", ">", "<", "\n", "\r")
 DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+OLLAMA_TAG = re.compile(r"^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$")
 TIMEOUT_S = 30 * 60          # one engine, cold pip or an image pull included
 CANCEL_GRACE_S = 10
 HEARTBEAT_S = 5.0            # a silent command still reports, so the reaper sees it alive
 MAX_LOG = 200
 MAX_LINE = 500
+PHASES = {"uninstall": "removing", "pull": "pulling"}
 _CANCELLED = -1
 
 
@@ -79,8 +82,11 @@ def guard(argv: list[str], engines_dir: Path) -> None:
     shortcut: an allowlisted interpreter still runs whatever it is handed, so the argv must come from
     the catalogue's plan; upgrade to an argv allowlist if a plan can ever carry anything else.
     """
-    if not argv or Path(argv[0]).name not in ALLOWED_EXECUTABLES:
+    if not argv or Path(argv[0]).name.lower() not in ALLOWED_EXECUTABLES:
         raise GuardError(f"{argv[0] if argv else ''!r} is not an allowed executable")
+    if Path(argv[0]).name.lower() == "ollama" and (
+            len(argv) != 3 or argv[1] != "pull" or not OLLAMA_TAG.fullmatch(argv[2])):
+        raise GuardError("only `ollama pull <name:tag>` may run on this worker")
     root = Path(engines_dir).resolve()
     for arg in argv:
         if not isinstance(arg, str) or not arg:
@@ -194,6 +200,15 @@ def run_engine_apply(srv, job: dict, args) -> None:
     root = Path(args.engines_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
 
+    if action == "pull":                                # a stopped server fails before any exec
+        try:
+            ollama.version()
+        except ollama.OllamaUnreachable as exc:
+            _post(srv, job, "progress", json={"progress": 0, "phase": "ollama_unreachable",
+                                              "log": [str(exc)]})
+            _post(srv, job, "fail", json={"error": str(exc)})
+            return
+
     for engine in engines:                                 # every path is judged before the first exec
         for argv in engine.get("argv") or []:
             guard(argv, root)
@@ -209,7 +224,7 @@ def run_engine_apply(srv, job: dict, args) -> None:
     try:
         for index, engine in enumerate(engines):
             target = f"{engine.get('id')}-{engine.get('version')}"
-            phase = f"{'removing' if action == 'uninstall' else 'installing'} {engine.get('id')}"
+            phase = f"{PHASES.get(action, 'installing')} {engine.get('id')}"
             percent = index / max(1, len(engines)) * 100
             for argv in engine.get("argv") or []:
                 code, tail = _stream(srv, job, _resolved(argv), root, phase, percent)
@@ -221,7 +236,14 @@ def run_engine_apply(srv, job: dict, args) -> None:
                 if code:
                     raise EngineFailed(f"{phase} failed with exit code {code}: "
                                        f"{tail[-1] if tail else 'no output'}")
-            if action != "uninstall":
+            if action == "pull":
+                # The host's inventory is the one-model record; a pulled tag is a model it holds.
+                marker = Path(args.models_dir).expanduser().resolve() / str(engine.get("id"))
+                marker.mkdir(parents=True, exist_ok=True)
+                (marker / "tag.txt").write_text(str(engine.get("tag") or ""))
+                done.append({"id": engine.get("id"), "version": engine.get("version"),
+                             "runtime": "ollama", "path": marker.name})
+            elif action != "uninstall":
                 path = target
                 if engine.get("runtime") == "docker":
                     path = str(((engine.get("argv") or [[]])[0] or [""])[-1])

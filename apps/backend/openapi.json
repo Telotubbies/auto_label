@@ -1917,6 +1917,34 @@
         "title": "OcrTemplateIn",
         "type": "object"
       },
+      "OllamaPullIn": {
+        "description": "One catalogue tag the admin wants pulled; the tag is a lookup key, never an argv part.",
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "host": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "tag": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "tag"
+        ],
+        "title": "OllamaPullIn",
+        "type": "object"
+      },
       "OutputIn": {
         "additionalProperties": false,
         "properties": {
@@ -9028,6 +9056,62 @@
           }
         ],
         "summary": "Models",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/models/ollama/pull": {
+      "post": {
+        "description": "Queue one catalogue tag as `ollama pull <tag>`; the worker runs it, the API does not.",
+        "operationId": "pull_ollama_api_ws__ws__inference_models_ollama_pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OllamaPullIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pull Ollama",
         "tags": [
           "inference"
         ]

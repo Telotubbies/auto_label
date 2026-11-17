@@ -68,7 +68,7 @@ export function changeHost(sel: Selection, host: string): Selection {
 export type JobStatus = 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
 export type JobLike = {
   status: JobStatus; progress?: number; phase?: string; log?: string[]; error?: string
-  host?: string; action?: 'install' | 'uninstall'
+  host?: string; action?: 'install' | 'uninstall' | 'pull'
 }
 export const LOG_CAP = 200                 // the sheet renders the last 200 lines, no more
 export const TAIL_LINES = 5                // the card renders the last five
@@ -80,25 +80,29 @@ export const isTerminal = (job: Pick<JobLike, 'status'>) =>
 /** `installing vllm` -> `Installing vllm`; a job with no phase yet still names its action. */
 export const phaseLabel = (job: Pick<JobLike, 'phase' | 'action'>) => job.phase
   ? job.phase.charAt(0).toUpperCase() + job.phase.slice(1)
-  : job.action === 'uninstall' ? 'Removing' : 'Installing'
+  : job.action === 'uninstall' ? 'Removing' : job.action === 'pull' ? 'Pulling' : 'Installing'
 
 /** The card's one sentence per status; a failure carries the safe reason the worker reported. */
 export function jobCopy(job: JobLike): string {
   const host = job.host || 'this host'
   const removing = job.action === 'uninstall'
+  const pull = job.action === 'pull'
   switch (job.status) {
-    case 'queued': return `${removing ? 'Removal' : 'Install'} queued on ${host}.`
+    case 'queued': return `${removing ? 'Removal' : pull ? 'Pull' : 'Install'} queued on ${host}.`
     case 'running': return `${phaseLabel(job)}.`
     case 'cancelling': return 'Cancelling…'
     case 'cancelled': return 'Cancelled'
-    case 'done': return removing ? `Removed from ${host}.` : `Installed on ${host}.`
-    case 'failed': return `${removing ? 'Uninstall' : 'Install'} failed: ${job.error || 'the worker did not report a reason.'}`
+    case 'done': return removing ? `Removed from ${host}.`
+      : pull ? `Model pulled on ${host}.` : `Installed on ${host}.`
+    case 'failed': return `${removing ? 'Uninstall' : pull ? 'Pull' : 'Install'} failed: ${job.error || 'the worker did not report a reason.'}`
   }
 }
 
 /** The confirm sentence, asked before anything is stopped; the sheet names the host it will touch. */
-export const cancelCopy = (host: string) =>
-  `Stop this install on ${host}? The half-built environment is removed.`
+export const cancelCopy = (host: string, action: JobLike['action'] = 'install') =>
+  action === 'pull'
+    ? `Stop this pull on ${host}? The partial model is removed.`
+    : `Stop this install on ${host}? The half-built environment is removed.`
 
 /** Newest last, capped at 200: the worker appends, so the tail is what a reader wants. */
 export const visibleLog = (job: Pick<JobLike, 'log'>) => (job.log ?? []).slice(-LOG_CAP)

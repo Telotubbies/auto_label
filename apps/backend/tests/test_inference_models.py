@@ -261,7 +261,8 @@ def test_public_models_hide_files():
     assert '"files"' not in body
     assert ".safetensors" not in body and ".gguf" not in body
     rows = inference_models.public_models(_host_row())["models"]
-    assert len(rows) == 5
+    assert len(inference_models.MODELS) == 5
+    assert len(rows) == 5 + len(inference_models.OLLAMA_TAGS)
     assert all(row["variants"] for row in rows)
 
 

@@ -430,6 +430,12 @@ export interface OcrTemplateIn {
   template: string
 }
 
+export interface OllamaPullIn {
+  confirm?: boolean
+  host: string
+  tag: string
+}
+
 export interface OutputIn {
   enabled?: boolean
   endpoint: Record<string, unknown>
