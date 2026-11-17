@@ -19,7 +19,8 @@ services:
       context: ../apps/frontend
       args: { VITE_API_URL: "" }        # same origin — nginx proxies /api
     restart: unless-stopped
-    depends_on: [api]
+    depends_on:
+      api: { condition: service_healthy }   # a cold start must not serve a broken SPA
 
   api:
     build: ../apps/backend
@@ -55,6 +56,13 @@ services:
     volumes: [labeldesk_data:/data]
     depends_on:
       db: { condition: service_healthy }
+    # /api/readyz checks the database, the data volume, the secret and the worker heartbeat.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/readyz')"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 30s
 
   worker:
     build: ../apps/backend

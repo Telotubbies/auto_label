@@ -4147,6 +4147,25 @@
         "summary": "Health"
       }
     },
+    "/api/healthz": {
+      "get": {
+        "operationId": "healthz_api_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/images/{image_id}": {
       "delete": {
         "operationId": "delete_image_api_images__image_id__delete",
@@ -5044,6 +5063,25 @@
         "summary": "Revoke Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/readyz": {
+      "get": {
+        "operationId": "readyz_api_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "health"
         ]
       }
     },
