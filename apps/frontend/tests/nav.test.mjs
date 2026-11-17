@@ -591,12 +591,16 @@ test('a locked rail row keeps the request-access meaning as a description, not a
   assert.match(item, /[Rr]equest access/, 'and how to ask for it')
 })
 
-test('the Jobs trigger names "Jobs <count>" as one contiguous string', () => {
+test('the Jobs trigger names itself "Jobs <count>", exactly like the row reads', () => {
   const button = source('../src/components/shell/JobButton.tsx')
-  const label = button.match(/aria-label=\{([^\n]+)\}\s+aria-expanded/)?.[1] ?? ''
-  assert.ok(label, 'the trigger keeps a name for the icon-only width')
-  assert.doesNotMatch(label, /Jobs,/, 'a comma between "Jobs" and its count breaks the match')
-  // What the eye reads with a job running: the "Jobs" label plus the count badge.
-  const name = label.replaceAll('${active}', '1')
-  assert.ok(name.includes('Jobs 1'), `${name} must contain the visible "Jobs 1"`)
+  // axe reads the name from the content only when nothing overrides it; an aria-label that adds a
+  // state word ("Jobs 1 active") still fails label-content-name-mismatch, so the word is not added.
+  assert.doesNotMatch(button, /aria-label=/, 'the trigger is named by its content')
+  // The visible word stays available to the name at the icon-only width instead of display:none.
+  assert.match(button, /<span className="sr-only sm:not-sr-only">Jobs<\/span>/,
+    'the label is visually hidden below sm, never hidden from the name')
+  assert.match(button, /\{active > 0 &&/, 'the count is a text badge beside it')
+  // The dot stays decoration, so the result it signals is said in words instead of by colour.
+  assert.match(button, /\{dot && <span className="sr-only">new result<\/span>\}/,
+    'a landed result is part of the name, not a colour-only dot')
 })
