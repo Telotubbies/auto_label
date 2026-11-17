@@ -15,6 +15,8 @@ export interface WorkspaceNavItem {
   end?: boolean
   /** Roles that may see the route; omitted = every member. */
   roles?: Role[]
+  /** Feature flag that gates the entry; off (or unknown) hides it. */
+  flag?: string
   /** Platform operator entry, not a workspace role. */
   superadmin?: boolean
 }
