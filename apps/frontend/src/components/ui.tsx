@@ -33,7 +33,7 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
 }
 
 export function Badge({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
-  return <span className={cn('inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground', className)} {...props} />
+  return <span className={cn('inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground', className)} {...props} />
 }
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -176,7 +176,7 @@ export function StatusPill({ status }: { status: string }) {
     queued: 'bg-warning/15 text-warning', cancelling: 'bg-warning/15 text-warning',
     failed: 'bg-destructive/15 text-destructive', rejected: 'bg-destructive/15 text-destructive', cancelled: 'bg-secondary text-secondary-foreground',
   }
-  return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize', tone[status] ?? 'bg-secondary text-secondary-foreground')}>{status}</span>
+  return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold capitalize', tone[status] ?? 'bg-secondary text-secondary-foreground')}>{status}</span>
 }
 
 // --- toasts ------------------------------------------------------------------

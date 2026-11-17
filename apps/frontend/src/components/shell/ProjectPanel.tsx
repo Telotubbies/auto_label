@@ -46,7 +46,7 @@ export function ProjectPanel({ project }: { project: Project }) {
         <div className="overflow-hidden rounded-lg border">
           <div className="relative h-20 bg-muted">
             {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
-            <span className="absolute left-2 top-2 rounded bg-scrim/70 px-1.5 py-0.5 text-[10px] text-white">{typeLabel(project.type)}</span>
+            <span className="absolute left-2 top-2 rounded bg-scrim/70 px-1.5 py-0.5 text-xs text-white">{typeLabel(project.type)}</span>
           </div>
           <div className="px-2.5 py-2 text-sm font-semibold">{project.name}</div>
         </div>
@@ -54,14 +54,14 @@ export function ProjectPanel({ project }: { project: Project }) {
       <nav aria-label="Project sections" className="flex-1 px-2 pb-4">
         {groups.map((g) => (
           <div key={g.group} role="group" aria-labelledby={`proj-nav-${g.group}`} className="mb-3">
-            <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.group}</div>
+            <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-sm font-semibold tracking-wider text-muted-foreground">{g.group}</div>
             {g.items.map(({ to, label, icon: Icon, count }) => (
               <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
-                className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+                className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
                   isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
                 <Icon className="h-4 w-4 text-muted-foreground" />
                 <span className="flex-1">{label}</span>
-                {count && <span className="text-[11px] text-muted-foreground">{project.images}</span>}
+                {count && <span className="text-sm text-muted-foreground">{project.images}</span>}
               </NavLink>
             ))}
           </div>
