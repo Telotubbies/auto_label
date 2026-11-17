@@ -34,6 +34,7 @@ FLAGS: dict[str, str] = {
     "task_36": "Batch inference: run one model over a batch, video frames or a bucket prefix",
     "task_38": "Event search: natural-language search over sampled stream frames",
     "task_40": "PLC / OT output (Modbus, OPC-UA, MQTT, GPIO)",
+    "task_470": "LabelDesk v3 shell: top bar, workspace rail and job panel",
 }
 
 
