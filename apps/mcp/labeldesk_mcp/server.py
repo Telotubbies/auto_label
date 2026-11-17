@@ -1,10 +1,13 @@
 """The MCP surface: the tool registry, the scope filter, and today's two tools."""
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.shared.exceptions import INVALID_REQUEST, MCPError
-from mcp.types import Tool
+from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
 
 from .api import Api
 
@@ -17,6 +20,25 @@ INSTRUCTIONS = (
 
 # Every toolset appends its tools here; a tool missing from this map is never listed.
 TOOL_SCOPES: dict[str, str] = {"whoami": "read", "list_projects": "read"}
+
+# The hint sets a host reads before it asks a person. `idempotentHint` is the tool's real behaviour:
+# a hash-deduped upload and a whole-set replace land the same on a second call, a job does not.
+READ = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
+WRITE = ToolAnnotations(read_only_hint=False, idempotent_hint=False, open_world_hint=False)
+IDEMPOTENT_WRITE = ToolAnnotations(read_only_hint=False, idempotent_hint=True, open_world_hint=False)
+DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True,
+                              open_world_hint=False)
+
+
+def summarised(data: Any, line: str) -> CallToolResult:
+    """One record: the JSON a text-only host reads, its typed copy, and one line for a person.
+
+    A tool's return annotation is the published outputSchema, so it stays the record's type while the
+    tool hands back this wrapper.
+    """
+    return CallToolResult(content=[TextContent(type="text", text=json.dumps(data, indent=2)),
+                                   TextContent(type="text", text=line)],
+                          structured_content=data)
 
 
 class _ScopedServer(MCPServer):
@@ -49,15 +71,24 @@ def build_server(api: Api) -> MCPServer:
 
     server = _ScopedServer(api)
 
-    @server.tool()
-    def whoami() -> dict:
-        """Which workspace this key belongs to, its plan, and the scopes it carries."""
-        _enabled(api)
-        return api.me()
+    @server.tool(annotations=READ)
+    def whoami() -> dict[str, Any]:
+        """This key's workspace, plan and scopes.
 
-    @server.tool()
-    def list_projects() -> list:
-        """The workspace's projects, with their image counts and classes."""
+        Use it first, to learn what the key may do; do not use it to read a project's data — call get_project.
+        """
+        _enabled(api)
+        me = api.me()
+        # the annotation is the published outputSchema; the wrapper adds the one-line summary
+        return summarised(me, f"Key for workspace {me.get('workspace')} with "
+                              f"{len(me.get('scopes') or [])} scopes.")
+
+    @server.tool(annotations=READ)
+    def list_projects() -> list[dict]:
+        """Every project in this workspace with its image count and class names.
+
+        Use it to find a project's slug; do not use it for one project's detail — call get_project.
+        """
         _enabled(api)
         return api.call("list_projects", "list_projects")
 
