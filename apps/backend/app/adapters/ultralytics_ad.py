@@ -16,7 +16,7 @@ TASK = {"object-detection": "detect", "instance-segmentation": "segment", "class
 
 
 def base_weights(task: str, size: str, family: str = "yolo26") -> str:
-    """Local pretrained checkpoint when present (ml/yolo26_ppe/models/pretrained), else an ultralytics hub name."""
+    """Local pretrained checkpoint when present (PRETRAINED_DIR, ../labeldesk-ml by default), else an ultralytics hub name."""
     suffix = {"detect": "", "segment": "-seg", "classify": "-cls"}[task]
     local = PRETRAINED_DIR / f"{family}{size}{suffix}.pt"
     if local.exists():

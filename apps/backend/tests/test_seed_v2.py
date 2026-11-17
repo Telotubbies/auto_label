@@ -7,6 +7,7 @@ repo's recorded PPE training run, not from live inference.
 
 import os
 import tempfile
+from pathlib import Path
 
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))
 os.environ["LD_EMBEDDED_WORKER"] = "1"
@@ -22,6 +23,19 @@ from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
 from app.models import Project, Stream, TrainedModel, Version, Workspace
+
+# The seed copies a checkpoint and reads the per-epoch history from its run directory. Build a tiny
+# one here so this test pins the seed, not the ML checkout that normally holds the real training run.
+_RUN = Path(os.environ["LD_DATA_DIR"]) / "demo-model-run"
+(_RUN / "weights").mkdir(parents=True, exist_ok=True)
+(_RUN / "weights" / "best.pt").write_bytes(b"stand-in checkpoint: the seed only copies it")
+(_RUN / "results.csv").write_text(
+    "epoch,metrics/mAP50(B),metrics/mAP50-95(B),metrics/precision(B),metrics/recall(B)\n"
+    "1,0.5,0.3,0.6,0.5\n"
+    "2,0.59,0.39,0.66,0.55\n",
+    encoding="utf-8",
+)
+seed_v2.MODEL_RUN = _RUN
 
 
 @pytest.fixture(scope="module", autouse=True)

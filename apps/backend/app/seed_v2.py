@@ -17,7 +17,7 @@ import cv2
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import DATA_DIR, REPO_ROOT
+from .config import DATA_DIR, DEMO_MODEL_RUN, REPO_ROOT
 from .db import SessionLocal
 from .models import Image, Project, Stream, TrainedModel, Version, Workspace
 from .services import ml, versioning
@@ -31,8 +31,9 @@ VERSION_IMAGES = 24                    # approved so the seed leaves review work
 MODEL_NAME = "PPE Detector YOLO26n"
 STREAM_NAME = "Gate camera"
 
-# The best real nano run in the repo (ml/yolo26_ppe/reports/metrics) and the checkpoint's own class names.
-MODEL_RUN = REPO_ROOT / "ml" / "yolo26_ppe" / "models" / "archive" / "version_2_improved_baseline" / "nano_detection" / "training_run"
+# The best real nano run (in the ML checkout, ../labeldesk-ml by default) and the checkpoint's own
+# class names. LD_DEMO_MODEL_RUN points elsewhere; a missing run skips the model, not the whole seed.
+MODEL_RUN = DEMO_MODEL_RUN
 MODEL_CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
 
 ZONE = {"id": "gate", "label": "Gate area", "points": [0.08, 0.42, 0.92, 0.42, 0.92, 0.96, 0.08, 0.96]}
