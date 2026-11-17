@@ -4,7 +4,7 @@ import { Home0, WorkspaceGate } from './guards'
 import { accountRoutes } from './account.routes'
 import { publicRoutes } from './public.routes'
 import { workspaceRoutes } from './workspace.routes'
-import { projectEditorRoute, projectRoutes } from './project'
+import { legacyEditorRoute, projectEditorRoute, projectRoutes } from './project'
 
 /**
  * Route registry. Each feature owns a `*.routes.tsx` file; this module composes them in the
@@ -18,6 +18,7 @@ export const appRoutes = (
     {accountRoutes}
     <Route path="/:ws" element={<WorkspaceGate />}>
       {projectEditorRoute}
+      {legacyEditorRoute}
       <Route element={<AppLayout />}>
         {workspaceRoutes}
         {projectRoutes}

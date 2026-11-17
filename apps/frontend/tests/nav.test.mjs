@@ -285,6 +285,11 @@ test('every reserved workspace segment has a breadcrumb label', () => {
   }
 })
 
+// T-474: `/w/p/ppe` reads `p` as the project prefix, never as a project slug.
+test('the /p/ project prefix is a reserved workspace segment', () => {
+  assert.ok(RESERVED_WORKSPACE_SEGMENTS.has('p'))
+})
+
 test('every project nav destination has a route', () => {
   for (const item of projectNav.flatMap((g) => g.items)) {
     assert.ok(appSrc.includes(`path="${item.to}"`), `${item.label} points at ${item.to}, which has no route`)
