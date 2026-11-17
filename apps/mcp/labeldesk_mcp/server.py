@@ -44,6 +44,7 @@ def _enabled(api: Api) -> None:
 def build_server(api: Api) -> MCPServer:
     """Both transports build this server; the key differs per request, the tools do not."""
     from .tools_read import register
+    from .tools_write import register as register_write
 
     server = _ScopedServer(api)
 
@@ -60,4 +61,5 @@ def build_server(api: Api) -> MCPServer:
         return api.call("list_projects", "list_projects")
 
     register(server, api)
+    register_write(server, api)
     return server
