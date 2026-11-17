@@ -22,6 +22,12 @@ export const projectNav: NavGroup<ProjectNavItem>[] = [
   dataNav, labelNav, modelsNav, studioNav, deployNav, settingsNav,
 ]
 
+/**
+ * The v3 rail's manifest (T-477): `GROUPS`, `SECONDARY`, the five `STAGES` and their derivations.
+ * Re-exported here so the nav barrel stays the one import surface; flag off never reads it.
+ */
+export * from './project/stages.ts'
+
 /** Old project URLs kept alive after the nav rename. */
 export const LEGACY_PROJECT_PATHS = {
   access: 'settings?tab=access',

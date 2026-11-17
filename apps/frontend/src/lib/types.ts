@@ -60,6 +60,25 @@ export interface Project {
   classes?: LabelClass[]; statusCounts?: Partial<Record<Status, number>>; role?: Role
 }
 
+/**
+ * The numbers one project rail row can state (T-477). Every field is either a value the API already
+ * returns or `null` while that call is loading or failed — never a zero standing in for "unknown".
+ * `deployed` stays `null`: no deployment record exists to count.
+ */
+export interface StageFacts {
+  uploaded: number
+  approved: number | null
+  toLabel: number | null
+  inReview: number | null
+  versions: number | null
+  latestVersion: number | null
+  runs: number | null
+  lastRun: 'none' | 'ok' | 'failed' | 'running' | 'cancelled' | null
+  models: number | null
+  classes: number | null
+  deployed: number | null
+}
+
 export type Shape =
   | { kind: 'bbox'; x: number; y: number; w: number; h: number }
   | { kind: 'polygon'; points: number[] }
