@@ -61,7 +61,7 @@ function Brand() {
       >
         L
       </span>
-      <span className="text-[15px] font-semibold tracking-[-0.02em] text-foreground">LabelDesk</span>
+      <span className="text-base font-semibold tracking-[-0.02em] text-foreground">LabelDesk</span>
     </Link>
   )
 }

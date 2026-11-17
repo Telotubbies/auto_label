@@ -142,7 +142,7 @@ function ModelPicker({ items, selected, onToggle }: {
               const on = selected.includes(m.ref)
               return (
                 <label key={m.ref} title={m.available ? m.name : m.reason}
-                  className={cn('flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] hover:bg-accent',
+                  className={cn('flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent',
                     !m.available && 'cursor-not-allowed opacity-50', on && 'bg-accent')}>
                   <input type="checkbox" checked={on} disabled={!m.available || (!on && selected.length >= MAX_MODELS)}
                     onChange={() => onToggle(m.ref)} className="accent-primary" />

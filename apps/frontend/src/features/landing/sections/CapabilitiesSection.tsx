@@ -115,7 +115,7 @@ function CapabilityCard({ tone, icon: Icon, title, lead, detail, href, linkLabel
         <Icon size={20} strokeWidth={1.75} />
       </span>
       <h3 className="mt-6 text-2xl font-semibold leading-[1.1] tracking-[-0.03em] [font-stretch:90%]">{title}</h3>
-      <p className="mt-3 text-pretty text-[15px] leading-relaxed">
+      <p className="mt-3 text-pretty text-base leading-relaxed">
         {lead}
         <span className="mt-1 block opacity-85">{detail}</span>
       </p>

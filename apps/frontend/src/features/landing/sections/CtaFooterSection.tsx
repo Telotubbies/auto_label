@@ -106,7 +106,7 @@ export function FooterSection() {
               >
                 L
               </span>
-              <span className="text-[15px] font-semibold tracking-[-0.02em] text-foreground">LabelDesk</span>
+              <span className="text-base font-semibold tracking-[-0.02em] text-foreground">LabelDesk</span>
             </a>
             <p className="mt-4 max-w-xs text-pretty text-sm leading-relaxed text-muted-foreground">
               Computer vision, labelled and deployed from one desk.

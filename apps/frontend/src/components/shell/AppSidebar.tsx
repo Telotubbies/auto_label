@@ -40,7 +40,7 @@ function SideNavLink({ to, label, icon: Icon, active, collapsed, onClick }: {
   return (
     <Link to={to} onClick={onClick} aria-label={label} aria-current={active ? 'page' : undefined} title={collapsed ? label : undefined}
       className={cn(
-        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-all duration-150',
+        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-all duration-150',
         active ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
         collapsed && 'justify-center px-0',
       )}>
@@ -102,7 +102,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
     )}>
       {mobileOpen && (
         <div className="flex items-center justify-between px-3 pt-2 md:hidden">
-          <span className="text-[11px] font-semibold tracking-wider text-muted-foreground">Navigation</span>
+          <span className="text-sm font-semibold tracking-wider text-muted-foreground">Navigation</span>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Close navigation"
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-sidebar-accent">
             <X className="h-4 w-4" />
@@ -113,7 +113,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
         <Dropdown
           trigger={
             <button className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/50 px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sidebar-primary text-[11px] font-bold text-sidebar-primary-foreground">{current?.name?.[0]?.toUpperCase() ?? 'L'}</span>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">{current?.name?.[0]?.toUpperCase() ?? 'L'}</span>
               {!rail && <><span className="flex-1 truncate text-left font-medium">{current?.name ?? 'LabelDesk'}</span><ChevronDown className="h-3.5 w-3.5" /></>}
             </button>
           }
@@ -133,7 +133,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
             className={cn('space-y-0.5', rail && g.label && 'mt-1 border-t border-sidebar-border/60 pt-1')}>
             {g.label && (rail
               ? <span id={`ws-nav-${g.id}`} className="sr-only">{g.label}</span>
-              : <div id={`ws-nav-${g.id}`} className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-wider text-muted-foreground">{g.label}</div>)}
+              : <div id={`ws-nav-${g.id}`} className="px-2.5 pb-1 pt-2 text-sm font-semibold tracking-wider text-muted-foreground">{g.label}</div>)}
             {g.items.map((i) => (
               <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
                 active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
@@ -143,7 +143,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
       </nav>
       <div className="space-y-0.5 p-2">
         {!rail && u && (
-          <Link to={`/${ws}/settings/usage`} className="mb-2 block rounded-lg border border-sidebar-border px-3 py-2 text-[12px] hover:bg-sidebar-accent/60">
+          <Link to={`/${ws}/settings/usage`} className="mb-2 block rounded-lg border border-sidebar-border px-3 py-2 text-sm hover:bg-sidebar-accent/60">
             <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium"><Zap className="h-3.5 w-3.5 text-warning" /> {u.plan_label} plan</span><span>{Math.round(u.credits_left)} cr</span></div>
             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sidebar-accent"><div className={cn('h-full', creditsPct > 80 ? 'bg-destructive' : 'bg-sidebar-primary')} style={{ width: `${Math.min(100, creditsPct)}%` }} /></div>
           </Link>
@@ -153,8 +153,8 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
             active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
         ))}
         <div className="flex items-center gap-2 px-2.5 py-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
-          {!rail && <span className="flex-1 truncate text-[12px]">{me?.name}</span>}
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
+          {!rail && <span className="flex-1 truncate text-sm">{me?.name}</span>}
           {!rail && (
             <Dropdown align="right" trigger={<button className="cursor-pointer" aria-label="Account menu"><ChevronDown className="h-3.5 w-3.5" /></button>}
               items={[{ label: <><User className="h-3.5 w-3.5" /> Account</>, onClick: () => nav(`/${ws}/settings/account`) },

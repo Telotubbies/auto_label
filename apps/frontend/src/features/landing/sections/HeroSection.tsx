@@ -231,11 +231,11 @@ export default function HeroSection() {
           <a href="/" className="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-offset-4">
             <span
               aria-hidden
-              className="grid h-7 w-7 place-items-center rounded-md bg-primary text-[13px] font-semibold leading-none text-primary-foreground"
+              className="grid h-7 w-7 place-items-center rounded-md bg-primary text-sm font-semibold leading-none text-primary-foreground"
             >
               L
             </span>
-            <span className="text-[15px] font-semibold tracking-tight text-foreground">LabelDesk</span>
+            <span className="text-base font-semibold tracking-tight text-foreground">LabelDesk</span>
           </a>
 
           <div className="ml-2 hidden items-center gap-0.5 md:flex">
