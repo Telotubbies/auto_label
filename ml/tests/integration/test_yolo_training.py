@@ -11,12 +11,12 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _models_exist():
     """Check if trained model weights exist."""
-    models_dir = REPO_ROOT / "ml" / "yolo26_ppe" / "models" / "production"
+    models_dir = REPO_ROOT / "yolo26_ppe" / "models" / "production"
     if not models_dir.exists():
         return False
     found = list(models_dir.rglob("best.pt"))
@@ -25,13 +25,13 @@ def _models_exist():
 
 def _dataset_prepared():
     """Check if the YOLO dataset has been prepared (v3, 4-class)."""
-    det_dir = REPO_ROOT / "ml" / "yolo26_ppe" / "data" / "yolo_detection_dataset_version_3"
+    det_dir = REPO_ROOT / "yolo26_ppe" / "data" / "yolo_detection_dataset_version_3"
     return det_dir.exists() and (det_dir / "data.yaml").exists()
 
 
 def _onnx_models_exist():
     """Check if ONNX exports exist (artifacts/onnx_models/production/)."""
-    onnx_dir = REPO_ROOT / "ml" / "yolo26_ppe" / "artifacts" / "onnx_models" / "production"
+    onnx_dir = REPO_ROOT / "yolo26_ppe" / "artifacts" / "onnx_models" / "production"
     if not onnx_dir.exists():
         return False
     return len(list(onnx_dir.glob("*.onnx"))) >= 1
@@ -54,7 +54,7 @@ class TestYOLOTrainingFourModels:
     @skip_no_dataset
     def test_four_model_directories_exist(self, repo_root):
         """All 4 model variant directories must exist after training (v3: s/m)."""
-        models_dir = repo_root / "ml" / "yolo26_ppe" / "models" / "production"
+        models_dir = repo_root / "yolo26_ppe" / "models" / "production"
         expected = ["small_detection", "small_segmentation", "medium_detection", "medium_segmentation"]
         for name in expected:
             model_dir = models_dir / name
@@ -63,14 +63,14 @@ class TestYOLOTrainingFourModels:
     @skip_no_models
     def test_best_weights_exist(self, repo_root):
         """Each trained model must have a best.pt weights file."""
-        models_dir = repo_root / "ml" / "yolo26_ppe" / "models" / "production"
+        models_dir = repo_root / "yolo26_ppe" / "models" / "production"
         best_files = list(models_dir.rglob("best.pt"))
         assert len(best_files) >= 1, "At least one best.pt must exist after training"
 
     @skip_no_models
     def test_model_variants_covered(self, repo_root):
         """At least the 4 expected model variants should have weights."""
-        models_dir = repo_root / "ml" / "yolo26_ppe" / "models" / "production"
+        models_dir = repo_root / "yolo26_ppe" / "models" / "production"
         expected = ["small_detection", "small_segmentation", "medium_detection", "medium_segmentation"]
         found = []
         for name in expected:
@@ -108,14 +108,14 @@ class TestONNXExport:
     @skip_no_models
     def test_onnx_files_exist(self, repo_root):
         """ONNX export must produce .onnx files for trained models."""
-        onnx_dir = repo_root / "ml" / "yolo26_ppe" / "artifacts" / "onnx_models" / "production"
+        onnx_dir = repo_root / "yolo26_ppe" / "artifacts" / "onnx_models" / "production"
         onnx_files = list(onnx_dir.glob("*.onnx"))
         assert len(onnx_files) >= 1, "At least one .onnx file must exist after export"
 
     @skip_no_models
     def test_onnx_files_are_valid_size(self, repo_root):
         """ONNX files must be non-trivial in size (>0.1MB, <=100MB)."""
-        onnx_dir = repo_root / "ml" / "yolo26_ppe" / "artifacts" / "onnx_models" / "production"
+        onnx_dir = repo_root / "yolo26_ppe" / "artifacts" / "onnx_models" / "production"
         for onnx in onnx_dir.glob("*.onnx"):
             size_mb = onnx.stat().st_size / (1024 * 1024)
             assert size_mb > 0.1, f"ONNX file too small ({size_mb:.2f} MB): {onnx.name}"
@@ -124,7 +124,7 @@ class TestONNXExport:
 
     def test_onnx_export_script_exists(self, repo_root):
         """The ONNX export script must exist."""
-        export_script = repo_root / "ml" / "yolo26_ppe" / "scripts" / "pipeline" / "04_export_and_evaluate_onnx.py"
+        export_script = repo_root / "yolo26_ppe" / "scripts" / "pipeline" / "04_export_and_evaluate_onnx.py"
         assert export_script.exists(), "04_export_and_evaluate_onnx.py must exist"
         content = export_script.read_text(encoding="utf-8")
         assert "onnx" in content.lower(), "Export script must reference ONNX"
@@ -132,7 +132,7 @@ class TestONNXExport:
 
     def test_onnx_export_script_has_benchmark(self, repo_root):
         """The ONNX export script must include inference benchmarking."""
-        export_script = repo_root / "ml" / "yolo26_ppe" / "scripts" / "pipeline" / "04_export_and_evaluate_onnx.py"
+        export_script = repo_root / "yolo26_ppe" / "scripts" / "pipeline" / "04_export_and_evaluate_onnx.py"
         content = export_script.read_text(encoding="utf-8")
         # Must reference benchmark/inference timing
         assert any(kw in content.lower() for kw in ["benchmark", "inference", "latency"]), (

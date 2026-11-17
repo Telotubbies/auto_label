@@ -7,8 +7,9 @@ Run from the repo root on the demo box (CPU is enough for this step):
     python tools/prefetch_weights.py --dry-run
     python tools/prefetch_weights.py --pretrained-dir D:/labeldesk-weights --skip-vlm
 
-Zoo checkpoints land in ``LD_PRETRAINED_DIR`` (default ``ml/yolo26_ppe/models/pretrained``)
-so ``UltralyticsAdapter`` finds them locally instead of hitting the hub during the demo.
+Zoo checkpoints land in ``LD_PRETRAINED_DIR`` (default ``../labeldesk-ml/yolo26_ppe/models/pretrained``,
+the ML repo's checkout next to this one) so ``UltralyticsAdapter`` finds them locally instead of hitting
+the hub during the demo.
 Each world model gets one ``set_classes(["person"])`` call, which also pulls the CLIP
 text encoder. The vLLM model is fetched with ``huggingface-cli download``, falling back
 to the ``hf`` command. ``--check`` and ``--dry-run`` never touch the network.
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PRETRAINED_DIR = REPO_ROOT / "ml" / "yolo26_ppe" / "models" / "pretrained"
+DEFAULT_PRETRAINED_DIR = REPO_ROOT.parent / "labeldesk-ml" / "yolo26_ppe" / "models" / "pretrained"
 WEIGHTS = (
     "rtdetr-l.pt",
     "yolov8s-worldv2.pt",
@@ -70,7 +71,7 @@ def build_plan(skip_vlm: bool = False) -> list[Item]:
 
 
 def default_pretrained_dir() -> Path:
-    """``LD_PRETRAINED_DIR`` when set, else the repo's local model directory."""
+    """``LD_PRETRAINED_DIR`` when set, else the sibling ML checkout's pretrained directory."""
     override = os.environ.get("LD_PRETRAINED_DIR")
     return Path(override) if override else DEFAULT_PRETRAINED_DIR
 

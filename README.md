@@ -65,6 +65,8 @@ uvicorn app.main:app --reload --port 8010
 
 Development defaults use SQLite in `apps/backend/data`, enable the embedded job worker, and seed demo data, including `demo@labeldesk.dev` with password `demo1234`. Set `LD_SEED_DEMO=0` to skip the seed. The health endpoint is `GET /api/health`.
 
+Optional ML features (SAM 3.1 auto-label, local YOLO26 base weights, the demo model) read the ML repo, which lives in its own checkout next to this one: `../labeldesk-ml` by default. Point `LD_SAM_ROOT`, `LD_PRETRAINED_DIR` and `LD_DEMO_MODEL_RUN` elsewhere when your checkout differs. Without it the API still runs: SAM reports unavailable, training falls back to Ultralytics hub weights, and the demo seed skips its trained-model row.
+
 ### Frontend
 
 ```bash
@@ -85,10 +87,11 @@ cd ../frontend
 npm run build
 ```
 
-The root pipeline tests need the CLI dependencies (`questionary`, `rich`) installed in the active environment:
+The ML pipeline tests live with the ML code and need the CLI dependencies (`questionary`, `rich`) installed in the active environment:
 
 ```bash
-python -m pytest tests -q
+cd ml
+python -m pytest -q
 ```
 
 ### Compose deployment

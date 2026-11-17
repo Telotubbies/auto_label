@@ -75,10 +75,16 @@ if TRAIN_WORKER not in ("", "local", "remote"):
     raise RuntimeError("LD_TRAIN_WORKER must be local, remote, or empty (auto)")
 
 
-# ML integration — all optional; features degrade with a clear error when missing
-SAM_ROOT = Path(_env("LD_SAM_ROOT", str(REPO_ROOT / "ml" / "sam3_auto_label")))
+# ML integration — the ML code lives in its own repo, defaulting to a sibling checkout
+# (../labeldesk-ml). All of it is optional: each feature degrades with a clear message when the
+# checkout is absent, and every path can be pinned with the env var named here.
+ML_SIBLING = REPO_ROOT.parent / "labeldesk-ml"
+SAM_ROOT = Path(_env("LD_SAM_ROOT", str(ML_SIBLING / "sam3_auto_label")))
 SAM_ENABLED = _env("LD_SAM_ENABLED", "auto")                  # auto | 1 | 0
-PRETRAINED_DIR = Path(_env("LD_PRETRAINED_DIR", str(REPO_ROOT / "ml" / "yolo26_ppe" / "models" / "pretrained")))
+PRETRAINED_DIR = Path(_env("LD_PRETRAINED_DIR", str(ML_SIBLING / "yolo26_ppe" / "models" / "pretrained")))
+DEMO_MODEL_RUN = Path(_env("LD_DEMO_MODEL_RUN", str(
+    ML_SIBLING / "yolo26_ppe" / "models" / "archive" / "version_2_improved_baseline"
+    / "nano_detection" / "training_run")))
 TRAIN_DEVICE = _env("LD_TRAIN_DEVICE", "")                    # "" = ultralytics auto, "cpu", "0"
 
 VLM_URL = _env("LD_VLM_URL", "http://localhost:8000/v1").rstrip("/")

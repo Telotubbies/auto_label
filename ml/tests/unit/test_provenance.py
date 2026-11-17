@@ -26,7 +26,7 @@ class TestProvenanceFields:
 
     def test_experiments_table_has_model_version_column(self, repo_root, tmp_path):
         """The SQLite schema must include a model_version column."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from config import Config, InferenceConfig, AnnotationConfig, OutputConfig, CheckpointConfig, Category
         from tracker import ExperimentTracker
 
@@ -52,7 +52,7 @@ class TestProvenanceFields:
 
     def test_annotation_dict_has_source_field(self, repo_root):
         """Each annotation dict must include an annotation_source field."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import build_annotation_dict
         ann = build_annotation_dict(
             ann_id=1, image_id=1, category_id=1,
@@ -64,7 +64,7 @@ class TestProvenanceFields:
 
     def test_annotation_dict_defaults_to_auto(self, repo_root):
         """If annotation_source is not provided, it defaults to 'auto'."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import build_annotation_dict
         ann = build_annotation_dict(
             ann_id=1, image_id=1, category_id=1,
@@ -83,7 +83,7 @@ class TestRetryOnFailure:
 
     def test_retry_function_retries_on_failure(self, repo_root):
         """retry_segment should call segment_image up to max_retries times."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from batch_segment import retry_segment
 
         call_count = [0]
@@ -102,7 +102,7 @@ class TestRetryOnFailure:
 
     def test_retry_gives_up_after_max_retries(self, repo_root):
         """After max_retries, retry_segment should return empty annotations."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from batch_segment import retry_segment
 
         def always_fail(*args, **kwargs):
@@ -124,7 +124,7 @@ class TestLabelValidator:
 
     def test_rejects_nan_bbox(self, repo_root):
         """Bbox with NaN values must be rejected."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import validate_annotation
         import math
 
@@ -138,7 +138,7 @@ class TestLabelValidator:
 
     def test_rejects_zero_area(self, repo_root):
         """Annotations with zero area must be rejected."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import validate_annotation
 
         ann = {
@@ -151,7 +151,7 @@ class TestLabelValidator:
 
     def test_rejects_negative_bbox(self, repo_root):
         """Bbox with negative width/height must be rejected."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import validate_annotation
 
         ann = {
@@ -164,7 +164,7 @@ class TestLabelValidator:
 
     def test_rejects_invalid_category_id(self, repo_root):
         """Category ID <= 0 must be rejected."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import validate_annotation
 
         ann = {
@@ -177,7 +177,7 @@ class TestLabelValidator:
 
     def test_rejects_score_below_zero(self, repo_root):
         """Score < 0 or > 1 must be rejected."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import validate_annotation
 
         ann = {
@@ -190,7 +190,7 @@ class TestLabelValidator:
 
     def test_accepts_valid_annotation(self, repo_root):
         """A valid annotation must pass validation."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import validate_annotation
 
         ann = {
@@ -211,7 +211,7 @@ class TestMinAreaFilter:
 
     def test_filter_drops_small_annotations(self, repo_root):
         """Annotations with area < min_area must be filtered out."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import filter_by_min_area
 
         annotations = [
@@ -225,7 +225,7 @@ class TestMinAreaFilter:
 
     def test_filter_with_zero_min_area_keeps_all(self, repo_root):
         """min_area=0 should keep all annotations (disabled)."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from inference import filter_by_min_area
 
         annotations = [
@@ -237,7 +237,7 @@ class TestMinAreaFilter:
 
     def test_min_area_config_field_exists(self, repo_root):
         """InferenceConfig must have a min_area field."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from config import InferenceConfig
         cfg = InferenceConfig()
         assert hasattr(cfg, "min_area"), "InferenceConfig must have min_area field"
@@ -253,7 +253,7 @@ class TestSHA256ConfigHash:
 
     def test_config_hash_is_sha256(self, repo_root, tmp_path):
         """The _config_hash method must produce a SHA256-based hash."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from config import Config, InferenceConfig, AnnotationConfig, OutputConfig, CheckpointConfig, Category
         from tracker import ExperimentTracker
 
@@ -275,7 +275,7 @@ class TestSHA256ConfigHash:
 
     def test_config_hash_not_md5_length(self, repo_root, tmp_path):
         """The hash must NOT be MD5 length (32 chars). SHA256 is 64 chars."""
-        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
         from config import Config, InferenceConfig, AnnotationConfig, OutputConfig, CheckpointConfig, Category
         from tracker import ExperimentTracker
 
