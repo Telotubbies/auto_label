@@ -15,15 +15,11 @@ from .models import Audit, Image, Member, Project, ProjectMember, User, Workspac
 from .security import verify_access
 
 bearer = HTTPBearer(auto_error=False)
-# Kept for back-compat with existing `need()` call sites; new code should use permissions.
-RANK = {"annotator": 1, "reviewer": 2, "admin": 3, "owner": 4, "billing": 2, "member": 1}
 # need() is the legacy two-level threshold: pass on the workspace role OR the project role.
 NEED = {
     "annotator": ({"annotator", "reviewer", "admin", "owner", "member"}, {"manager", "reviewer", "labeler"}),
     "reviewer": ({"reviewer", "admin", "owner"}, {"manager", "reviewer"}),
     "admin": ({"admin", "owner"}, {"manager"}),
-    "billing": ({"billing", "owner"}, set()),
-    "owner": ({"owner"}, set()),
 }
 
 

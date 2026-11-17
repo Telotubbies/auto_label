@@ -227,7 +227,6 @@ def decode_onnx_output(
     pad: tuple[int, int],
     confidence: float,
     iou: float,
-    num_classes: int | None = None,
 ) -> list[dict]:
     """Decode a standard Ultralytics detection ONNX output: (1, 4+nc, N) or (1, N, 4+nc).
 
@@ -239,7 +238,7 @@ def decode_onnx_output(
         arr = arr[0]
     if arr.ndim != 2:
         raise ValueError(f"unsupported ONNX output shape {arr.shape}")
-    channels = 4 + num_classes if num_classes else (4 + len(names) if names else None)
+    channels = 4 + len(names) if names else None
     if channels is not None and arr.shape[0] in (channels, channels + 32):
         arr = arr.T  # (4+nc[, +32 mask coeffs], N) -> (N, C)
     elif channels is not None and arr.shape[1] in (channels, channels + 32):
@@ -248,7 +247,7 @@ def decode_onnx_output(
         arr = arr.T
     if arr.shape[1] < 5:
         raise ValueError(f"unsupported ONNX output shape {arr.shape}")
-    nc = num_classes or len(names) or max(1, arr.shape[1] - 4)
+    nc = len(names) or max(1, arr.shape[1] - 4)
     if arr.shape[1] < 4 + nc:
         raise ValueError(f"ONNX output has {arr.shape[1]} columns but {nc} classes need {4 + nc}")
     scores = arr[:, 4 : 4 + nc]
@@ -328,7 +327,6 @@ class OnnxDetector:
         self.size = _input_size(model_input.shape)
         meta = dict(self.session.get_modelmeta().custom_metadata_map or {})
         self.names = parse_names(meta.get("names"))
-        self.task = meta.get("task", "detect")
 
     def predict(self, im: Image.Image, confidence: float, iou: float = 0.5) -> dict:
         started = time.perf_counter()
@@ -343,7 +341,6 @@ class OnnxDetector:
             pad=pad,
             confidence=confidence,
             iou=iou,
-            num_classes=len(self.names) or None,
         )
         return {
             "predictions": preds,

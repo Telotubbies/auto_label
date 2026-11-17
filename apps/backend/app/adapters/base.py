@@ -13,7 +13,6 @@ log = logging.getLogger("labeldesk.adapters")
 class Availability:
     ok: bool
     reason: str = ""
-    vram_mb: int = 0
 
 
 @dataclass
