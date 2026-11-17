@@ -1,5 +1,7 @@
 import type { ProjectRole, Role } from '../types'
 import { BILLING_AUDIENCE, canSeeProjectItem, inAudience, NO_BUILD, OWNER_ADMIN, STAFF } from './audience.ts'
+import { GROUPS, railItem } from './project/stages.ts'
+import type { RailId, StageRow } from './project/stages.ts'
 import { projectNav, workspaceNav } from './registry.ts'
 import type { NavGroup, ProjectNavItem, WorkspaceNavItem } from './types'
 
@@ -78,6 +80,25 @@ export function visibleProjectNav(
   return projectNav
     .map((g) => ({ ...g, items: g.items.filter((i) => canSeeProjectItem(i, can, role, flags, projectType)) }))
     .filter((g) => g.items.length > 0)
+}
+
+/**
+ * The v3 project rail (T-477): three purpose groups holding the manifest. A numbered stage is never
+ * filtered out — a role that cannot act on it gets the row dimmed with a lock. The unnumbered
+ * destinations keep the v2 audience, flag and type filter.
+ */
+export function visibleStageGroups(
+  can: (perm: string) => boolean, role?: ProjectRole | null, flags?: ReadonlySet<string>,
+  projectType?: string,
+): NavGroup<StageRow>[] {
+  return GROUPS.map((g) => ({
+    id: g.id,
+    label: g.label,
+    items: (g.items as readonly RailId[])
+      .map(railItem)
+      .filter((i) => i.number !== undefined || canSeeProjectItem(i, can, role, flags, projectType))
+      .map((i) => ({ ...i, locked: i.number !== undefined && !can(i.perm) })),
+  })).filter((g) => g.items.length > 0)
 }
 
 /**
