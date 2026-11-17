@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from app.db import SessionLocal
 from app.main import app
 from app.models import Image, LabelClass, Project, User, Video, Workspace, WorkspaceFlag, new_id, set_annotations
+from conftest import login_as
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -21,9 +22,7 @@ PW = "demo1234"
 
 
 def _login(client: TestClient, email: str) -> dict:
-    r = client.post("/api/auth/login", json={"email": email, "password": PW})
-    assert r.status_code == 200, r.text
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return login_as(client, email)
 
 
 def _bbox(x: float, **extra) -> dict:

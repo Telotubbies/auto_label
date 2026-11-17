@@ -19,6 +19,7 @@ from app.services import flags
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
 from sqlalchemy import select
+from conftest import login
 
 WS = ""
 PROJECT = "ocr-task32"
@@ -43,11 +44,7 @@ def flag(c, on: bool) -> None:
 def c():
     global WS, BASE
     with TestClient(app) as client:
-        tok = client.post(
-            "/api/auth/login",
-            json={"email": "demo@labeldesk.dev", "password": "demo1234"},
-        ).json()["token"]
-        client.headers["Authorization"] = f"Bearer {tok}"
+        client.headers.update(login(client))
         # a workspace of its own keeps the demo PPE project's classes, images and project quota
         # untouched (the shared demo workspace is already at its Free-plan project limit by now)
         created = client.post("/api/workspaces", json={"name": "OCR Task 32"})

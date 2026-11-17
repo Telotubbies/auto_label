@@ -20,6 +20,7 @@ from app.models import Image, ImageClass, LabelClass, Project, User, Workspace
 from app.security import issue_access
 from app.services import collections as collection_service
 from app.services import insights_embedding, semantic_search
+from conftest import login
 
 WS = "labeldesk-demo"
 SLUG = "semantic-qa"
@@ -31,11 +32,8 @@ FLAG = "task_27"
 
 @pytest.fixture(scope="module")
 def client():
-    with TestClient(app):
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        c = TestClient(app)
-        c.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+    with TestClient(app) as c:
+        c.headers.update(login(c))
         yield c
 
 

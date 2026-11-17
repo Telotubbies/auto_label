@@ -19,6 +19,7 @@ from app.main import app
 from app.models import Version
 from app.services import versioning
 from app.services.versioning import phash_groups, stratified_split
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -28,8 +29,7 @@ RATIOS = {"train": 70, "valid": 20, "test": 10}
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        tok = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        client.headers["Authorization"] = f"Bearer {tok}"
+        client.headers.update(login(client))
         pending = client.get(f"{BASE}/images", params={"status": "review"}).json()["items"]
         if pending:                                  # another module may already have approved the seed batch
             img = pending[0]

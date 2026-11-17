@@ -13,7 +13,6 @@ from fastapi import HTTPException
 from PIL import Image as PImage
 from sqlalchemy import delete, select
 
-from app.bootstrap import init_db
 from app.config import CREDIT_COST, DATA_DIR, PLANS
 from app.db import SessionLocal
 from app.deps import Ctx
@@ -23,12 +22,6 @@ from app.services import workflow_runner as runner
 from app.services.workflows import validate_blocks
 
 WS, PR = "labeldesk-demo", "ppe-detection"
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    init_db()
-    yield
 
 
 def _project(db) -> Project:

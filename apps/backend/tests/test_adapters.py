@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, inspect, select
 from app.adapters import ADAPTERS, parse_ref, validate_prediction
 from app.bootstrap import ensure_columns
 from app.main import app
+from conftest import login
 
 WS = "labeldesk-demo"
 
@@ -21,8 +22,7 @@ WS = "labeldesk-demo"
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        tok = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        client.headers["Authorization"] = f"Bearer {tok}"
+        client.headers.update(login(client))
         yield client
 
 

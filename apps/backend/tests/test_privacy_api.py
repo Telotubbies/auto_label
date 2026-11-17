@@ -15,6 +15,7 @@ from sqlalchemy import delete, select
 from app.db import SessionLocal
 from app.main import app
 from app.models import Job, Project, Workspace
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}"
@@ -24,8 +25,7 @@ P = f"{BASE}/projects/{PR}/privacy"
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        tok = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        c.headers["Authorization"] = f"Bearer {tok}"
+        c.headers.update(login(c))
         yield c
 
 

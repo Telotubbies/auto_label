@@ -12,13 +12,8 @@ from PIL import ImageOps
 
 from app import worker
 from app.config import DATA_DIR
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.models import Image, Job, Project, User, Video, Workspace
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    Base.metadata.create_all(engine)
 
 
 @pytest.fixture()

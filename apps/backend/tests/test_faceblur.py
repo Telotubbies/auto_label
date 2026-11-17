@@ -22,6 +22,7 @@ from app.main import app
 from app.models import Batch, Image, Project, User, Workspace
 from app.routers import images
 from app.services import faceblur
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 
@@ -40,8 +41,7 @@ def jpeg(color: tuple[int, int, int]) -> bytes:
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        tok = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        c.headers["Authorization"] = f"Bearer {tok}"
+        c.headers.update(login(c))
         yield c
 
 

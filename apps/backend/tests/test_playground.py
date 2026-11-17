@@ -11,6 +11,7 @@ from PIL import Image as PImage
 
 from app.adapters import ADAPTERS, Availability, validate_prediction
 from app.main import app
+from conftest import login
 
 WS = "labeldesk-demo"
 URL = f"/api/ws/{WS}/playground/predict"
@@ -42,8 +43,7 @@ class FakeAd:
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as cl:     # one login per module: the login endpoint is rate limited
-        tok = cl.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        cl.headers["Authorization"] = f"Bearer {tok}"
+        cl.headers.update(login(cl))
         yield cl
 
 

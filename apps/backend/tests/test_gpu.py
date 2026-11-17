@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.adapters.base import Availability
 from app.gpu import GpuScheduler, gpu_label
 from app.main import app
+from conftest import login
 
 
 class FakeVlm:
@@ -292,8 +293,7 @@ def test_exclusive_unloads_sam_loaded_by_segment(monkeypatch):
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        tok = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        c.headers["Authorization"] = f"Bearer {tok}"
+        c.headers.update(login(c))
         yield c
 
 

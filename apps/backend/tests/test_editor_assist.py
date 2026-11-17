@@ -15,6 +15,7 @@ import numpy as np
 from app.main import app
 from app.routers import images as images_router
 from app.services import segment
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -29,8 +30,7 @@ def jpeg(color=(180, 60, 60)) -> bytes:
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        tok = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        client.headers["Authorization"] = f"Bearer {tok}"
+        client.headers.update(login(client))
         yield client
 
 

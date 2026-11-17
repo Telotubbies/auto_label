@@ -19,6 +19,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import Image, LabelClass, Member, Project, ProjectMember, User, Version, Workspace, WorkspaceFlag
 from app.security import hash_password, issue_access
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -28,8 +29,7 @@ TILING = {"tile_size": 400, "overlap": 0.2}
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        r = client.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"})
-        client.headers["Authorization"] = f"Bearer {r.json()['token']}"
+        client.headers.update(login(client))
         yield client
 
 

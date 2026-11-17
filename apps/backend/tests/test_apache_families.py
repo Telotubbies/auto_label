@@ -11,8 +11,8 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Job, Project, TrainedModel, User, Version, Workspace
-from app.security import issue_access
+from app.models import Job, Project, TrainedModel, Version, Workspace
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}"
@@ -20,11 +20,8 @@ BASE = f"/api/ws/{WS}/projects/{PR}"
 
 @pytest.fixture(scope="module")
 def c():
-    # Mint the token directly instead of spending a login rate-limit slot the other modules need.
     with TestClient(app) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 

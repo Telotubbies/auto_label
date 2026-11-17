@@ -17,8 +17,7 @@ from sqlalchemy import select
 from app.adapters import ADAPTERS, Availability
 from app.db import SessionLocal
 from app.main import app
-from app.models import User
-from app.security import issue_access
+from conftest import login
 
 WS = "labeldesk-demo"
 THAI = "หมวกนิรภัย"
@@ -26,12 +25,8 @@ THAI = "หมวกนิรภัย"
 
 @pytest.fixture(scope="module")
 def c():
-    # Mint the token directly instead of spending one of the shared login rate-limit slots
-    # the other test modules need (all of them log in as the same demo user).
     with TestClient(app) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 
@@ -76,14 +71,12 @@ def _usage(c):
 
 
 def _saved(project_id):
-    from app.db import SessionLocal
     from app.models import Image
     with SessionLocal() as s:
         return [a for img in s.scalars(select(Image).where(Image.project_id == project_id)) for a in img.annotations or []]
 
 
 def _saved_for(image_id):
-    from app.db import SessionLocal
     from app.models import Image
     with SessionLocal() as s:
         return list(s.get(Image, image_id).annotations or [])
@@ -279,7 +272,6 @@ def test_prompt_parser_feeds_sam(c, scratch, monkeypatch):
 
 
 def test_trained_default_threshold_comes_from_eval(c, scratch, monkeypatch):
-    from app.db import SessionLocal
     from app.models import TrainedModel, Version, Workspace
     seen = []
     adapter = FakeDetector()
@@ -310,7 +302,6 @@ def test_trained_default_threshold_comes_from_eval(c, scratch, monkeypatch):
 
 
 def test_ready_trained_model_in_registry(c, scratch):
-    from app.db import SessionLocal
     from app.models import TrainedModel, Version, Workspace
     with SessionLocal() as s:
         ws = s.scalar(select(Workspace).where(Workspace.slug == WS))

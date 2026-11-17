@@ -17,9 +17,9 @@ from sqlalchemy import func, select
 from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
-from app.models import Image, Job, Project, TrainedModel, User, Version, Workspace
-from app.security import issue_access
+from app.models import Image, Job, Project, TrainedModel, Version, Workspace
 from app.services import health, health_scan
+from conftest import login
 
 WS = "labeldesk-demo"
 NAME = "health-check-qa"
@@ -27,11 +27,8 @@ NAME = "health-check-qa"
 
 @pytest.fixture(scope="module")
 def c():
-    # mint the token directly: the shared login rate limit would starve later modules
     with TestClient(app) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 

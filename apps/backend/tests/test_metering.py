@@ -13,23 +13,14 @@ os.environ["LD_SAM_ENABLED"] = "0"
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.config import PLANS
 from app.db import SessionLocal
-from app.main import app
 from app.models import METRICS, UsageEvent, User, Workspace
 from app.services import metering
 
 GB = 1024**3
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    """The TestClient lifespan creates the schema; each test then uses its own workspace."""
-    with TestClient(app):
-        yield
 
 
 def make_ws(db, plan: str = "free", **kw) -> Workspace:

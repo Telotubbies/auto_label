@@ -23,6 +23,7 @@ from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
 from app.models import Image, Job, Project, TrainedModel, Version, Workspace
+from conftest import login
 
 WS = "labeldesk-demo"
 
@@ -30,8 +31,7 @@ WS = "labeldesk-demo"
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        tok = c.post("/api/auth/login", json={"email": "demo@labeldesk.dev", "password": "demo1234"}).json()["token"]
-        c.headers["Authorization"] = f"Bearer {tok}"
+        c.headers.update(login(c))
         yield c
 
 

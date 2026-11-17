@@ -42,6 +42,32 @@ os.environ["LD_SEED_DEMO"] = "1"
 os.environ["LD_FLAGS_ON"] = "task_10b,task_20c,task_22,task_23,task_33"
 
 import pytest
+from fastapi.testclient import TestClient
+
+
+def _demo_credentials() -> tuple[str, str]:
+    """The seeded demo login, read lazily from its one home so a seed change is a one-line edit."""
+    from app.bootstrap import DEMO_EMAIL, DEMO_PW
+    return DEMO_EMAIL, DEMO_PW
+
+
+def login(c: TestClient, email: str | None = None, pw: str | None = None) -> dict[str, str]:
+    """Authorization headers for a seeded account; raises on a failed login so a broken seed is loud.
+
+    The helper posts to the real route like a user. It never mints a token: a test that does
+    would keep passing after the login route, the password policy or the seed broke.
+    """
+    demo_email, demo_pw = _demo_credentials()
+    email = email or demo_email
+    r = c.post("/api/auth/login", json={"email": email, "password": pw or demo_pw})
+    if r.status_code != 200:
+        raise RuntimeError(f"login failed for {email}: {r.status_code} {r.text}")
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+def login_as(c: TestClient, email: str) -> dict[str, str]:
+    """Headers for another seeded member; the demo seed gives every account the demo password."""
+    return login(c, email)
 
 
 def pytest_sessionfinish(session, exitstatus):

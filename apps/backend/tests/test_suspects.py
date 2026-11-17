@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.security import issue_access
 from app.services import flags, health, health_scan, suspect_queue, suspects
+from conftest import login
 
 WS = "labeldesk-demo"
 FLAG = "task_28"
@@ -96,9 +97,7 @@ def test_unknown_class_id_still_scores_geometry():
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 

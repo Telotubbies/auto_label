@@ -17,6 +17,7 @@ from app.deps import Ctx
 from app.main import app
 from app.models import Audit, Project, Stream, User, Workspace, WorkspaceFlag, new_id
 from app.services import flags
+from conftest import login as shared_login
 
 WS = "labeldesk-demo"
 FLAG = "task_10b"
@@ -40,9 +41,7 @@ SURFACES = {
 
 def login(email: str = "demo@labeldesk.dev", pw: str = "demo1234") -> TestClient:
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

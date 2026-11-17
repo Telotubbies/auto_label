@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from PIL import Image as PImage
 
 from app.main import app
+from conftest import login as shared_login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/v1/projects/{PR}"
@@ -21,9 +22,7 @@ BASE = f"/api/v1/projects/{PR}"
 
 def login(email="demo@labeldesk.dev", pw="demo1234"):
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

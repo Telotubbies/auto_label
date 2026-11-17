@@ -27,6 +27,7 @@ from app.main import app
 from app.models import Audit, Image, LabelClass, LabelEvent, Project, User, Version, Workspace
 from app.security import issue_access
 from app.services import insights, insights_dataset, insights_embedding
+from conftest import login
 
 WS = "labeldesk-demo"
 SLUG = "insights-qa"
@@ -38,9 +39,7 @@ JOBS = f"{BASE}/jobs"
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        client.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        client.headers.update(login(client))
         yield client
 
 
@@ -635,7 +634,6 @@ def test_insights_and_qa_dashboard_report_the_same_labeler_stats(c, data):
         assert qa_daily[date]["annotations"] == annotations
 
 
-
 def test_workspace_isolation_401_403_404(c, data):
     anon = TestClient(app)
     assert anon.get(f"{INS}/summary").status_code == 401
@@ -804,7 +802,6 @@ def test_labeling_counts_throughput_from_label_events():
         "acceptance_rate": pytest.approx(2 / 3, abs=1e-4),
         "by_source": [{"source": "sam3", "count": 1}, {"source": "vlm", "count": 1}],
     }
-
 
 
 def test_selection_roundtrip_and_cross_project_isolation(c, data):

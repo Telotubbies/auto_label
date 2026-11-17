@@ -22,6 +22,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import EventSearchFrame, Image, Project, Stream, StreamEvent, User, Video, Workspace
 from app.services import event_search
+from conftest import login as shared_login
 
 WS = "labeldesk-demo"
 PROJECT = "event-search-qa"
@@ -35,9 +36,7 @@ DAY = 24 * 3600
 
 def _login(email: str = "demo@labeldesk.dev") -> TestClient:
     client = TestClient(app)
-    r = client.post("/api/auth/login", json={"email": email, "password": PW})
-    assert r.status_code == 200, r.text
-    client.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    client.headers.update(shared_login(client, email, PW))
     return client
 
 

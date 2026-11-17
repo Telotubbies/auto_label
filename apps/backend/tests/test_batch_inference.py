@@ -25,8 +25,8 @@ from app.config import DATA_DIR
 from app.db import SessionLocal
 from app.main import app
 from app.models import Batch, Connector, Image, Job, LabelClass, Member, Project, User, Video, Workspace, WorkspaceFlag
-from app.security import issue_access
 from app.services import batch_inference, flags, metering
+from conftest import login, login_as
 
 WS = "labeldesk-demo"
 THAI = "ป้ายทะเบียน"
@@ -43,23 +43,17 @@ def set_flag(enabled: bool) -> None:
         db.commit()
 
 
-def token(email: str = "demo@labeldesk.dev") -> str:
-    with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == email))
-    return issue_access(user.id)
-
-
 @pytest.fixture(scope="module")
 def c():
     with TestClient(app) as client:
-        client.headers["Authorization"] = f"Bearer {token()}"
+        client.headers.update(login(client))
         yield client
 
 
 @pytest.fixture(scope="module")
 def labeler():
     with TestClient(app) as client:
-        client.headers["Authorization"] = f"Bearer {token('labeler@labeldesk.dev')}"
+        client.headers.update(login_as(client, "labeler@labeldesk.dev"))
         yield client
 
 

@@ -18,6 +18,7 @@ from sqlalchemy import delete, select
 from app.db import SessionLocal
 from app.main import app
 from app.models import Audit, User, Workspace, now
+from conftest import login as shared_login
 
 WS = "labeldesk-demo"
 EXPORT = f"/api/ws/{WS}/audit/export"
@@ -26,9 +27,7 @@ PW = "demo1234"
 
 def login(email: str = "demo@labeldesk.dev", pw: str = PW) -> TestClient:
     c = TestClient(app)
-    r = c.post("/api/auth/login", json={"email": email, "password": pw})
-    assert r.status_code == 200, r.text
-    c.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    c.headers.update(shared_login(c, email, pw))
     return c
 
 

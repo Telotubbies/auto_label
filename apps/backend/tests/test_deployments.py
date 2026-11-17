@@ -30,6 +30,7 @@ from app.models import (
 )
 from app.security import issue_access
 from app.services import deployments as svc
+from conftest import login
 
 WS, PR = "labeldesk-demo", "ppe-detection"
 BASE = f"/api/ws/{WS}/projects/{PR}/deployments"
@@ -70,9 +71,7 @@ def make_model(name: str, status: str = "ready", project: Project | None = None)
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
-        with SessionLocal() as db:
-            user = db.scalar(select(User).where(User.email == "demo@labeldesk.dev"))
-        c.headers["Authorization"] = f"Bearer {issue_access(user.id)}"
+        c.headers.update(login(c))
         yield c
 
 
