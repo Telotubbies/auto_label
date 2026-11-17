@@ -21,8 +21,8 @@ const fmt = (n: number) => n.toLocaleString()
 
 const STEP_ICON = { project: ListChecks, images: Upload, labels: Tag, model: BrainCircuit, deploy: Rocket, team: Users }
 
-export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
-  ws: string; projects: Project[]; onCreateProject: () => void
+export function WorkspaceDashboard({ ws, projects, onCreateProject, dialogOpen = false }: {
+  ws: string; projects: Project[]; onCreateProject: () => void; dialogOpen?: boolean
 }) {
   const me = useApp((s) => s.me)
   const can = useApp((s) => s.can)
@@ -220,7 +220,9 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
         </section>
       </div>
 
-      {tour !== null && <Tour step={tour} onStep={setTour} onClose={endTour} />}
+      {/* T-1104 O1: a coach mark never sits over an open modal or takes its clicks, and it is not
+          rendered at all so its Escape handler cannot end the tour behind the dialog. */}
+      {tour !== null && !dialogOpen && <Tour step={tour} onStep={setTour} onClose={endTour} />}
     </>
   )
 }
