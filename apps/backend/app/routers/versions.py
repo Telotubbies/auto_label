@@ -63,11 +63,11 @@ def create_version(body: VersionIn, c: Ctx = Depends(project_ctx)):
             raise HTTPException(404, "not found")       # before the credit charge: off looks missing
     charge(c.db, c.ws, CREDIT_COST["version"])
     n = (c.db.scalar(select(func.max(Version.number)).where(Version.project_id == c.project.id)) or 0) + 1
-    v = Version(project_id=c.project.id, number=n, name=body.name.strip(), settings=body.settings, created_by=c.user.id)
+    v = Version(project_id=c.project.id, number=n, name=body.name.strip(), settings=body.settings, created_by=c.uid)
     c.db.add(v); c.db.flush()
     c.db.add(Job(workspace_id=c.ws.id, project_id=c.project.id, kind="version", params={"version_id": v.id},
-                 created_by=c.user.id))
-    audit(c.db, c.ws.id, c.user.id, "version.create", f"{c.project.name} v{n}")
+                 created_by=c.uid))
+    audit(c.db, c.ws.id, c.uid, "version.create", f"{c.project.name} v{n}")
     c.db.commit()
     return version_out(c, v)
 

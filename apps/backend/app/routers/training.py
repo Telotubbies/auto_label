@@ -521,9 +521,9 @@ def autolabel(body: AutoLabelIn, c: Ctx = Depends(project_ctx)):
     _autolabel_target(c, body)
     metering.check(c.db, c.ws, "ai_calls",      # one call per processed image, reserved up front
                    _autolabel_target_count(c, body))
-    j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="autolabel", params=body.model_dump(), created_by=c.user.id)
+    j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="autolabel", params=body.model_dump(), created_by=c.uid)
     c.db.add(j)
-    audit(c.db, c.ws.id, c.user.id, "autolabel.start", c.project.name,
+    audit(c.db, c.ws.id, c.uid, "autolabel.start", c.project.name,
           method=body.method, model_ref=body.model_ref or body.model_id)
     c.db.commit()
     return job_out(j)
@@ -620,10 +620,20 @@ def _hosted_model(db: Session, ws: Workspace, ref: str) -> TrainedModel:
     return m
 
 
+def _stored_image(db: Session, ws: Workspace, image_id: str) -> Image:
+    """One image the key's workspace already holds; a foreign or deleted id reads as missing."""
+    img = db.get(Image, image_id)
+    project = db.get(Project, img.project_id) if img and not img.deleted_at else None
+    if project is None or project.workspace_id != ws.id:
+        raise HTTPException(404, "image not found")
+    return img
+
+
 async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Request, confidence: float | None,
                         overlap: float, image: str | None, file: UploadFile | None,
-                        tile_size: int = 0, tile_overlap: float = 0.2) -> dict:
+                        tile_size: int = 0, tile_overlap: float = 0.2, image_id: str | None = None) -> dict:
     """Shared path for id-based and alias-based hosted prediction: meter, infer, feed drift/AL."""
+    stored = _stored_image(db, ws, image_id) if image_id else None    # before the charge: a 404 costs nothing
     tiling = None
     if tile_size:
         try:
@@ -634,7 +644,7 @@ async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Re
             raise HTTPException(404, "not found")   # before the quota/credit: off looks missing
     metering.check(db, ws, "ai_calls", 1)
     charge(db, ws, CREDIT_COST["infer"])
-    data = await _image_from_request(request, file, image)
+    data = (DATA_DIR / stored.path).read_bytes() if stored else await _image_from_request(request, file, image)
     im = imaging.open_image(data)
     kw = {"iou": overlap, "classes": m.classes}
     if confidence is not None:                     # omitted: the model's evaluated best-F1 threshold
@@ -664,10 +674,10 @@ async def _hosted_infer(db: Session, ws: Workspace, m: TrainedModel, request: Re
 async def hosted_predict(model_id: str, request: Request, api_key: str | None = Query(None), confidence: float | None = None,
                          overlap: float = 0.5, image: str | None = None, file: UploadFile | None = File(None),
                          tile_size: int = Query(0, ge=0, le=4096), tile_overlap: float = Query(0.2, ge=0, le=0.9),
-                         db: Session = Depends(get_db)):
+                         image_id: str | None = Query(None), db: Session = Depends(get_db)):
     ws = key_ws(db, api_key, request, "infer")
     return await _hosted_infer(db, ws, _hosted_model(db, ws, model_id), request, confidence, overlap, image, file,
-                               tile_size, tile_overlap)
+                               tile_size, tile_overlap, image_id)
 
 
 @router.post("/api/v1/{ws_slug}/{project}/upload", operation_id="upload_images_v1",

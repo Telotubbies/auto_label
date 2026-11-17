@@ -38,6 +38,9 @@ DEVELOPER_OPERATIONS = frozenset(
         "list_models",
         "get_model",
         "predict",
+        "run_auto_label",
+        "create_version",
+        "list_deployments",
     }
 )
 _METHODS = ("get", "post", "put", "patch", "delete")
