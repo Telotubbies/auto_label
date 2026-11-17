@@ -2,7 +2,7 @@
 // VITE_API_URL points at the API origin when web and api are on different hosts
 // (e.g. Vercel + a VM); empty = same origin (dev proxy / single container).
 
-export const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+export const API_ORIGIN = (import.meta.env?.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
 /** Signed file paths come back as "/api/files/…"; prefix the API origin for <img src>. */
 export const fileUrl = (u?: string | null) => (u ? (u.startsWith('http') ? u : API_ORIGIN + u) : '')
@@ -23,7 +23,8 @@ export const tokens = {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message) }
+  status: number
+  constructor(status: number, message: string) { super(message); this.status = status }
 }
 
 let refreshing: Promise<boolean> | null = null
@@ -44,6 +45,10 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing
 }
 
+/** A server error detail: FastAPI sends a string, or a list of {msg} validation items. */
+const detail = (d: any, fallback: string) =>
+  typeof d?.detail === 'string' ? d.detail : Array.isArray(d?.detail) ? d.detail.map((x: any) => x.msg).join(', ') : fallback
+
 export async function req<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const isForm = init.body instanceof FormData
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) }
@@ -58,8 +63,7 @@ export async function req<T>(path: string, init: RequestInit = {}, retry = true)
   }
   if (!r.ok) {
     const d = await r.json().catch(() => ({}))
-    const msg = typeof d.detail === 'string' ? d.detail : Array.isArray(d.detail) ? d.detail.map((x: any) => x.msg).join(', ') : r.statusText
-    throw new ApiError(r.status, msg)
+    throw new ApiError(r.status, detail(d, r.statusText))
   }
   return r.json()
 }
@@ -73,22 +77,36 @@ export const patch = json('PATCH')
 export const del = <T>(path: string, body?: unknown) =>
   req<T>(path, { method: 'DELETE', body: body === undefined ? undefined : JSON.stringify(body) })
 
-/** Upload with progress (fetch has no upload progress events). */
-export function upload<T>(path: string, form: FormData, onProgress: (f: number) => void): Promise<T> {
-  return new Promise((resolve, reject) => {
+/**
+ * One XHR attempt: fetch has no upload progress events, and a retry needs a fresh request.
+ * Resolves with the status and raw body so the caller can decide about a 401.
+ */
+function postForm(path: string, form: FormData, onProgress: (f: number) => void) {
+  return new Promise<{ status: number; text: string; statusText: string }>((resolve) => {
     const x = new XMLHttpRequest()
     x.open('POST', `${API_ORIGIN}/api${path}`)
     if (tokens.access) x.setRequestHeader('Authorization', `Bearer ${tokens.access}`)
     if (tokens.session) x.setRequestHeader('X-Session', tokens.session)
     x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
-    x.onload = () => {
-      let d: any = {}
-      try { d = JSON.parse(x.responseText) } catch { /* empty */ }
-      x.status < 300 ? resolve(d) : reject(new ApiError(x.status, d.detail || x.statusText))
-    }
-    x.onerror = () => reject(new ApiError(0, 'network error'))
+    x.onload = () => resolve({ status: x.status, text: x.responseText, statusText: x.statusText })
+    x.onerror = () => resolve({ status: 0, text: '', statusText: '' })
     x.send(form)
   })
+}
+
+/** Upload with progress. A long upload can outlive the access token, so a 401 refreshes and resends once. */
+export async function upload<T>(path: string, form: FormData, onProgress: (f: number) => void): Promise<T> {
+  let r = await postForm(path, form, onProgress)
+  if (r.status === 401) {
+    if (tokens.refresh && (await tryRefresh())) r = await postForm(path, form, onProgress)
+    else { tokens.clear(); window.dispatchEvent(new Event('ld:logout')) }
+  }
+  if (r.status < 200 || r.status >= 300) {
+    let d: any = {}
+    try { d = JSON.parse(r.text) } catch { /* not JSON */ }
+    throw new ApiError(r.status, detail(d, r.status === 0 ? 'network error' : r.statusText))
+  }
+  return JSON.parse(r.text || '{}')
 }
 
 /** Project-scoped path prefix every feature client builds on. */

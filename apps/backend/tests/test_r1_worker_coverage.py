@@ -49,6 +49,27 @@ def test_env_example_claims_every_cpu_handler():
     assert not missing, f"a copied .env.example never claims {sorted(missing)}"
 
 
+def _compose_service(text: str, name: str) -> str:
+    """The YAML block of one service: 2-space keys delimit services, deeper keys belong to the body."""
+    m = re.search(rf"^  {name}:\n(.*?)(?=^  \S|\Z)", text, re.MULTILINE | re.DOTALL)
+    assert m, f"docker-compose.yml has no {name} service"
+    return m.group(0)
+
+
+def test_compose_forwards_every_setting_the_mailer_reads():
+    """B5: a mailer setting compose never forwards cannot be configured in the deployed stack."""
+    compose = Path(__file__).resolve().parents[3] / "deploy" / "docker-compose.yml"
+    mailer = Path(__file__).resolve().parents[1] / "app" / "mailer.py"
+    if not compose.exists():
+        return
+    wanted = set(re.findall(r'os\.environ\.get\("(LD_SMTP_[A-Z]+)"', mailer.read_text(encoding="utf-8")))
+    assert wanted, "mailer.py must read its settings from LD_SMTP_* env"
+    api = _compose_service(compose.read_text(encoding="utf-8"), "api")
+    missing = {k for k in wanted if f"{k}:" not in api}
+    assert not missing, f"the compose api service never forwards {sorted(missing)}"
+    assert "LD_SMTP_SSL:" in api, "implicit TLS must be settable on the service that sends mail"
+
+
 def test_no_gpu_docs_list_claims_every_cpu_handler():
     """DEPLOY.md's no-GPU recipe must match the startup assertion, not crash the worker (Important 3)."""
     doc = Path(__file__).resolve().parents[3] / "docs" / "DEPLOY.md"

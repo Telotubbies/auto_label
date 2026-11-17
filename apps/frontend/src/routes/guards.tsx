@@ -8,14 +8,36 @@ import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
 import { workspaceIndexPath } from '@/lib/nav'
 import { flagDecision, flagSurfaceLabel } from '@/lib/flagGate'
-import { Spinner } from '@/components/ui'
+import { Button, Spinner } from '@/components/ui'
 import { NotEnabled } from '@/components/NotEnabled'
 import { MfaGate } from '@/features/auth/Auth'
 import Home from '@/features/workspace/Home'
 import { Settings } from './lazy'
+import { meNeedsLogin } from './mePolicy'
 
 export function Loading() {
   return <div className="flex h-screen items-center justify-center text-muted-foreground"><Spinner /></div>
+}
+
+/** A failed refetch of /me is retryable while the token may still be valid; never a silent bounce to login.
+ *  A cached /me always wins: one failed refetch must not unmount a working screen. */
+function MeFailure({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex h-screen flex-col items-center justify-center gap-2 px-6 text-center">
+      <p className="text-sm font-medium">Could not load your account</p>
+      <p className="text-xs text-muted-foreground">Check your connection, then try again.</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>Retry</Button>
+    </div>
+  )
+}
+
+/** The cached session still renders; report the failed refresh without taking the screen away. */
+function MeStale({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="status" className="flex items-center justify-center gap-2 border-b bg-warning/10 px-4 py-1.5 text-xs">
+      Could not refresh your account. <Button size="sm" variant="ghost" onClick={onRetry}>Retry</Button>
+    </div>
+  )
 }
 
 /** Anonymous deep link: remember the path so login can return to it. */
@@ -35,18 +57,29 @@ export function WorkspaceGate() {
   useEffect(() => { if (me.data) setMe(me.data) }, [me.data, setMe])
   useEffect(() => { setRole(current?.role ?? null) }, [current, setRole])
   if (me.isLoading) return <Loading />
+  if (me.isError && !me.data) {
+    return meNeedsLogin(me.error) ? <Navigate to="/login" replace /> : <MeFailure onRetry={() => me.refetch()} />
+  }
   if (!me.data) return <Navigate to="/login" replace />
   if (!current) return <Navigate to={me.data.workspaces[0] ? `/${me.data.workspaces[0].slug}` : '/'} replace />
   if (current.mfa_required && !me.data.mfa_enabled) {
     const next = `${location.pathname}${location.search}${location.hash}`
     return <MfaGate ws={current.slug} workspaceName={current.name} next={next} />
   }
-  return <Outlet />
+  return (
+    <>
+      {me.isError && <MeStale onRetry={() => me.refetch()} />}
+      <Outlet />
+    </>
+  )
 }
 
 export function Home0() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
   if (me.isLoading) return <Loading />
+  if (me.isError && !me.data) {
+    return meNeedsLogin(me.error) ? <Navigate to="/login" replace /> : <MeFailure onRetry={() => me.refetch()} />
+  }
   const first = me.data?.workspaces[0]
   return first ? <Navigate to={`/${first.slug}`} replace /> : <Settings firstRun />
 }
@@ -90,5 +123,13 @@ export function SuperAdminGate({ children }: { children: React.ReactNode }) {
   // so a hard refresh on /:ws/admin would otherwise redirect before the flag arrives.
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
   if (me.isLoading) return <Loading />
-  return me.data?.superadmin ? <>{children}</> : <Navigate to=".." replace />
+  if (me.isError && !me.data) {
+    return meNeedsLogin(me.error) ? <Navigate to="/login" replace /> : <MeFailure onRetry={() => me.refetch()} />
+  }
+  return me.data?.superadmin ? (
+    <>
+      {me.isError && <MeStale onRetry={() => me.refetch()} />}
+      {children}
+    </>
+  ) : <Navigate to=".." replace />
 }

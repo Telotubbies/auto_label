@@ -22,7 +22,7 @@ import http.server
 import threading
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
-from ..services.safefetch import BlockedURL, UnresolvableHost, _host_header, _pinned_connection, _public_ip
+from ..services.safefetch import TIMEOUT, BlockedURL, UnresolvableHost, _host_header, _pinned_connection, _public_ip
 from .allowlist import allowed_stream_ip
 
 _MAX_HOPS = 3
@@ -88,7 +88,7 @@ class GuardedMediaProxy:
             except BlockedURL as e:
                 self._blocked(str(e))
                 raise
-            conn = _pinned_connection(u, ip, port)
+            conn = _pinned_connection(u, ip, port, TIMEOUT)
             path = (u.path or "/") + (f"?{u.query}" if u.query else "")
             out = {"Host": _host_header(u, port), "User-Agent": headers.get("User-Agent", "LabelDesk/1.0")}
             for key in ("Range", "Accept", "If-None-Match", "If-Modified-Since"):
