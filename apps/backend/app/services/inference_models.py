@@ -27,7 +27,8 @@ PICKLE = (".bin", ".pt", ".pth", ".pkl", ".pickle", ".ckpt")
 # The working context a catalogue fit verdict assumes; the calculator is where another is tried.
 FIT_CONTEXT = 4096
 DISK_MARGIN = 0.8
-TOKEN_BLOCK = ("This model needs a Hugging Face token on the worker. "
+TOKEN_BLOCK = (
+               "This model needs a Hugging Face token on the worker. "  # noqa: S105  # copy, not a credential
                "Set `HF_TOKEN` there, not here.")
 PICKLE_BLOCK = ("This variant ships a pickle weight (.bin/.pt); only safetensors and GGUF "
                 "files are offered.")

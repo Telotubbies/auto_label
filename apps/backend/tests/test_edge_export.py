@@ -47,7 +47,7 @@ def _flag_off_and_cleanup():
             if row and row.enabled:
                 row.enabled = False
                 db.commit()
-    except Exception:  # tests that never opened the app have no database yet
+    except Exception:  # noqa: S110  # tests that never opened the app have no database yet
         pass
 
 

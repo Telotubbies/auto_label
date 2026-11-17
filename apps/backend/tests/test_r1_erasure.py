@@ -108,7 +108,7 @@ def test_version_delete_erases_its_bytes_only():
     assert (DATA_DIR / f"exports/{keep_id}/coco.zip").exists()
 
 
-def _login(email: str, password: str = "longpassword1"):
+def _login(email: str, password: str = "longpassword1"):  # noqa: S107  # throwaway test account
     client = TestClient(app)
     client.headers.update(shared_login(client, email, password))
     return client

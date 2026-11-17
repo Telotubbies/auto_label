@@ -117,7 +117,7 @@ def _load(weights: str, cls_name: str = "YOLO"):
         try:
             import torch
             torch.cuda.empty_cache()
-        except Exception:                         # CPU-only installs have nothing to free
+        except Exception:  # noqa: S110  # CPU-only installs have nothing to free
             pass
 
     return scheduler.lease(f"{cls_name}|{weights}", VRAM_MB, _make, _drop)
@@ -203,7 +203,7 @@ class UltralyticsAdapter:
             if loss is not None:
                 try:
                     m["train/loss"] = float(loss.sum()) if hasattr(loss, "sum") else float(loss)
-                except Exception:
+                except Exception:  # noqa: S110  # a non-numeric loss must not fail the epoch
                     pass
             ep = trainer.epoch + 1
             history.append({"epoch": ep, **m})

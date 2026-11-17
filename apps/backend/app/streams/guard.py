@@ -174,9 +174,9 @@ class _ProxyHandler(http.server.BaseHTTPRequestHandler):
         finally:
             try:
                 response.close()
-            except Exception:
+            except Exception:  # noqa: S110  # closing a response that is already gone is best effort
                 pass
             try:
                 conn.close()
-            except Exception:
+            except Exception:  # noqa: S110  # closing a socket that is already gone is best effort
                 pass

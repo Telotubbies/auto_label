@@ -75,20 +75,23 @@ def test_train_worker_flag_is_an_explicit_override_only():
     code = "from app import config; print(repr(config.TRAIN_WORKER))"
     env = {**os.environ, "LD_EMBEDDED_WORKER": "0",
            "LD_LOCAL_JOBS": "train,autolabel,version", "LD_TRAIN_WORKER": "local"}
-    local = subprocess.run([sys.executable, "-c", code], cwd=API_ROOT, env=env,
-                           capture_output=True, text=True, timeout=120)
+    local = subprocess.run(  # noqa: S603  # fixed interpreter and literal code, no shell
+        [sys.executable, "-c", code], cwd=API_ROOT, env=env, capture_output=True, text=True, timeout=120
+    )
     assert local.returncode == 0, local.stderr
     assert local.stdout.strip() == "'local'"
 
     env["LD_TRAIN_WORKER"] = "remote"
-    remote = subprocess.run([sys.executable, "-c", code], cwd=API_ROOT, env=env,
-                            capture_output=True, text=True, timeout=120)
+    remote = subprocess.run(  # noqa: S603  # fixed interpreter and literal code, no shell
+        [sys.executable, "-c", code], cwd=API_ROOT, env=env, capture_output=True, text=True, timeout=120
+    )
     assert remote.returncode == 0, remote.stderr
     assert remote.stdout.strip() == "'remote'"
 
     env.pop("LD_TRAIN_WORKER")                       # auto: topology service decides per request
-    auto = subprocess.run([sys.executable, "-c", code], cwd=API_ROOT, env=env,
-                          capture_output=True, text=True, timeout=120)
+    auto = subprocess.run(  # noqa: S603  # fixed interpreter and literal code, no shell
+        [sys.executable, "-c", code], cwd=API_ROOT, env=env, capture_output=True, text=True, timeout=120
+    )
     assert auto.returncode == 0, auto.stderr
     assert auto.stdout.strip() == "''"
 

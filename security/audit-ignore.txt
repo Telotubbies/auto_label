@@ -1,0 +1,4 @@
+# pip-audit waivers: one per line, and only with a reason and an expiry date.
+# Format: <id> | <YYYY-MM-DD> | <reason>
+# A malformed line fails tools/tests/test_gate_security.py. There are no waivers today: pip-audit
+# reports no known vulnerability in apps/backend/requirements.txt.

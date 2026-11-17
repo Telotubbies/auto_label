@@ -21,12 +21,12 @@ CI = ROOT / ".github" / "workflows" / "ci.yml"
 PRE_COMMIT = ROOT / ".pre-commit-config.yaml"
 
 
-def test_ruff_config_selects_only_pyflakes() -> None:
+def test_ruff_config_selects_pyflakes_and_bandit() -> None:
     config = tomllib.loads(RUFF_CONFIG.read_text(encoding="utf-8"))
 
     assert config["line-length"] == 120
-    # Pyflakes only. A wider set later is a deliberate edit, not an accident.
-    assert config["lint"]["select"] == ["F"]
+    # Pyflakes plus flake8-bandit (T-1303). A wider set later is a deliberate edit, not an accident.
+    assert config["lint"]["select"] == ["F", "S"]
 
 
 def test_api_job_runs_backend_lint() -> None:

@@ -164,7 +164,7 @@ def unload_sam() -> None:
     try:
         import torch
         torch.cuda.empty_cache()
-    except Exception:                      # CPU-only installs have nothing to free
+    except Exception:  # noqa: S110  # CPU-only installs have nothing to free
         pass
 
 
@@ -179,7 +179,7 @@ def _autocast():
 
         if torch.cuda.is_available():
             return torch.autocast("cuda", dtype=torch.bfloat16)
-    except Exception:                      # no torch: CPU installs never reach a SAM call
+    except Exception:  # noqa: S110  # no torch: CPU installs never reach a SAM call
         pass
     return nullcontext()
 

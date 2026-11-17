@@ -26,7 +26,7 @@ def cached_export(v: Version, fmt: str) -> Path:
 def stratified_split(items: list, ratios: dict, seed: int, groups: dict | None = None) -> dict:
     """Greedy iterative stratification. items = [(image_id, {class ids})] -> {image_id: split}.
     Images sharing a group id are placed together. Unlabeled images form their own pseudo-class."""
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311  # deterministic split seed, not a security decision
     UNL = -1
     members: dict = {}
     for iid, cs in items:
@@ -71,7 +71,7 @@ def phash_groups(rows: list, max_dist: int = 6) -> dict:
                 continue
             hashes.append(imagehash.phash(PImage.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))))
             ids.append(r.id)
-        except Exception:                        # unreadable file: stays in its own group
+        except Exception:  # noqa: S112  # unreadable file: stays in its own group
             continue
     parent = {i: i for i in ids}
 
@@ -106,7 +106,7 @@ def generate(db: Session, v: Version, progress=lambda f: None, should_stop=None)
     if not rows:
         raise ValueError("no images in the dataset yet — approve annotated images on the Annotate board first")
 
-    rng = random.Random(cfg.get("seed", 42))
+    rng = random.Random(cfg.get("seed", 42))  # noqa: S311  # deterministic split seed
     split_cfg = cfg.get("split")
     leakage_moved = 0
     if split_cfg:                                # rebalance: {"train":70,"valid":20,"test":10}

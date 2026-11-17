@@ -105,7 +105,7 @@ def test_guarded_proxy_refuses_a_redirect_to_a_private_host(monkeypatch):
     url = proxy.start()
     try:
         with pytest.raises(urllib.error.HTTPError) as caught:
-            urllib.request.urlopen(url, timeout=5).read()
+            urllib.request.urlopen(url, timeout=5).read()  # noqa: S310  # the local guard proxy under test
         assert caught.value.code == 403
     finally:
         proxy.stop()
@@ -356,7 +356,7 @@ def test_guard_follows_a_redirect_into_an_allowlisted_network(monkeypatch):
     proxy = mgr.GuardedMediaProxy(f"http://public.test:{redirect_port}/live", ip="127.0.0.1")
     url = proxy.start()
     try:
-        assert urllib.request.urlopen(url, timeout=5).read() == _JPEG
+        assert urllib.request.urlopen(url, timeout=5).read() == _JPEG  # noqa: S310  # the local guard proxy
     finally:
         proxy.stop()
         redirect.shutdown()

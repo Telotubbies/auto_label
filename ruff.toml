@@ -1,6 +1,6 @@
-# One cheap, honest gate over app code: pyflakes only. Style, import sorting and
-# formatting stay out on purpose — a format hook here would rewrite 271 files in
-# one commit and bury every review.
+# One cheap, honest gate over app code: pyflakes plus flake8-bandit (`S`) since T-1303. Style, import
+# sorting and formatting stay out on purpose — a format hook here would rewrite 271 files in one commit
+# and bury every review.
 line-length = 120
 target-version = "py311"
 
@@ -9,4 +9,9 @@ exclude = [
 ]
 
 [lint]
-select = ["F"]
+select = ["F", "S"]
+
+[lint.per-file-ignores]
+# Tests assert, use throwaway passwords and pick random fixtures on purpose; every other S finding in a
+# test still needs a one-line reason next to it.
+"apps/backend/tests/**" = ["S101", "S105", "S106", "S311"]

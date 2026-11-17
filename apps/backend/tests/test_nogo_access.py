@@ -47,7 +47,7 @@ class _NoDb:
 
 
 @pytest.mark.parametrize("variant", [
-    "/tmp/evil",
+    "/tmp/evil",  # noqa: S108  # the payload is the point: a traversal string that must never be used
     "../../../../models/victim/best",
     "..\\..\\models\\victim\\best",
     "C:\\models\\victim\\best",

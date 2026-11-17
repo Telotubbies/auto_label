@@ -70,7 +70,7 @@ def scan_images(db: Session, project: Project, should_stop: Callable[[], bool] |
             pixels = np.asarray(gray, dtype=np.uint8)
             mean = float(pixels.mean())
             variance = float(cv2.Laplacian(pixels, cv2.CV_64F).var())
-        except Exception:  # unreadable row: contributes nothing, never fails the scan
+        except Exception:  # noqa: S112  # unreadable row: contributes nothing, never fails the scan
             continue
         scanned += 1
         brightness[min(15, max(0, int(mean // 16)))] += 1
@@ -136,7 +136,7 @@ def scan_leakage(db: Session, project: Project, version_id: str | None = None,
             _stop(should_stop)
             try:
                 hashes[row.id] = _phash(row)
-            except Exception:
+            except Exception:  # noqa: S112  # an unreadable image is left out of the duplicate groups
                 continue
         ids = [row.id for row in group if row.id in hashes]
         for i in range(len(ids)):

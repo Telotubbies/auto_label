@@ -602,7 +602,7 @@ class _Worker:
                             break
                         try:                      # file sources loop forever at EOF
                             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        except Exception:
+                        except Exception:  # noqa: S110  # a source that cannot seek restarts without seeking
                             pass
                         ok, frame = cap.read()
                         if not ok:

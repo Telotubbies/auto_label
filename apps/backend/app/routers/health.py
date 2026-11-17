@@ -35,7 +35,7 @@ def _db_ok() -> bool:
             with SessionLocal() as db:
                 db.execute(text("SELECT 1"))
             ok = True
-        except Exception:                     # the route names the check; the why would leak internals
+        except Exception:  # noqa: S110  # the route names the check; the why would leak internals
             pass
 
     # shortcut: a wedged driver can leak one daemon thread per probe; upgrade to a connection-level

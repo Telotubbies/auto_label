@@ -276,7 +276,7 @@ def auto_offer(db: Session, ws: Workspace, project: Project, data: bytes, pred: 
     ]
     below = float(cfg.get("below", 0.5))
     qualifies = uncertainty(preds, band=(0.0, below)) >= QUALIFY_AT if confs else bool(cfg.get("include_empty", True))
-    sampled = random.random() * 100 < float(cfg.get("sample_pct", 0) or 0)
+    sampled = random.random() * 100 < float(cfg.get("sample_pct", 0) or 0)  # noqa: S311  # review sampling
     if not (qualifies or sampled):
         return False
 

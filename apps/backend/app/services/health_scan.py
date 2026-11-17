@@ -139,7 +139,7 @@ def _model_checks(
             continue
         try:
             im = imaging.load(img.path)
-        except Exception:  # unreadable image: nothing to compare against
+        except Exception:  # noqa: S112  # unreadable image: nothing to compare against
             continue
         gts = [b for b in (box(a) for a in img.annotations or [] if is_human(a)) if b]
         # a model failure (GPU busy, missing weights, broken adapter) must fail the job, never be
