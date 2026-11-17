@@ -7,10 +7,14 @@ import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button, Input, Spinner } from '@/components/ui'
 import { isWorkspaceSlug, workspaceLinkCopy, workspaceSlug, type WorkspaceLinkState } from '@/lib/slug'
+import { PlanPicker } from '@/features/onboarding/PlanPicker'
 
 type Props = {
   value: string
   onChange: (value: string) => void
+  /** The tier the caller will send with the creation request; the picker edits it in place. */
+  plan?: string
+  onPlan?: (plan: string) => void
   /** Shown when the name is blank: the address the account name would derive (signup). */
   fallbackName?: string
   /** Process flag from /config. Signup has no workspace, so `useFlag` alone cannot see it. */
@@ -23,7 +27,7 @@ type Props = {
 }
 
 export function WorkspaceForm({
-  value, onChange, fallbackName = '', enabled, disabled, error, submit, onStatus,
+  value, onChange, plan, onPlan, fallbackName = '', enabled, disabled, error, submit, onStatus,
 }: Props) {
   const flag = useFlag('task_a1_workspace_create')
   const on = enabled || flag
@@ -114,6 +118,8 @@ export function WorkspaceForm({
           </p>
         )}
       </div>
+
+      <PlanPicker value={plan} onChange={onPlan} />
 
       {error ? (
         <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm font-medium leading-relaxed text-foreground">

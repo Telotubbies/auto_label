@@ -373,6 +373,7 @@ export function Signup() {
   const nav = useNavigate()
   const next = useNext()
   const [form, setForm] = useState({ name: '', email: '', password: '', workspace: '' })
+  const [plan, setPlan] = useState('')
   const [wsState, setWsState] = useState<WorkspaceLinkState>('empty')
   useTitle('Create account')
 
@@ -391,7 +392,10 @@ export function Signup() {
       email: form.email.trim(),
       password: form.password,
       workspace: form.workspace.trim(),
+      plan: plan || 'free',
     })
+    // The workspace lands after a redirect through the account guard, which drops router state.
+    sessionStorage.setItem('startedPlan', plan || 'free')
     nav(next, { replace: true })
   })
 
@@ -448,6 +452,8 @@ export function Signup() {
           <WorkspaceForm
             value={form.workspace}
             onChange={(workspace) => setForm((prev) => ({ ...prev, workspace }))}
+            plan={plan}
+            onPlan={setPlan}
             fallbackName={wsFallback}
             enabled={cfg.data?.workspace_create}
             disabled={busy}

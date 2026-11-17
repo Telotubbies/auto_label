@@ -467,6 +467,14 @@ export interface PlanIn {
   plan: string
 }
 
+export interface PlanOut {
+  credits: number
+  id: string
+  label: string
+  projects: number
+  seats: number
+}
+
 export interface PreflightIn {
   model_refs?: string[]
 }
@@ -566,6 +574,7 @@ export interface SignupIn {
   invite?: string | null
   name: string
   password: string
+  plan?: string | null
   workspace?: string | null
 }
 
@@ -687,6 +696,7 @@ export interface WorkspaceCustomRoleIn {
 
 export interface WorkspaceIn {
   name: string
+  plan?: string | null
   slug?: string | null
 }
 

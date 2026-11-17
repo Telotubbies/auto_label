@@ -14,6 +14,7 @@ export const coreApi = {
   workspaceSlug: (name: string) =>
     get<{ slug: string; available: boolean; suggestion?: string }>(`/workspaces/slug?name=${encodeURIComponent(name)}`),
   createWorkspace: (name: string, slug?: string) => post<{ slug: string; name: string }>('/workspaces', { name, slug }),
+  plans: () => get<{ id: string; label: string; projects: number; credits: number; seats: number }[]>('/workspaces/plans'),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
   home: (ws: string) => get<WorkspaceHome>(`/ws/${ws}/home`),
   flags: (ws: string) => get<WorkspaceFlags>(`/ws/${ws}/flags`),

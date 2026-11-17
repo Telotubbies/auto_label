@@ -36,6 +36,7 @@ FLAGS: dict[str, str] = {
     "task_40": "PLC / OT output (Modbus, OPC-UA, MQTT, GPIO)",
     "task_470": "UI v3: the five-destination workspace rail, governance inside Settings",
     "task_992": "MCP endpoint: agents connect over the developer API",
+    "task_a1_plan_choice": "First-run plan choice: start a new workspace on Free, Pro or Enterprise",
     "task_a1_workspace_create": "Name the workspace and show its address before submit",
     "task_inference": "Inference hub: engines, model catalogue, VRAM calculator and segmentation handoff",
 }
