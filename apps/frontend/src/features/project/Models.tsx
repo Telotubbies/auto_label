@@ -9,6 +9,8 @@ import { pct1 } from '@/lib/format'
 import { useProjectPermissions } from '@/lib/perms'
 import type { JobStage, LeaderboardRow, ModelItem } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, PageHeader, Progress, Spinner, Stat, StatusPill, Tabs, fmtDate, toast } from '@/components/ui'
+import SeriesEmpty from '@/components/charts/SeriesEmpty'
+import { legendProps, seriesColor } from '@/lib/chartSeries'
 import { EvalPanel } from '@/features/evaluation/EvalPanel'
 import { cn } from '@/lib/utils'
 import EdgeExport from './EdgeExport'
@@ -120,19 +122,22 @@ function Charts({ m }: { m: ModelItem }) {
   const k = m.task === 'segment' ? '(M)' : '(B)'
   const ultralytics = m.history.some((h) => `metrics/mAP50${k}` in h)
   const series = m.task === 'classify'
-    ? [['metrics/accuracy_top1', 'Top-1 acc', '#7c3aed'], ['metrics/accuracy_top5', 'Top-5 acc', '#22c55e']]
+    ? [['metrics/accuracy_top1', 'Top-1 acc'], ['metrics/accuracy_top5', 'Top-5 acc']]
     : ultralytics
-      ? [[`metrics/mAP50${k}`, 'mAP50', '#7c3aed'], [`metrics/mAP50-95${k}`, 'mAP50-95', '#3b82f6'], [`metrics/precision${k}`, 'Precision', '#22c55e'], [`metrics/recall${k}`, 'Recall', '#f97316']]
-      : [['val/map50', 'mAP50', '#7c3aed'], ['val/map5095', 'mAP50-95', '#3b82f6'], ['val/precision', 'Precision', '#22c55e'], ['val/recall', 'Recall', '#f97316']]
+      ? [[`metrics/mAP50${k}`, 'mAP50'], [`metrics/mAP50-95${k}`, 'mAP50-95'], [`metrics/precision${k}`, 'Precision'], [`metrics/recall${k}`, 'Recall']]
+      : [['val/map50', 'mAP50'], ['val/map5095', 'mAP50-95'], ['val/precision', 'Precision'], ['val/recall', 'Recall']]
   const loss = Object.keys(m.history[0] ?? {}).filter((x) => x.endsWith('/loss'))
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card className="p-4"><h3 className="mb-2 text-sm font-semibold">Accuracy over epochs</h3>
-        <div className="h-60"><ResponsiveContainer><LineChart data={m.history}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="epoch" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} domain={[0, 1]} /><Tooltip formatter={(v: number) => v.toFixed(3)} /><Legend wrapperStyle={{ fontSize: 11 }} />
-          {series.map(([key, name, color]) => <Line key={key} dataKey={key} name={name} stroke={color} dot={false} strokeWidth={2} />)}</LineChart></ResponsiveContainer></div></Card>
+        <div className="h-60"><ResponsiveContainer><LineChart data={m.history}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="epoch" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} domain={[0, 1]} /><Tooltip formatter={(v: number) => v.toFixed(3)} /><Legend {...legendProps} />
+          {series.map(([key, name], i) => <Line key={key} dataKey={key} name={name} stroke={seriesColor(i)} dot={false} strokeWidth={2} />)}</LineChart></ResponsiveContainer></div></Card>
       <Card className="p-4"><h3 className="mb-2 text-sm font-semibold">Loss</h3>
-        <div className="h-60"><ResponsiveContainer><LineChart data={m.history}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="epoch" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip formatter={(v: number) => v.toFixed(3)} /><Legend wrapperStyle={{ fontSize: 11 }} />
-          {loss.map((key, i) => <Line key={key} dataKey={key} name={key.replace('val/', '')} stroke={['#ef4444', '#eab308', '#14b8a6'][i % 3]} dot={false} strokeWidth={2} />)}</LineChart></ResponsiveContainer></div></Card>
+        {loss.length ? (
+          <div className="h-60"><ResponsiveContainer><LineChart data={m.history}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="epoch" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip formatter={(v: number) => v.toFixed(3)} /><Legend {...legendProps} />
+            {loss.map((key, i) => <Line key={key} dataKey={key} name={key.replace('val/', '')} stroke={seriesColor(i)} dot={false} strokeWidth={2} />)}</LineChart></ResponsiveContainer></div>
+        ) : <SeriesEmpty title="No loss recorded for this run." />}
+      </Card>
     </div>
   )
 }
