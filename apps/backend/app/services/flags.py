@@ -35,6 +35,7 @@ FLAGS: dict[str, str] = {
     "task_38": "Event search: natural-language search over sampled stream frames",
     "task_40": "PLC / OT output (Modbus, OPC-UA, MQTT, GPIO)",
     "task_470": "UI v3: the five-destination workspace rail, governance inside Settings",
+    "task_992": "MCP endpoint: agents connect over the developer API",
 }
 
 

@@ -28,7 +28,10 @@ DEVELOPER_OPERATIONS = frozenset(
     {
         "whoami",
         "list_projects",
+        "get_project",
         "list_images",
+        "get_image",
+        "write_annotations",
         "upload_images",
         "upload_images_v1",
         "list_versions",
