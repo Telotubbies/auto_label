@@ -8774,7 +8774,7 @@
     },
     "/api/ws/{ws}/inference/estimate": {
       "post": {
-        "description": "Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5).",
+        "description": "Pure VRAM / throughput answer; any member of the hub's workspace may read it (PLAN §12.5).\n\nIt reads no host and no catalogue row, so the calculator stays open to a plain member while the\ndeployment scope and the flag still decide whether the hub exists here at all.",
         "operationId": "estimate_api_ws__ws__inference_estimate_post",
         "parameters": [
           {
