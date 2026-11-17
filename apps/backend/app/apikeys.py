@@ -87,6 +87,9 @@ def resolve_key(request: Request, token: str | None, db: Session, *, from_query:
         raise HTTPException(401, "invalid api_key")
     k.last_used = time.time()
     _audit_use(db, k, request)
+    tool = request.headers.get("x-mcp-tool")
+    if tool:                          # an MCP call is a conversation turn, so one row per call, not a throttle
+        audit(db, k.workspace_id, None, "mcp.tool", request.url.path, tool=tool[:64], method=request.method)
     db.commit()                       # read-only routes never commit later; the key list must show use
     return KeyCtx(key=k, ws=db.get(Workspace, k.workspace_id), db=db)
 
