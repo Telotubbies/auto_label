@@ -1,4 +1,4 @@
-﻿"""Parity guard area 4: a version's snapshot, numbering, train-only augmentation and cached export.
+"""Parity guard area 4: a version's snapshot, numbering, train-only augmentation and cached export.
 
 Tests only. Each guard names the HAVE row it protects. Rules another module already pins are not
 repeated here: stratification/hash/export-cache concurrency (`test_versioning_v2.py`), auto-orient
