@@ -517,5 +517,13 @@ def test_no_tool_description_or_result_contains_a_secret(live):
 
         assert result.is_error is False, name
         clean(text_of(result), name)
+        structured = getattr(result, "structured_content", None)
+        payloads = [structured] if structured is not None else []
         for block in result.content:
-            assert not field_names(json.loads(block.text)) & SECRET_FIELDS, name
+            try:                      # T-1100 adds a plain-text summary next to the JSON block
+                payloads.append(json.loads(block.text))
+            except json.JSONDecodeError:
+                continue
+        assert payloads, name
+        for payload in payloads:
+            assert not field_names(payload) & SECRET_FIELDS, name
