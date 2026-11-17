@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useMatch } from 'react-router-dom'
 import { RESERVED_WORKSPACE_SEGMENTS } from '@/lib/nav'
+import { PROJECT_ROUTE_MATCH } from '@/lib/routes'
 import { cn } from '@/lib/utils'
 import { AppSidebar } from './AppSidebar'
 import { JobTray } from './JobTray'
 import { TopBar } from './TopBar'
 
 export function AppLayout() {
-  const m = useMatch('/:ws/:project/*')
+  const m = useMatch(PROJECT_ROUTE_MATCH)
   const isProject = !!m?.params.project && !RESERVED_WORKSPACE_SEGMENTS.has(m.params.project)
   const [navOpen, setNavOpen] = useState(false)
   const menuRef = useRef<HTMLButtonElement>(null)

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { RESERVED_WORKSPACE_SEGMENTS } from '@/lib/nav'
+import { PROJECT_ROUTE_MATCH } from '@/lib/routes'
 import type { Job } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Glass } from '../glass'
@@ -17,7 +18,7 @@ const ACTIVE = new Set<Job['status']>(['queued', 'running', 'cancelling'])
 
 /** Bottom-right glass tray with determinate progress for long jobs, so users can leave the page. Reads the current project's jobs. */
 export function JobTray() {
-  const m = useMatch('/:ws/:project/*')
+  const m = useMatch(PROJECT_ROUTE_MATCH)
   const ws = m?.params.ws ?? '', project = m?.params.project ?? ''
   const enabled = !!ws && !!project && !RESERVED_WORKSPACE_SEGMENTS.has(project)
   const seen = useRef(new Map<string, Job>())
