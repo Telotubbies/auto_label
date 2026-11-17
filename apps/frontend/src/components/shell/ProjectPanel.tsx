@@ -1,6 +1,7 @@
 import { Link, NavLink, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, fileUrl } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { useWorkspaceFlags } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { visibleProjectNav } from '@/lib/nav'
@@ -50,7 +51,7 @@ export function ProjectPanel({ project }: { project: Project }) {
             {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
             <span className="absolute left-2 top-2 rounded bg-scrim/70 px-1.5 py-0.5 text-xs text-white">{typeLabel(project.type)}</span>
           </div>
-          <div className="px-2.5 py-2 text-sm font-semibold">{project.name}</div>
+          <Link to={projectPath(ws, project.slug)} className="block px-2.5 py-2 text-sm font-semibold hover:underline">{project.name}</Link>
         </div>
       </div>
       <nav aria-label="Project sections" className="flex-1 px-2 pb-4">
