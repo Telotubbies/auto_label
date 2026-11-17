@@ -5252,6 +5252,50 @@
         ]
       }
     },
+    "/api/metrics": {
+      "get": {
+        "description": "The Prometheus text format, for a scraper holding the deployment's token.",
+        "operationId": "metrics_api_metrics_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Prometheus text exposition"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Metrics",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
     "/api/readyz": {
       "get": {
         "operationId": "readyz_api_readyz_get",

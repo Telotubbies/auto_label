@@ -39,6 +39,12 @@ PUBLIC_URL = _env("LD_PUBLIC_URL", "http://localhost:5173").rstrip("/")
 CORS_ORIGINS = [o for o in _env("LD_CORS_ORIGINS", "*").split(",") if o]
 SIGNUP_ENABLED = _env("LD_SIGNUP_ENABLED", "1") == "1"
 ENVIRONMENT = _env("LD_ENV", "development")                  # compose sets production
+# Prometheus scrape surface (T-1302): an empty token means this deployment publishes no metrics, so
+# `GET /api/metrics` answers 404 instead of advertising a surface it will not serve.
+METRICS_TOKEN = _env("LD_METRICS_TOKEN")
+# The API's own version: reported as `labeldesk_build_info` and handed to FastAPI, so a scrape and
+# the OpenAPI document can never disagree about which build is running.
+APP_VERSION = _env("LD_APP_VERSION", "1.0.0")
 MULTI_TENANT = _env("LD_MULTI_TENANT", "1") == "1"           # hosted: reject custom SDK endpoints (I12)
 EMBEDDED_WORKER = _env("LD_EMBEDDED_WORKER", "1") == "1"     # run jobs inside the api process
 SEED_DEMO = _env("LD_SEED_DEMO", "1") == "1"

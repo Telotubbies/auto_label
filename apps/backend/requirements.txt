@@ -20,6 +20,8 @@ defusedxml>=0.7
 pycocotools>=2.0.7
 segno>=1.6
 cachetools>=7.0
+# Prometheus text exposition (T-1302): pure Python, ~1 MB, no C extension.
+prometheus-client>=0.21
 # The MCP app (apps/mcp) is the only importer; the API suite imports it by path to test the tool surface.
 mcp>=2.3,<3
 # Optional Insights embeddings (Task 20a): CLIP ViT-B/32 through transformers when installed, and

@@ -11,9 +11,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 
 from .bootstrap import init_db
-from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
+from .config import APP_VERSION, CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
 from .logging_setup import RequestLogMiddleware, install
+from .metrics import MetricsMiddleware, router as metrics_router
 from .routers import include_routers
 from .security import check_signature
 from .services.streamaudit import StreamViewAuditMiddleware
@@ -47,7 +48,7 @@ async def lifespan(_app: FastAPI):
         stop.set()
 
 
-app = FastAPI(title="LabelDesk API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="LabelDesk API", version=APP_VERSION, lifespan=lifespan)
 
 
 @app.exception_handler(GpuBusy)
@@ -77,6 +78,10 @@ async def security_headers(request, call_next):
 
 
 include_routers(app)
+app.include_router(metrics_router)          # GET /api/metrics: token-gated, 404 when unset
+# Inside the request log, so an unhandled exception is counted here and the 500 it builds is the
+# response this observes; outside the routes, so every `/api` request is measured.
+app.add_middleware(MetricsMiddleware)
 # Inside the security headers, so a 500 it builds still gets them; outside CORS and the routes.
 app.add_middleware(RequestLogMiddleware)
 # PDPA: every request for stream footage lands in the audit log (signed URLs carry no session cookie).
