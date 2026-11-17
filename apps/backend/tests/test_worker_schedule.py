@@ -2,7 +2,6 @@
 
 import os
 import threading
-import time
 
 import pytest
 
@@ -40,27 +39,31 @@ def test_schedule_ops_runs_while_a_job_is_claimed(monkeypatch):
     assert calls == ["schedule", "job-1"]
 
 
+class _Stop(BaseException):
+    """Ends loop() in the test: BaseException so the loop's own failure handling cannot swallow it."""
+
+
 def test_loop_survives_a_failed_iteration_and_backs_off(monkeypatch):
     """B1: one transient DB error must not end the only executor, and retries must not spin."""
-    attempts: list[float] = []
-    stop = threading.Event()
+    pauses: list[float] = []
+
+    def claim():
+        raise RuntimeError("database is locked")
+
+    def sleep(pause: float) -> None:
+        pauses.append(pause)
+        if len(pauses) == 3:
+            raise _Stop
+
     monkeypatch.setattr(worker, "recover", lambda: None)
     monkeypatch.setattr(worker, "_schedule_ops", lambda: None)
     monkeypatch.setattr(worker, "POLL", 0.05)
     monkeypatch.setattr(worker, "BACKOFF_MAX_S", 0.2)
-
-    def claim():
-        attempts.append(time.monotonic())
-        if len(attempts) == 3:
-            stop.set()
-        raise RuntimeError("database is locked")
-
     monkeypatch.setattr(worker, "_claim", claim)
-    worker.loop(stop)                          # must return, not raise
-    assert len(attempts) == 3
-    gaps = [b - a for a, b in zip(attempts, attempts[1:])]
-    assert gaps[0] >= 0.03 and gaps[1] > gaps[0], "a repeated failure must idle longer, not retry at full speed"
-    assert gaps[1] <= 0.5, "the idle must stay bounded"
+    monkeypatch.setattr(worker.time, "sleep", sleep)   # injected clock: no wall-clock assertion
+    with pytest.raises(_Stop):
+        worker.loop()                                  # stop=None, so only the injected clock exits
+    assert pauses == [0.05, 0.1, 0.2], "a repeated failure must idle longer, up to the cap"
 
 
 def test_backoff_is_bounded(monkeypatch):
