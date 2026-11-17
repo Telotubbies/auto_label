@@ -8,14 +8,15 @@ import logging
 import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from ..deps import Ctx, ws_ctx
+from ..deps import Ctx, project_ctx, ws_ctx
 from ..models import Job, now
 from ..services import (host_inventory, inference_access, inference_catalog, inference_compat,
-                        inference_estimate, inference_jobs, inference_models, inference_plan)
+                        inference_estimate, inference_jobs, inference_models, inference_plan,
+                        inference_segmentation)
 from ..services.flags import require_flag
 from .projects import job_out
 
@@ -358,4 +359,22 @@ def cancel_job(jid: str, c: Ctx = Depends(in_scope)):
              c.ws.slug, c.ws_role, row.id, before, row.status,
              (time.perf_counter() - started) * 1000)
     return job_view(row)
+
+
+# --- segmentation catalogue: models, licence and this host's verdict (T-1014) ------------------
+@router.get("/segmentation")
+def segmentation(ws: str, request: Request, host: str, project: str = "",
+                 c: Ctx = Depends(in_scope)):
+    """Segmentation rows for one host; an optional project only names the one the tab picked."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _host(c, host)
+    chosen = project_ctx(ws, project, request, c.user, c.db).project if project else None
+    models = inference_segmentation.rows(row)
+    log.info("inference.segmentation ws=%s role=%s host=%s project=%s outcome=ok rows=%d ready=%d "
+             "ms=%.1f", c.ws.slug, c.ws_role, row["id"], chosen.slug if chosen else "-",
+             len(models), sum(1 for model in models if model["provisioned"]["ok"]),
+             (time.perf_counter() - started) * 1000)
+    return {"models": models,
+            "project": None if chosen is None else {"slug": chosen.slug, "name": chosen.name}}
 

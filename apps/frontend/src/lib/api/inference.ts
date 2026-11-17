@@ -1,6 +1,6 @@
 import type {
   EngineAvailability, EngineInstallIn, EnginePlan, InferenceCatalog, InferenceEstimate, InferenceEstimateIn,
-  InferenceHost, InferenceJob, InferenceModels, Job, ModelPlan, ModelPlanIn,
+  InferenceHost, InferenceJob, InferenceModels, InferenceSegmentation, Job, ModelPlan, ModelPlanIn,
 } from '../types'
 import { get, post } from './client'
 
@@ -51,3 +51,8 @@ export const inferenceModels = (ws: string, host: string) =>
 /** The download dry run: files, bytes, disk after, the gate and every block reason (T-1010). */
 export const inferencePlanModel = (ws: string, body: ModelPlanIn) =>
   post<ModelPlan>(`/ws/${ws}/inference/models/plan`, body)
+
+/** The Segmentation tab (T-1014): rows and this host's verdict; `project` only names the chosen one. */
+export const inferenceSegmentation = (ws: string, host: string, project: string) =>
+  get<InferenceSegmentation>(`/ws/${ws}/inference/segmentation?host=${encodeURIComponent(host)}` +
+    (project ? `&project=${encodeURIComponent(project)}` : ''))
