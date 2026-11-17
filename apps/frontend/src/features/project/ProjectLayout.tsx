@@ -65,12 +65,11 @@ function ProjectShell({ project, slug }: { project: Project; slug: string }) {
                 {rail.groups.map((g) => (
                   <div key={g.id} className="shrink-0">
                     <div className="pb-0.5 text-xs font-medium text-muted-foreground">{g.label}</div>
-                    <ul className="flex gap-1">
+                    {/* StageItem renders its own <li>; the strip keeps each one from shrinking. */}
+                    <ul className="flex gap-1 [&>li]:shrink-0">
                       {g.items.map((row) => (
-                        <li key={row.id} className="shrink-0">
-                          <StageItem row={row} facts={rail.facts} ws={ws} slug={slug}
-                            active={row.id === rail.activeId} loading={rail.loading} />
-                        </li>
+                        <StageItem key={row.id} row={row} facts={rail.facts} ws={ws} slug={slug}
+                          active={row.id === rail.activeId} loading={rail.loading} />
                       ))}
                     </ul>
                   </div>
