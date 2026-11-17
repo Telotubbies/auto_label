@@ -54,8 +54,8 @@ DEFAULT_TIMEOUT = 900
 DEFAULT_PREVIEW_TIMEOUT = 300
 FAST_REQUEST_TIMEOUT = 30.0
 
-DEMO_EMAIL = "demo@labeldesk.dev"
-DEMO_PASSWORD = "demo1234"
+DEMO_EMAIL = os.environ.get("LD_DEMO_EMAIL", "demo@labeldesk.dev")
+DEMO_PASSWORD = os.environ.get("LD_DEMO_PASSWORD", "demo1234")   # matches the seeded demo account
 VLM_GROUND_REF = "vlm:qwen2.5-vl-7b"
 SAM_REF = "sam3:sam3.1"
 STREAM_NAME = "Gate camera"

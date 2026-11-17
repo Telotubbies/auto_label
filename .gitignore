@@ -1,15 +1,58 @@
-# Python
+# One root ignore file (ADR 0003). Generic patterns first, then the repository's
+# own rules in the section marked "This repository". Existing tracked files are
+# never affected by an ignore rule: only new, untracked paths are.
+
+# ---------------------------------------------------------------------------
+# Generic — Python (github/gitignore Python.gitignore)
+# ---------------------------------------------------------------------------
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.egg-info/
+*.egg
+.eggs/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+build/
+dist/
+*.so
 
-# Virtual environments
+# ---------------------------------------------------------------------------
+# Generic — Node (github/gitignore Node.gitignore)
+# ---------------------------------------------------------------------------
+node_modules/
+.npm/
+.vite/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------------------
+# Generic — secrets and environment
+# ---------------------------------------------------------------------------
+.env
+!.env.example
+# A generated API secret belongs to the machine that made it, whichever app
+# directory it lives under. apps/backend/data/.secret is the live one.
+**/data/.secret
+
+# ---------------------------------------------------------------------------
+# This repository
+# ---------------------------------------------------------------------------
+
+# Virtual environments (the SAM pipeline keeps its own under its tree)
 sam3_auto_label/.venv_windows/
 sam3_auto_label/sam3_venv/
-venv/
-.venv/
 
 # SAM 3.1 checkpoint (3.3GB — too large even for LFS, keep local only)
 sam3_auto_label/checkpoints/sam3.1_multiplex.pt
@@ -17,7 +60,8 @@ sam3_auto_label/checkpoints/sam3.1_multiplex.pt
 # SAM 3.1 — vendored source is tracked; keep the locked backup zip local
 sam3_auto_label/sam3_source_locked.zip
 
-
+# DINOv3 is a separate git clone, keep local
+sam3_auto_label/dinov3/
 
 # MLflow runs (auto-generated, not needed for handoff)
 yolo26_ppe/artifacts/mlflow/
@@ -28,7 +72,6 @@ yolo26_ppe/artifacts/ultralytics_training_runs/
 # YOLO dataset images (large, keep labels/yaml only)
 yolo26_ppe/data/*/images/
 yolo26_ppe/data/combined_coco_dataset_version_2/images/
-
 
 # YOLO label cache files
 yolo26_ppe/data/*/labels/*.cache
@@ -49,9 +92,6 @@ yolo26_ppe/artifacts/logs/
 *.fls
 *.fdb_latexmk
 
-# Coverage
-.coverage
-
 # IDE / tooling
 .devin/
 .vscode/
@@ -64,15 +104,8 @@ Thumbs.db
 # testfile
 .tests/
 
-# Python caches
-.mypy_cache/
-.ruff_cache/
-
 # LabelDesk app
-apps/frontend/node_modules/
-apps/frontend/dist/
 apps/frontend/ocr-shots/
-apps/frontend/tsconfig.tsbuildinfo
 apps/backend/data/
 apps/backend/.pytest_cache/
 apps/worker/*.egg-info/
@@ -81,14 +114,31 @@ deploy/models/
 apps/worker/*.pt
 apps/backend/*.pt
 apps/inference/models/
+# QA screenshots are committed as evidence; future artefacts stay local.
+apps/frontend/artifacts/
 
-# Old LabelDesk prototype (superseded by apps/)
-web/node_modules/
-api/*.db
-api/uploads/
+# Old LabelDesk prototype (superseded by apps/) and the pre-rename residue of
+# apps/api -> apps/backend, apps/web -> apps/frontend. Removed from disk on
+# 2026-11-17; the rules stay so a stray build cannot re-enter the index.
+/apps/api/
+/apps/web/
+/api/
+/web/
 
-# DINOv3 is a separate git clone, keep local
-sam3_auto_label/dinov3/
+# Datasets: read only by the offline pipeline (never by the app); new bytes stay out
+data/**
+!data/README.md
+
+# ML layer output: weights, dataset bytes and run artefacts are not committed
+ml/**/data/
+ml/**/models/
+ml/**/artifacts/
+
+# Design workspace. design/labeldesk-v3 is tracked on purpose: implementation
+# lanes in separate worktrees need REDESIGN.md, VISUAL-OVERRIDE.md, the .figcraft
+# file and frames/*.png from git. Anything else under design/ is scratch.
+design/*
+!design/labeldesk-v3/
 
 # Design capture reference (large, dev-only)
 design-ref/
