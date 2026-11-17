@@ -50,6 +50,8 @@ services:
       LD_SMTP_PASSWORD: ${LD_SMTP_PASSWORD:-}
       LD_SMTP_FROM: ${LD_SMTP_FROM:-}
       LD_SMTP_TLS: ${LD_SMTP_TLS:-1}
+      # Implicit TLS from the first byte (port 465). STARTTLS above is skipped when this is 1.
+      LD_SMTP_SSL: ${LD_SMTP_SSL:-0}
     volumes: [labeldesk_data:/data]
     depends_on:
       db: { condition: service_healthy }

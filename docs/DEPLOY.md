@@ -121,6 +121,23 @@ Kaggle ต้องเปิด Settings → Internet: On ด้วย worker �
 
 ---
 
+## อีเมล (SMTP)
+
+ถ้าไม่ตั้ง `LD_SMTP_HOST` ระบบจะไม่ส่งเมลจริง และ log จะขึ้นว่า `mail not delivered` (ในเครื่อง dev
+เปิดกล่อง `/__mail` ได้ด้วย `LD_MAIL_DEV=1` แต่ใช้กับ production ไม่ได้) ตั้งค่าใน `.env` ของ VM
+แล้วรัน `sudo docker compose up -d` อีกครั้ง:
+
+| ตัวแปร | ค่าเริ่มต้น | ใช้เมื่อ |
+|---|---|---|
+| `LD_SMTP_HOST` / `LD_SMTP_PORT` | ว่าง / `587` | โฮสต์และพอร์ตของเซิร์ฟเวอร์เมล |
+| `LD_SMTP_USER` / `LD_SMTP_PASSWORD` | ว่าง | เซิร์ฟเวอร์ที่ต้องล็อกอินก่อนส่ง |
+| `LD_SMTP_FROM` | ผู้ใช้ SMTP | ชื่อและที่อยู่ผู้ส่งที่ผู้รับเห็น |
+| `LD_SMTP_TLS` | `1` | เปิด STARTTLS บนพอร์ต 587 |
+| `LD_SMTP_SSL` | `0` | เปิด implicit TLS (เข้ารหัสตั้งแต่เชื่อมต่อ) ปกติพอร์ต 465 — ระบบจะข้าม STARTTLS ให้เองเมื่อค่านี้เป็น 1 |
+
+compose ส่งค่าเหล่านี้เข้า container `api` ทุกตัว (มี test บังคับว่าครบ) จึงไม่ต้องแก้
+`docker-compose.yml` เอง
+
 ## หมุน LD_SECRET (secret rotation)
 
 `LD_SECRET` เข้ารหัส connector credentials และ webhook signing secrets ที่เก็บใน DB
