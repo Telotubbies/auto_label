@@ -2,8 +2,8 @@
 
 Status: design lane output, 16 Nov 2026. Evidence from a Playwright walkthrough of the running app
 (`http://localhost:5173`, `demo@labeldesk.dev`) at 1440×900, plus a 375×812 pass; screenshots in
-`design/labeldesk-v3/audit/`. Sources read: `docs/STANDARDS.md`, `reports/UX UI และฟีเจอร์ SaaS Computer
-Vision.md`, `reports/Information architecture แพลตฟอร์ม ML.md`, and the current
+`design/labeldesk-v3/audit/`. Sources read: `docs/STANDARDS.md`, `research/reports/UX UI และฟีเจอร์ SaaS Computer
+Vision.md`, `research/reports/Information architecture แพลตฟอร์ม ML.md`, and the current
 `apps/frontend/src` shell, nav, project and editor code.
 
 This document is the blueprint for the FigCraft file `design/labeldesk-v3/labeldesk-v3.figcraft`

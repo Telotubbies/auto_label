@@ -19,7 +19,7 @@ not start.
 | `03-edge-industrial.md` | NVIDIA Metropolis / DeepStream / TAO, Edge Impulse, Viso.ai, Cognex / Keyence-style inspection, Axis / Milestone video analytics |
 | `04-vlm-foundation.md` | open-vocabulary detection, SAM 3 family, VLM QA / auto-label, agentic labeling, synthetic data, active learning, embedding curation (2025–2026) |
 | `05-enterprise-table-stakes.md` | SSO/SCIM, audit, data residency, BYO storage, PDPA/GDPR, usage billing, status page, onboarding/help centre, i18n (Thai first) |
-| `06-repo-research-thai-market.md` | this repo's `reports/` and `research_notes/`, plus Thai use cases (factories, PPE, retail, agriculture) |
+| `06-repo-research-thai-market.md` | this repo's `reports/` and `research/notes/`, plus Thai use cases (factories, PPE, retail, agriculture) |
 
 ## Hard rules
 

@@ -19,7 +19,7 @@ states, sources and code evidence.
 | `03-edge-industrial.md` | NVIDIA, Edge Impulse, Viso, Cognex/Keyence, Axis/Milestone | 18 |
 | `04-vlm-foundation.md` | SAM 3 family, open-vocabulary, VLM QA, agentic, synthetic, active learning | 18 |
 | `05-enterprise-table-stakes.md` | SSO/SCIM, audit, residency, BYO storage, PDPA, billing, support, i18n | 24 |
-| `06-repo-research-thai-market.md` | this repo's `reports/` + `research_notes/`, Thai verticals | 22 |
+| `06-repo-research-thai-market.md` | this repo's `reports/` + `research/notes/`, Thai verticals | 22 |
 
 **116 cards written → 101 features survive dedupe.** 2 HAVE · 58 PARTIAL · 41 MISSING.
 14 Must · 61 Should · 26 Could. 14 S · 67 M · 20 L.

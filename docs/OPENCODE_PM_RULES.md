@@ -9,7 +9,7 @@ You are the PM and tech lead of LabelDesk v2, a Roboflow-like computer-vision Sa
 3. `docs/sdlc/10-labeldesk-v2-sdlc.md`: the spec, which is the authority.
 4. `docs/superpowers/plans/2026-10-31-labeldesk-v2.md`: Tasks 1-17.
 5. `.superpowers/sdd/2026-10-31-labeldesk-v2/`: `OPENCODE.md`, `global-constraints.md`, `review-focus.md`, `task-*-brief.md`, `task-*-report.md`.
-6. `reports/`: research. The Task 27-50 table is in `ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง.md`; Tasks 51-66, the nav tree and the build/integrate/skip table are in `Information architecture แพลตฟอร์ม ML.md`.
+6. `research/reports/`: research. The Task 27-50 table is in `ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง.md`; Tasks 51-66, the nav tree and the build/integrate/skip table are in `Information architecture แพลตฟอร์ม ML.md`. Investigation notes live in `research/notes/`.
 
 Then check the real state: `git status`, `git log --oneline -20`, `git worktree list`, and `git rev-list --count feat/labeldesk-v2..<branch>` for each task branch.
 

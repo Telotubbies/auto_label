@@ -34,7 +34,8 @@ apps/
   worker/          labeldesk-worker package for remote train and auto-label jobs
   inference/       standalone self-hosted inference service
   sdk/             Python client and CLI
-packages/          planned shared code; not created yet
+packages/          importable code: the Python SDK and CLI
+research/          provider-side reports and investigation notes (not product docs)
 deploy/            Docker Compose stack, Caddyfile, env template
 tools/             scripts used by apps and tests
 tests/             repository-level pipeline tests

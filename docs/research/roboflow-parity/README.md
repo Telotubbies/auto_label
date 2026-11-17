@@ -71,11 +71,11 @@ videos, webhooks, workspaces.
 
 ## Reusable prior research in this repo
 
-- `research_notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/roboflow_features.md` — cited RF checklist
-- `research_notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/competitor_features.md`
-- `research_notes/UX UI และฟีเจอร์ SaaS Computer Vision/annotation_editor_ux.md`
-- `research_notes/UX UI และฟีเจอร์ SaaS Computer Vision/platform_ux_dashboards.md`
-- `research_notes/ฟีเจอร์ SaaS ด้าน Computer Vision/*.md` (data, training, inference, annotation)
+- `research/notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/roboflow_features.md` — cited RF checklist
+- `research/notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/competitor_features.md`
+- `research/notes/UX UI และฟีเจอร์ SaaS Computer Vision/annotation_editor_ux.md`
+- `research/notes/UX UI และฟีเจอร์ SaaS Computer Vision/platform_ux_dashboards.md`
+- `research/notes/ฟีเจอร์ SaaS ด้าน Computer Vision/*.md` (data, training, inference, annotation)
 - `reports/*.md` — synthesized tiers (M/S/D) for the same topics
 - `.superpowers/sdd/2026-10-31-labeldesk-v2/gap-audit.md` — earlier code-vs-report diff
 

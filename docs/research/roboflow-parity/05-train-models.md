@@ -1,8 +1,8 @@
-﻿# Area 5 - Train & Models
+# Area 5 - Train & Models
 
 Method: 24 fetches, 2026-11-17 - docs index, then `models/train/{train-a-model, cancel-a-training-job, neural-architecture-search, roboflow-instant, train-from-google-cloud, pro-third-party-training-integrations}`, `models/evaluate/{view-trained-models, training-results, evaluate-trained-models, compare-trained-models, training-resolutions-by-model-type}`, `models/{readme, model-ids, model-licenses, versions-trainings-and-models}`, `models/model-weights/upload-custom-weights`, `models/supported-models/sam3`, `models/supported-tasks/anomaly-detection`, `roboflow.com/{pricing,credits}`, two blog posts (regression testing, anomaly detection), blog index. Not opened: weight-download page, Universe checkpoint page, Rapid pages, per-family model pages (only SAM3), forum threads.
 
-Repo notes read for leads: `research_notes/ฟีเจอร์ SaaS ด้าน Computer Vision/training_evaluation.md`, `research_notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/roboflow_features.md` sections 3-4.
+Repo notes read for leads: `research/notes/ฟีเจอร์ SaaS ด้าน Computer Vision/training_evaluation.md`, `research/notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/roboflow_features.md` sections 3-4.
 `[inferred]` = not stated on any page I fetched; `(RF: X)` marks a source label only, never copy.
 
 Metric vocabulary (definitions, then what the UI defaults to): **mAP@50:95** = mean AP over ten IoU cut-offs 0.50 to 0.95 step 0.05; **mAP@50 / @75** = one cut-off, 75 rewards tight geometry; **AP S/M/L** = same AP by object area (<32^2, 32^2-96^2, >96^2 px); **AR@1/10/100** = recall with that many detections per image; **P/R/F1 at a cut-off** = after dropping low-confidence detections; **mIoU / mBIoU** for semantic segmentation (plus pixel-level P/R/F1); **mBAP** = boundary AP for instance segmentation; **OKS mAP** for keypoints; **median latency (Cloud API)** = median server time per request incl. pre/post-processing, network excluded. Defaults: detection, instance-seg and keypoint tables headline mAP@50:95; classification comparison headlines F1 (its training page shows accuracy); semantic segmentation headlines mIoU.

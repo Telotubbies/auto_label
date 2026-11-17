@@ -1,13 +1,13 @@
 # G6 — this repo's own research, plus the Thai market (2026-11-17)
 
-Scope: the repo's `research_notes/` (fourteen notes in four Thai-named folders) and `reports/`
+Scope: the repo's `research/notes/` (fourteen notes in four Thai-named folders) and `reports/`
 (four reports, also Thai) plus what Thai factories, safety teams, retailers, farms and CCTV
 operators actually buy. Deduped against `docs/research/roboflow-parity/PARITY.md` (334 rows).
 
 Method and caveats:
 
 - The repo notes are mostly search-snippet research, not primary pages. Where a card leans on
-  one, the source line says `via research_notes/...` and the URL is the one the note cites,
+  one, the source line says `via research/notes/...` and the URL is the one the note cites,
   **not** a page opened in this session. Pages I fetched myself are marked `[fetched]`.
 - Code was read at HEAD `3bde0ba`, not `fe8ef1a` as the shared brief says. The authoritative
   list of what has shipped is the flag registry at `services/flags.py:21-34`: tasks 10b, 20c,
@@ -40,7 +40,7 @@ nor the shipped tasks 27–36 describe.
 
 ---
 
-### G6.1 Lot-bound inspection record with a disposition (OK / NG / rework) (Thai factory QC, via `research_notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/sector_use_cases.md`)
+### G6.1 Lot-bound inspection record with a disposition (OK / NG / rework) (Thai factory QC, via `research/notes/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง/sector_use_cases.md`)
 - **What the user does:** an inspector at the end of a line opens the station screen, the last inspected unit's verdict is already there, and they either accept it, flip it to NG with a defect class, or send it to rework with a reason. Every verdict is stamped with the lot (or work-order) number and the inspector's badge.
 - **Who uses it:** a QC inspector on a two-shift line who must answer "which lot was this, who passed it, and what happened to the unit" a week later.
 - **Flow:** 1. Station list (`/projects/:id/anomaly` today) → pick a station → `[empty]` "no units inspected since 06:00". 2. Verdict card shows the unit image, the model's regions, and two large buttons. 3. NG opens a defect-class picker limited to the line's taxonomy; rework opens a reason list and a due date. 4. Submit → `[loading]` synchronous write → the card moves to the next unit. 5. `[error: lot closed]` when the operator scans a lot that already shipped; the unit is blocked, not silently accepted.
@@ -51,7 +51,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** PARTIAL — the station object and a per-station threshold exist for anomaly only; there is no disposition, no lot binding, and no rework state.
 - **Suggested priority / size:** Must / M.
 
-### G6.2 First-pass yield and defect Pareto per lot, line and shift (Thai factory QC, via `research_notes/.../sector_use_cases.md`)
+### G6.2 First-pass yield and defect Pareto per lot, line and shift (Thai factory QC, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** opens a yield board, picks a line and a date range, and reads first-pass yield (units passing with no rework ÷ units inspected), the top five defect classes by count, and whether the drop started on the night shift or after a threshold change.
 - **Who uses it:** a production or QA manager in the Monday meeting, and the engineer who has to explain why a line's yield fell 4 points.
 - **Flow:** 1. Insights → Yield tab → `[empty]` "no dispositions recorded for this line" with a link to the station. 2. Line and date pickers; the board recomputes. 3. Table of lots with FPY, NG count and rework count; click a lot → the units behind the number. 4. `[loading]` on recompute; `[error: retention window]` when the range reaches past the project's retention policy.
@@ -62,7 +62,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no disposition data exists to aggregate.
 - **Suggested priority / size:** Must / M.
 
-### G6.3 Reject signal to the machine over Modbus / OPC-UA / MQTT with a fail-safe (Thai factory QC, inference from `research_notes/.../sector_use_cases.md`)
+### G6.3 Reject signal to the machine over Modbus / OPC-UA / MQTT with a fail-safe (Thai factory QC, inference from `research/notes/.../sector_use_cases.md`)
 - **What the user does:** binds one stream event to one output coil or tag ("NG on line 3 → coil 12 high for 300 ms"), then watches a signal log that records every pulse with the verdict that caused it, the latency, and whether the PLC acknowledged.
 - **Who uses it:** an automation engineer at the integrator, with the line's PLC programmer in the room; not a data scientist.
 - **Flow:** 1. Stream → Outputs → `[empty]` "no outputs bound" with a Modbus/OPC-UA/MQTT choice. 2. Endpoint form (host, port, unit id, tag), then a test pulse; `[error: connect refused]` and `[error: write rejected by PLC]` are different messages. 3. Bind a rule to the output, set pulse width and a dead-man timeout. 4. Signal log: time, event id, pulse sent, ack, latency. 5. `[error: comms lost]` banner on the stream with a stop-the-line option.
@@ -73,7 +73,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no OT connector of any kind.
 - **Suggested priority / size:** Should / M.
 
-### G6.4 Shift handover brief written at the end of a shift (Thai factory QC + safety, via `research_notes/.../sector_use_cases.md`)
+### G6.4 Shift handover brief written at the end of a shift (Thai factory QC + safety, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** at 07:50 the outgoing operator or supervisor presses "hand over", reviews a one-screen brief (open NG units, unresolved reworks, cameras offline, threshold changes, alerts nobody acknowledged, yield so far), edits two lines of free text, and sends it to the incoming shift's LINE group and to the shift log.
 - **Who uses it:** a shift supervisor handing over a production line or a security desk; the incoming person reads it on a phone.
 - **Flow:** 1. Project → Ops → Handover → `[empty]` "nothing open this shift". 2. Auto-filled blocks with counts and links to the exact units. 3. Free-text notes, then send. 4. `[loading]` "building brief"; `[error: LINE group not configured]` with a link to channels. 5. The next shift's brief opens with "carried over from previous shift" items marked.
@@ -84,7 +84,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — nothing assembles a shift summary.
 - **Suggested priority / size:** Should / S.
 
-### G6.5 Glove-first Thai operator screen at the station (Thai operations, via `research_notes/.../sector_use_cases.md`)
+### G6.5 Glove-first Thai operator screen at the station (Thai operations, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** stands at a 15-inch touch panel, taps a 64 px button with a gloved hand, and sees one verdict, one image and one instruction in Thai; no menu, no English, no scroll.
 - **Who uses it:** a line operator who has never used an annotation tool, on a shared panel with a fixed camera and a barcode scanner.
 - **Flow:** 1. Panel boots into a station-locked view (`[loading] connecting to station`) with the line name and shift. 2. Live frame, verdict badge, and two buttons: "pass" and "fail", both labelled in Thai on screen. 3. Fail → defect tiles with photos of each class, tap one. 4. Confirm → next unit. 5. `[error: camera offline]` fills the panel with the reason and the supervisor's phone number, because a blank screen makes the operator improvise.
@@ -117,7 +117,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** PARTIAL — delivery, throttle and quiet hours work; acknowledgement, escalation tiers and read state do not exist.
 - **Suggested priority / size:** Must / M.
 
-### G6.8 Daily safety summary PDF for an inspector (Thai safety, via `research_notes/.../sector_use_cases.md`)
+### G6.8 Daily safety summary PDF for an inspector (Thai safety, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** at 17:00 opens "today's safety sheet", checks the counts, adds a remark, and downloads a two-page PDF: PPE compliance rate per zone, incidents with thumbnails, cameras offline, and the supervisor's name.
 - **Who uses it:** a safety officer preparing for a factory inspector or an internal EHS audit; they need a document, not a dashboard.
 - **Flow:** 1. Ops → Safety → Daily sheet → `[empty]` "no events yet today". 2. Preview with per-zone counts and a thumbnail strip; toggle zones in or out. 3. "Generate" → `[loading]` render → download. 4. `[error: no supervisor assigned]` blocks signing, because an unsigned sheet is not evidence.
@@ -139,7 +139,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** PARTIAL — classes, rules and prompts all exist separately; nothing installs them together.
 - **Suggested priority / size:** Must / S.
 
-### G6.10 Shelf-gap and planogram slot compliance (Thai retail, via `research_notes/.../sector_use_cases.md`)
+### G6.10 Shelf-gap and planogram slot compliance (Thai retail, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** photographs or streams a bay, and the product returns each shelf row as slots: filled, empty, wrong product, or blocked by a carton. A gap becomes a task ("row 3, 4 facings missing") and closes when the next capture shows it filled.
 - **Who uses it:** a store or area manager running a planogram audit across branches, and a merchandiser who needs the gap list before a supplier visit.
 - **Flow:** 1. Project → Shelf audit → define a bay layout by drawing shelf lines once. 2. Capture from a phone or an existing camera. 3. Result: per-slot status with a confidence, and `[empty]` "bay matches planogram" when nothing is wrong. 4. Gap list → assign → re-capture → auto-close. 5. `[error: shelf lines do not match this photo]` when the camera moved.
@@ -150,7 +150,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no grid, slot or planogram primitive.
 - **Suggested priority / size:** Could / L.
 
-### G6.11 Price-tag read-back against a price master (Thai retail, via `research_notes/.../sector_use_cases.md`)
+### G6.11 Price-tag read-back against a price master (Thai retail, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** captures a shelf edge, and every price tag is read and compared with the branch's price list; mismatches are listed with the tag crop, the shelf price and the master price, ready to print and replace.
 - **Who uses it:** a store manager handling a promotion changeover, and a loss-prevention officer who suspects tag swaps.
 - **Flow:** 1. Retail → Price check → upload or capture. 2. `[loading]` OCR over the tag regions. 3. Result table: match, mismatch, unreadable; `[empty]` "no tags found in this image" with a re-shoot hint. 4. Import the price master from CSV, with `[error: duplicate SKU]`. 5. Export the mismatch list.
@@ -161,7 +161,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** PARTIAL — the OCR payload exists; there is no comparison, no master list and no exception list.
 - **Suggested priority / size:** Could / M.
 
-### G6.12 Fruit grading station by size and defect (Thai agriculture, via `research_notes/.../sector_use_cases.md`)
+### G6.12 Fruit grading station by size and defect (Thai agriculture, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** puts a durian or mango on a tray, the camera measures it against a known scale, the model assigns a grade, and the station prints or shows a grade label that goes on the crate.
 - **Who uses it:** a packing-house operator on a sorting line, and the exporter's QC lead who signs the lot.
 - **Flow:** 1. Station screen: one fruit, one grade, one label. 2. `[empty]` "place a fruit on the tray" until a detection appears. 3. Size class from a calibration object, defect class from the model, grade from a rule table the QC lead edits. 4. Confirm → label → next. 5. `[error: calibration object not visible]` rather than a wrong size band.
@@ -172,7 +172,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no grading, calibration or label output.
 - **Suggested priority / size:** Could / L.
 
-### G6.13 Exporter lot report with grade mix and photographs (Thai agriculture, via `research_notes/.../sector_use_cases.md`)
+### G6.13 Exporter lot report with grade mix and photographs (Thai agriculture, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** at the end of a packing run, generates a lot report: lot number, farm or orchard id, fruit count per grade, defect photographs, inspector name and signature block, in Thai, for the buyer abroad.
 - **Who uses it:** an exporter's QC lead answering a buyer's complaint, and a customs or buyer audit months later.
 - **Flow:** 1. Lot → Reports → `[empty]` "lot has no graded units". 2. Choose grade columns and photo count per defect class. 3. Generate → `[loading]` → PDF with a QR back to the lot. 4. `[error: lot not closed]` blocks issuing until every unit has a grade, because a partial report is worse than none.
@@ -194,7 +194,7 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no offline queue, no geotag, no session.
 - **Suggested priority / size:** Should / M.
 
-### G6.15 Evidence package for police or insurer (Thai CCTV retrofit, via `research_notes/.../sector_use_cases.md`)
+### G6.15 Evidence package for police or insurer (Thai CCTV retrofit, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** selects an incident, adds the twenty minutes around it, and exports a package: the clip, three stills, the event log, the camera's location, a SHA-256 of each file, and a one-page Thai cover sheet naming the operator and time.
 - **Who uses it:** a security manager at a retail chain or an estate responding to a police request or an insurance claim.
 - **Flow:** 1. Event → "export evidence" → choose window and items. 2. Preview of what will be included; `[empty]` "this event has no clip" if only a snapshot exists. 3. Generate zip + hash manifest; `[loading]`. 4. Download; the audit log records who exported what, when. 5. `[error: footage already past retention]` states the policy rather than producing a broken zip.
@@ -210,13 +210,13 @@ nor the shipped tasks 27–36 describe.
 - **Who uses it:** a CCTV operator in a retail or estate control room, and the DPO who has to answer a complaint.
 - **Flow:** 1. Camera settings → Privacy → toggles for faces, plates, and a static-mask polygon tool. 2. `[loading]` detection on the next frame; a live preview shows what the public will see. 3. Export dialog: "redacted (default)" or "original — requires approval" with a reason field. 4. `[error: face detector unavailable]` fails closed and blocks the camera from entering a dataset.
 - **Why it is easy:** the toggles sit on the camera the operator already edits, and the fail-closed behaviour is visible instead of silent.
-- **Products with it:** face/plate blur options exist in NVR-class tools and in open-source anonymisers, per `research_notes/.../emerging_features.md` (EgoBlur, Brighter AI) — [EgoBlur via research_notes](https://oosmetrics.com/repo/facebookresearch/EgoBlur).
+- **Products with it:** face/plate blur options exist in NVR-class tools and in open-source anonymisers, per `research/notes/.../emerging_features.md` (EgoBlur, Brighter AI) — [EgoBlur via research_notes](https://oosmetrics.com/repo/facebookresearch/EgoBlur).
 - **Why it matters for LabelDesk:** we blur faces already, which is more than most competitors, but there is no plate path, no static mask and no export-time choice, so a PDPA complaint still lands on the customer with no record of what we did.
 - **LabelDesk code evidence:** `services/faceblur.py:1-10,69` (Haar cascade, padded-square Gaussian blur, fails closed), `handlers/streams.py:105-108` and `routers/images.py:88,130` (applied on stream frames and ingest when `project.face_blur`); searched `plate` across backend and frontend — no match; no mask polygon model.
 - **Suggested status:** PARTIAL — faces are blurred on ingest and stream; plates, static masks and export policy are absent.
 - **Suggested priority / size:** Should / M.
 
-### G6.17 Camera readiness survey before a project starts (Thai CCTV retrofit, via `research_notes/.../sector_use_cases.md`)
+### G6.17 Camera readiness survey before a project starts (Thai CCTV retrofit, via `research/notes/.../sector_use_cases.md`)
 - **What the user does:** adds each existing camera's RTSP URL and the product pulls six frames at different times of day, measures resolution, sharpness, night-time grain, frame rate and field of view, then prints a per-camera verdict: usable, needs a better angle, needs light, replace.
 - **Who uses it:** an integrator quoting a retrofit on analogue or mixed IP cameras, before promising accuracy.
 - **Flow:** 1. New project → "survey cameras" → add N URLs. 2. `[loading]` pulling samples; per-camera card with thumbnails. 3. Verdict per camera with the reason; export as a PDF for the quote. 4. `[error: stream has no keyframe]` and `[error: night sample unavailable]` explained in place.
@@ -254,7 +254,7 @@ nor the shipped tasks 27–36 describe.
 - **Who uses it:** an IT engineer at a bank, hospital or factory that will not let images leave the building.
 - **Flow:** 1. Install → `[error: licence missing]` with the machine fingerprint to send us. 2. Paste the licence file → features unlock. 3. Model update: drop a signed bundle → verify signature → `[error: signature invalid, bundle rejected]`. 4. Health page shows version, expiry and last successful verification. 5. Offline for 90 days → read-only mode, data export still allowed.
 - **Why it is easy:** three artifacts (installer, licence, bundle), each verified on the box, with no call-home requirement to install.
-- **Products with it:** the inference server here is Docker CPU/GPU with read-only mounts and a Jetson cross-build that is explicitly untested (`apps/inference/README.md:58-99`); the compliance motive is the PDPA regulator's cross-border posture at [PDPC fetched](https://www.pdpc.or.th/) and the cross-border rules summarised in `research_notes/.../positioning.md` ([Tilleke via research_notes](https://www.tilleke.com/insights/thailands-regulations-for-cross-border-personal-data-transfer-come-into-force/24/)).
+- **Products with it:** the inference server here is Docker CPU/GPU with read-only mounts and a Jetson cross-build that is explicitly untested (`apps/inference/README.md:58-99`); the compliance motive is the PDPA regulator's cross-border posture at [PDPC fetched](https://www.pdpc.or.th/) and the cross-border rules summarised in `research/notes/.../positioning.md` ([Tilleke via research_notes](https://www.tilleke.com/insights/thailands-regulations-for-cross-border-personal-data-transfer-come-into-force/24/)).
 - **Why it matters for LabelDesk:** "data stays in Thailand" is the one claim competitors cannot copy cheaply, but today a self-hosted install still needs our platform to train, and there is no licence mechanism at all. Without offline licensing, an air-gapped deal is unpaid.
 - **LabelDesk code evidence:** `apps/inference/README.md:58-99` (CPU/GPU run, `--read-only`, untested Jetson); `deploy/docker-compose.yml` profile; `services/edge.py:26-53` (export presets, no licence); searched `licence|license|activation` in backend services — model-licence metadata only.
 - **Suggested status:** PARTIAL — an inference container exists; there is no offline install path, licence or signed update.
@@ -265,13 +265,13 @@ nor the shipped tasks 27–36 describe.
 - **Who uses it:** a DPO or an IT compliance lead at a customer with CCTV analytics, preparing for an audit or answering a data-subject request.
 - **Flow:** 1. Governance → PDPA → `[empty]` "no processing activities recorded". 2. Add activity: purpose, data categories, retention, recipients, region. 3. Generate notice PDF and a register export; `[error: retention longer than policy]` blocks saving. 4. Data-subject request → search by camera, site and time window → export what we hold for that window. 5. `[error: sub-processor not approved]` when a new vendor is added without consent recorded.
 - **Why it is easy:** the register and the notice come from the same record, so a change in retention updates both, and the sub-processor gate already exists as a rule.
-- **Products with it:** PDPC publishes guidelines, model contracts, DPO registration and a breach-notification channel ([PDPC fetched](https://www.pdpc.or.th/)); the sector-specific CCTV guidance is still at consultation stage per `research_notes/.../positioning.md` ([HLC via research_notes](https://hlc.com/en/publications/thailand-pdpc-consults-on-sectorspecific-pdpa-guidelines)).
+- **Products with it:** PDPC publishes guidelines, model contracts, DPO registration and a breach-notification channel ([PDPC fetched](https://www.pdpc.or.th/)); the sector-specific CCTV guidance is still at consultation stage per `research/notes/.../positioning.md` ([HLC via research_notes](https://hlc.com/en/publications/thailand-pdpc-consults-on-sectorspecific-pdpa-guidelines)).
 - **Why it matters for LabelDesk:** we already hold retention, residency and a DPA, but the customer still has to invent the paperwork. Shipping the paperwork is a procurement unlock, and it must be drafted by a Thai lawyer before we claim compliance in public.
 - **LabelDesk code evidence:** `routers/privacy.py:1,14-16,80-102` (retention, residency `th|sg|us`, DPA version), `:227` (sub-processor needs controller consent); `services/erasure.py`; `services/retention.py:1-9`. No ROPA, notice text, consent record or data-subject search — searched `consent` — one docstring mention only.
 - **Suggested status:** PARTIAL — retention, residency, DPA and erasure exist; the register, notice and subject-access path do not.
 - **Suggested priority / size:** Must / M.
 
-### G6.22 Partner console for an SI: child workspaces, camera-licence pool, monthly statement (Thai channel motion, via `research_notes/.../positioning.md`)
+### G6.22 Partner console for an SI: child workspaces, camera-licence pool, monthly statement (Thai channel motion, via `research/notes/.../positioning.md`)
 - **What the user does:** an integrator signs in once, sees their customer workspaces, allocates camera or project licences from a pool they bought, and downloads a monthly statement of what each customer consumed — without seeing the customer's images unless invited.
 - **Who uses it:** a Thai system integrator or CCTV distributor reselling LabelDesk, currently modelled on the Tapway distributor route.
 - **Flow:** 1. Partner home → customer list → `[empty]` "no customers yet" with an invite link. 2. Create a child workspace, assign a licence quantity, set the customer's data region. 3. `[error: licence pool exhausted]` at allocation. 4. Monthly statement: per customer, licences used, overage, amount. 5. Escalate a support case with the customer's consent, gaining read access for a fixed window.
@@ -286,7 +286,7 @@ nor the shipped tasks 27–36 describe.
 
 ## Reading the notes: what holds and what to discount
 
-- **Richest, in order:** `reports/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง.md` (the only place that maps sectors to platform requirements and ranks them, and it cites primary Thai sources per row); `research_notes/.../sector_use_cases.md` (twelve sectors, each with an explicit "inference" and "gaps" block, which is why most cards here can name a buyer); `research_notes/.../inference_streams_vlm.md` (the only note that fetches vendor docs and separates `[fetched]` from `[search-snippet]`); `research_notes/.../positioning.md` (buyer pain, local competitors, channel model).
+- **Richest, in order:** `reports/ฟีเจอร์ที่ยังขาดเทียบคู่แข่ง.md` (the only place that maps sectors to platform requirements and ranks them, and it cites primary Thai sources per row); `research/notes/.../sector_use_cases.md` (twelve sectors, each with an explicit "inference" and "gaps" block, which is why most cards here can name a buyer); `research/notes/.../inference_streams_vlm.md` (the only note that fetches vendor docs and separates `[fetched]` from `[search-snippet]`); `research/notes/.../positioning.md` (buyer pain, local competitors, channel model).
 - **Thinnest:** `roboflow_features.md` and `annotation_autolabel.md` for this group's purpose — they re-describe parity, which `PARITY.md` already owns; `data_layer.md` and `saas_platform_mlops.md` are strong on S3/mirroring and billing ladders but almost silent on Thai specifics.
 - **Numbers not to repeat:** the two Thailand market sizes (USD 430M AI inspection vs USD 87M industrial machine vision) use different definitions and are vendor research; the repo note already warns against comparing them. No credible figure for a Thai annotation or CV-platform market exists.
 - **Evidence that is old or absent:** Thai retail CV rests on a 2018 seven-eleven rollout; no named Thai PCB/IC factory case study; no bin-picking or robot-arm deployment; no sourced pallet-counting or parcel-damage project; no MEA (only PEA) energy evidence.
