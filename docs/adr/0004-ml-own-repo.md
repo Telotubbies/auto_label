@@ -34,5 +34,6 @@ back to the hub model name, and the demo seed skips the trained-model row.
 - ML tests run in the ML repository (`python -m pytest -q` there), not in this repository's gate.
 - A cross-repo change (e.g. a new SAM entry point) needs a commit in each repository; the env contract
   above is the interface between them.
-- The WSL virtual environment `sam3_auto_label/sam3_venv` was left at its old path in this checkout
-  because it contains symlinks that a move would break; recreate it inside `../labeldesk-ml` when needed.
+- The WSL virtual environment now lives at `../labeldesk-ml/sam3_auto_label/sam3_venv` (moved 2026-11-17:
+  shebangs and `pyvenv.cfg` repointed inside WSL, `lib64 -> lib` restored, torch smoke-tested). The old copy
+  under this checkout was removed.
