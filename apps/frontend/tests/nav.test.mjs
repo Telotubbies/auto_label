@@ -226,11 +226,12 @@ test('the mobile drawer contract survives the nav rewrite', () => {
   assert.match(shellSrc, /<TopBar onMenu=/, 'the mobile menu button must open the drawer')
 })
 
-// Fix round 3 (I2): the job tray's separator was re-encoded through the wrong code page, so every
-// row read "Training ยท Project" instead of using U+00B7.
-test('the job tray separates the project name with a middle dot', () => {
-  assert.ok(shellSrc.includes('` · ${j.project_name}`'), 'the job row must use U+00B7 as its separator')
-  assert.ok(!shellSrc.includes('ยท'), 'the job row must not contain the corrupted Thai bytes')
+// T-481 moved the middle-dot rule into `lib/jobs.ts`: the row label is `resultLine(job)`, written
+// with U+00B7 as an escape so no shell file carries a re-encoded separator.
+test('the job row builds its middle dot in jobs.ts, not in the shell', () => {
+  const jobsSrc = source('../src/lib/jobs.ts')
+  assert.ok(jobsSrc.includes('\\u00B7'), 'jobs.ts must own the U+00B7 separator')
+  assert.ok(!shellSrc.includes('\u00B7'), 'no shell file may carry the separator itself')
 })
 
 test('the mobile drawer moves, traps and restores keyboard focus', () => {
