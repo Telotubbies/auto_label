@@ -58,7 +58,8 @@ class LabelDesk:
     # --- transport -------------------------------------------------------------------------
 
     def call(self, operation: str, path_params: dict | None = None, params: dict | None = None,
-             json: Any = None, files: Any = None, data: dict | None = None) -> Any:
+             json: Any = None, files: Any = None, data: dict | None = None,
+             headers: dict | None = None) -> Any:
         spec = OPERATIONS.get(operation)
         if spec is None:
             raise LabelDeskError(0, f"unknown operation: {operation}")
@@ -69,12 +70,12 @@ class LabelDesk:
                 raise LabelDeskError(0, f"{operation} needs path parameter '{name}'")
             path = path.replace("{" + name + "}", quote(str(path_params[name]), safe=""))
 
-        headers = {"Accept": "application/json"}
+        request_headers = {"Accept": "application/json", **(headers or {})}
         if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+            request_headers["Authorization"] = f"Bearer {self.api_key}"
         try:
             response = self._http.request(spec["method"].upper(), self.base_url + path, params=params, json=json,
-                                          files=files, data=data, headers=headers)
+                                          files=files, data=data, headers=request_headers)
         except httpx.HTTPError as exc:
             raise LabelDeskError(0, str(exc)) from exc
         if not response.is_success:
