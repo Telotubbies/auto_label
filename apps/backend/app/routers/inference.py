@@ -424,4 +424,3 @@ def cancel_job(jid: str, c: Ctx = Depends(in_scope)):
              c.ws.slug, c.ws_role, row.id, before, row.status,
              (time.perf_counter() - started) * 1000)
     return job_view(row)
-
