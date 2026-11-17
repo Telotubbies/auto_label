@@ -2337,6 +2337,18 @@
             ],
             "title": "Annotation Group"
           },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "folder_id": {
             "anyOf": [
               {

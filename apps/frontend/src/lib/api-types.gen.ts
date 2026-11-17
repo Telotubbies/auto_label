@@ -503,6 +503,7 @@ export interface ProjectMemberIn {
 
 export interface ProjectPatch {
   annotation_group?: string | null
+  description?: string | null
   folder_id?: string | null
   license?: string | null
   name?: string | null
