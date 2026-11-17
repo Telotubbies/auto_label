@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowUpRight, BarChart3, Table2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { pctOf } from '@/lib/format'
+import { projectPath } from '@/lib/routes'
 import type { Analytics as AnalyticsData } from '@/lib/types'
 import { Button, Card, Spinner, Stat, toast } from '@/components/ui'
 import { useProject } from './ProjectLayout'
@@ -145,7 +146,7 @@ export function DatasetHealth() {
     const p = new URLSearchParams()
     p.set('status', status)
     for (const [k, v] of Object.entries(params)) p.set(k, String(v))
-    nav(`/${ws}/${project.slug}/browse?${p.toString()}`)
+    nav(projectPath(ws, project.slug, `dataset?${p.toString()}`))
   }
 
   const maxHeat = Math.max(1, ...(a.heatmap ?? []).flat())

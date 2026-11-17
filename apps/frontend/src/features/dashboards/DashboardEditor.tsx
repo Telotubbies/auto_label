@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, Download, LayoutDashboard, Link2, Loader2, Plus, Save, Share2, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { Button, Card, Dropdown, EmptyState, Input, Modal, PageHeader, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ErrorState, PageSkeleton, toCsv, useChartTheme } from '@/features/insights/charts'
@@ -96,13 +97,13 @@ export default function DashboardEditor() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboards', ws, slug] })
       toast.ok('Dashboard deleted')
-      navigate(`/${ws}/${slug}/dashboards`)
+      navigate(projectPath(ws, slug, 'dashboards'))
     },
     onError: (e) => toast.err(e as Error),
   })
 
   const shareToken = dash.data?.share_token ?? ''
-  const shareUrl = shareToken ? `${window.location.origin}/${ws}/${slug}/dashboards/shared/${shareToken}` : ''
+  const shareUrl = shareToken ? `${window.location.origin}${projectPath(ws, slug, `dashboards/shared/${shareToken}`)}` : ''
 
   const gather = async () => {
     const shareToken = readOnly ? token : undefined
@@ -172,7 +173,7 @@ export default function DashboardEditor() {
         actions={(
           <div className="flex flex-wrap items-center justify-end gap-2">
             {!readOnly && (
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/${ws}/${slug}/dashboards`)}>
+              <Button variant="ghost" size="sm" onClick={() => navigate(projectPath(ws, slug, 'dashboards'))}>
                 <ArrowLeft className="h-4 w-4" /> Dashboards
               </Button>
             )}

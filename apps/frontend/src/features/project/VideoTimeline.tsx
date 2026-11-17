@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, ExternalLink, Film, Flag, UploadCloud } from 'lucide-react'
 import { api, fileUrl, get, put, upload } from '@/lib/api'
+import { editorPath } from '@/lib/routes'
 import type { Annotation, Job, LabelClass, Shape, Skeleton, VideoFrame, VideoItem } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Spinner, StatusPill, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -417,7 +418,7 @@ export default function VideoTimeline() {
                       <ShapeOverlay frame={frame} width={selected.width || 16} height={selected.height || 9} colorOf={colorOf} skeletonOf={skeletonOf} />
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Link to={`/${ws}/${project.slug}/images/${frame.id}`}
+                      <Link to={editorPath(ws, project.slug, frame.id)}
                         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
                         <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Open in editor
                       </Link>

@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, Search, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import { api, ApiError, fileUrl, post } from '@/lib/api'
+import { editorPath, projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import type { ImageItem } from '@/lib/types'
 import { Badge, Button, Dropdown, EmptyState, Input, PageHeader, Select, Spinner, toast } from '@/components/ui'
@@ -103,7 +104,7 @@ export default function Dataset() {
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const openEditor = (im: ImageItem) => {
     const q = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== 'selection').map(([k, v]) => [k === 'batch_id' ? 'batch' : k, v]) as [string, string][])
-    nav(`/${ws}/${project.slug}/images/${im.id}?${q}`)
+    nav(editorPath(ws, project.slug, im.id, `?${q}`))
   }
 
   // Filters that analytics links can set but the toolbar has no select for: show them so the grid is explainable.
@@ -168,7 +169,7 @@ export default function Dataset() {
         {imgs.isError && <p role="alert" className="py-6 text-sm text-destructive">Could not load images.{' '}
           <button type="button" className="cursor-pointer underline" onClick={() => imgs.refetch()}>Try again</button></p>}
         {imgs.isSuccess && !items.length && <EmptyState title={filtered ? 'No images match these filters.' : 'No images yet'} hint={f.status === 'done' ? 'Images enter the dataset once approved on the Annotate board.' : undefined}
-          action={can('project.upload') && <Button size="sm" onClick={() => nav('../upload')}>Upload images</Button>} />}
+          action={can('project.upload') && <Button size="sm" onClick={() => nav(projectPath(ws, project.slug, 'upload'))}>Upload images</Button>} />}
         <div style={{ height: v.getTotalSize(), position: 'relative' }}>
           {v.getVirtualItems().map((row) => (
             <div key={row.key} className="absolute left-0 grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" style={{ top: row.start, height: rowH }}>

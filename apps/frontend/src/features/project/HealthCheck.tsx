@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowUpRight, Focus, Frame, Lightbulb, Link2, Loader2, R
 import type { HealthChecks, HealthRecommendation, Job, LabelIssueKind, QualityClass } from '@/lib/types'
 import { Badge, Button, Card, Progress, Spinner, fmtAgo } from '@/components/ui'
 import { pctOf } from '@/lib/format'
+import { editorPath, projectPath } from '@/lib/routes'
 import { cn } from '@/lib/utils'
 
 const KIND_LABEL: Record<LabelIssueKind, string> = {
@@ -136,7 +137,7 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
       : job?.finished ? `Last check ${fmtAgo(job.finished)}`
         : models ? 'Not checked yet' : 'No trained model yet'
 
-  const editorHref = (imageId: string) => `/${ws}/${slug}/images/${imageId}`
+  const editorHref = (imageId: string) => editorPath(ws, slug, imageId)
 
   const focusHealth = (id: string) => {
     const el = document.getElementById(id)
@@ -147,7 +148,7 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
   }
 
   const browseQuality = (kind: QualityClass) =>
-    nav(`/${ws}/${slug}/browse?${new URLSearchParams({ status: 'all', quality: kind }).toString()}`)
+    nav(projectPath(ws, slug, `dataset?${new URLSearchParams({ status: 'all', quality: kind }).toString()}`))
 
   /** One-click follow-up per recommendation; values stay suggestions, never auto-applied. */
   const recAction = (r: HealthRecommendation): { label: string; onClick: () => void } | null => {
@@ -156,10 +157,10 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
       const kind = s.quality as QualityClass
       return { label: QUALITY_ACTION[kind], onClick: () => browseQuality(kind) }
     }
-    if (typeof s.imgsz === 'number') return { label: `Train at ${s.imgsz}px`, onClick: () => nav(`/${ws}/${slug}/train?imgsz=${s.imgsz}`) }
+    if (typeof s.imgsz === 'number') return { label: `Train at ${s.imgsz}px`, onClick: () => nav(projectPath(ws, slug, `train?imgsz=${s.imgsz}`)) }
     if (s.filter === 'label_quality') return { label: 'Review flagged labels', onClick: () => focusHealth('health-label-quality') }
     if (s.filter === 'missing_boxes') return { label: 'Review missing boxes', onClick: () => focusHealth('health-missing') }
-    if (s.fix === 'leakage') return { label: 'Version again', onClick: () => nav(`/${ws}/${slug}/versions`) }
+    if (s.fix === 'leakage') return { label: 'Version again', onClick: () => nav(projectPath(ws, slug, 'versions')) }
     return null
   }
 
@@ -376,7 +377,7 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
                   {models ? 'No missed objects found.' : 'No trained model yet — train one to check for missed objects.'}
                 </p>
                 {!models && (
-                  <Button variant="outline" size="sm" className="mt-2" onClick={() => nav(`/${ws}/${slug}/train`)}>
+                  <Button variant="outline" size="sm" className="mt-2" onClick={() => nav(projectPath(ws, slug, 'train'))}>
                     Train a model
                   </Button>
                 )}
@@ -397,7 +398,7 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
                 ? 'The same scene can land in both train and test, so evaluation scores look better than the model really is.'
                 : 'No near-duplicate images found, so evaluation splits should hold up.'}
             </p>
-            <LinkButton to={`/${ws}/${slug}/versions`} className="mt-3">
+            <LinkButton to={projectPath(ws, slug, 'versions')} className="mt-3">
               Version again with near-duplicate grouping <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
             </LinkButton>
           </HealthCard>

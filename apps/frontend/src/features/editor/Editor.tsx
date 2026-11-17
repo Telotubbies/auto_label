@@ -13,6 +13,7 @@ import { ApiError, api, fileUrl, get, patch, post, put } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { OCR_CLASS, emptyOcr, maskPii, ocrText } from '@/lib/ocr'
 import { useProjectPermissions } from '@/lib/perms'
+import { backPath, editorPath } from '@/lib/routes'
 import type { Annotation, LabelClass, OcrData, OcrKind, Shape, Skeleton } from '@/lib/types'
 import { Badge, Button, Input, Select, StatusPill, Tabs, toast } from '@/components/ui'
 import { Glass } from '@/components/glass'
@@ -257,7 +258,7 @@ export default function Editor() {
   const idx = items.findIndex((i) => i.id === imageId)
   const go = (d: number) => {
     const t = items[idx + d]
-    if (t) nav(`/${ws}/${project}/images/${t.id}?${sp}`)
+    if (t) nav(editorPath(ws, project, t.id, `?${sp}`))
   }
 
   const [tool, setTool] = useState<string>('bbox')
@@ -826,12 +827,12 @@ export default function Editor() {
   const ready = (models.data ?? []).filter((m) => m.status === 'ready')
   const used = new Set(anns.map((a) => a.classId))
 
-  if (imgQ.isError) return <div className="p-10 text-sm text-muted-foreground">Can't open this image: {(imgQ.error as Error).message} <Link className="text-primary" to={`/${ws}/${project}/browse`}>Back</Link></div>
+  if (imgQ.isError) return <div className="p-10 text-sm text-muted-foreground">Can't open this image: {(imgQ.error as Error).message} <Link className="text-primary" to={backPath(ws, project, { review: reviewMode })}>Back</Link></div>
 
   return (
     <main className="flex h-screen flex-col bg-background text-foreground">
       <div className="flex items-center gap-2 border-b px-3 py-2">
-        <Link to={reviewMode || sp.get('status') ? `/${ws}/${project}/annotate` : `/${ws}/${project}/browse`} className="rounded p-1.5 hover:bg-accent" aria-label="Back"><ArrowLeft className="h-4 w-4" /></Link>
+        <Link to={backPath(ws, project, { review: reviewMode || !!sp.get('status') })} className="rounded p-1.5 hover:bg-accent" aria-label="Back"><ArrowLeft className="h-4 w-4" /></Link>
         <h1 className="truncate text-sm font-medium">{img?.name}</h1>
         {img && <StatusPill status={img.review ?? img.status} />}
         <span className="flex items-center gap-1 text-xs text-muted-foreground">{saving ? <><LoaderCircle className="h-3 w-3 animate-spin" /> Saving…</> : dirty ? 'Unsaved' : <><Check className="h-3.5 w-3.5" /> Saved</>}</span>
@@ -1271,7 +1272,7 @@ export default function Editor() {
           </div>
           <div className="flex-1 space-y-2 overflow-y-auto p-2">
             {items.slice(Math.max(0, idx - 20), idx + 40).map((im) => (
-              <Link key={im.id} to={`/${ws}/${project}/images/${im.id}?${sp}`} className={cn('block overflow-hidden rounded-md border-2', im.id === imageId ? 'border-primary' : 'border-transparent')}>
+              <Link key={im.id} to={editorPath(ws, project, im.id, `?${sp}`)} className={cn('block overflow-hidden rounded-md border-2', im.id === imageId ? 'border-primary' : 'border-transparent')}>
                 <div className="relative">
                   <img src={fileUrl(im.thumbnail)} className="aspect-[7/4] w-full object-cover" alt="" loading="lazy" />
                   {im.annotated && <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-2.5 w-2.5" /></span>}

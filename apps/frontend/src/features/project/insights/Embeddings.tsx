@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Loader2, MousePointer2, RotateCw } from 'lucide-react'
 import { api } from '@/lib/api'
 import { classColor } from '@/lib/theme'
+import { projectPath } from '@/lib/routes'
 import type { InsightEmbedding, InsightEmbeddingPoint, InsightSummary } from '@/lib/types'
 import { Badge, Button, Card, Progress, Select, toast } from '@/components/ui'
 import { axisChrome, ChartCard, cssColor, tooltipStyle, useChartTheme } from './Chart'
@@ -56,7 +57,7 @@ export function Embeddings({ ws, slug, summary, embedding }: {
   // The lasso's ids stay on the server; only the token is navigated to.
   const open = useMutation({
     mutationFn: (ids: string[]) => api.insights.saveSelection(ws, slug, ids),
-    onSuccess: (saved) => nav(`/${ws}/${slug}/browse?selection=${encodeURIComponent(saved.token)}&status=all`),
+    onSuccess: (saved) => nav(projectPath(ws, slug, `dataset?selection=${encodeURIComponent(saved.token)}&status=all`)),
     onError: (e) => toast.err(e as Error),
   })
 

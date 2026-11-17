@@ -3,6 +3,7 @@ import { ArrowRight, GitCompareArrows } from 'lucide-react'
 import { fileUrl } from '@/lib/api'
 import { pctOf } from '@/lib/format'
 import { classColor } from '@/lib/theme'
+import { editorPath } from '@/lib/routes'
 import type { InsightLabeling, InsightVersionDiff, Version } from '@/lib/types'
 import { Badge, Card, EmptyState, Select } from '@/components/ui'
 import { axisChrome, ChartCard, cssColor, PanelError, tooltipStyle, useChartTheme } from './Chart'
@@ -26,7 +27,7 @@ function ImageList({ ws, slug, title, items, empty }: { ws: string; slug: string
         <ul className="mt-1.5 max-h-48 space-y-1 overflow-y-auto pr-1">
           {items.map((x) => (
             <li key={x.image_id}>
-              <Link to={`/${ws}/${slug}/images/${x.image_id}`} className="flex items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-accent"
+              <Link to={editorPath(ws, slug, x.image_id)} className="flex items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-accent"
                 aria-label={`${x.name} in the ${x.split} split`}>
                 {x.thumb
                   ? <img src={fileUrl(x.thumb)} alt="" loading="lazy" className="h-8 w-11 shrink-0 rounded border object-cover" />

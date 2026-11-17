@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, fileUrl } from '@/lib/api'
+import { editorPath } from '@/lib/routes'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { ErrorNote, Loading, pct } from './shared'
 
@@ -52,7 +53,7 @@ export default function ReviewQueue({ ws, slug }: { ws: string; slug: string }) 
                 <td className="px-3 py-2 text-right tabular-nums">{it.annotations}</td>
                 <td className="px-3 py-2 text-right">
                   <Button size="sm" variant="outline"
-                    onClick={() => nav(`/${ws}/${slug}/images/${it.image_id}?status=review&review=true`)}>Review</Button>
+                    onClick={() => nav(editorPath(ws, slug, it.image_id, '?status=review&review=true'))}>Review</Button>
                 </td>
               </tr>
             ))}

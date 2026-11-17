@@ -2,6 +2,7 @@ import { CircleSlash } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { EmptyState, PageHeader } from '@/components/ui'
 import { useApp } from '@/lib/store'
+import { projectPath } from '@/lib/routes'
 import { cn } from '@/lib/utils'
 
 /** `Button` sizes without its own element, so these read as links: they are navigation. */
@@ -24,7 +25,7 @@ export function NotEnabled({ label }: { label: string }) {
           hint="An administrator turns it on in Workspace settings."
           action={
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-              <Link to={`/${ws}/${project}/browse`} className={cn(action, 'bg-primary text-primary-foreground hover:bg-primary/90')}>
+              <Link to={projectPath(ws, project, 'dataset')} className={cn(action, 'bg-primary text-primary-foreground hover:bg-primary/90')}>
                 Back to Dataset
               </Link>
               {admin && (

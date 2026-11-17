@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, FileArchive, FolderUp, ImagePlus, TriangleAlert, UploadCloud, X } from 'lucide-react'
 import { api, post, upload } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { Badge, Button, Card, Field, Input, PageHeader, Progress, Select, Switch, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useProject } from './ProjectLayout'
@@ -207,8 +208,8 @@ export default function Upload() {
                 </div>
               )}
             </div>
-            <Button variant="outline" className="shrink-0" onClick={() => nav('../annotate')}>Annotate</Button>
-            <Button className="shrink-0" onClick={() => nav('../browse')}>View Dataset</Button>
+            <Button variant="outline" className="shrink-0" onClick={() => nav(projectPath(ws, project.slug, 'annotate'))}>Annotate</Button>
+            <Button className="shrink-0" onClick={() => nav(projectPath(ws, project.slug, 'dataset'))}>View Dataset</Button>
           </Card>
         )}
       </div>

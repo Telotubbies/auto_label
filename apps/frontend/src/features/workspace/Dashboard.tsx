@@ -5,6 +5,7 @@ import {
   ArrowRight, BrainCircuit, Check, CheckCheck, Circle, Compass, Inbox, ListChecks, Rocket, Tag, Upload, Users,
 } from 'lucide-react'
 import { api, get } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { useApp } from '@/lib/store'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Job, Project } from '@/lib/types'
@@ -131,7 +132,7 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
               <ul className="divide-y">
                 {waiting.map((row) => (
                   <li key={row.project}>
-                    <Link to={`/${ws}/${row.project}/annotate`}
+                    <Link to={projectPath(ws, row.project, 'annotate')}
                       className="group flex flex-wrap items-center gap-2 rounded-md px-1 py-2.5 hover:bg-accent">
                       <span className="min-w-0 flex-1 truncate font-medium group-hover:text-primary">{row.project_name}</span>
                       {row.to_annotate > 0 && <Badge className="bg-primary/15 text-primary">{fmt(row.to_annotate)} to annotate</Badge>}
@@ -204,7 +205,7 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject }: {
                     <StatusPill status={j.status} />
                     <span className="w-28 shrink-0">{jobKindLabel(j.kind)}</span>
                     {j.project
-                      ? <Link to={`/${ws}/${j.project}`} className="min-w-0 flex-1 truncate text-muted-foreground hover:text-primary">{j.project_name || j.project}</Link>
+                      ? <Link to={projectPath(ws, j.project)} className="min-w-0 flex-1 truncate text-muted-foreground hover:text-primary">{j.project_name || j.project}</Link>
                       : <span className="min-w-0 flex-1" />}
                     {ACTIVE.has(j.status)
                       ? <><Progress className="w-24" label={`${jobKindLabel(j.kind)} progress`} value={j.progress} /><span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{Math.round(j.progress)}%</span></>

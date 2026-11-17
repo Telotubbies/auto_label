@@ -5,6 +5,7 @@ import { Download, FolderGit2, Plus, Trash2 } from 'lucide-react'
 import { api, del, fileUrl, post } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
+import { projectPath } from '@/lib/routes'
 import type { Version } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Progress, Select, StatusPill, Switch, fmtDate, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -147,7 +148,7 @@ function VersionDetail({ v }: { v: Version }) {
       <div className="flex items-center justify-between">
         <div><h2 className="text-xl font-bold">{v.name}</h2><p className="text-sm text-muted-foreground">Generated {fmtDate(v.created)}</p></div>
         <div className="flex gap-2">
-          {v.status === 'ready' && can('project.train') && <Button onClick={() => nav(`../train?version=${v.id}`)}>Train a model</Button>}
+          {v.status === 'ready' && can('project.train') && <Button onClick={() => nav(projectPath(ws, project.slug, `train?version=${v.id}`))}>Train a model</Button>}
           {isManager && <Button variant="ghost" size="icon" onClick={() => confirm('Delete this version?') && del(`${api.P(ws, project.slug)}/versions/${v.id}`).then(() => qc.invalidateQueries({ queryKey: ['versions', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
         </div>
       </div>
