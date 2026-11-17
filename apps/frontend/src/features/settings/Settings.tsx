@@ -3,7 +3,10 @@ import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from '
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleAlert, Copy, KeyRound, Trash2 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { api, del, get, patch, post } from '@/lib/api'
+import { api, ApiError, del, get, patch, post } from '@/lib/api'
+import { Glass } from '@/components/glass'
+import { WorkspaceForm } from '@/features/onboarding/WorkspaceForm'
+import { workspaceSlug } from '@/lib/slug'
 import { useApp } from '@/lib/store'
 import type { Role, Usage, UsageMeter, UsageMeterKey } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, Select, Spinner, Stat, Switch, fmtAgo, fmtDate, toast } from '@/components/ui'
@@ -569,14 +572,48 @@ function FirstRun() {
   const nav = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const cfg = useQuery({
+    queryKey: ['config'],
+    queryFn: () => get<{ workspace_create?: boolean }>('/config'),
+    staleTime: 5 * 60_000,
+  })
+  const create = async () => {
+    if (busy || !name.trim()) return
+    setBusy(true); setErr('')
+    try {
+      const on = cfg.data?.workspace_create
+      const w = await post<{ slug: string }>('/workspaces', { name: name.trim(), slug: on ? workspaceSlug(name) : undefined })
+      await qc.invalidateQueries({ queryKey: ['me'] })
+      nav(`/${w.slug}`)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const suggestion = (e.body as { suggestion?: string } | undefined)?.suggestion
+        setErr(suggestion ? `That address is taken — try ${suggestion}.` : 'That address is taken.')
+        return
+      }
+      setErr(e instanceof Error ? e.message : 'Could not create the workspace.')
+    } finally { setBusy(false) }
+  }
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <Card className="w-full max-w-sm p-6">
-        <h1 className="mb-2 text-lg font-semibold">Create a workspace</h1>
-        <p className="mb-4 text-sm text-muted-foreground">You're not part of any workspace yet.</p>
-        <Input value={name} placeholder="My team" onChange={(e) => setName(e.target.value)} />
-        <Button className="mt-3 w-full" disabled={!name.trim()} onClick={() => post<{ slug: string }>('/workspaces', { name }).then(async (w) => { await qc.invalidateQueries({ queryKey: ['me'] }); nav(`/${w.slug}`) }).catch(toast.err)}>Create</Button>
-      </Card>
+    <div className="app-bg flex min-h-screen items-center justify-center px-4 py-10">
+      <Glass strength="overlay" className="w-full max-w-md rounded-2xl p-5 sm:p-6">
+        <h1 className="text-pretty text-xl font-semibold leading-snug tracking-[-0.02em] text-foreground">Create a workspace</h1>
+        <p className="mt-1.5 text-pretty text-sm leading-relaxed text-muted-foreground">
+          You’re not part of any workspace yet. Name it once; the address is yours from the start.
+        </p>
+        <form className="mt-5" onSubmit={(e) => { e.preventDefault(); void create() }}>
+          <WorkspaceForm
+            value={name}
+            onChange={setName}
+            enabled={cfg.data?.workspace_create}
+            disabled={busy}
+            error={err}
+            submit={{ label: 'Continue', busy, onClick: () => void create() }}
+          />
+        </form>
+      </Glass>
     </div>
   )
 }
