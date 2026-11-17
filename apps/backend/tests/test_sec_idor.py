@@ -112,7 +112,7 @@ KINDS = tuple(BY_KIND)
 # `test_parity_guard_area3.py::test_foreign_workspace_image_id_stays_out_of_reach` deliberately pin
 # the 403, and neither file belongs to this card. Until the PM rules, the row is a strict xfail:
 # green while the product is wrong, red the moment someone fixes it and forgets to drop the mark.
-PRODUCT_403 = {"image", "annotation"}
+PRODUCT_403: set[str] = set()   # fixed in deps.image_ctx: a foreign image is 404
 
 
 def fill(value, ids):

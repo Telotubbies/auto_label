@@ -233,7 +233,7 @@ def test_workforce_dashboard_keeps_the_documented_metric_names(client, auth, pro
 
 
 def test_foreign_workspace_image_id_stays_out_of_reach(client, auth, project):
-    """Cross-workspace acceptance case: image_ctx answers 403 for a workspace the caller is not in."""
+    """Cross-workspace acceptance case: image_ctx answers 404 for a workspace the caller is not in (T-1304)."""
     slug = client.post("/api/workspaces", json={"name": f"Editor Guard Other {uuid.uuid4().hex[:8]}"}).json()["slug"]
     p = client.post(f"/api/ws/{slug}/projects", json={"name": "foreign", "classes": ["x"]}).json()
     base = f"/api/ws/{slug}/projects/{p['slug']}"
@@ -241,8 +241,8 @@ def test_foreign_workspace_image_id_stays_out_of_reach(client, auth, project):
                      data={"split": "train"})
     foreign = up.json()["images"][0]["id"]
     try:
-        assert client.get(f"/api/images/{foreign}", headers=auth["labeler"]["h"]).status_code == 403
-        assert save(client, auth["labeler"], foreign, [box(project["classes"]["helmet"])]).status_code == 403
+        assert client.get(f"/api/images/{foreign}", headers=auth["labeler"]["h"]).status_code == 404
+        assert save(client, auth["labeler"], foreign, [box(project["classes"]["helmet"])]).status_code == 404
     finally:
         client.delete(base)
         with SessionLocal() as db:

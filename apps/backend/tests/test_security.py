@@ -106,7 +106,7 @@ def test_cross_workspace_isolation(admin):
     outsider.headers["Authorization"] = f"Bearer {tok}"
     img = admin.get(f"{BASE}/images?limit=1").json()["items"][0]["id"]
     assert outsider.get(f"{BASE}/images").status_code == 403
-    assert outsider.get(f"/api/images/{img}").status_code == 403
+    assert outsider.get(f"/api/images/{img}").status_code == 404   # T-1304: no existence oracle
     assert outsider.get(f"/api/ws/{WS}/members").status_code == 403
 
 

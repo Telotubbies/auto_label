@@ -167,7 +167,7 @@ def image_ctx(db: Session, u: User, image_id: str) -> tuple[Ctx, Image]:
     ws = db.get(Workspace, p.workspace_id)
     m = db.get(Member, (ws.id, u.id))
     if not m:
-        raise HTTPException(403, "no access to this image")
+        raise HTTPException(404, "image not found")   # never confirm a foreign id exists (T-1304)
     if ws.require_mfa and not u.mfa_enabled:
         raise HTTPException(403, "this workspace requires two-factor authentication — set it up in your account settings")
     ctx = _ctx_for_member(db, u, ws, m)
