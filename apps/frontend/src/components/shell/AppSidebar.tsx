@@ -6,6 +6,7 @@ import { api, post } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { isWorkspaceNavActive, RESERVED_WORKSPACE_SEGMENTS, visibleWorkspaceNav } from '@/lib/nav'
 import { useProjectPermissions } from '@/lib/perms'
+import { PROJECT_ROUTE_MATCH } from '@/lib/routes'
 import { cn } from '@/lib/utils'
 import { Glass } from '../glass'
 import { Button, Dropdown, Input, Modal, toast } from '../ui'
@@ -60,7 +61,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   const nav = useNavigate()
   const [newWs, setNewWs] = useState(false)
   // Inside a project the effective project role narrows the IA; workspace-level URLs are not projects.
-  const projectMatch = useMatch('/:ws/:project/*')
+  const projectMatch = useMatch(PROJECT_ROUTE_MATCH)
   const projectSlug = projectMatch?.params.project ?? ''
   const inProject = !!projectSlug && !RESERVED_WORKSPACE_SEGMENTS.has(projectSlug)
   const { role: projectRole } = useProjectPermissions(ws, inProject ? projectSlug : '')

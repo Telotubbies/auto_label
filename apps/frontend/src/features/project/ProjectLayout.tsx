@@ -6,6 +6,7 @@ import { BrainCircuit, Eye } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useWorkspaceFlags } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
+import { projectPath } from '@/lib/routes'
 import type { Project } from '@/lib/types'
 import { ProjectPanel, projectNavGroups } from '@/components/shell'
 import { cn } from '@/lib/utils'
@@ -40,10 +41,10 @@ export default function ProjectLayout() {
         {slot && createPortal(
           <>
             {canProject('project.review') && review > 0 && (
-              <Button variant="outline" size="sm" onClick={() => nav(`/${ws}/${slug}/annotate`)}><Eye className="h-4 w-4" /> {review} awaiting review</Button>
+              <Button variant="outline" size="sm" onClick={() => nav(projectPath(ws, slug, 'annotate'))}><Eye className="h-4 w-4" /> {review} awaiting review</Button>
             )}
             {canProject('project.train') && !location.pathname.endsWith('/train') && (
-              <Button size="sm" onClick={() => nav(`/${ws}/${slug}/train`)}>
+              <Button size="sm" onClick={() => nav(projectPath(ws, slug, 'train'))}>
                 <BrainCircuit className="h-4 w-4" /> Train Model
               </Button>
             )}
@@ -52,7 +53,7 @@ export default function ProjectLayout() {
           {/* Below lg the project panel is hidden, so navigation lives in a scrollable strip. */}
           <nav aria-label="Project sections" className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-card/95 px-2 py-1.5 backdrop-blur lg:hidden">
             {items.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={`/${ws}/${slug}/${to}`}
+              <NavLink key={to} to={projectPath(ws, slug, to)}
                 className={({ isActive }) => cn('flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs',
                   isActive ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
                 <Icon className="h-3.5 w-3.5" aria-hidden />{label}

@@ -2,7 +2,10 @@
  * One place that builds a project URL, so the `/p/` prefix is a single edit.
  * Pure — no React — so `tests/project-routes.test.mjs` executes it with Node's type stripping.
  */
-import { LEGACY_PROJECT_PATHS } from './nav.ts'
+import { LEGACY_PROJECT_PATHS, projectNav } from './nav.ts'
+
+/** The project shell match; every consumer reads this, so the prefix moves once. */
+export const PROJECT_ROUTE_MATCH = '/:ws/p/:project/*'
 
 /** `/w/p/ppe` and `/w/p/ppe/<to>`; `to` is a stage id or a stage/id pair. */
 export function projectPath(ws: string, project: string, to = '') {
@@ -25,6 +28,9 @@ const MOVED_SEGMENTS = new Map<string, string>([
   ['model-insights', 'train?tab=models'], ['streams', 'deploy?tab=streams'],
 ])
 
+/** Screens that only gained the `/p/` prefix; their old segment is still their relative path. */
+const PROJECT_SCREENS = new Set(projectNav.flatMap((g) => g.items.map((i) => i.to)))
+
 /**
  * Old `/:ws/:project/<segment>` → its new relative path, or null when the segment is not a screen
  * we know (the shell shows not-found rather than guessing).
@@ -33,7 +39,7 @@ export function legacyProjectPath(segment: string): string | null {
   if (segment === '') return ''
   const moved = MOVED_SEGMENTS.get(segment)
   if (moved !== undefined) return moved
-  return Object.hasOwn(LEGACY_PROJECT_PATHS, segment)
-    ? (LEGACY_PROJECT_PATHS as Record<string, string>)[segment]
-    : null
+  if (Object.hasOwn(LEGACY_PROJECT_PATHS, segment)) return (LEGACY_PROJECT_PATHS as Record<string, string>)[segment]
+  // Screens that only gained the prefix keep their own path; the shipped nav still links them.
+  return PROJECT_SCREENS.has(segment) ? segment : null
 }

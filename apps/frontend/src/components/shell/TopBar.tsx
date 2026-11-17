@@ -5,6 +5,7 @@ import { ChevronRight, Cpu, Menu, Monitor, Moon, Sun } from 'lucide-react'
 import { api, get } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { RESERVED_WORKSPACE_SEGMENTS, WORKSPACE_PAGE_LABELS } from '@/lib/nav'
+import { PROJECT_ROUTE_MATCH } from '@/lib/routes'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
 import { Glass } from '../glass'
 import { projNav } from './ProjectPanel'
@@ -38,7 +39,7 @@ export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
 }) {
   const { ws = '' } = useParams()
   const me = useApp((s) => s.me)
-  const m = useMatch('/:ws/:project/*')
+  const m = useMatch(PROJECT_ROUTE_MATCH)
   const slug = m?.params.project ?? ''
   const isProject = !!slug && !RESERVED_WORKSPACE_SEGMENTS.has(slug)
   const proj = useQuery({ queryKey: ['project', ws, slug], queryFn: () => api.project(ws, slug), enabled: isProject })
@@ -69,7 +70,7 @@ export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
         {crumbs.map((c, i) => (
           <span key={i} className="flex min-w-0 items-center gap-1.5">
             {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
-            {c.to && i < crumbs.length - 1 ? (
+            {c.to ? (
               <Link to={c.to} className="truncate text-muted-foreground hover:text-foreground">{c.label}</Link>
             ) : (
               <span className="truncate font-semibold" aria-current={i === crumbs.length - 1 ? 'page' : undefined}>{c.label}</span>
