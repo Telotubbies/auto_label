@@ -4,7 +4,7 @@
 The blocks are independent and idempotent, so only the phase boundary in ``bootstrap._init_db``
 matters: every column exists before the widen, encrypt and backfill phases run.
 """
-from . import dataset, identity, streams, training
+from . import dataset, identity, insights, streams, training
 from .columns import ensure_columns
 
 STEPS = (
@@ -24,6 +24,7 @@ STEPS = (
     ("refresh_tokens", identity.REFRESH_TOKENS),
     ("streams", streams.STREAMS),
     ("stream_events", streams.STREAM_EVENTS),
+    ("workers", insights.WORKERS),
 )
 
 

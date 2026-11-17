@@ -994,3 +994,20 @@ export interface EventSearchResult {
   from_ts: number; to_ts: number; candidates: number; sampled: number
   indexed: number; embeddings: number; results: EventSearchFrame[]
 }
+
+/** T-1001: what a worker reports about its own machine; a failed probe is empty plus a reason. */
+export interface InferenceHostInventory {
+  os?: string; arch?: string; python?: string; cuda?: string
+  gpus?: { name?: string; vram_mb?: number; driver?: string; cuda?: string }[]
+  engines?: { id?: string; version?: string; runtime?: string; ok?: boolean }[]
+  models?: { id?: string; variant?: string; bytes?: number }[]
+  disk?: { models_free_gb?: number; models_total_gb?: number }
+  hf_token?: boolean; allow_install?: boolean
+  reasons?: Record<string, string>
+}
+export interface InferenceHost {
+  id: string; host: string; online: boolean; kinds: string[]
+  current_job: string | null; last_seen: number
+  /** Null until a worker on a build that reports hardware claims a job. */
+  inventory: InferenceHostInventory | null
+}
