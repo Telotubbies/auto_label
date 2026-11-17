@@ -1,0 +1,10 @@
+#!/bin/sh
+# T-1019: a fake `docker` for installer tests; it records each argv and pulls nothing.
+[ -n "${FAKE_LOG:-}" ] || { echo "FAKE_LOG is not set" >&2; exit 2; }
+{
+  printf 'docker'
+  for arg in "$@"; do printf '\t%s' "$arg"; done
+  printf '\n'
+} >> "$FAKE_LOG"
+echo 'docker: fake, nothing installed'
+exit "${FAKE_EXIT:-0}"

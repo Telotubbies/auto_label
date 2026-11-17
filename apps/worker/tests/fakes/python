@@ -1,0 +1,10 @@
+#!/bin/sh
+# T-1019: a fake `python` for installer tests; it records each argv and runs nothing.
+[ -n "${FAKE_LOG:-}" ] || { echo "FAKE_LOG is not set" >&2; exit 2; }
+{
+  printf 'python'
+  for arg in "$@"; do printf '\t%s' "$arg"; done
+  printf '\n'
+} >> "$FAKE_LOG"
+echo 'python: fake, nothing installed'
+exit "${FAKE_EXIT:-0}"

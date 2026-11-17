@@ -75,6 +75,9 @@ jobs:
           ruff check apps/backend
       - name: Run the API test suite
         working-directory: ${{ env.BACKEND_APP }}
+        env:
+          # T-1019: the inference suite is hermetic; a real host connection fails the session.
+          LD_INFERENCE_OFFLINE: "1"
         run: python -m pytest -q
 
   web:
