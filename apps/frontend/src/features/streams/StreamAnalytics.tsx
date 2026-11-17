@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity } from 'lucide-react'
 import { api } from '@/lib/api'
+import { fmtInt, pctOf } from '@/lib/format'
 import { classColor, viridis } from '@/lib/theme'
 import type { StreamAnalytics as StreamAnalyticsData, TimelineSeries } from '@/lib/types'
 import { Card, EmptyState, PageHeader, Select, Stat, fmtAgo } from '@/components/ui'
@@ -22,7 +23,6 @@ const DIMS = [
 type Dim = (typeof DIMS)[number]['id']
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const fmtInt = (n: number) => Math.round(n).toLocaleString()
 
 /** UTC+07:00 / UTC−04:30 for axis and export labels. */
 function tzLabel(offset: number): string {
@@ -45,8 +45,6 @@ function fmtDwell(seconds: number): string {
   const s = total % 60
   return h ? `${h}h ${m}m` : `${m}m ${s}s`
 }
-
-const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—')
 
 /** Class palette for a handful of series, viridis when the legend would get too busy. */
 function seriesColor(i: number, total: number): string {
@@ -193,7 +191,7 @@ function StreamAnalyticsView({ data, dim, onDim, theme }: {
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Events" value={<span className="tabular-nums">{fmtInt(totals.events)}</span>} sub={`Last ${data.window.days} days`} />
-        <Stat label="Reviewed" value={<span className="tabular-nums">{fmtInt(totals.reviewed)}</span>} sub={`${pct(totals.reviewed, totals.events)} of events`} />
+        <Stat label="Reviewed" value={<span className="tabular-nums">{fmtInt(totals.reviewed)}</span>} sub={`${pctOf(totals.reviewed, totals.events)} of events`} />
         <Stat label="Cameras" value={<span className="tabular-nums">{fmtInt(totals.cameras)}</span>} sub="Active in the window" />
         <Stat label="Total dwell" value={<span className="tabular-nums">{fmtDwell(totals.dwell_seconds)}</span>} sub="Summed event dwell" />
         <Stat label="Last event" value={<span className="tabular-nums">{lastEvent}</span>} sub="Most recent event" />
@@ -257,7 +255,7 @@ function StreamAnalyticsView({ data, dim, onDim, theme }: {
                   <span key={cam.id} title={cam.id}>{cam.name || cam.id}</span>,
                   fmtInt(cam.events),
                   fmtInt(cam.reviewed),
-                  pct(cam.reviewed, cam.events),
+                  pctOf(cam.reviewed, cam.events),
                   cam.last_event > 0
                     ? <time key="last" dateTime={new Date(cam.last_event * 1000).toISOString()}>{fmtAgo(cam.last_event)}</time>
                     : '—',

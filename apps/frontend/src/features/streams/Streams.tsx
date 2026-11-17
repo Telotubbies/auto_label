@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cctv, Eye, MoreVertical, Play, Plus, Square, Trash2, TriangleAlert, Upload } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
+import { fmtBytes, fmtInt } from '@/lib/format'
 import { useProjectPermissions } from '@/lib/perms'
 import type { RegistryItem, StreamItem, StreamStatus } from '@/lib/types'
 import { Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, Switch, toast } from '@/components/ui'
@@ -32,9 +33,6 @@ export function StreamStatusChip({ status, className }: { status: StreamStatus; 
     </span>
   )
 }
-
-const fmtBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 ** 2).toFixed(1)} MB`)
-const fmtInt = (n: number) => (Number.isFinite(n) ? n.toLocaleString() : '—')
 
 /** Camera URLs often embed credentials; every project member can open this page, so never render them.
  *  Greedy through the last @ before the path: a raw @ inside the password must be masked too. */

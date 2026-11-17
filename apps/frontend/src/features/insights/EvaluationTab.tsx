@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ScanSearch } from 'lucide-react'
 import { api } from '@/lib/api'
+import { pct1 } from '@/lib/format'
 import type { EvalInsights, EvalSliceDimension, F1Point, ModelItem } from '@/lib/types'
 import { Card, EmptyState, Select } from '@/components/ui'
 import { classColor, viridis } from '@/lib/theme'
@@ -12,8 +13,7 @@ import {
 } from './charts'
 import { useModelInsights } from './useInsights'
 
-// Same formatter as Models.tsx, kept local so this lazy route never pulls the Models page chunk in.
-const pct = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
+// A rate reads at one decimal, the same rule as the models table.
 const num3 = (v?: number | null) => (v == null || Number.isNaN(v) ? '—' : v.toFixed(3))
 const fmtValue = (value: unknown) => Array.isArray(value) ? value.map((v) => Number(v).toFixed(3)).join(', ') : Number(value).toFixed(3)
 
@@ -242,10 +242,10 @@ export function EvaluationTab({ ws, slug, modelParam }: { ws: string; slug: stri
       ) : (
         <>
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3 lg:grid-cols-6">
-            <Kpi label={mask ? 'Mask AP50' : 'Box AP50'} value={pct(ev.coco.AP50)} />
-            <Kpi label={mask ? 'Mask AP50-95' : 'Box AP50-95'} value={pct(ev.coco.AP)} />
-            <Kpi label="Precision @ chosen threshold" value={pct(best?.precision)} sub={`threshold ${ev.f1_best.conf.toFixed(2)}`} />
-            <Kpi label="Recall @ chosen threshold" value={pct(best?.recall)}
+            <Kpi label={mask ? 'Mask AP50' : 'Box AP50'} value={pct1(ev.coco.AP50)} />
+            <Kpi label={mask ? 'Mask AP50-95' : 'Box AP50-95'} value={pct1(ev.coco.AP)} />
+            <Kpi label="Precision @ chosen threshold" value={pct1(best?.precision)} sub={`threshold ${ev.f1_best.conf.toFixed(2)}`} />
+            <Kpi label="Recall @ chosen threshold" value={pct1(best?.recall)}
               sub={best ? `F1 ${best.f1.toFixed(3)}` : `F1 ${ev.f1_best.f1.toFixed(3)} · full eval`} />
             <Kpi label="Latency" value={`${ev.latency_ms.toFixed(1)} ms`} sub="per image" />
             <Kpi label="Calibration ECE" value={ev.calibration ? ev.calibration.ece.toFixed(3) : '—'}

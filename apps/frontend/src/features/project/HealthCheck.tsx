@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowUpRight, Focus, Frame, Lightbulb, Link2, Loader2, RotateCw, ScanSearch, ShieldAlert, ShieldCheck } from 'lucide-react'
 import type { HealthChecks, HealthRecommendation, Job, LabelIssueKind, QualityClass } from '@/lib/types'
 import { Badge, Button, Card, Progress, Spinner, fmtAgo } from '@/components/ui'
+import { pctOf } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const KIND_LABEL: Record<LabelIssueKind, string> = {
@@ -35,7 +36,6 @@ const QUALITY_ACTION: Record<QualityClass, string> = {
 }
 
 const fmt = (n: number) => n.toLocaleString()
-const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0)
 const shortId = (id?: string | null) => (!id ? '—' : id.length > 10 ? `${id.slice(0, 8)}…` : id)
 
 function boxText(box: number[] | undefined) {
@@ -165,10 +165,11 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
 
   const sizeBuckets = checks.size_buckets
   const sizeTotal = sizeBuckets.small + sizeBuckets.medium + sizeBuckets.large
-  const smallShare = pct(sizeBuckets.small, sizeTotal)
+  // Rounded the way the sentence below reads, so the advice starts at the same share it always did.
+  const smallShare = sizeTotal ? Math.round((sizeBuckets.small / sizeTotal) * 100) : 0
   const sizeRows = SIZE_META.map((m) => {
     const count = sizeBuckets[m.key]
-    return { ...m, count, share: sizeTotal ? (count / sizeTotal) * 100 : 0, pct: pct(count, sizeTotal) }
+    return { ...m, count, share: sizeTotal ? (count / sizeTotal) * 100 : 0, pct: pctOf(count, sizeTotal) }
   })
 
   const issueCounts: Record<LabelIssueKind, number> = { tiny: 0, out_of_bounds: 0, zero_area: 0, duplicate: 0 }
@@ -230,14 +231,14 @@ export function HealthCheck({ ws, slug, models, checks, job, stale, recommendati
                     <span className="truncate">{r.label}</span>
                   </dt>
                   <dd className="mt-0.5 text-lg font-semibold leading-tight tabular-nums">{fmt(r.count)}</dd>
-                  <dd className="text-xs tabular-nums text-muted-foreground">{r.pct}%</dd>
+                  <dd className="text-xs tabular-nums text-muted-foreground">{r.pct}</dd>
                 </div>
               ))}
             </dl>
             {sizeTotal > 0 && smallShare >= 30 && (
               <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-warning">
                 <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                {smallShare}% of objects are small at {checks.imgsz}px — a larger training size or tiling would help.
+                {pctOf(sizeBuckets.small, sizeTotal)} of objects are small at {checks.imgsz}px — a larger training size or tiling would help.
               </p>
             )}
             <p className="mt-3 text-xs text-muted-foreground">COCO buckets: &lt;32² px small, &lt;96² px medium. Measured per annotation, so these bars cannot filter the image grid.</p>

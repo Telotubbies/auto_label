@@ -1,10 +1,10 @@
 import { Badge, Stat } from '@/components/ui'
+import { pctOf } from '@/lib/format'
 import { classColor, viridis } from '@/lib/theme'
 import type { InsightDistribution, InsightSummary } from '@/lib/types'
 import { axisChrome, ChartCard, cssColor, tooltipStyle, useChartTheme } from './Chart'
 
 const fmt = (n: number) => n.toLocaleString()
-const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0)
 
 const SPLIT_SERIES = [
   { key: 'train', label: 'Train', color: cssColor(classColor(4)) },
@@ -141,7 +141,7 @@ export function Overview({ summary, distribution }: { summary: InsightSummary; d
           table={{
             caption: 'Number of images by annotation-count bucket.',
             columns: ['Annotations', 'Images', 'Share'],
-            rows: annRows.map((r) => [r.bucket, r.images, `${pct(r.images, summary.images)}%`]),
+            rows: annRows.map((r) => [r.bucket, r.images, pctOf(r.images, summary.images)]),
           }}
           empty={annRows.length ? undefined : 'No annotated images in this scope yet.'}
         />
