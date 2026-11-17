@@ -3,12 +3,12 @@ import { Glass } from '@/components/glass'
 import { Card, EmptyState, PageHeader, Select, Spinner, Tabs } from '@/components/ui'
 import { useWorkspaceFlags } from '@/lib/flags'
 import { INFERENCE_TAB_LABELS, INFERENCE_TABS, tabFrom, type InferenceTab } from './tabs.ts'
+import CalculatorTab from './CalculatorTab'
 
-/** Each panel is a real empty state until its own card lands. */
-const PANEL_EMPTY: Record<InferenceTab, string> = {
+/** Each panel is a real empty state until its own card lands; the calculator has its own screen. */
+const PANEL_EMPTY: Record<Exclude<InferenceTab, 'calculator'>, string> = {
   engines: 'No engine catalogue yet.',
   models: 'No model catalogue yet.',
-  calculator: 'The calculator arrives with the sizing card.',
   segmentation: 'No segmentation model is provisioned on this host.',
 }
 
@@ -63,10 +63,12 @@ export default function InferenceHub() {
             </Select>
           </div>
         </Glass>
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-sm font-medium">{INFERENCE_TAB_LABELS[tab]}</h2>
-          <EmptyState title={PANEL_EMPTY[tab]} />
-        </Card>
+        {tab === 'calculator' ? <CalculatorTab /> : (
+          <Card className="p-4 sm:p-6">
+            <h2 className="text-sm font-medium">{INFERENCE_TAB_LABELS[tab]}</h2>
+            <EmptyState title={PANEL_EMPTY[tab]} />
+          </Card>
+        )}
       </div>
     </div>
   )
