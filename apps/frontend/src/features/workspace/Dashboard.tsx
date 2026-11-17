@@ -67,10 +67,20 @@ export function WorkspaceDashboard({ ws, projects, onCreateProject, dialogOpen =
   } satisfies OnboardingFacts), [home.data, members.data, projects, ws, can, projectPerms])
 
   if (home.isLoading) {
+    // role="status" gives the region a legal name (WCAG 4.1.2); the blocks are the settled page's
+    // own regions at the same breakpoints, so the page does not change shape when the data lands.
     return (
-      <div className="space-y-4 px-8" aria-busy="true" aria-label="Loading workspace dashboard">
-        <div className="h-24 rounded-lg skeleton" />
-        <div className="grid gap-4 xl:grid-cols-3"><div className="h-56 rounded-lg skeleton xl:col-span-2" /><div className="h-56 rounded-lg skeleton" /></div>
+      <div role="status" aria-busy="true" aria-label="Loading workspace dashboard">
+        <section className="px-8 pb-2">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+            {Array.from({ length: 5 }, (_, i) => <div key={i} className="h-24 skeleton" />)}
+          </div>
+        </section>
+        <div className="mt-4 grid items-start gap-4 px-8 xl:grid-cols-3">
+          <div className="h-56 skeleton xl:col-span-2" />
+          <div className="h-96 skeleton xl:row-span-2" />
+          <div className="h-56 skeleton xl:col-span-2" />
+        </div>
       </div>
     )
   }
