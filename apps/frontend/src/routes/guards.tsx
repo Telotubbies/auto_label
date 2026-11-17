@@ -7,7 +7,9 @@ import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { Role } from '@/lib/types'
 import { workspaceIndexPath } from '@/lib/nav'
+import { flagDecision, flagSurfaceLabel } from '@/lib/flagGate'
 import { Spinner } from '@/components/ui'
+import { NotEnabled } from '@/components/NotEnabled'
 import { MfaGate } from '@/features/auth/Auth'
 import Home from '@/features/workspace/Home'
 import { Settings } from './lazy'
@@ -76,8 +78,10 @@ export function PermGate({ perm, children }: { perm: string; children: React.Rea
 /** Launch gate: a shipped surface stays unreachable until its workspace flag is on (I13). */
 export function FlagGate({ flag, children }: { flag: string; children: React.ReactNode }) {
   const q = useWorkspaceFlags()
-  if (q.isLoading) return <Loading />
-  return q.data?.enabled.includes(flag) ? <>{children}</> : <Navigate to=".." replace />
+  const { pathname } = useLocation()
+  const decision = flagDecision({ loading: q.isLoading, enabled: q.data?.enabled ?? [], flag })
+  if (decision === 'loading') return <Loading />
+  return decision === 'render' ? <>{children}</> : <NotEnabled label={flagSurfaceLabel(pathname)} />
 }
 
 /** Platform operators only; the API enforces the same flag on /api/admin. */
