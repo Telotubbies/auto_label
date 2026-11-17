@@ -7,10 +7,10 @@ route-level ``task_inference`` flag and the same admin gate.
 import logging
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..deps import Ctx, ws_ctx
-from ..services import inference_catalog
+from ..services import inference_catalog, inference_estimate
 from ..services.flags import require_flag
 
 FLAG = "task_inference"
@@ -29,3 +29,17 @@ def catalog(c: Ctx = Depends(ws_ctx)):
              c.ws.slug, c.ws_role, len(body["engines"]), len(body["gpus"]),
              (time.perf_counter() - started) * 1000)
     return body
+
+
+@router.post("/estimate")
+def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(ws_ctx)):
+    """Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5)."""
+    started = time.perf_counter()
+    try:
+        result = inference_estimate.estimate(body)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    log.info("inference.estimate ws=%s role=%s outcome=ok fits=%s total_gb=%.1f ms=%.1f",
+             c.ws.slug, c.ws_role, result["fits"], result["total_gb"],
+             (time.perf_counter() - started) * 1000)
+    return result

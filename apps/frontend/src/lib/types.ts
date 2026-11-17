@@ -1014,3 +1014,38 @@ export interface GpuPreset {
 export interface InferenceCatalog {
   engines: EngineRow[]; gpus: GpuPreset[]; sources: string[]
 }
+
+// ---------- inference estimate (T-1004) ---------------------------------------
+export type InferenceQuant =
+  | 'fp32' | 'bf16' | 'fp16' | 'fp8' | 'int8' | 'int4' | 'gguf_q8' | 'gguf_q4_k_m'
+
+/** The Calculator form's request; `custom` carries the three GPU numbers, a preset ignores them. */
+export interface InferenceEstimateIn {
+  model: {
+    params_b: number; active_params_b?: number | null; layers: number
+    kv_heads: number; head_dim: number
+  }
+  quant: InferenceQuant
+  context: number; batch: number; users: number
+  prompt_tokens?: number | null; output_tokens?: number | null
+  gpu: {
+    preset?: string | null; vram_gb?: number | null
+    bw_gbs?: number | null; fp16_tflops?: number | null
+  }
+  gpu_count: number; tensor_parallel: number; engine: string
+  usable?: number | null
+}
+
+/** Per-GPU memory in GiB, the two decode ceilings and the estimate with its range. */
+export interface InferenceEstimate {
+  per_gpu: {
+    weights_gb: number; kv_gb: number; activations_gb: number
+    overhead_gb: number; total_gb: number; usable_gb: number
+  }
+  total_gb: number; fits: boolean; verdict: string
+  throughput: {
+    memory_bound_tps: number; compute_bound_tps: number
+    estimate_tps: number; low_tps: number; high_tps: number
+  }
+  ttft_ms: number; assumptions: string[]; sources: string[]
+}
