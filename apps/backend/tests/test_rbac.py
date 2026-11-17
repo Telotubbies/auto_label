@@ -417,6 +417,20 @@ def test_removal_and_leaving_revoke_project_roles():
         db.commit()
 
 
+def test_the_owner_row_cannot_be_removed_or_demoted(admin):
+    """7-F7.7: the owner is always an admin, so no workspace can lose its last one."""
+    with SessionLocal() as db:
+        owner = db.get(Workspace, ws_id()).owner_id
+    removed = admin.delete(f"/api/ws/{WS}/members/{owner}")
+    assert removed.status_code == 400, removed.text
+    assert removed.json()["detail"] == "the workspace owner cannot be removed"
+    demoted = admin.patch(f"/api/ws/{WS}/members/{owner}", json={"role": "annotator"})
+    assert demoted.status_code == 400, demoted.text
+    assert demoted.json()["detail"] == "the workspace owner is always an admin"
+    members = admin.get(f"/api/ws/{WS}/members").json()["members"]
+    assert any(m["id"] == owner and m["owner"] for m in members), "7-F7.7: the owner row survives both refusals"
+
+
 # --- audit filters -------------------------------------------------------------------
 
 def test_audit_filters_and_pagination(admin):
