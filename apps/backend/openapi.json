@@ -1819,6 +1819,41 @@
         "title": "MfaVerifyIn",
         "type": "object"
       },
+      "ModelDownloadIn": {
+        "description": "One catalogue variant to install on one host, and the admin's confirmation.",
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "host": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "variant": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "id",
+          "variant"
+        ],
+        "title": "ModelDownloadIn",
+        "type": "object"
+      },
       "ModelIn": {
         "properties": {
           "active_params_b": {
@@ -9061,6 +9096,62 @@
         ]
       }
     },
+    "/api/ws/{ws}/inference/models/download": {
+      "post": {
+        "description": "Queue one confirmed download; a busy host or an installed variant is refused, not queued.",
+        "operationId": "download_model_api_ws__ws__inference_models_download_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDownloadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Model",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
     "/api/ws/{ws}/inference/models/ollama/pull": {
       "post": {
         "description": "Queue one catalogue tag as `ollama pull <tag>`; the worker runs it, the API does not.",
@@ -9168,6 +9259,89 @@
           }
         ],
         "summary": "Plan Model",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/models/{mid}": {
+      "delete": {
+        "description": "Queue the removal of an installed model; an id this host does not report is 404.",
+        "operationId": "remove_model_api_ws__ws__inference_models__mid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mid",
+            "required": true,
+            "schema": {
+              "title": "Mid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variant",
+            "required": true,
+            "schema": {
+              "title": "Variant",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Model",
         "tags": [
           "inference"
         ]

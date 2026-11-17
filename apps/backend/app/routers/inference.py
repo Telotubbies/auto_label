@@ -169,6 +169,72 @@ def pull_ollama(body: OllamaPullIn, c: Ctx = Depends(in_scope)):
     return {"job": job_out(job)}
 
 
+class ModelDownloadIn(BaseModel):
+    """One catalogue variant to install on one host, and the admin's confirmation."""
+    host: str = Field(min_length=1, max_length=120)
+    id: str = Field(min_length=1, max_length=64)
+    variant: str = Field(min_length=1, max_length=32)
+    confirm: bool = False
+
+
+def _installed(row: dict, model_id: str, variant_id: str) -> bool:
+    """True when this host reports the model; an older inventory without a variant matches any."""
+    return any(item.get("id") == model_id and item.get("variant") in (None, variant_id)
+               for item in (row.get("inventory") or {}).get("models") or [])
+
+
+@router.post("/models/download")
+def download_model(body: ModelDownloadIn, c: Ctx = Depends(in_scope)):
+    """Queue one confirmed download; a busy host or an installed variant is refused, not queued."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _host(c, body.host)
+    if not body.confirm:
+        raise HTTPException(400, "Confirm that this downloads a model onto the host.")
+    try:
+        inference_models.variant(inference_models.model(body.id), body.variant)
+    except KeyError:
+        raise HTTPException(422, "Unknown model or variant.") from None
+    if _installed(row, body.id, body.variant):
+        raise HTTPException(409, {"error": "That variant is already installed on this host.",
+                                  "host": row["id"]})
+    running = inference_jobs.running_for_host(c.db, row["id"])
+    if running is not None:
+        raise HTTPException(409, {"error": "A job is already running on this host.",
+                                  "job_id": running.id})
+    job = inference_jobs.enqueue_model(c.db, c, row["id"], "download", body.id, body.variant)
+    log.info("inference.model_download ws=%s role=%s host=%s model=%s variant=%s outcome=queued "
+             "job=%s ms=%.1f", c.ws.slug, c.ws_role, row["id"], body.id, body.variant, job.id,
+             (time.perf_counter() - started) * 1000)
+    return {"job": job_out(job)}
+
+
+@router.delete("/models/{mid}")
+def remove_model(mid: str, host: str, variant: str, confirm: bool = False,
+                 c: Ctx = Depends(in_scope)):
+    """Queue the removal of an installed model; an id this host does not report is 404."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _host(c, host)
+    if not _installed(row, mid, variant):
+        raise HTTPException(404, "not found")
+    try:
+        inference_models.variant(inference_models.model(mid), variant)
+    except KeyError:
+        raise HTTPException(404, "not found") from None
+    if not confirm:
+        raise HTTPException(400, "Confirm that this removes the model from the host.")
+    running = inference_jobs.running_for_host(c.db, row["id"])
+    if running is not None:
+        raise HTTPException(409, {"error": "A job is already running on this host.",
+                                  "job_id": running.id})
+    job = inference_jobs.enqueue_model(c.db, c, row["id"], "remove", mid, variant)
+    log.info("inference.model_remove ws=%s role=%s host=%s model=%s variant=%s outcome=queued "
+             "job=%s ms=%.1f", c.ws.slug, c.ws_role, row["id"], mid, variant, job.id,
+             (time.perf_counter() - started) * 1000)
+    return {"job": job_out(job)}
+
+
 class EngineChoice(BaseModel):
     """One engine the admin picked: a catalogue id, the catalogue version and a runtime it offers."""
     id: str = Field(min_length=1, max_length=32)

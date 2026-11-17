@@ -407,6 +407,13 @@ export interface MfaVerifyIn {
   mfa_token: string
 }
 
+export interface ModelDownloadIn {
+  confirm?: boolean
+  host: string
+  id: string
+  variant: string
+}
+
 export interface ModelIn {
   active_params_b?: number | null
   head_dim: number

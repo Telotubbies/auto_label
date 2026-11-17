@@ -12,5 +12,10 @@ dependencies = ["requests>=2.31", "ultralytics>=8.3", "opencv-python-headless>=4
 [project.scripts]
 labeldesk-worker = "labeldesk_worker.cli:main"
 
+[project.optional-dependencies]
+# T-1011: downloaded models go through huggingface_hub (resume, metadata, sha256). The base worker
+# install stays unchanged; a job without this extra fails with the pip command that adds it.
+inference = ["huggingface_hub>=0.26,<2"]
+
 [tool.setuptools]
 packages = ["labeldesk_worker"]
