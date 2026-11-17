@@ -426,7 +426,10 @@ def test_auto_label_with_no_ai_call_allowance_is_the_apis_402(live):
     api_for, ids = live
     with SessionLocal() as db:
         ws = db.query(Workspace).filter(Workspace.slug == WS).one()
-        v = Version(project_id=db.query(Project).filter(Project.slug == "parcels").one().id, number=99, name="v99")
+        # Scoped to this fixture's workspace: another module's "parcels" project is not ours.
+        v = Version(project_id=db.query(Project).filter(Project.workspace_id == ws.id,
+                                                        Project.slug == "parcels").one().id,
+                    number=99, name="v99")
         db.add(v)
         db.flush()
         model = TrainedModel(workspace_id=ws.id, project_id=v.project_id, version_id=v.id, name="ready",
