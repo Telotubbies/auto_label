@@ -1,4 +1,4 @@
-﻿// Nav v2 shell: workspace groups (BUILD / GOVERN) and the five project groups.
+// Nav v2 shell: workspace groups (BUILD / GOVERN) and the five project groups.
 // Runs with the built-in Node test runner: node --test tests/nav.test.mjs  (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -125,7 +125,7 @@ test('a reviewer loses Train and the settings group', () => {
   assert.deepEqual(itemLabels(groups, 'settings'), [])
 })
 
-test('a labeler sees dataset, video and annotate only โ€” the IA labeler view', () => {
+test('a labeler sees dataset, video and annotate only — the IA labeler view', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(LABELER, 'labeler')), [
     ['DATA', ['Dataset', 'Search', 'Video']],
     ['LABEL', ['Annotate']],
@@ -222,10 +222,10 @@ test('the mobile drawer contract survives the nav rewrite', () => {
 })
 
 // Fix round 3 (I2): the job tray's separator was re-encoded through the wrong code page, so every
-// row read "Training เธขเธ— Project" instead of using U+00B7.
+// row read "Training ยท Project" instead of using U+00B7.
 test('the job tray separates the project name with a middle dot', () => {
-  assert.ok(shellSrc.includes('` ยท ${j.project_name}`'), 'the job row must use U+00B7 as its separator')
-  assert.ok(!shellSrc.includes('เธขเธ—'), 'the job row must not contain the corrupted Thai bytes')
+  assert.ok(shellSrc.includes('` · ${j.project_name}`'), 'the job row must use U+00B7 as its separator')
+  assert.ok(!shellSrc.includes('ยท'), 'the job row must not contain the corrupted Thai bytes')
 })
 
 test('the mobile drawer moves, traps and restores keyboard focus', () => {
@@ -262,7 +262,7 @@ test('every workspace nav destination has a route', () => {
 })
 
 // Fix round 4 (I2): the shell decides "workspace page vs project" from this set. A destination
-// missing from it is wrapped in project chrome โ€” no top padding, no page scroll โ€” which painted
+// missing from it is wrapped in project chrome — no top padding, no page scroll — which painted
 // the Playground title under the floating top bar and clipped the page below the fold.
 test('every workspace nav destination renders as a workspace page', () => {
   for (const item of workspaceNav.flatMap((g) => g.items)) {
@@ -331,7 +331,7 @@ test('a plain settings tab keeps Settings active', () => {
 })
 
 // Fix round 5 (I1): the longer-match loop only walked the full nav, so a role-hidden item
-// suppressed the shorter item the sidebar renders. A member/annotator opening Settings โ’
+// suppressed the shorter item the sidebar renders. A member/annotator opening Settings →
 // Members had no current nav item at all; Settings must stay lit there.
 test('a hidden longer item does not un-light the item the sidebar renders', () => {
   const memberItems = visibleWorkspaceNav('member').flatMap((g) => g.items)
@@ -356,7 +356,7 @@ test('the workspace root is active only at the root, with or without a trailing 
 })
 
 // Fix round 4 (I1): a click-level guard. The sidebar renders `${base}/${item.to}`, so every item
-// must be active at exactly that href โ€” the rendered link and the matcher cannot drift apart.
+// must be active at exactly that href — the rendered link and the matcher cannot drift apart.
 test('every workspace nav link is active at the href the sidebar renders', () => {
   for (const item of workspaceNav.flatMap((g) => g.items)) {
     const href = `/acme/${item.to}`
@@ -382,7 +382,7 @@ test('the compact project strip and the project panel derive from one role-filte
 
 // --- T-476: five destinations plus Admin, governance inside Settings ---------------------------
 // `task_470` (`ui_v3`) switches the rail: off is the frozen v2 rail, on is the v3 one below.
-// REDESIGN ยง3.2 draws seven labels and calls them six; the card resolves it as five + Admin.
+// REDESIGN §3.2 draws seven labels and calls them six; the card resolves it as five + Admin.
 const V3 = true
 const v3Groups = (role, superadmin = false, projectRole = null) =>
   groupLabels(visibleWorkspaceNav(role, superadmin, projectRole, V3))
@@ -423,7 +423,7 @@ test('test_every_removed_destination_is_a_settings_tab', () => {
   }
 })
 
-// Pending, not passing: T-400 owns the Settings โ’ Audit log tab and the /audit redirect.
+// Pending, not passing: T-400 owns the Settings → Audit log tab and the /audit redirect.
 test('Audit log is a Settings tab once T-400 lands', { todo: 'T-400 owns the Audit log tab and the /audit redirect' }, () => {
   assert.ok(settingsSrc.includes("to: 'audit', label: 'Audit log'"), 'Settings needs the Audit log tab')
 })
@@ -459,7 +459,7 @@ test('test_flag_off_restores_the_v2_rail', () => {
   // The default (no flag argument) is off, so nothing changes for a workspace that never opts in.
   assert.deepEqual(wsLabels('admin'), [...V2.slice(0, 3), [null, ['Activity', 'Settings']]])
   assert.deepEqual(wsLabels('owner', true), V2)
-  // โ€ฆand the sidebar really reads the flag and hands it to the rail builder.
+  // …and the sidebar really reads the flag and hands it to the rail builder.
   assert.match(shellSrc, /useFlag\('task_470'\)/, 'AppSidebar must read the ui_v3 flag')
   assert.match(shellSrc, /visibleWorkspaceNav\(role, superadmin, [^)]*uiV3\)/,
     'the flag must reach visibleWorkspaceNav')
@@ -480,7 +480,7 @@ test('every settings tab keeps Settings lit once governance left the rail', () =
   }
 })
 
-// Acceptance: the active row is the shared treatment โ€” accent fill, 1 px primary outline โ€” and the
+// Acceptance: the active row is the shared treatment — accent fill, 1 px primary outline — and the
 // row keeps the shipped glass sidebar surface. One row, one style, flag off untouched.
 test('the active rail row carries the shared accent fill and primary outline', () => {
   assert.match(shellSrc, /border border-primary bg-accent font-medium text-accent-foreground/,
