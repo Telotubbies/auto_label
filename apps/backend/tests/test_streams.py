@@ -1593,6 +1593,9 @@ def test_patch_with_a_trained_ref_does_not_deadlock_with_a_worker_write(c, monke
             assert (DATA_DIR / events[0].clean_path).is_file()
             used = metering_service.used(db, db.get(Workspace, ws_id), "storage_bytes")
             assert used > 0, "the snapshot bytes were never charged"
+        # The 0.05 s budget above only forces the drain: the worker still has to finish the event
+        # write it was released into, and a healthy exit needs its real budget (measured 0.15 s+).
+        monkeypatch.setattr("app.routers.streams.STOP_BUDGET_S", 4.0)
         r = c.patch(f"{base}/streams/{sid}", json={"name": "Edited", "model_ref": f"trained:{mid}"})
         assert r.status_code == 200, r.text
         _poll(lambda: (j if (j := c.get(f"{base}/streams/{sid}").json()).get("status") == "live" else None),
@@ -1786,7 +1789,15 @@ def test_event_snapshots_are_metered_and_stop_at_the_storage_quota(c, ws_quotas)
                                 .order_by(StreamEvent.ts)).all()
             assert len(events) == 2, "the quota-blocked event row must still be visible"
             assert events[-1].snapshot_path == "" and events[-1].clean_path == ""
+            # G3.7: the row must say the evidence is missing because of the quota, not look like an
+            # event that never had a frame.
+            assert events[-1].snapshot_error == "storage quota reached"
+            assert events[0].snapshot_error == ""
         assert "quota" in worker.status_out()["last_error"].lower()
+        page = c.get(f"{BASE}/{sid}/events").json()["items"]
+        by_id = {item["id"]: item for item in page}
+        assert by_id[events[-1].id]["snapshot_error"] == "storage quota reached"
+        assert by_id[events[0].id]["snapshot_error"] is None
     finally:
         c.delete(f"{BASE}/{sid}")
 

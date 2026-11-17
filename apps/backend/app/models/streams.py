@@ -1,5 +1,5 @@
 """Live camera / video feeds and the rule events they fire."""
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -35,6 +35,9 @@ class StreamEvent(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     snapshot_path: Mapped[str] = mapped_column(String(1024), default="")     # annotated, relative to DATA_DIR
     clean_path: Mapped[str] = mapped_column(String(1024), default="")        # no overlays: the dataset copy
+    # Why no snapshot was stored (quota, save failure). Empty means the frames were written, so an
+    # event with an empty snapshot and an empty reason is a pre-fix row, not a silent loss.
+    snapshot_error: Mapped[str] = mapped_column(String(120), default="")
     predictions: Mapped[list] = mapped_column(JSON, default=list)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     # denormalised from `rule` / `predictions` so the timeline filters and pages in SQL
@@ -82,3 +85,25 @@ class OtDelivery(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail: Mapped[str] = mapped_column(Text, default="")
     created: Mapped[float] = mapped_column(Float, default=now, index=True)
+
+
+class EventSearchFrame(Base):
+    """One indexed candidate frame for Task 38's natural-language event search."""
+    __tablename__ = "event_search_frames"
+    __table_args__ = (UniqueConstraint("project_id", "source", "source_id"),
+                      Index("ix_event_search_frames_project_source", "project_id", "source", "source_id"))
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(16))                          # footage | stream
+    source_id: Mapped[str] = mapped_column(String(32))                       # Image.id or StreamEvent.id
+    stream_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    video_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ts: Mapped[float] = mapped_column(Float, default=now)
+    path: Mapped[str] = mapped_column(String(1024), default="")              # relative to DATA_DIR
+    label: Mapped[str] = mapped_column(Text, default="")                     # stored file/rule words
+    embedding: Mapped[list] = mapped_column(JSON, default=list)              # cached CLIP image vector
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    confirmed_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)

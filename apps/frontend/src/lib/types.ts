@@ -936,3 +936,42 @@ export interface WorkflowRunResult {
   quota_clamped: boolean
   elapsed_ms: number
 }
+
+/** Task 27: one ranked image from semantic search (score is a list-relative similarity). */
+export interface SearchResultItem {
+  id: string; name: string; score: number | null; thumbnail: string; split: string; status: string
+  tags: string[]; class_name: string | null
+}
+export interface SearchFacets {
+  classes: { id: string; name: string; count: number }[]
+  tags: string[]
+  tag_counts: { name: string; count: number }[]
+}
+export interface SearchResponse {
+  /** semantic = ranked by CLIP, filter = CLIP missing (metadata only), browse = no query. */
+  mode: 'semantic' | 'filter' | 'browse'
+  reason: string | null
+  total: number; indexed: number; missing: number
+  items: SearchResultItem[]; facets: SearchFacets
+}
+
+export interface CollectionSummary {
+  id: string; name: string; query: string; count: number; created: number; updated: number
+}
+export interface CollectionItem {
+  id: string; name: string; thumbnail: string; split: string; status: string; tags: string[]
+}
+export interface CollectionPage extends CollectionSummary { total: number; items: CollectionItem[] }
+
+/** Task 38: one ranked event-search candidate; `score` is a relative rank, not a probability. */
+export interface EventSearchFrame {
+  id: string; source: 'footage' | 'stream'; source_id: string
+  stream_id: string | null; video_id: string | null; ts: number
+  label: string; confirmed: boolean; confirmed_by: string | null
+  source_name: string; image: string; score?: number
+}
+export interface EventSearchResult {
+  query: string; ranking: 'clip+lexical' | 'lexical'
+  from_ts: number; to_ts: number; candidates: number; sampled: number
+  indexed: number; embeddings: number; results: EventSearchFrame[]
+}

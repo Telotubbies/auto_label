@@ -25,6 +25,7 @@ SURFACES = {
     "task_20c",
     "task_22",
     "task_23",
+    "task_27",
     "task_28",
     "task_29",
     "task_30",
@@ -33,6 +34,7 @@ SURFACES = {
     "task_33",
     "task_34",
     "task_36",
+    "task_38",
 }
 
 
@@ -202,6 +204,7 @@ SURFACE_ROUTES = [
     f"/api/ws/{WS}/projects/ppe-detection/workflows",
     f"/api/ws/{WS}/projects/ppe-detection/models/edge-presets",
     f"/api/ws/{WS}/projects/ppe-detection/batch-inference",
+    f"/api/ws/{WS}/projects/ppe-detection/search",
 ]
 
 

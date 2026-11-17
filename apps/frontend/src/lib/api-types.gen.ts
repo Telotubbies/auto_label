@@ -223,8 +223,22 @@ export interface ClassIn {
   skeleton?: Record<string, unknown> | null
 }
 
+export interface CollectionIn {
+  image_ids?: string[]
+  name: string
+  query?: string
+}
+
+export interface CollectionPatch {
+  name: string
+}
+
 export interface CommentIn {
   text: string
+}
+
+export interface ConfirmIn {
+  confirmed?: boolean
 }
 
 export interface ConnectorIn {
@@ -306,6 +320,10 @@ export interface InterpolateIn {
 export interface InviteIn {
   email: string
   role?: string
+}
+
+export interface ItemsIn {
+  image_ids?: string[]
 }
 
 export interface KeyIn {
@@ -457,6 +475,15 @@ export interface RolePatch {
 
 export interface RunIn {
   image_id: string
+}
+
+export interface SearchIn {
+  from_ts?: number | null
+  limit?: number
+  query?: string
+  sample?: number
+  stream_id?: string | null
+  to_ts?: number | null
 }
 
 export interface SelectionIn {

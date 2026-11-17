@@ -207,6 +207,8 @@ def _message(event: dict, url: str | None) -> str:
     lines.append(f"When: {_when(event.get('created'))} (Asia/Bangkok)")
     if url:
         lines.append(f"Snapshot: {url}")
+    elif event.get("snapshot_error"):
+        lines.append(f"Snapshot: not stored — {_text(event.get('snapshot_error'), 120)}")
     return "\n".join(lines)
 
 
@@ -310,6 +312,7 @@ def _event_summary(event: dict) -> dict:
         "stream_id",
         "project_id",
         "event_id",
+        "snapshot_error",
         "created",
     )
     return {k: event[k] for k in keys if event.get(k) not in (None, "")}
