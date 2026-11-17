@@ -150,7 +150,11 @@ def test_a_workspace_with_no_project_answers_no_rows():
 def test_no_tool_takes_a_workspace_so_the_key_is_the_only_identity():
     tools = tools_of(api_with()[0])
 
-    assert {tool.name: tool.input_schema.get("properties", {}) for tool in tools} == {"whoami": {}, "list_projects": {}}
+    params = {tool.name: set(tool.input_schema.get("properties", {})) for tool in tools}
+    assert {"whoami", "list_projects"} <= set(params)
+    assert params["whoami"] == set() and params["list_projects"] == set()
+    for name, props in params.items():
+        assert not props & {"workspace", "ws", "workspace_id"}, f"{name} takes a workspace"
 
 
 def test_an_api_error_becomes_a_tool_result_error():
