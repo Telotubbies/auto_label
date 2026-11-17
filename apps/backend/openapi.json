@@ -900,6 +900,18 @@
       },
       "ClaimIn": {
         "properties": {
+          "inventory": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inventory"
+          },
           "kinds": {
             "default": [
               "train",
@@ -7974,6 +7986,52 @@
         "summary": "Home",
         "tags": [
           "workspace"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/hosts": {
+      "get": {
+        "description": "Every host with the hardware it reports; owner/admin only.",
+        "operationId": "hosts_api_ws__ws__inference_hosts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Hosts",
+        "tags": [
+          "inference"
         ]
       }
     },

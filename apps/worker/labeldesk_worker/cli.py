@@ -19,6 +19,8 @@ from pathlib import Path
 
 import requests
 
+from .inventory import collect
+
 log = logging.getLogger("labeldesk-worker")
 
 
@@ -191,6 +193,8 @@ def main():
     ap.add_argument("--pretrained-dir", default=os.environ.get("LD_PRETRAINED_DIR"))
     ap.add_argument("--sam-root", default=None)
     ap.add_argument("--name", default=socket.gethostname())
+    ap.add_argument("--models-dir", default=os.environ.get("LD_MODELS_DIR", "~/.labeldesk/models"),
+                    help="where downloaded models live (default ~/.labeldesk/models)")
     ap.add_argument("--once", action="store_true", help="exit after one job (handy on Colab/Kaggle)")
     args = ap.parse_args()
     if not args.server or not args.token:
@@ -201,7 +205,8 @@ def main():
     log.info("worker %s polling %s for %s", args.name, args.server, args.kinds)
     while True:
         try:
-            job = srv.post("/api/worker/claim", json={"name": args.name, "kinds": args.kinds.split(",")})["job"]
+            job = srv.post("/api/worker/claim", json={"name": args.name, "kinds": args.kinds.split(","),
+                                                      "inventory": collect(args.models_dir)})["job"]
         except requests.RequestException as e:
             log.warning("server unreachable: %s", e); time.sleep(15); continue
         if not job:

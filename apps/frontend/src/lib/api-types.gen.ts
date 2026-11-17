@@ -213,6 +213,7 @@ export interface ChannelPatch {
 }
 
 export interface ClaimIn {
+  inventory?: Record<string, unknown> | null
   kinds?: string[]
   name?: string
 }
