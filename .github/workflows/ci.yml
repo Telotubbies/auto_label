@@ -95,7 +95,7 @@ jobs:
         run: npm test
 
   pipeline:
-    name: pipeline tests (repo root)
+    name: pipeline tests (ml/)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -110,7 +110,8 @@ jobs:
           --index-url https://download.pytorch.org/whl/cpu
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check pytest pyyaml questionary rich numpy
-      - name: Run the repository-level pipeline tests
+      - name: Run the pipeline tests that ship with the ML code
+        working-directory: ml
         run: python -m pytest -q
 
   gate:

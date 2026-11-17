@@ -85,10 +85,11 @@ cd ../frontend
 npm run build
 ```
 
-The root pipeline tests need the CLI dependencies (`questionary`, `rich`) installed in the active environment:
+The ML pipeline tests live with the ML code and need the CLI dependencies (`questionary`, `rich`) installed in the active environment:
 
 ```bash
-python -m pytest tests -q
+cd ml
+python -m pytest -q
 ```
 
 ### Compose deployment

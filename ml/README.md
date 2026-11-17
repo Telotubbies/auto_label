@@ -8,6 +8,7 @@ runtime except through the env-var contract below.
 - `pipeline_cli.py` — the interactive CLI that drives both (`sam`, `yolo`, `pred`).
 - `auto_label.sh` — thin bash wrapper around the CLI.
 - `setup.sh` — one-shot environment setup, then launches the pipeline.
+- `tests/` — the pytest suite for this layer; run `python -m pytest -q` from this directory.
 
 Model weights, dataset bytes and run artefacts are **not committed**:
 `ml/**/models/`, `ml/**/data/` and `ml/**/artifacts/` are ignored, and

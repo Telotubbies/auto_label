@@ -15,7 +15,7 @@ pytestmark = pytest.mark.static
 class TestMLflowLocalhost:
     """TC-09: MLflow must bind to 127.0.0.1, not 0.0.0.0 (ISO 27001 A.13.1.1)."""
 
-    MLFLOW_CONFIG = "ml/yolo26_ppe/configs/mlflow.yaml"
+    MLFLOW_CONFIG = "yolo26_ppe/configs/mlflow.yaml"
 
     def _load_mlflow_config(self, repo_root):
         config_path = repo_root / self.MLFLOW_CONFIG
@@ -43,14 +43,14 @@ class TestCheckpointLocationMatch:
     """TC-12: setup.py and pipeline_cli.py must agree on the checkpoint path.
 
     Both must reference `checkpoints/sam3.1_multiplex.pt` relative to the
-    ml/sam3_auto_label directory.
+    sam3_auto_label directory.
     """
 
     EXPECTED_CKPT_NAME = "sam3.1_multiplex.pt"
     EXPECTED_CKPT_DIR = "checkpoints"
 
     def test_setup_py_uses_correct_path(self, repo_root):
-        setup_path = repo_root / "ml" / "sam3_auto_label" / "setup.py"
+        setup_path = repo_root / "sam3_auto_label" / "setup.py"
         content = setup_path.read_text(encoding="utf-8")
         assert self.EXPECTED_CKPT_NAME in content, (
             f"setup.py must reference {self.EXPECTED_CKPT_NAME}"
@@ -59,7 +59,7 @@ class TestCheckpointLocationMatch:
         assert self.EXPECTED_CKPT_DIR in content
 
     def test_pipeline_cli_uses_correct_path(self, repo_root):
-        cli_path = repo_root / "ml" / "pipeline_cli.py"
+        cli_path = repo_root / "pipeline_cli.py"
         content = cli_path.read_text(encoding="utf-8")
         assert self.EXPECTED_CKPT_NAME in content, (
             f"pipeline_cli.py must reference {self.EXPECTED_CKPT_NAME}"
