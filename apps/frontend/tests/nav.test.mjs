@@ -5,7 +5,8 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import {
   isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, RESERVED_WORKSPACE_SEGMENTS,
-  visibleProjectNav, visibleWorkspaceNav, WORKSPACE_PAGE_LABELS, workspaceIndexPath, workspaceNav,
+  v2WorkspaceNav, visibleProjectNav, visibleWorkspaceNav, WORKSPACE_PAGE_LABELS, workspaceIndexPath,
+  workspaceNav,
 } from '../src/lib/nav.ts'
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -33,13 +34,6 @@ const REVIEWER = perms('project.read', 'project.annotate', 'project.review', 'pr
   'project.classes', 'project.models', 'project.infer', 'project.streams')
 const LABELER = perms('project.read', 'project.annotate', 'project.classes', 'project.infer')
 const VIEWER = perms('project.read')
-
-test('workspace nav groups follow the v2 tree order', () => {
-  assert.deepEqual(workspaceNav.map((g) => [g.id, g.label ?? null]), [
-    ['core', null], ['build', 'BUILD'], ['govern', 'GOVERN'], ['footer', null],
-  ])
-  assert.deepEqual(itemLabels(workspaceNav, 'build'), ['Models', 'Playground', 'Deployments'])
-})
 
 test('a member sees BUILD and only the personal footer items', () => {
   assert.deepEqual(wsLabels('member'), [
@@ -243,7 +237,8 @@ test('the mobile drawer moves, traps and restores keyboard focus', () => {
 })
 
 test('governed nav labels match the Settings tabs they open', () => {
-  const governed = workspaceNav.find((g) => g.id === 'govern').items.filter((i) => i.to.startsWith('settings/'))
+  // The governance entries live on the v2 rail (flag off); the v3 rail keeps only Settings.
+  const governed = v2WorkspaceNav.find((g) => g.id === 'govern').items.filter((i) => i.to.startsWith('settings/'))
   assert.ok(governed.length >= 3)
   for (const item of governed) {
     assert.ok(settingsSrc.includes(`label: '${item.label}'`),
@@ -317,17 +312,21 @@ test('every route module is composed by a registry', () => {
 
 const wsItem = (label) => workspaceNav.flatMap((g) => g.items).find((i) => i.label === label)
 const active = (label, pathname) => isWorkspaceNavActive(wsItem(label), pathname, '/acme')
+// The governance rows only exist on the v2 rail, so their matcher tests read that rail.
+const v2Item = (label) => v2WorkspaceNav.flatMap((g) => g.items).find((i) => i.label === label)
+const v2Items = v2WorkspaceNav.flatMap((g) => g.items)
+const activeV2 = (label, pathname) => isWorkspaceNavActive(v2Item(label), pathname, '/acme', v2Items)
 
 test('a settings subpage lights the specific governance item, not Settings', () => {
-  assert.equal(active('Plan & Usage', '/acme/settings/usage'), true)
-  assert.equal(active('Settings', '/acme/settings/usage'), false)
-  assert.equal(active('Members', '/acme/settings/members'), true)
-  assert.equal(active('Settings', '/acme/settings/members'), false)
+  assert.equal(activeV2('Plan & Usage', '/acme/settings/usage'), true)
+  assert.equal(activeV2('Settings', '/acme/settings/usage'), false)
+  assert.equal(activeV2('Members', '/acme/settings/members'), true)
+  assert.equal(activeV2('Settings', '/acme/settings/members'), false)
 })
 
 test('a plain settings tab keeps Settings active', () => {
   assert.equal(active('Settings', '/acme/settings/account'), true)
-  assert.equal(active('Members', '/acme/settings/account'), false)
+  assert.equal(activeV2('Members', '/acme/settings/account'), false)
 })
 
 // Fix round 5 (I1): the longer-match loop only walked the full nav, so a role-hidden item
@@ -379,3 +378,114 @@ test('the compact project strip and the project panel derive from one role-filte
   assert.ok(projectLayoutSrc.includes('const items = projectNavGroups(canProject, projectRole'),
     'the strip must reuse its single items list instead of recomputing it')
 })
+
+// --- T-476: five destinations plus Admin, governance inside Settings ---------------------------
+// `task_470` (`ui_v3`) switches the rail: off is the frozen v2 rail, on is the v3 one below.
+// REDESIGN §3.2 draws seven labels and calls them six; the card resolves it as five + Admin.
+const V3 = true
+const v3Groups = (role, superadmin = false, projectRole = null) =>
+  groupLabels(visibleWorkspaceNav(role, superadmin, projectRole, V3))
+const v3Items = (role, superadmin = false, projectRole = null) =>
+  visibleWorkspaceNav(role, superadmin, projectRole, V3).flatMap((g) => g.items)
+const railLabels = (groups) => groups.flatMap(([, labels]) => labels)
+
+test('test_workspace_rail_has_six_items', () => {
+  assert.deepEqual(workspaceNav.map((g) => [g.id, g.label ?? null]), [['core', null], ['footer', null]])
+  assert.deepEqual(railLabels(v3Groups('owner')), ['Projects', 'Models', 'Deployments', 'Activity', 'Settings'])
+  assert.deepEqual(railLabels(v3Groups('owner', true)),
+    ['Projects', 'Models', 'Deployments', 'Activity', 'Settings', 'Admin'])
+  // No ALL-CAPS group caption survives: an unlabelled group renders no caption at all.
+  for (const [label] of v3Groups('owner', true)) assert.equal(label, null, 'the rail carries no group label')
+})
+
+test('test_governance_left_the_rail', () => {
+  const gone = ['Members', 'Plan & Usage', 'API Keys', 'Playground', 'Audit log']
+  const labels = workspaceNav.flatMap((g) => g.items).map((i) => i.label)
+  for (const label of gone) assert.equal(labels.includes(label), false, `${label} is a Settings tab, not a rail row`)
+  // No audience re-admits one of them: not for a superadmin, not for billing, not inside a project.
+  for (const role of ['owner', 'admin', 'member', 'reviewer', 'annotator', 'billing', null]) {
+    for (const superadmin of [false, true]) {
+      for (const projectRole of [null, 'labeler', 'manager']) {
+        assert.deepEqual(railLabels(v3Groups(role, superadmin, projectRole)).filter((l) => gone.includes(l)), [],
+          `${role} / superadmin ${superadmin} / ${projectRole} still sees a governance row`)
+      }
+    }
+  }
+})
+
+test('test_every_removed_destination_is_a_settings_tab', () => {
+  // The governance surfaces kept the names they had in the rail, so tab and breadcrumb agree.
+  const tabs = { Members: 'members', 'Plan & Usage': 'usage', 'API Keys': 'api' }
+  for (const [label, segment] of Object.entries(tabs)) {
+    assert.ok(settingsSrc.includes(`to: '${segment}', label: '${label}'`),
+      `Settings needs a "${label}" tab at ${segment}`)
+  }
+})
+
+// Pending, not passing: T-400 owns the Settings → Audit log tab and the /audit redirect.
+test('Audit log is a Settings tab once T-400 lands', { todo: 'T-400 owns the Audit log tab and the /audit redirect' }, () => {
+  assert.ok(settingsSrc.includes("to: 'audit', label: 'Audit log'"), 'Settings needs the Audit log tab')
+})
+
+test('test_roles_keep_a_landing_page', () => {
+  assert.equal(workspaceIndexPath('billing'), 'settings/usage')
+  for (const role of ['owner', 'admin', 'member', 'reviewer', 'annotator', null]) {
+    assert.equal(workspaceIndexPath(role), '', `${role} keeps the Projects grid`)
+  }
+  // A role change narrows the rail instead of emptying it: every role keeps somewhere to land.
+  assert.deepEqual(railLabels(v3Groups('annotator')), ['Projects', 'Activity', 'Settings'])
+  assert.deepEqual(railLabels(v3Groups('billing')), ['Settings'])
+  assert.deepEqual(railLabels(v3Groups('member', false, 'labeler')), ['Projects', 'Activity', 'Settings'])
+})
+
+test('test_no_rail_item_points_into_a_project', () => {
+  for (const item of workspaceNav.flatMap((g) => g.items)) {
+    // The shell reads this set to tell a workspace page from a project slug, so membership is the test.
+    assert.ok(item.to === '' || RESERVED_WORKSPACE_SEGMENTS.has(item.to.split('/')[0]),
+      `${item.label} (${item.to}) is not a workspace URL`)
+    assert.equal(item.to.startsWith('p/'), false, `${item.label} must not point into a project`)
+  }
+})
+
+test('test_flag_off_restores_the_v2_rail', () => {
+  const V2 = [
+    [null, ['Projects']],
+    ['BUILD', ['Models', 'Playground', 'Deployments']],
+    ['GOVERN', ['Members', 'Audit log', 'Plan & Usage', 'API Keys']],
+    [null, ['Activity', 'Settings', 'Admin']],
+  ]
+  assert.deepEqual(groupLabels(v2WorkspaceNav), V2)
+  // The default (no flag argument) is off, so nothing changes for a workspace that never opts in.
+  assert.deepEqual(wsLabels('admin'), [...V2.slice(0, 3), [null, ['Activity', 'Settings']]])
+  assert.deepEqual(wsLabels('owner', true), V2)
+  // …and the sidebar really reads the flag and hands it to the rail builder.
+  assert.match(shellSrc, /useFlag\('task_470'\)/, 'AppSidebar must read the ui_v3 flag')
+  assert.match(shellSrc, /visibleWorkspaceNav\(role, superadmin, [^)]*uiV3\)/,
+    'the flag must reach visibleWorkspaceNav')
+})
+
+test('the playground keeps its URL without a rail entry', () => {
+  assert.ok(RESERVED_WORKSPACE_SEGMENTS.has('playground'), 'the shell must read /w/playground as a workspace page')
+  assert.equal(WORKSPACE_PAGE_LABELS.playground, 'Playground')
+  assert.match(appSrc, /path="playground"/, '/w/playground must still resolve')
+  assert.equal(workspaceNav.flatMap((g) => g.items).some((i) => i.to === 'playground'), false)
+})
+
+test('every settings tab keeps Settings lit once governance left the rail', () => {
+  const items = v3Items('owner')
+  const settings = items.find((i) => i.label === 'Settings')
+  for (const path of ['/acme/settings', '/acme/settings/members', '/acme/settings/usage', '/acme/settings/api']) {
+    assert.equal(isWorkspaceNavActive(settings, path, '/acme', items), true, `Settings must be current at ${path}`)
+  }
+})
+
+// Acceptance: the active row is the shared treatment — accent fill, 1 px primary outline — and the
+// row keeps the shipped glass sidebar surface. One row, one style, flag off untouched.
+test('the active rail row carries the shared accent fill and primary outline', () => {
+  assert.match(shellSrc, /border border-primary bg-accent font-medium text-accent-foreground/,
+    'the active row needs the accent fill and the 1 px primary outline')
+  assert.match(shellSrc, /glass-sidebar/, 'the rail keeps the shipped Glass sidebar surface')
+  assert.match(shellSrc, /sidebar-accent font-medium text-sidebar-accent-foreground/,
+    'flag off keeps the v2 row')
+})
+
