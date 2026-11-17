@@ -93,7 +93,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
     except importers.ImportError_ as e:
         raise HTTPException(400, str(e))
     if not bundle.images:
-        raise HTTPException(400, "no images found (supported: jpg, png, bmp, webp, tif โ€” loose or in a .zip)")
+        raise HTTPException(400, "no images found (supported: jpg, png, bmp, webp, tif — loose or in a .zip)")
     have = db.scalar(select(func.count(Image.id)).join(Project).where(Project.workspace_id == c.ws.id, Image.deleted_at.is_(None)))
     if have + len(bundle.images) > plan(c.ws)["images"]:
         raise HTTPException(402, f"image limit reached on the {plan(c.ws)['label']} plan")
@@ -167,7 +167,7 @@ async def upload(files: list[UploadFile] = File(...), batch_name: str = Form("")
                  tags: str = Form(""), to_dataset: bool = Form(True), c: Ctx = Depends(project_ctx)):
     c.need("reviewer")
     if len(files) > 2000:
-        raise HTTPException(413, "max 2000 files per request โ€” the web uploader sends batches")
+        raise HTTPException(413, "max 2000 files per request — the web uploader sends batches")
     budget = MAX_UPLOAD_MB * 1024 * 1024
     payload = []
     for f in files:
@@ -473,7 +473,7 @@ def _check_ann(a: dict, ocr_enabled: bool) -> dict:
     elif s["kind"] == "polygon":
         pts = s.get("points")
         if not isinstance(pts, list) or not (6 <= len(pts) <= 20_000) or len(pts) % 2 or not all(_num(v) for v in pts):
-            raise HTTPException(400, "polygon needs 3โ€“10,000 normalised points")
+            raise HTTPException(400, "polygon needs 3–10,000 normalised points")
         shape = {"kind": "polygon", "points": [float(v) for v in pts]}
     elif s["kind"] == "obb":
         if not (_num(s.get("cx")) and _num(s.get("cy")) and _num(s.get("w")) and _num(s.get("h"))):
@@ -481,7 +481,7 @@ def _check_ann(a: dict, ocr_enabled: bool) -> dict:
         angle = s.get("angle")
         if (not isinstance(angle, (int, float)) or isinstance(angle, bool) or not math.isfinite(angle)
                 or not -2 * math.pi <= angle <= 2 * math.pi):
-            raise HTTPException(400, "obb angle must be a finite number of radians within ยฑ2ฯ€")
+            raise HTTPException(400, "obb angle must be a finite number of radians within ±2π")
         shape = {"kind": "obb", **{k: float(s[k]) for k in ("cx", "cy", "w", "h")}, "angle": float(angle)}
     elif s["kind"] == "keypoints":
         pts = s.get("points")
@@ -489,7 +489,7 @@ def _check_ann(a: dict, ocr_enabled: bool) -> dict:
                 or not all(_num(pts[i]) and _num(pts[i + 1]) for i in range(0, len(pts), 3))
                 or not all(isinstance(pts[i], (int, float)) and not isinstance(pts[i], bool) and pts[i] in (0, 1, 2)
                            for i in range(2, len(pts), 3))):
-            raise HTTPException(400, "keypoints need 3โ€“3000 flat normalised x,y,v values (v in 0,1,2)")
+            raise HTTPException(400, "keypoints need 3–3000 flat normalised x,y,v values (v in 0,1,2)")
         shape = {"kind": "keypoints", "points": [float(pts[i]) if i % 3 != 2 else int(pts[i]) for i in range(len(pts))]}
     else:
         shape = {"kind": "class"}
@@ -608,7 +608,7 @@ def review(image_id: str, body: ReviewIn, u: User = Depends(current_user), db: S
     img.review = "approved" if body.approved else "rejected"
     img.status = "done" if body.approved else "annotating"
     if body.note:
-        db.add(Comment(image_id=img.id, user_id=u.id, text=("โ“ " if body.approved else "โ— Rejected: ") + body.note))
+        db.add(Comment(image_id=img.id, user_id=u.id, text=("✓ " if body.approved else "✗ Rejected: ") + body.note))
     audit(db, c.ws.id, u.id, "image.review", img.name, approved=body.approved, project_id=c.project.id)
     img.updated = now(); db.commit()
     return image_out(img, full=True)
@@ -721,7 +721,7 @@ def smart_polygon(image_id: str, body: SmartIn, u: User = Depends(current_user),
     poly, source = segment.smart_polygon(imaging.load(img.path), body.points, body.negatives,
                                          eps=eps, cache_key=img.id)
     if not poly:
-        raise HTTPException(422, "could not find an object at those points โ€” try clicking nearer its centre")
+        raise HTTPException(422, "could not find an object at those points — try clicking nearer its centre")
     return {"polygon": poly, "source": source, "epsilon": eps}
 
 
