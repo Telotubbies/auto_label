@@ -13,6 +13,9 @@ import re
 
 VERSION = re.compile(r"^[0-9][0-9A-Za-z.+_-]*$")
 DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+# T-1023: the engine's own health endpoint, read by the worker on its loopback only. It is never
+# part of a public row, so no screen and no API client can call it.
+OLLAMA_HEALTH_URL = "http://127.0.0.1:11434/api/version"
 
 # One row per installable engine. `runtimes` lists only runtimes we can install without a
 # floating tag; `container` is a repo@sha256 digest, and `package` an exact pip requirement.
@@ -22,6 +25,7 @@ ENGINES: list[dict] = [
         "name": "Ollama",
         "summary": "Runs quantised models on one host with one command; the default engine.",
         "version": "0.40.16",
+        "default": True,
         "runtimes": ["docker"],
         "os": ["linux", "macos", "windows"],
         "accelerator": ["cpu", "nvidia", "metal"],
@@ -31,6 +35,7 @@ ENGINES: list[dict] = [
         "disk_mb": 3240,
         "package": None,
         "container": "ollama/ollama@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592",
+        "health_url": OLLAMA_HEALTH_URL,
         "source_url": "https://github.com/ollama/ollama/releases/tag/v0.40.16",
         "checked_on": "2026-11-17",
         "notes": "Bundles its own CUDA and Metal runtimes, so there is no separate driver pin. "
@@ -41,6 +46,7 @@ ENGINES: list[dict] = [
         "name": "vLLM",
         "summary": "High-throughput serving for Hugging Face models, with an OpenAI-compatible API.",
         "version": "0.34.0",
+        "default": False,
         "runtimes": ["uv", "pip", "docker"],
         "os": ["linux"],
         "accelerator": ["nvidia"],
@@ -60,6 +66,7 @@ ENGINES: list[dict] = [
         "name": "llama.cpp",
         "summary": "Runs GGUF files on CPU, Metal, Vulkan or CUDA; the smallest footprint.",
         "version": "1.0.0",
+        "default": False,
         "runtimes": ["uv", "pip"],
         "os": ["linux", "macos", "windows"],
         "accelerator": ["cpu", "metal", "nvidia", "vulkan"],
@@ -80,6 +87,7 @@ ENGINES: list[dict] = [
         "name": "SGLang",
         "summary": "Fast serving for structured output, long context and multi-turn prompts.",
         "version": "0.5.23",
+        "default": False,
         "runtimes": ["uv", "pip", "docker"],
         "os": ["linux"],
         "accelerator": ["nvidia"],
@@ -98,6 +106,7 @@ ENGINES: list[dict] = [
         "name": "TensorRT-LLM",
         "summary": "NVIDIA's fastest path, at the cost of one compiled engine per GPU.",
         "version": "1.2.1",
+        "default": False,
         "runtimes": ["docker"],
         "os": ["linux"],
         "accelerator": ["nvidia"],
@@ -117,6 +126,7 @@ ENGINES: list[dict] = [
         "name": "ONNX Runtime GenAI",
         "summary": "Serves ONNX models on CPU, NVIDIA or DirectML without a CUDA toolkit.",
         "version": "0.20.0",
+        "default": False,
         "runtimes": ["uv", "pip"],
         "os": ["linux", "macos", "windows"],
         "accelerator": ["cpu", "nvidia", "directml"],
@@ -136,6 +146,7 @@ ENGINES: list[dict] = [
         "name": "Triton Inference Server",
         "summary": "Serves many models behind one endpoint; the NVIDIA server, not the compiler.",
         "version": "2.74.0",
+        "default": False,
         "runtimes": ["docker"],
         "os": ["linux"],
         "accelerator": ["nvidia"],
@@ -180,8 +191,9 @@ GPUS: list[dict] = [
 
 _BY_ID = {row["id"]: row for row in ENGINES}
 _GPU_BY_ID = {row["id"]: row for row in GPUS}
-PUBLIC_ENGINE_FIELDS = ("id", "name", "summary", "version", "runtimes", "os", "accelerator",
-                        "min_driver", "cuda_min", "cuda_max", "disk_mb", "source_url", "checked_on", "notes")
+PUBLIC_ENGINE_FIELDS = ("id", "name", "summary", "version", "default", "runtimes", "os",
+                        "accelerator", "min_driver", "cuda_min", "cuda_max", "disk_mb",
+                        "source_url", "checked_on", "notes")
 PUBLIC_GPU_FIELDS = ("id", "name", "vram_gb", "bw_gbs", "fp16_tflops", "source_url")
 
 
@@ -231,6 +243,12 @@ def validate() -> None:
     ids = [row["id"] for row in ENGINES]
     if len(set(ids)) != len(ids):
         raise ValueError("duplicate engine ids")
+    if ENGINES[0]["id"] != "ollama" or ENGINES[0].get("default") is not True:
+        raise ValueError("ollama must be the first engine and the default")
+    if [row["id"] for row in ENGINES if row.get("default")] != ["ollama"]:
+        raise ValueError("exactly one engine may be the default")
+    if not str(ENGINES[0].get("health_url") or "").startswith("http://127.0.0.1:"):
+        raise ValueError("the ollama health check must be on the worker's loopback")
     for row in ENGINES:
         if not VERSION.match(row["version"]) or "latest" in row["version"].lower():
             raise ValueError(f"{row['id']}: version is not an exact pin")

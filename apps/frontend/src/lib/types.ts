@@ -1015,7 +1015,7 @@ export interface InferenceHost {
 // ---------- inference hub (T-1002) --------------------------------------------
 /** One installable engine, pinned: `container` and the install argv stay server-side. */
 export interface EngineRow {
-  id: string; name: string; summary: string; version: string
+  id: string; name: string; summary: string; version: string; default: boolean
   runtimes: string[]; os: string[]; accelerator: string[]
   min_driver: string | null; cuda_min: string | null; cuda_max: string | null
   disk_mb: number; source_url: string; checked_on: string; notes: string
@@ -1115,21 +1115,21 @@ export interface InferenceJob {
   /** Redacted log lines, newest last and capped at 200 by the API. */
   log: string[]
   error: string
-  host: string; action: 'install' | 'uninstall'
+  host: string; action: 'install' | 'uninstall' | 'pull'
   result: { engines: InferenceJobEngine[] }
   created: number; finished: number | null
 }
 // ---------- inference hub: model catalogue (T-1010) ---------------------------
 /** One quantisation of a catalogue row; `blocked` names every reason its download is disabled. */
 export interface InferenceModelVariant {
-  id: string; quant: string; format: 'safetensors' | 'gguf'; engine: string
+  id: string; quant: string; format: 'safetensors' | 'gguf' | 'tag'; engine: string
   bytes: number; vram_gb: number | null; fits: boolean | null
   fit_verdict: string | null; assumed_context: number; installed: boolean
   blocked: string[]
 }
 /** A downloadable weight set: licence, gate, exact commit and its variants. */
 export interface InferenceModel {
-  id: string; name: string; family: string; repo: string; revision: string
+  id: string; name: string; family: string; repo: string | null; revision: string | null
   ollama_tag: string | null; params_b: number; context_max: number
   licence: { name: string; url: string; gated: boolean; non_commercial: boolean }
   engine: string[]; safetensors_only: boolean; source_url: string; checked_on: string

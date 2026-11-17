@@ -133,6 +133,42 @@ def plan_model(body: ModelPlanIn, c: Ctx = Depends(in_scope)):
     return plan
 
 
+class OllamaPullIn(BaseModel):
+    """One catalogue tag the admin wants pulled; the tag is a lookup key, never an argv part."""
+    host: str = Field(min_length=1, max_length=120)
+    tag: str = Field(min_length=1, max_length=64)
+    confirm: bool = False
+
+
+@router.post("/models/ollama/pull")
+def pull_ollama(body: OllamaPullIn, c: Ctx = Depends(in_scope)):
+    """Queue one catalogue tag as `ollama pull <tag>`; the worker runs it, the API does not."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _host(c, body.host)
+    try:
+        plan = inference_models.ollama_pull(row, body.tag)
+    except inference_models.UnknownTag:
+        raise HTTPException(422, "That model tag is not in the catalogue. Only catalogue models "
+                                 "can be pulled.") from None
+    if not body.confirm:
+        raise HTTPException(400, {"error": "Confirm that this downloads a model to the host.",
+                                  "plan": plan})
+    if plan["blocked"]:
+        raise HTTPException(409, {"error": plan["blocked"][0], "plan": plan})
+    running = inference_jobs.running_for_host(c.db, row["id"])
+    if running is not None:
+        raise HTTPException(409, {"error": "An engine job is already running on this host.",
+                                  "job_id": running.id})
+    job = inference_jobs.enqueue_engine(c.db, c, row["id"], "pull", [{
+        "id": plan["id"], "version": plan["variant"], "runtime": "ollama",
+        "tag": plan["tag"], "argv": [plan["argv"]]}], "")
+    log.info("inference.ollama_pull ws=%s role=%s host=%s tag=%s outcome=queued job=%s bytes=%d "
+             "ms=%.1f", c.ws.slug, c.ws_role, row["id"], plan["tag"], job.id, plan["bytes"],
+             (time.perf_counter() - started) * 1000)
+    return {"job": job_out(job)}
+
+
 class EngineChoice(BaseModel):
     """One engine the admin picked: a catalogue id, the catalogue version and a runtime it offers."""
     id: str = Field(min_length=1, max_length=32)
@@ -255,7 +291,8 @@ def job_view(row: Job) -> dict:
     """A job the browser may read: the phase and log tail the worker wrote, never ``params``.
 
     ``params`` holds the install argv, so it never leaves the server; the host and the action are
-    lifted out of it because the card has to name the machine and say whether it installs or removes.
+    lifted out of it because the card has to name the machine and say whether it installs, removes
+    or pulls.
     """
     result = row.result or {}
     params = row.params or {}

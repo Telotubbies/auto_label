@@ -86,7 +86,7 @@ export default function InstallProgress({ ws, onSettled }: {
   }
 
   const cancel = async (job: InferenceJob) => {
-    if (!window.confirm(cancelCopy(job.host))) return
+    if (!window.confirm(cancelCopy(job.host, job.action))) return
     setCancelling(job.id)
     try {
       await inferenceCancelJob(ws, job.id)

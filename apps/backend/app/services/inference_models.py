@@ -36,6 +36,11 @@ QUANT = {"BF16": "bf16", "FP8": "fp8", "AWQ": "int4", "GPTQ": "int4",
          "Q8_0": "gguf_q8", "Q4_K_M": "gguf_q4_k_m", "Q4_0": "gguf_q4_k_m"}
 # A licence name containing this word must carry the non-commercial badge.
 NON_COMMERCIAL = ("NON-COMMERCIAL", "NONCOMMERCIAL", "AGPL", "RESEARCH ONLY")
+# T-1023: an Ollama tag is `name:tag`, lower-case, and never a client string that becomes a command.
+TAG = re.compile(r"^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$")
+ONE_MODEL = ("This host already holds {model}. One model per host: remove the current model "
+             "first, or replace it in one confirmed step.")
+
 
 
 class InvalidRepo(ValueError):
@@ -302,6 +307,56 @@ MODELS: list[dict] = [
     },
 ]
 
+# T-1023 / PLAN §12.3: the Ollama tags a host may pull. A tag is one quantised model in Ollama's
+# own store, so it has no file list: the byte figure is the Q4_K_M download the Ollama Library
+# published on ``checked_on``, and Ollama's manifest is authoritative at pull time. The row's
+# engine is Ollama; ``variant`` is the catalogue id the estimator and the UI share.
+OLLAMA_TAGS: list[dict] = [
+    {
+        "id": "qwen3-4b", "tag": "qwen3:4b", "name": "Qwen3 4B", "family": "Qwen3",
+        "params_b": 4.0, "layers": 36, "kv_heads": 8, "head_dim": 128, "context_max": 40960,
+        "quant": "Q4_K_M", "variant": "q4_k_m", "bytes": 2_500_000_000,
+        "licence": {"name": "Apache-2.0",
+                    "url": "https://huggingface.co/Qwen/Qwen3-4B/blob/main/LICENSE",
+                    "gated": False, "non_commercial": False},
+        "source_url": "https://ollama.com/library/qwen3", "checked_on": "2026-11-18",
+    },
+    {
+        "id": "qwen3-8b", "tag": "qwen3:8b", "name": "Qwen3 8B", "family": "Qwen3",
+        "params_b": 8.2, "layers": 36, "kv_heads": 8, "head_dim": 128, "context_max": 40960,
+        "quant": "Q4_K_M", "variant": "q4_k_m", "bytes": 5_200_000_000,
+        "licence": {"name": "Apache-2.0",
+                    "url": "https://huggingface.co/Qwen/Qwen3-8B/blob/main/LICENSE",
+                    "gated": False, "non_commercial": False},
+        "source_url": "https://ollama.com/library/qwen3", "checked_on": "2026-11-18",
+    },
+    {
+        "id": "gemma3-4b", "tag": "gemma3:4b", "name": "Gemma 3 4B IT", "family": "Gemma 3",
+        "params_b": 4.3, "layers": 34, "kv_heads": 4, "head_dim": 256, "context_max": 131072,
+        "quant": "Q4_K_M", "variant": "q4_k_m", "bytes": 3_300_000_000,
+        "licence": {"name": "Gemma Terms of Use", "url": "https://ai.google.dev/gemma/terms",
+                    "gated": False, "non_commercial": False},
+        "source_url": "https://ollama.com/library/gemma3", "checked_on": "2026-11-18",
+    },
+    {
+        "id": "llama3.2-3b", "tag": "llama3.2:3b", "name": "Llama 3.2 3B Instruct",
+        "family": "Llama 3.2", "params_b": 3.2, "layers": 28, "kv_heads": 8, "head_dim": 128,
+        "context_max": 131072, "quant": "Q4_K_M", "variant": "q4_k_m",
+        "bytes": 2_000_000_000,
+        "licence": {"name": "Llama 3.2 Community License",
+                    "url": "https://llama.meta.com/llama3_2/license/",
+                    "gated": False, "non_commercial": False},
+        "source_url": "https://ollama.com/library/llama3.2", "checked_on": "2026-11-18",
+    },
+]
+
+_OLLAMA_BY_TAG = {row["tag"]: row for row in OLLAMA_TAGS}
+
+
+class UnknownTag(KeyError):
+    """A tag the Ollama catalogue does not list; the route turns it into a 422."""
+
+
 def model(model_id: str) -> dict:
     """The row for ``model_id``; an id the catalogue does not list raises ``KeyError``."""
     for row in MODELS:
@@ -395,8 +450,7 @@ def _warnings(row: dict, inventory: dict | None, memory: dict | None, online: bo
         out.append("The host is offline; the download waits for it to report again.")
     for item in _installed(inventory):
         if item.get("id") and item.get("id") != row["id"]:
-            out.append(f"This host already holds {item['id']}. One model per host: remove the "
-                       f"current model first, or replace it in one confirmed step.")
+            out.append(ONE_MODEL.format(model=item["id"]))
             break
     return out
 
@@ -443,6 +497,84 @@ def plan(host: dict, model_id: str, variant_id: str) -> dict:
     }
 
 
+def _ollama_fit(row: dict, inventory: dict | None) -> dict | None:
+    """The same T-1004 verdict, with the tag's Q4_K_M quant and Ollama's own overhead."""
+    vram_gb = _gpu_gb(inventory)
+    if vram_gb is None:
+        return None
+    return inference_estimate.fit(row["params_b"], QUANT[row["quant"]], "ollama",
+                                  row["layers"], row["kv_heads"], row["head_dim"],
+                                  FIT_CONTEXT, vram_gb)
+
+
+def _ollama_blocked(row: dict, inventory: dict | None, memory: dict | None) -> list[str]:
+    """Why this tag may not be pulled: the one-model rule first, then disk and the fit."""
+    out = []
+    other = next((item.get("id") for item in _installed(inventory)
+                  if item.get("id") and item.get("id") != row["id"]), None)
+    if other:
+        out.append(ONE_MODEL.format(model=other))
+    disk = disk_block(row["bytes"], ((inventory or {}).get("disk") or {}).get("models_free_gb"))
+    if disk:
+        out.append(disk)
+    if memory is not None and not memory["fits"]:
+        out.append(f"This model does not fit the host's GPU: {memory['verdict']}")
+    return out
+
+
+def ollama_pull(host: dict, tag: str) -> dict:
+    """The pull dry run for one catalogue tag: the exact argv, bytes, fit and every block."""
+    row = _OLLAMA_BY_TAG.get(str(tag))
+    if row is None:
+        raise UnknownTag(str(tag))
+    inventory = host.get("inventory")
+    memory = _ollama_fit(row, inventory)
+    blocked = _ollama_blocked(row, inventory, memory)
+    if any(item.get("id") == row["id"] for item in _installed(inventory)):
+        blocked.insert(0, "This model is already installed on this host.")
+    free_gb = ((inventory or {}).get("disk") or {}).get("models_free_gb")
+    return {
+        "id": row["id"], "tag": row["tag"], "variant": row["variant"], "quant": row["quant"],
+        # Rebuilt from the catalogue row, never from the request string.
+        "argv": ["ollama", "pull", row["tag"]],
+        "bytes": row["bytes"],
+        "disk_free_gb": free_gb,
+        "disk_after_gb": None if free_gb is None else round(float(free_gb) - row["bytes"] / GIB, 1),
+        "blocked": blocked,
+        "warnings": _warnings(row, inventory, memory, host.get("online", True)),
+        "fit": memory,
+    }
+
+
+def _ollama_rows(inventory: dict | None) -> list[dict]:
+    """The tag rows shaped like the Hugging Face rows, so one Models tab renders both."""
+    installed = _installed(inventory)
+    rows = []
+    for row in OLLAMA_TAGS:
+        memory = _ollama_fit(row, inventory)
+        blocked = _ollama_blocked(row, inventory, memory)
+        is_installed = any(item.get("id") == row["id"] for item in installed)
+        rows.append({
+            "id": row["id"], "name": row["name"], "family": row["family"],
+            "repo": None, "revision": None, "ollama_tag": row["tag"],
+            "params_b": row["params_b"], "context_max": row["context_max"],
+            "licence": dict(row["licence"]), "engine": ["ollama"], "safetensors_only": False,
+            "source_url": row["source_url"], "checked_on": row["checked_on"],
+            "variants": [{
+                "id": row["variant"], "quant": row["quant"], "format": "tag",
+                "engine": "ollama", "bytes": row["bytes"],
+                "vram_gb": None if memory is None else memory["total_gb"],
+                "fits": None if memory is None else memory["fits"],
+                "fit_verdict": None if memory is None else memory["verdict"],
+                "assumed_context": FIT_CONTEXT, "installed": is_installed, "blocked": blocked,
+            }],
+            "installed": is_installed,
+            "fits": None if memory is None else memory["fits"],
+            "blocked": blocked,
+        })
+    return rows
+
+
 def public_models(host: dict) -> dict:
     """The catalogue joined with this host's installed state, fit verdict and block reasons.
 
@@ -480,6 +612,7 @@ def public_models(host: dict) -> dict:
             "fits": any(any_fit) if any_fit else None,
             "blocked": _blocked(row, smallest, inventory, None, with_fit=False),
         })
+    rows.extend(_ollama_rows(inventory))
     return {"host": host.get("id"), "assumed_context": FIT_CONTEXT, "models": rows}
 
 
@@ -514,4 +647,21 @@ def validate() -> None:
                     raise ValueError(f"{row['id']}/{variant_row['id']}: {file['path']} has no size")
                 if _is_pickle(file["path"]):
                     raise ValueError(f"{row['id']}/{variant_row['id']}: offers a pickle weight")
+    tag_ids = [row["id"] for row in OLLAMA_TAGS]
+    tags = [row["tag"] for row in OLLAMA_TAGS]
+    if len(set(tag_ids)) != len(tag_ids) or len(set(tags)) != len(tags):
+        raise ValueError("duplicate Ollama tag rows")
+    if set(tag_ids) & set(ids):
+        raise ValueError("an Ollama tag row reuses a Hugging Face model id")
+    for row in OLLAMA_TAGS:
+        if not TAG.fullmatch(row["tag"]):
+            raise ValueError(f"{row['tag']}: not an Ollama tag")
+        if row["quant"] not in QUANT:
+            raise ValueError(f"{row['tag']}: unknown quantisation")
+        if not row["bytes"] or row["bytes"] < 0:
+            raise ValueError(f"{row['tag']}: no download size")
+        if not str(row["source_url"]).startswith("https://"):
+            raise ValueError(f"{row['tag']}: no source url")
+        if not str(row["licence"]["url"]).startswith("https://"):
+            raise ValueError(f"{row['tag']}: no licence url")
     return None
