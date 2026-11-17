@@ -26,8 +26,6 @@ STEPS = (
     ("stream_events", streams.STREAM_EVENTS),
 )
 
-DOMAIN_MODULES = (identity, dataset, training, streams)
-
 
 def apply(engine) -> None:
     for table, cols in STEPS:
