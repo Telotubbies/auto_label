@@ -123,6 +123,18 @@ function primary(page: Page, key: string) {
   }
 }
 
+/** The skeleton's blocks in document order: five stat cards, then the queue, the checklist and activity. */
+async function skeletonBlocks(page: Page): Promise<BoundingBox[]> {
+  const blocks = await page.getByLabel('Loading workspace dashboard').locator('.skeleton').evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect()
+      return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
+    }))
+  expect(blocks, 'the skeleton is shaped like the page: five stat cards, the queue, the checklist, the activity list')
+    .toHaveLength(8)
+  return blocks
+}
+
 async function expectNoHorizontalScroll(page: Page, where: string): Promise<void> {
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth)
@@ -231,7 +243,8 @@ async function signUpFresh(page: Page, request: APIRequestContext, label: string
   await page.locator('#signup-name').fill(`Area 1 ${label}`)
   await page.locator('#signup-email').fill(email)
   await page.locator('#signup-password').fill(password)
-  await page.locator('#signup-workspace').fill(`Area 1 ${label} ${runId}`)
+  // T-010 moved the workspace field into `WorkspaceForm`, where the id is generated per mount.
+  await page.getByLabel('Workspace name').fill(`Area 1 ${label} ${runId}`)
   await page.getByRole('button', { name: 'Create account' }).click()
   await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible({ timeout: 30_000 })
 
@@ -574,6 +587,41 @@ test('area 1 states: empty workspace, no-match, loading, error', async ({ page, 
     // asserted after the error state, so one red finding never costs the other evidence.
     loadingAxe = await grade(page, 'home-loading', 1440, 'light')
     flush()
+    // Geometry: the blocks are the page's own regions, not three anonymous slabs. At 1440 the five
+    // stat cards share one row and one width; the checklist holds the narrow right column while the
+    // queue and the activity list take the two wide rows beside it.
+    const wide = await skeletonBlocks(page)
+    const [stat0, stat1, stat2, stat3, stat4, queue, checklist, activity] = wide
+    const stats = [stat0, stat1, stat2, stat3, stat4]
+    expect(new Set(stats.map((b) => b.y)).size, 'the five stat cards share one row at 1440').toBe(1)
+    expect(new Set(stats.map((b) => b.width)).size, 'the five stat cards share one width at 1440').toBe(1)
+    expect(stats[4].x, 'the five stat cards run left to right').toBeGreaterThan(stats[0].x)
+    expect(checklist.x, 'the checklist holds the right column').toBeGreaterThan(queue.x + queue.width)
+    expect(queue.width / checklist.width, 'the queue takes two of the three columns').toBeGreaterThan(1.8)
+    expect(activity.x, 'the activity list sits under the queue').toBe(queue.x)
+    expect(activity.y, 'the activity list sits under the queue').toBeGreaterThan(queue.y)
+    // The same blocks at 375: two stat cards per row, then one full-width region per row. A context
+    // of its own keeps this measurement from touching the page the error state is forced on.
+    const narrowContext = await browser.newContext({ viewport: size(375) })
+    const narrowPage = await narrowContext.newPage()
+    await narrowPage.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
+    await signIn(narrowPage)
+    await endTour(narrowPage)
+    await narrowPage.route(/\/api\/ws\/[^/]+\/home$/, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1_200))
+      await route.continue()
+    }, { times: 1 })
+    await narrowPage.reload()
+    await expect(narrowPage.getByLabel('Loading workspace dashboard')).toBeVisible()
+    const narrow = await skeletonBlocks(narrowPage)
+    const narrowStats = narrow.slice(0, 5)
+    expect(new Set(narrowStats.map((b) => b.y)).size, 'five stat cards fill two per row at 375').toBe(3)
+    expect(narrowStats[1].y, 'the first two stat cards share a row at 375').toBe(narrowStats[0].y)
+    const narrowBody = narrow.slice(5)
+    expect(new Set(narrowBody.map((b) => b.x)).size, 'the three regions are full width at 375').toBe(1)
+    expect(narrowBody[1].y, 'the checklist stacks under the queue at 375').toBeGreaterThan(narrowBody[0].y)
+    expect(narrowBody[2].y, 'the activity list stacks last at 375').toBeGreaterThan(narrowBody[1].y)
+    await narrowContext.close()
     await expect(page.getByRole('heading', { name: 'At a glance', exact: true })).toBeVisible({ timeout: 15_000 })
   })
 
