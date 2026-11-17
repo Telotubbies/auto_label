@@ -7,6 +7,8 @@ import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import { useProject } from './ProjectLayout'
 import { board, overviewFacts, STAGE_ORDER } from './overviewModel'
+import { primary } from './overviewFacts'
+import { OverviewAside } from './OverviewAside'
 import { StageCard } from './StageCard'
 
 /**
@@ -33,14 +35,16 @@ export default function Overview() {
     canDeploy: !perms.ready || perms.can('project.models'),
   })
   const retry = () => { void versions.refetch(); void models.refetch(); void jobs.refetch() }
+  // One primary, named by the project's state and the caller's role; a labeler gets the board.
+  const next = primary(facts, perms.role)
   return (
     <div className="anim-page">
       <PageHeader
         title={project.name}
-        desc={`${typeLabel(project.type)} · ${approved} approved`}
+        desc={`${typeLabel(project.type).toLowerCase()} · ${project.images} uploaded · ${approved} approved`}
         actions={
-          <Button variant="primary" onClick={() => nav(projectPath(ws, project.slug, facts.primary.to))}>
-            {facts.primary.label}
+          <Button variant="primary" onClick={() => nav(projectPath(ws, project.slug, next.to))}>
+            {next.label}
           </Button>
         }
       />
@@ -60,6 +64,20 @@ export default function Overview() {
         <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
           <div />
           <aside className="hidden xl:block" aria-hidden />
+        <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
+          {loading ? (
+            <ol aria-label="Project pipeline" aria-busy="true" className="grid gap-3 md:grid-cols-5">
+              {STAGE_ORDER.map((id) => <li key={id}><Card className="h-[168px] animate-pulse" /></li>)}
+            </ol>
+          ) : (
+            <ol aria-label="Project pipeline" className="grid gap-3 md:grid-cols-5">
+              {board(facts.stages).map((stage) => (
+                <StageCard key={stage.id} stage={stage} ws={ws} project={project.slug} onRetry={retry} />
+              ))}
+            </ol>
+          )}
+          {/* The 360 px column: health, latest run, blockers and activity. Below xl it follows the board. */}
+          <div className="mt-6 xl:mt-0"><OverviewAside ws={ws} project={project} /></div>
         </div>
       </div>
     </div>
