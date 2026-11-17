@@ -97,6 +97,8 @@ def health():
 def files(rel: str, exp: int, sig: str):
     if not check_signature(rel, exp, sig):
         raise HTTPException(403, "link expired")
+    if "\x00" in rel:                       # not a stored path: Path.resolve() raises on a NUL
+        raise HTTPException(404, "file not found")
     f = (DATA_DIR / rel).resolve()
     if DATA_DIR not in f.parents or not f.is_file():
         raise HTTPException(404, "file not found")
