@@ -218,3 +218,28 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ===== Thai-safe two-line clamp (T-473) =====
+   A name wraps to two lines and then stops; the caller shows an explicit "…more" when
+   needsMore() / lineCountFor() in lib/text.ts say the rest does not fit. Put the clamp on the
+   wrapper element, never on the <a>/<button> itself, or the focus ring is clipped.
+   Thai line-height 1.6 comes from :lang(th) above and is not restated here — that rule stays the
+   single source, and a clamp class that sets line-height would silently overrule it. */
+@layer utilities {
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  /* Thai has no word spaces, so a run may break anywhere; Latin words keep their own breaks. */
+  .clamp-th {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+}

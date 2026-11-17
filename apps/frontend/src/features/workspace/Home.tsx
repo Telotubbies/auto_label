@@ -150,10 +150,10 @@ export default function Home() {
                   </div>
                   <div className="mt-1.5 flex items-center gap-1.5 font-bold">
                     {p.visibility === 'public' ? <Globe className="h-3.5 w-3.5 text-muted-foreground" /> : <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
-                    <span className="truncate">{p.name}</span>
+                    <span className="clamp-2" title={p.name}>{p.name}</span>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">Edited {fmtAgo(p.updated)}</div>
-                  <div className="text-xs text-muted-foreground">{p.images} Images · {p.models} Models</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{p.images} Images · {p.models} Models</div>
                 </div>
               </div>
             </Card>
