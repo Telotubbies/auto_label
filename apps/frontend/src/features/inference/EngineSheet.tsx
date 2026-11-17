@@ -14,12 +14,17 @@ import { argvText, engineChoices, installRequest } from './engineRows'
 const EMPTY: Set<string> = new Set()
 const NOTHING = 'Nothing to install.'
 
-/** ApiError carries a string detail; a 409 (busy host or stale plan) gets the sentence the sheet owns. */
+/** ApiError carries a string detail; a 409 (busy host or stale plan) gets the sentence the sheet owns.
+ *  The API also puts the running job's id in the 409 body, so a busy host can offer that job. */
 function inlineError(err: unknown, conflict: string) {
   if (!(err instanceof ApiError)) {
-    return { message: 'The request did not reach the host. Check the connection and try again.', conflict: false }
+    return { message: 'The request did not reach the host. Check the connection and try again.', conflict: false, jobId: '' }
   }
-  return err.status === 409 ? { message: conflict, conflict: true } : { message: err.message, conflict: false }
+  const detail = (err.body as { detail?: { job_id?: unknown } } | undefined)?.detail
+  const jobId = typeof detail?.job_id === 'string' ? detail.job_id : ''
+  return err.status === 409
+    ? { message: conflict, conflict: true, jobId }
+    : { message: err.message, conflict: false, jobId: '' }
 }
 
 export default function EngineSheet({ ws, host, open, onClose, rows = [], selected = EMPTY,
@@ -40,7 +45,7 @@ export default function EngineSheet({ ws, host, open, onClose, rows = [], select
   })
   const [ack, setAck] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<{ message: string; conflict: boolean } | null>(null)
+  const [error, setError] = useState<{ message: string; conflict: boolean; jobId: string } | null>(null)
   const step = plan.data
   const nameOf = (id: string) => rows.find((row) => row.id === id)?.name ?? id
   const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
@@ -144,9 +149,14 @@ export default function EngineSheet({ ws, host, open, onClose, rows = [], select
             <div className="mb-3 space-y-1.5">
               <p role="alert" className="text-sm text-destructive">{error.message}</p>
               {error.conflict && (
-                <Button variant="outline" size="sm" onClick={() => { setError(null); void plan.refetch() }}>
-                  Review the plan again
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {error.jobId && (
+                    <Button variant="outline" size="sm" onClick={onClose}>View job</Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => { setError(null); void plan.refetch() }}>
+                    Review the plan again
+                  </Button>
+                </div>
               )}
             </div>
           )}

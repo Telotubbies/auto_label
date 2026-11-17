@@ -1,0 +1,813 @@
+{
+  "hosts": {
+    "hosts": [
+      {
+        "id": "host-gpu-demo",
+        "host": "gpu-demo",
+        "online": true,
+        "kinds": ["train", "autolabel", "engine_apply", "model_pull"],
+        "current_job": null,
+        "last_seen": 1763500000,
+        "inventory": {
+          "os": "linux",
+          "arch": "x86_64",
+          "python": "3.11.9",
+          "cuda": "12.4",
+          "gpus": [{ "name": "RTX 4090", "vram_mb": 24564, "driver": "550.54", "cuda": "12.4" }],
+          "engines": [{ "id": "ollama", "version": "0.5.4", "runtime": "pip", "ok": true }],
+          "models": [],
+          "disk": { "models_free_gb": 28, "models_total_gb": 80 },
+          "hf_token": true,
+          "allow_install": true,
+          "reasons": {}
+        }
+      }
+    ]
+  },
+  "hostsAfterDownload": {
+    "hosts": [
+      {
+        "id": "host-gpu-demo",
+        "host": "gpu-demo",
+        "online": true,
+        "kinds": ["train", "autolabel", "engine_apply", "model_pull"],
+        "current_job": null,
+        "last_seen": 1763500400,
+        "inventory": {
+          "os": "linux",
+          "arch": "x86_64",
+          "python": "3.11.9",
+          "cuda": "12.4",
+          "gpus": [{ "name": "RTX 4090", "vram_mb": 24564, "driver": "550.54", "cuda": "12.4" }],
+          "engines": [{ "id": "ollama", "version": "0.5.4", "runtime": "pip", "ok": true }],
+          "models": [{ "id": "qwen2.5-vl-7b", "variant": "awq", "bytes": 5905580032, "installed_at": "2026-11-18" }],
+          "disk": { "models_free_gb": 22.5, "models_total_gb": 80 },
+          "hf_token": true,
+          "allow_install": true,
+          "reasons": {}
+        }
+      }
+    ]
+  },
+  "catalog": {
+    "engines": [
+      {
+        "id": "ollama",
+        "name": "Ollama",
+        "summary": "Local runtime for GGUF models and Ollama tags.",
+        "version": "0.5.4",
+        "default": true,
+        "runtimes": ["pip"],
+        "os": ["linux", "macos", "windows"],
+        "accelerator": ["cuda", "cpu"],
+        "min_driver": null,
+        "cuda_min": "12.0",
+        "cuda_max": null,
+        "disk_mb": 1500,
+        "source_url": "https://ollama.com/download",
+        "checked_on": "2026-11-10",
+        "notes": ""
+      },
+      {
+        "id": "vllm",
+        "name": "vLLM",
+        "summary": "High-throughput serving for Hugging Face checkpoints.",
+        "version": "0.6.6",
+        "default": false,
+        "runtimes": ["uv"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.1",
+        "cuda_max": null,
+        "disk_mb": 6400,
+        "source_url": "https://docs.vllm.ai/en/latest/getting_started/installation.html",
+        "checked_on": "2026-11-10",
+        "notes": ""
+      }
+    ],
+    "gpus": [
+      { "id": "rtx4090", "name": "RTX 4090", "vram_gb": 24, "bw_gbs": 1008, "fp16_tflops": 165.2, "source_url": "https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4090/" },
+      { "id": "a100-80", "name": "A100 80 GB", "vram_gb": 80, "bw_gbs": 2039, "fp16_tflops": 312, "source_url": "https://www.nvidia.com/en-us/data-center/a100/" }
+    ],
+    "sources": [
+      "https://blog.eleuther.ai/transformer-math/",
+      "https://kipp.ly/transformer-inference-arithmetic/",
+      "https://docs.vllm.ai/en/latest/features/quantization/"
+    ]
+  },
+  "estimate": {
+    "per_gpu": {
+      "weights_gb": 15.2,
+      "kv_gb": 0.5,
+      "activations_gb": 0.3,
+      "overhead_gb": 1.2,
+      "total_gb": 17.2,
+      "usable_gb": 19.2
+    },
+    "total_gb": 17.2,
+    "fits": true,
+    "verdict": "Fits on this card with 2.0 GB spare.",
+    "throughput": {
+      "memory_bound_tps": 1062,
+      "compute_bound_tps": 1189,
+      "estimate_tps": 900,
+      "low_tps": 676,
+      "high_tps": 1014
+    },
+    "ttft_ms": 180,
+    "assumptions": [
+      "BF16 weights use 2 bytes per parameter.",
+      "KV cache at 8192 tokens: 28 layers x 4 KV heads x 128 head dim.",
+      "20% of the card is reserved for the framework and fragmentation."
+    ],
+    "sources": [
+      "https://blog.eleuther.ai/transformer-math/",
+      "https://kipp.ly/transformer-inference-arithmetic/",
+      "https://docs.vllm.ai/en/latest/features/quantization/"
+    ]
+  },
+  "engines": {
+    "host": {
+      "id": "host-gpu-demo",
+      "host": "gpu-demo",
+      "online": true,
+      "kinds": ["train", "autolabel", "engine_apply", "model_pull"],
+      "current_job": null,
+      "last_seen": 1763500000,
+      "inventory": {
+        "os": "linux",
+        "arch": "x86_64",
+        "python": "3.11.9",
+        "cuda": "12.4",
+        "gpus": [{ "name": "RTX 4090", "vram_mb": 24564, "driver": "550.54", "cuda": "12.4" }],
+        "engines": [{ "id": "ollama", "version": "0.5.4", "runtime": "pip", "ok": true }],
+        "models": [],
+        "disk": { "models_free_gb": 28, "models_total_gb": 80 },
+        "hf_token": true,
+        "allow_install": true,
+        "reasons": {}
+      }
+    },
+    "engines": [
+      {
+        "id": "ollama",
+        "name": "Ollama",
+        "summary": "Local runtime for GGUF models and Ollama tags.",
+        "version": "0.5.4",
+        "default": true,
+        "runtimes": ["pip"],
+        "os": ["linux", "macos", "windows"],
+        "accelerator": ["cuda", "cpu"],
+        "min_driver": null,
+        "cuda_min": "12.0",
+        "cuda_max": null,
+        "disk_mb": 1500,
+        "source_url": "https://ollama.com/download",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": true,
+        "compatibility": { "status": "ok", "reasons": [], "warnings": [] },
+        "disk_after_gb": 26.5
+      },
+      {
+        "id": "vllm",
+        "name": "vLLM",
+        "summary": "High-throughput serving for Hugging Face checkpoints.",
+        "version": "0.6.6",
+        "default": false,
+        "runtimes": ["uv"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.1",
+        "cuda_max": null,
+        "disk_mb": 6400,
+        "source_url": "https://docs.vllm.ai/en/latest/getting_started/installation.html",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": false,
+        "compatibility": { "status": "ok", "reasons": [], "warnings": [] },
+        "disk_after_gb": 21.8
+      },
+      {
+        "id": "sglang",
+        "name": "SGLang",
+        "summary": "Structured generation for chat and vision models.",
+        "version": "0.4.4",
+        "default": false,
+        "runtimes": ["uv"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.1",
+        "cuda_max": null,
+        "disk_mb": 5800,
+        "source_url": "https://docs.sglang.ai/start/install.html",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": false,
+        "compatibility": { "status": "ok", "reasons": [], "warnings": [] },
+        "disk_after_gb": 22.3
+      },
+      {
+        "id": "tensorrtllm",
+        "name": "TensorRT-LLM",
+        "summary": "Compiled kernels for NVIDIA cards.",
+        "version": "0.17.0",
+        "default": false,
+        "runtimes": ["docker"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.4",
+        "cuda_max": null,
+        "disk_mb": 12000,
+        "source_url": "https://nvidia.github.io/TensorRT-LLM/installation/linux.html",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": false,
+        "compatibility": {
+          "status": "blocked",
+          "reasons": ["Driver 535.54 or newer is required; the host reports 525.60."],
+          "warnings": []
+        },
+        "disk_after_gb": null
+      }
+    ]
+  },
+  "enginesAfterInstall": {
+    "host": {
+      "id": "host-gpu-demo",
+      "host": "gpu-demo",
+      "online": true,
+      "kinds": ["train", "autolabel", "engine_apply", "model_pull"],
+      "current_job": null,
+      "last_seen": 1763500200,
+      "inventory": {
+        "os": "linux",
+        "arch": "x86_64",
+        "python": "3.11.9",
+        "cuda": "12.4",
+        "gpus": [{ "name": "RTX 4090", "vram_mb": 24564, "driver": "550.54", "cuda": "12.4" }],
+        "engines": [
+          { "id": "ollama", "version": "0.5.4", "runtime": "pip", "ok": true },
+          { "id": "vllm", "version": "0.6.6", "runtime": "uv", "ok": true }
+        ],
+        "models": [],
+        "disk": { "models_free_gb": 21.8, "models_total_gb": 80 },
+        "hf_token": true,
+        "allow_install": true,
+        "reasons": {}
+      }
+    },
+    "engines": [
+      {
+        "id": "ollama",
+        "name": "Ollama",
+        "summary": "Local runtime for GGUF models and Ollama tags.",
+        "version": "0.5.4",
+        "default": true,
+        "runtimes": ["pip"],
+        "os": ["linux", "macos", "windows"],
+        "accelerator": ["cuda", "cpu"],
+        "min_driver": null,
+        "cuda_min": "12.0",
+        "cuda_max": null,
+        "disk_mb": 1500,
+        "source_url": "https://ollama.com/download",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": true,
+        "compatibility": { "status": "ok", "reasons": [], "warnings": [] },
+        "disk_after_gb": 26.5
+      },
+      {
+        "id": "vllm",
+        "name": "vLLM",
+        "summary": "High-throughput serving for Hugging Face checkpoints.",
+        "version": "0.6.6",
+        "default": false,
+        "runtimes": ["uv"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.1",
+        "cuda_max": null,
+        "disk_mb": 6400,
+        "source_url": "https://docs.vllm.ai/en/latest/getting_started/installation.html",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": true,
+        "compatibility": { "status": "ok", "reasons": [], "warnings": [] },
+        "disk_after_gb": 15.5
+      },
+      {
+        "id": "sglang",
+        "name": "SGLang",
+        "summary": "Structured generation for chat and vision models.",
+        "version": "0.4.4",
+        "default": false,
+        "runtimes": ["uv"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.1",
+        "cuda_max": null,
+        "disk_mb": 5800,
+        "source_url": "https://docs.sglang.ai/start/install.html",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": false,
+        "compatibility": { "status": "ok", "reasons": [], "warnings": [] },
+        "disk_after_gb": 16.1
+      },
+      {
+        "id": "tensorrtllm",
+        "name": "TensorRT-LLM",
+        "summary": "Compiled kernels for NVIDIA cards.",
+        "version": "0.17.0",
+        "default": false,
+        "runtimes": ["docker"],
+        "os": ["linux"],
+        "accelerator": ["cuda"],
+        "min_driver": "535.54",
+        "cuda_min": "12.4",
+        "cuda_max": null,
+        "disk_mb": 12000,
+        "source_url": "https://nvidia.github.io/TensorRT-LLM/installation/linux.html",
+        "checked_on": "2026-11-10",
+        "notes": "",
+        "installed": false,
+        "compatibility": {
+          "status": "blocked",
+          "reasons": ["Driver 535.54 or newer is required; the host reports 525.60."],
+          "warnings": []
+        },
+        "disk_after_gb": null
+      }
+    ]
+  },
+  "enginePlan": {
+    "plan_id": "plan-engines-vllm",
+    "host": "host-gpu-demo",
+    "steps": [
+      {
+        "id": "vllm",
+        "version": "0.6.6",
+        "runtime": "uv",
+        "status": "install",
+        "argv": [["uv", "pip", "install", "--python", ".venv/bin/python", "vllm==0.6.6"]],
+        "disk_mb": 6400
+      }
+    ],
+    "total_disk_mb": 6400,
+    "disk_free_gb": 28,
+    "disk_after_gb": 21.8,
+    "warnings": [],
+    "blocked": [],
+    "noop": false
+  },
+  "sglangPlan": {
+    "plan_id": "plan-engines-sglang",
+    "host": "host-gpu-demo",
+    "steps": [
+      {
+        "id": "sglang",
+        "version": "0.4.4",
+        "runtime": "uv",
+        "status": "install",
+        "argv": [["uv", "pip", "install", "--python", ".venv/bin/python", "sglang[all]==0.4.4"]],
+        "disk_mb": 5800
+      }
+    ],
+    "total_disk_mb": 5800,
+    "disk_free_gb": 28,
+    "disk_after_gb": 22.3,
+    "warnings": [],
+    "blocked": [],
+    "noop": false
+  },
+  "installQueued": {
+    "id": "job-engine-1",
+    "kind": "engine_apply",
+    "status": "queued",
+    "progress": 0,
+    "phase": "",
+    "log": [],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "install",
+    "result": { "engines": [] },
+    "created": 1763500100,
+    "finished": null
+  },
+  "installRunning": {
+    "id": "job-engine-1",
+    "kind": "engine_apply",
+    "status": "running",
+    "progress": 43,
+    "phase": "installing vLLM",
+    "log": [
+      "resolved pinned vllm 0.6.6",
+      "created the engine's own venv",
+      "installing vllm 0.6.6"
+    ],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "install",
+    "result": { "engines": [] },
+    "created": 1763500100,
+    "finished": null
+  },
+  "installDone": {
+    "id": "job-engine-1",
+    "kind": "engine_apply",
+    "status": "done",
+    "progress": 100,
+    "phase": "done",
+    "log": [
+      "resolved pinned vllm 0.6.6",
+      "created the engine's own venv",
+      "installing vllm 0.6.6",
+      "recorded the installed version",
+      "installed vllm 0.6.6"
+    ],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "install",
+    "result": { "engines": [{ "id": "vllm", "version": "0.6.6", "runtime": "uv" }] },
+    "created": 1763500100,
+    "finished": 1763500180
+  },
+  "busyJob": {
+    "id": "job-engine-busy",
+    "kind": "engine_apply",
+    "status": "running",
+    "progress": 61,
+    "phase": "installing vLLM",
+    "log": ["resolved pinned vllm 0.6.6", "installing vllm 0.6.6"],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "install",
+    "result": { "engines": [] },
+    "created": 1763499900,
+    "finished": null
+  },
+  "models": {
+    "host": "gpu-demo",
+    "assumed_context": 8192,
+    "models": [
+      {
+        "id": "qwen2.5-vl-7b",
+        "name": "Qwen2.5-VL 7B",
+        "family": "Qwen2.5-VL",
+        "repo": "Qwen/Qwen2.5-VL-7B-Instruct",
+        "revision": "1e3f5d1",
+        "ollama_tag": null,
+        "params_b": 7.6,
+        "context_max": 32768,
+        "licence": {
+          "name": "Apache-2.0",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+          "gated": false,
+          "non_commercial": false
+        },
+        "engine": ["vllm"],
+        "safetensors_only": true,
+        "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+        "checked_on": "2026-11-10",
+        "variants": [
+          {
+            "id": "bf16",
+            "quant": "BF16",
+            "format": "safetensors",
+            "engine": "vllm",
+            "bytes": 16106127360,
+            "vram_gb": 19.5,
+            "fits": true,
+            "fit_verdict": "Fits on this host at 8192 context.",
+            "assumed_context": 8192,
+            "installed": false,
+            "blocked": []
+          },
+          {
+            "id": "awq",
+            "quant": "AWQ",
+            "format": "safetensors",
+            "engine": "vllm",
+            "bytes": 5905580032,
+            "vram_gb": 7.4,
+            "fits": true,
+            "fit_verdict": "Fits on this host at 8192 context.",
+            "assumed_context": 8192,
+            "installed": false,
+            "blocked": []
+          }
+        ],
+        "installed": false,
+        "fits": true,
+        "blocked": []
+      },
+      {
+        "id": "llama-3.1-8b",
+        "name": "Llama 3.1 8B",
+        "family": "Llama 3.1",
+        "repo": "meta-llama/Llama-3.1-8B-Instruct",
+        "revision": "0e9e39f",
+        "ollama_tag": null,
+        "params_b": 8,
+        "context_max": 131072,
+        "licence": {
+          "name": "Llama 3.1 Community",
+          "url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+          "gated": true,
+          "non_commercial": false
+        },
+        "engine": ["vllm"],
+        "safetensors_only": true,
+        "source_url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+        "checked_on": "2026-11-10",
+        "variants": [
+          {
+            "id": "bf16",
+            "quant": "BF16",
+            "format": "safetensors",
+            "engine": "vllm",
+            "bytes": 17179869184,
+            "vram_gb": 21,
+            "fits": true,
+            "fit_verdict": "Fits on this host at 8192 context.",
+            "assumed_context": 8192,
+            "installed": false,
+            "blocked": []
+          }
+        ],
+        "installed": false,
+        "fits": true,
+        "blocked": []
+      }
+    ]
+  },
+  "modelsAfterDownload": {
+    "host": "gpu-demo",
+    "assumed_context": 8192,
+    "models": [
+      {
+        "id": "qwen2.5-vl-7b",
+        "name": "Qwen2.5-VL 7B",
+        "family": "Qwen2.5-VL",
+        "repo": "Qwen/Qwen2.5-VL-7B-Instruct",
+        "revision": "1e3f5d1",
+        "ollama_tag": null,
+        "params_b": 7.6,
+        "context_max": 32768,
+        "licence": {
+          "name": "Apache-2.0",
+          "url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+          "gated": false,
+          "non_commercial": false
+        },
+        "engine": ["vllm"],
+        "safetensors_only": true,
+        "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+        "checked_on": "2026-11-10",
+        "variants": [
+          {
+            "id": "bf16",
+            "quant": "BF16",
+            "format": "safetensors",
+            "engine": "vllm",
+            "bytes": 16106127360,
+            "vram_gb": 19.5,
+            "fits": true,
+            "fit_verdict": "Fits on this host at 8192 context.",
+            "assumed_context": 8192,
+            "installed": false,
+            "blocked": []
+          },
+          {
+            "id": "awq",
+            "quant": "AWQ",
+            "format": "safetensors",
+            "engine": "vllm",
+            "bytes": 5905580032,
+            "vram_gb": 7.4,
+            "fits": true,
+            "fit_verdict": "Fits on this host at 8192 context.",
+            "assumed_context": 8192,
+            "installed": true,
+            "blocked": []
+          }
+        ],
+        "installed": true,
+        "fits": true,
+        "blocked": []
+      },
+      {
+        "id": "llama-3.1-8b",
+        "name": "Llama 3.1 8B",
+        "family": "Llama 3.1",
+        "repo": "meta-llama/Llama-3.1-8B-Instruct",
+        "revision": "0e9e39f",
+        "ollama_tag": null,
+        "params_b": 8,
+        "context_max": 131072,
+        "licence": {
+          "name": "Llama 3.1 Community",
+          "url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+          "gated": true,
+          "non_commercial": false
+        },
+        "engine": ["vllm"],
+        "safetensors_only": true,
+        "source_url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+        "checked_on": "2026-11-10",
+        "variants": [
+          {
+            "id": "bf16",
+            "quant": "BF16",
+            "format": "safetensors",
+            "engine": "vllm",
+            "bytes": 17179869184,
+            "vram_gb": 21,
+            "fits": true,
+            "fit_verdict": "Fits on this host at 8192 context.",
+            "assumed_context": 8192,
+            "installed": false,
+            "blocked": []
+          }
+        ],
+        "installed": false,
+        "fits": true,
+        "blocked": []
+      }
+    ]
+  },
+  "modelPlan": {
+    "plan_id": "plan-model-qwen-awq",
+    "model": "qwen2.5-vl-7b",
+    "variant": "awq",
+    "files": [
+      { "path": "model-00001-of-00002.safetensors", "bytes": 4000000000, "sha256": "9f2a" },
+      { "path": "model-00002-of-00002.safetensors", "bytes": 1905579000, "sha256": "1b7c" },
+      { "path": "config.json", "bytes": 1032, "sha256": "44de" }
+    ],
+    "total_bytes": 5905580032,
+    "disk_free_gb": 28,
+    "disk_after_gb": 22.5,
+    "gate": {
+      "gated": false,
+      "licence": "Apache-2.0",
+      "url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+      "non_commercial": false
+    },
+    "token_present": true,
+    "blocked": [],
+    "warnings": [],
+    "fit": {
+      "fits": true,
+      "total_gb": 7.4,
+      "usable_gb": 21.9,
+      "shortfall_gb": 0,
+      "verdict": "Fits on this host at 8192 context."
+    }
+  },
+  "shortfallPlan": {
+    "plan_id": "plan-model-qwen-bf16",
+    "model": "qwen2.5-vl-7b",
+    "variant": "bf16",
+    "files": [
+      { "path": "model-00001-of-00004.safetensors", "bytes": 44023414784, "sha256": "5a0e" }
+    ],
+    "total_bytes": 44023414784,
+    "disk_free_gb": 28,
+    "disk_after_gb": null,
+    "gate": {
+      "gated": false,
+      "licence": "Apache-2.0",
+      "url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+      "non_commercial": false
+    },
+    "token_present": true,
+    "blocked": [],
+    "warnings": [],
+    "fit": {
+      "fits": true,
+      "total_gb": 19.5,
+      "usable_gb": 21.9,
+      "shortfall_gb": 0,
+      "verdict": "Fits on this host at 8192 context."
+    }
+  },
+  "gatedPlan": {
+    "plan_id": "plan-model-llama-bf16",
+    "model": "llama-3.1-8b",
+    "variant": "bf16",
+    "files": [
+      { "path": "model-00001-of-00004.safetensors", "bytes": 17179869184, "sha256": "7c1d" }
+    ],
+    "total_bytes": 17179869184,
+    "disk_free_gb": 28,
+    "disk_after_gb": 12,
+    "gate": {
+      "gated": true,
+      "licence": "Llama 3.1 Community",
+      "url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+      "non_commercial": false
+    },
+    "token_present": false,
+    "blocked": [],
+    "warnings": [],
+    "fit": null
+  },
+  "downloadQueued": {
+    "id": "job-model-1",
+    "kind": "model_pull",
+    "status": "queued",
+    "progress": 0,
+    "phase": "",
+    "log": [],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "pull",
+    "result": { "engines": [] },
+    "created": 1763500300,
+    "finished": null
+  },
+  "downloadRunning": {
+    "id": "job-model-1",
+    "kind": "model_pull",
+    "status": "running",
+    "progress": 43,
+    "phase": "downloading qwen2.5-vl-7b",
+    "log": ["resumed at 2516582400 bytes", "downloading model-00002-of-00002.safetensors"],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "pull",
+    "result": { "engines": [] },
+    "created": 1763500300,
+    "finished": null
+  },
+  "downloadDone": {
+    "id": "job-model-1",
+    "kind": "model_pull",
+    "status": "done",
+    "progress": 100,
+    "phase": "done",
+    "log": [
+      "resumed at 2516582400 bytes",
+      "downloading model-00002-of-00002.safetensors",
+      "checksum verified",
+      "pulled qwen2.5-vl-7b awq"
+    ],
+    "error": "",
+    "host": "gpu-demo",
+    "action": "pull",
+    "result": { "engines": [] },
+    "created": 1763500300,
+    "finished": 1763500380
+  },
+  "segmentation": {
+    "models": [
+      {
+        "id": "sam3.1",
+        "name": "SAM 3.1",
+        "family": "SAM",
+        "params_m": 900,
+        "licence": {
+          "name": "SAM License",
+          "url": "https://github.com/facebookresearch/sam3",
+          "non_commercial": false
+        },
+        "vram": { "512": 2200, "1024": 6400 },
+        "engine": "sam3",
+        "source_url": "https://github.com/facebookresearch/sam3",
+        "note": "",
+        "provisioned": { "ok": true, "reason": "Ready" },
+        "auto_label": { "ref": "sam3:sam3.1", "engine_hint": "sam3", "classes_required": true }
+      },
+      {
+        "id": "mask2former",
+        "name": "Mask2Former",
+        "family": "MaskFormer",
+        "params_m": 216,
+        "licence": {
+          "name": "MIT",
+          "url": "https://github.com/facebookresearch/Mask2Former",
+          "non_commercial": false
+        },
+        "vram": { "512": 1600, "1024": 4800 },
+        "engine": "torch",
+        "source_url": "https://github.com/facebookresearch/Mask2Former",
+        "note": "",
+        "provisioned": {
+          "ok": false,
+          "reason": "Missing checkpoint: set LD_MASK2FORMER_ROOT to a checkout with weights/"
+        },
+        "auto_label": { "ref": null, "engine_hint": "torch", "classes_required": true }
+      }
+    ],
+    "project": null
+  }
+}
