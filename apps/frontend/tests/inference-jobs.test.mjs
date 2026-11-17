@@ -58,3 +58,14 @@ test('test_cancel_needs_a_confirm', () => {
   assert.match(text, /gpu-1/)
   assert.match(text, /environment is removed/)
 })
+
+test('test_a_pull_job_says_pull_not_install', () => {
+  assert.equal(jobCopy(job({ status: 'queued', action: 'pull', phase: '' })),
+    'Pull queued on gpu-1.')
+  assert.equal(jobCopy(job({ status: 'running', action: 'pull', phase: 'pulling qwen3-4b' })),
+    'Pulling qwen3-4b.')
+  assert.equal(jobCopy(job({ status: 'done', action: 'pull' })), 'Model pulled on gpu-1.')
+  assert.match(jobCopy(job({ status: 'failed', action: 'pull', error: 'x' })), /^Pull failed: x/)
+  assert.equal(cancelCopy('gpu-1', 'pull'),
+    'Stop this pull on gpu-1? The partial model is removed.')
+})
