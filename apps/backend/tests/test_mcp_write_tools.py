@@ -217,6 +217,18 @@ def test_a_write_key_gets_the_routes_403():
     assert "api_key lacks the 'train' scope (HTTP 403)" in text_of(result)
 
 
+def test_the_workspace_switch_refuses_every_write_tool():
+    api, seen = api_with(mcp=False)
+
+    for name, args in dry_calls(api).items():
+        result = call(api, name, args)
+
+        assert result.is_error is True, name
+        assert "the MCP endpoint is not enabled for this workspace" in text_of(result), name
+
+    assert [r.method for r in seen if r.method in ("POST", "PUT", "PATCH")] == []
+
+
 # --- the live layer: the real writes, the real charges, the workspace boundary --------------
 
 WS, OTHER = "mcp-write-ws", "mcp-write-other"
