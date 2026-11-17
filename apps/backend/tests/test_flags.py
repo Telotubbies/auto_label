@@ -36,6 +36,7 @@ SURFACES = {
     "task_34",
     "task_36",
     "task_38",
+    "task_inference",
 }
 
 
@@ -181,6 +182,14 @@ def test_require_flag_unknown_key_is_404():
 
 def test_registry_names_every_shipped_surface():
     assert SURFACES <= set(flags.FLAGS)
+
+
+def test_task_inference_is_registered(admin):
+    """T-1000: the hub's flag is a known surface, so an admin can turn it on for a workspace."""
+    assert "task_inference" in flags.FLAGS
+    assert "Inference hub" in flags.FLAGS["task_inference"]
+    assert admin.put(f"/api/ws/{WS}/flags/task_inference", json={"enabled": True}).status_code == 200
+    assert admin.get(f"/api/ws/{WS}/flags").json()["enabled"] == ["task_inference"]
 
 
 def test_streams_surface_is_gated_until_enabled(admin):
