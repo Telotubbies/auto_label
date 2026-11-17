@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, FileArchive, FolderUp, ImagePlus, TriangleAlert, UploadCloud, X } from 'lucide-react'
-import { api, post, upload } from '@/lib/api'
+import { api, fileUrl, post, upload } from '@/lib/api'
 import { projectPath } from '@/lib/routes'
 import { Badge, Button, Card, Field, Input, PageHeader, Progress, Select, Switch, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -61,8 +61,13 @@ export default function Upload() {
   const [prog, setProg] = useState(0)
   const [done, setDone] = useState<UploadSummary | null>(null)
   const [drag, setDrag] = useState(false)
+  const [demoBusy, setDemoBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const dirRef = useRef<HTMLInputElement>(null)
+  // The cap the upload route enforces: the public config publishes that one constant, so the copy
+  // here can never disagree with the 413 a buyer would hit.
+  const cfg = useQuery({ queryKey: ['public-config'], queryFn: api.config, staleTime: 5 * 60_000 })
+  const capMb = cfg.data?.max_upload_mb
 
   const add = async (list: File[]) => {
     const picked = list.filter((f) => IMG.test(f.name) || ANN.test(f.name) || /\.zip$/i.test(f.name))
@@ -130,6 +135,24 @@ export default function Upload() {
     } finally { setBusy(false); setProg(100) }
   }
 
+  // T-1105: the demo set is the sample path the workspace already ships — the seeded project's
+  // annotated images — fetched into this batch. No second demo endpoint, no bundled copy.
+  const addDemo = async () => {
+    setDemoBusy(true)
+    try {
+      const { samples } = await api.playgroundSamples(ws, 6)
+      if (!samples.length) { toast.err('No demo images in this workspace yet'); return }
+      const demoFiles = await Promise.all(samples.map(async (s) => {
+        const res = await fetch(fileUrl(s.thumbnail))
+        if (!res.ok) throw new Error('sample image unavailable')
+        return new File([await res.blob()], s.name, { type: 'image/jpeg' })
+      }))
+      await add(demoFiles)
+    } catch {
+      toast.err('Could not load the demo set — try again')
+    } finally { setDemoBusy(false) }
+  }
+
   const imgs = files.filter((f) => IMG.test(f.path))
   const dups = imgs.filter((f) => f.dup).length
   const annFiles = files.filter((f) => ANN.test(f.path)).length
@@ -146,47 +169,57 @@ export default function Upload() {
           className={cn('flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors', drag ? 'border-primary bg-accent/40' : 'bg-muted/40')}>
           <UploadCloud className="mb-3 h-10 w-10 text-primary" />
           <p className="font-semibold">Drag and drop images, folders or zips</p>
-          <p className="mb-4 text-sm text-muted-foreground">Duplicates (by SHA-256) are skipped automatically.</p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => fileRef.current?.click()}><ImagePlus className="h-4 w-4" /> Select Files</Button>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {capMb ? `Up to ${capMb} MB per upload · ` : ''}duplicates (by SHA-256) are skipped automatically.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant={files.length ? 'outline' : 'primary'} onClick={() => fileRef.current?.click()}><ImagePlus className="h-4 w-4" /> Select Files</Button>
             <Button variant="outline" onClick={() => dirRef.current?.click()}><FolderUp className="h-4 w-4" /> Select Folder</Button>
           </div>
+          <Button variant="ghost" size="sm" className="mt-2" disabled={demoBusy || busy} onClick={addDemo}>
+            {demoBusy ? 'Loading the demo set…' : 'Start from the demo set'}
+          </Button>
           <input ref={fileRef} type="file" multiple hidden accept="image/*,.zip,.json,.txt,.xml,.yaml,.yml" onChange={(e) => { add([...(e.target.files ?? [])]); e.target.value = '' }} />
           <input ref={dirRef} type="file" multiple hidden {...({ webkitdirectory: '' } as any)} onChange={(e) => { add([...(e.target.files ?? [])]); e.target.value = '' }} />
         </div>
 
-        {files.length > 0 && (
-          <Card className="p-5">
-            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-              <Badge>{imgs.length - dups} new images</Badge>
-              {dups > 0 && <Badge className="bg-warning/15 text-warning">{dups} duplicates skipped</Badge>}
-              {annFiles > 0 && <Badge className="bg-success/15 text-success">{annFiles} annotation files</Badge>}
-              {zips > 0 && <Badge><FileArchive className="h-3 w-3" /> {zips} zip</Badge>}
-              <button className="ml-auto cursor-pointer text-xs text-muted-foreground hover:text-foreground" onClick={() => setFiles([])}><X className="inline h-3 w-3" /> Clear</button>
-            </div>
-            <div className="grid gap-4 md:grid-cols-4">
-              <Field label="Batch name"><Input placeholder="Uploaded on …" value={batch} onChange={(e) => setBatch(e.target.value)} /></Field>
-              <Field label="Train / Valid / Test">
-                <Select className="w-full" value={split} onChange={(e) => setSplit(e.target.value)}>
-                  <option value="auto">Auto 70 / 20 / 10</option><option value="keep">Use folder names (train/valid/test)</option>
-                  <option value="train">All Train</option><option value="valid">All Valid</option><option value="test">All Test</option>
-                </Select>
-              </Field>
-              <Field label="Tags" hint="Comma separated"><Input placeholder="site-a, night" value={tags} onChange={(e) => setTags(e.target.value)} /></Field>
-              <Field label="Pre-labeled images" hint={toDataset ? 'Go straight to the Dataset' : 'Go to Review on the Annotate board'}>
-                <div className="flex h-9 items-center gap-2 text-sm"><Switch checked={toDataset} onChange={setToDataset} /> Add to dataset</div>
-              </Field>
-            </div>
-            <div className="mt-3 max-h-40 overflow-y-auto rounded border bg-muted/30 p-2 font-mono text-[11px] text-muted-foreground">
-              {files.slice(0, 300).map((f, i) => <div key={i} className={cn(f.dup && 'line-through opacity-60')}>{f.path}</div>)}
-              {files.length > 300 && <div>… and {files.length - 300} more</div>}
-            </div>
-            {busy && <Progress className="mt-4" value={prog} />}
+        {/* T-1105: a batch is named and split before the files land, so these controls are always here. */}
+        <Card className="p-5">
+          <div className="grid gap-4 md:grid-cols-4">
+            <Field label="Batch name"><Input placeholder="Uploaded on …" value={batch} onChange={(e) => setBatch(e.target.value)} /></Field>
+            <Field label="Train / Valid / Test">
+              <Select className="w-full" value={split} onChange={(e) => setSplit(e.target.value)}>
+                <option value="auto">Auto 70 / 20 / 10</option><option value="keep">Use folder names (train/valid/test)</option>
+                <option value="train">All Train</option><option value="valid">All Valid</option><option value="test">All Test</option>
+              </Select>
+            </Field>
+            <Field label="Tags" hint="Comma separated"><Input placeholder="site-a, night" value={tags} onChange={(e) => setTags(e.target.value)} /></Field>
+            <Field label="Pre-labeled images" hint={toDataset ? 'Go straight to the Dataset' : 'Go to Review on the Annotate board'}>
+              <div className="flex h-9 items-center gap-2 text-sm"><Switch checked={toDataset} onChange={setToDataset} /> Add to dataset</div>
+            </Field>
+          </div>
+          {files.length > 0 && (
+            <>
+              <div className="mb-4 mt-4 flex flex-wrap items-center gap-2 text-sm">
+                <Badge>{imgs.length - dups} new images</Badge>
+                {dups > 0 && <Badge className="bg-warning/15 text-warning">{dups} duplicates skipped</Badge>}
+                {annFiles > 0 && <Badge className="bg-success/15 text-success">{annFiles} annotation files</Badge>}
+                {zips > 0 && <Badge><FileArchive className="h-3 w-3" /> {zips} zip</Badge>}
+                <button className="ml-auto cursor-pointer text-xs text-muted-foreground hover:text-foreground" onClick={() => setFiles([])}><X className="inline h-3 w-3" /> Clear</button>
+              </div>
+              <div className="mt-3 max-h-40 overflow-y-auto rounded border bg-muted/30 p-2 font-mono text-[11px] text-muted-foreground">
+                {files.slice(0, 300).map((f, i) => <div key={i} className={cn(f.dup && 'line-through opacity-60')}>{f.path}</div>)}
+                {files.length > 300 && <div>… and {files.length - 300} more</div>}
+              </div>
+            </>
+          )}
+          {busy && <Progress className="mt-4" value={prog} />}
+          {files.length > 0 && (
             <div className="mt-4 flex justify-end">
               <Button disabled={busy || (imgs.length - dups === 0 && !zips)} onClick={start}>{busy ? `Uploading ${Math.round(prog)}%` : 'Save and Continue'}</Button>
             </div>
-          </Card>
-        )}
+          )}
+        </Card>
 
         {done && (
           <Card data-testid="upload-summary" className="flex flex-wrap items-start gap-4 p-5">

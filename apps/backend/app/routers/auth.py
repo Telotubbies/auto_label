@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .. import mailer, oidc, totp
-from ..config import PUBLIC_URL, SIGNUP_ENABLED
+from ..config import MAX_UPLOAD_MB, PUBLIC_URL, SIGNUP_ENABLED
 from ..db import get_db
 from ..deps import audit, current_user, plan
 from ..models import EmailToken, Invite, LoginEvent, Member, RefreshToken, User, Workspace
@@ -144,6 +144,7 @@ def _revoke_other_sessions(db: Session, u: User, request: Request):
 @router.get("/config")
 def public_config():
     return {"signup_enabled": SIGNUP_ENABLED, "oidc": {"issuer": oidc.ISSUER or None, "client_id": oidc.CLIENT_ID or None},
+            "max_upload_mb": MAX_UPLOAD_MB,
             "sam": segment.sam_status(),
             "vlm": {"configured": capabilities.vlm_configured()},
             "addons": {"available": capabilities.addons_available()}}
