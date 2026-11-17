@@ -1,12 +1,15 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
+import { setFlags } from './fixtures/harness'
 
 const WS = 'labeldesk-demo'
 const PR = 'ppe-detection'
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'one.jpg')
 const VERSION = 'T-008 core loop'
 
-test('core loop: sign in → project → upload → annotate → version → train entry → deploy', async ({ page }) => {
+test('core loop: sign in → project → upload → annotate → version → train entry → deploy', async ({ page, request }) => {
+  // This loop pins the v2 shell; other specs turn ui_v3 on, so it says so instead of inheriting it.
+  await setFlags(request, ['task_470'], false)
   const consoleErrors: string[] = []
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
   page.on('pageerror', (e) => consoleErrors.push(e.message))

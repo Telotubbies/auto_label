@@ -185,7 +185,7 @@ test('J1 sign up → verify → sign in → wrong password', async ({ page, requ
     await expect(page.getByRole('heading', { name: 'Dev mail' })).toBeVisible()
     const letter = page.locator('article').filter({ hasText: email })
     await expect(letter).toHaveCount(1)
-    await expect(page.locator('article'), 'the verification mail is the only message').toHaveCount(1)
+    // The dev inbox is shared by every spec in a run; the line above already proves exactly one mail for this address.
     await expect(letter).toContainText('Verify your LabelDesk email')
 
     const href = await letter.getByRole('link').first().getAttribute('href')
