@@ -1,5 +1,4 @@
 """LabelDesk API.  Dev: `uvicorn app.main:app --reload --port 8010` from apps/backend."""
-import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -14,11 +13,12 @@ from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 from .bootstrap import init_db
 from .config import CORS_ORIGINS, DATA_DIR, EMBEDDED_WORKER
 from .gpu import GpuBusy
+from .logging_setup import RequestLogMiddleware, install
 from .routers import include_routers
 from .security import check_signature
 from .services.streamaudit import StreamViewAuditMiddleware
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+install()
 
 
 @asynccontextmanager
@@ -77,6 +77,8 @@ async def security_headers(request, call_next):
 
 
 include_routers(app)
+# Inside the security headers, so a 500 it builds still gets them; outside CORS and the routes.
+app.add_middleware(RequestLogMiddleware)
 # PDPA: every request for stream footage lands in the audit log (signed URLs carry no session cookie).
 app.add_middleware(StreamViewAuditMiddleware)
 
