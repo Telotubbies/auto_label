@@ -203,6 +203,8 @@ Waves are ordered by user value, but three structural facts decide the real sche
 
 ```
 Phase 0  G  T-001…T-007        regression guards, baseline green (19 h)
+Phase 0b G2 T-520…T-525        UI clean-up from the design audit          (12 h)
+Phase 0c G3 T-050…T-059        code clean-up: lint gate, dead code, duplicates (22 h)
 Phase 1  E  E-frame (17)       tokens, routes /p/, rails, stage frame, top bar, palette  (43 h)
 Phase 2  A  47 cards           trial blockers                        (132.5 h)
 Phase 3  B  149 cards          editor / train / eval / workflow core (419 h)
@@ -351,6 +353,74 @@ Test-only cards. Land them first: they pin the 72 HAVE flows so the 260+ later c
 | [T-005](T-005.md) | Guard area 5: model table, train entry, evaluation, alias | `5-F5.1`, `5-F5.2`, `5-F5.12`, `5-F5.16`, `5-F5.18`, `5-F5.20`, `5-F5.23`, `5-F5.35`, `5-F5.38`, `5-F5.39`, `5-F5.43`, `5-F5.44`, `5-F5.47`, `5-F5.50`, `5-F5.52` | 3 | no | none (land before the first area-5 card) |
 | [T-006](T-006.md) | Guard area 6: deploy threshold, workflow blocks, zones | `6-F6.9`, `6-F6.11`, `6-F6.22`, `6-F6.35`, `6-F6.43` | 2.5 | no | none (land before the first area-6 card) |
 | [T-007](T-007.md) | Guard area 7: membership removal, usage limits, keys, first run | `7-F7.7`, `7-F7.15`, `7-F7.26`, `7-F7.34`, `7-F7.57` | 2 | no | none (land before the first area-7 card) |
+
+### Wave G2 — UI clean-up (design audit)
+
+Six cards from the independent design audit of 2026-11-17 ([`docs/audits/ui/UI-AUDIT.md`](../../../audits/ui/UI-AUDIT.md)).
+The audit found 54 defects; 26 of the 36 app defects already have an owner among the cards below, and those
+are mapped in the audit rather than re-planned here. These six close nine of the remaining ten. They land
+after the guards and before E-frame, so E rebases onto a smaller diff.
+
+**6 cards · 12 agent-hours · 0 PARITY rows (defects, not gaps).** Part index: [`.parts/wave-g2.md`](.parts/wave-g2.md).
+
+| Audit | Feature | Status | Wave | Task ids |
+| --- | --- | --- | --- | --- |
+| A8, A9 | Dataset grid at 375 and a count that names the total | defect | G2 | T-520 |
+| A10 | A flag-gated surface says it is off instead of redirecting | defect | G2 | T-521 |
+| A11 | Deploy snippet: the Copy button stops covering the first line | defect | G2 | T-522 |
+| A6, A7 | Chart legends at AA, and an empty series says so | defect | G2 | T-523 |
+| A21 | Playground: the vendor appears once per group | defect | G2 | T-524 |
+| A18, A19 | The tour stops covering the card it points at | defect | G2 | T-525 |
+
+| Task | Title | Hours | R7 | Depends on |
+| --- | --- | --- | --- | --- |
+| [T-520](T-520.md) | Dataset grid reflows at 375, and the count tells the truth | 3 | no | none |
+| [T-521](T-521.md) | A surface that is off says so, instead of bouncing to the dataset | 2.5 | no | none |
+| [T-522](T-522.md) | Deploy snippet: the Copy button stops covering the first line | 1 | no | none |
+| [T-523](T-523.md) | A chart with no series says so, and every legend reads at AA | 2.5 | no | none |
+| [T-524](T-524.md) | Playground: the vendor appears once, not ten times | 1 | no | none |
+| [T-525](T-525.md) | The tour stops covering what it points at | 2 | no | none |
+
+### Wave G3 — code clean-up (independent code audit)
+
+Ten cards from the independent code audit of 2026-11-17 ([`docs/audits/code/CODE-AUDIT.md`](../../../audits/code/CODE-AUDIT.md)).
+The audit measured the tree with the tools CI already pins (ruff 0.17.3, vulture, radon, tsc) and found no dead
+files, no unused backend dependency and average backend complexity 4.95 (A) — but **no lint gate over app code
+at all** (825 ruff findings, with two tests asserting the gate stays off), 1,510 lines of orphan QA scripts,
+63 modules that each log in by hand and three files over 1,000 lines. These ten cards remove an estimated
+1,940 lines and one dependency, and land after G2 and before E-frame so E rebases onto a smaller diff.
+
+**10 cards · 22 agent-hours · 0 PARITY rows (clean-up, not gaps).** Part index: [`.parts/g3.md`](.parts/g3.md).
+
+| Audit | Feature | Status | Wave | Task ids |
+| --- | --- | --- | --- | --- |
+| Lint gate (94 pyflakes findings, 0 gate) | `ruff check apps/backend` in CI and pre-commit; delete the four assertions that pin the gap open | defect | G3 | T-050 |
+| Four identical box-IoU bodies | one `services/boxes.py` helper | dead duplication | G3 | T-051 |
+| Seven verified dead backend symbols, one dead probe | delete them | dead code | G3 | T-052 |
+| Seven double-encoded strings, one written to the DB | repair the literals and guard the repo | defect | G3 | T-053 |
+| Two dead exports, four never-passed props, one orphan CSS class | delete them; one permission query reuses the shared hook | dead code | G3 | T-054 |
+| 9 `pct`, 3 `fmtInt`, 3 `fmtBytes`, 2 `fmtTime` in two units | one `lib/format.ts` | duplication | G3 | T-055 |
+| 63 modules with their own login helper, 12 `_schema` fixtures | one helper in `conftest.py` | duplication | G3 | T-056 |
+| Empty root `tests/`, 10 orphan scripts, stale gate docs | delete; drop the redundant `playwright` pin | dead weight | G3 | T-057 |
+| `Settings.tsx` 1,168 lines, 12 pages | split the 541-line account/security block out | file size | G3 | T-058 |
+| Two chart toolkits sharing four concepts | one theme reader and colour normaliser | duplication | G3 | T-059 |
+
+| Task | Title | Hours | R7 | Depends on |
+| --- | --- | --- | --- | --- |
+| [T-050](T-050.md) | Gate app code on pyflakes and clear the 94 findings | 3 | no | none (lands first; every G3 card rebases on it) |
+| [T-051](T-051.md) | One box-IoU helper instead of four | 1.5 | no | none |
+| [T-052](T-052.md) | Delete the dead backend surface the audit proved | 2.5 | yes | T-050 (`adapters/base.py`) |
+| [T-053](T-053.md) | Repair the seven double-encoded strings in images | 1 | no | none |
+| [T-054](T-054.md) | Delete dead frontend exports, props and CSS | 1.5 | no | T-525 (`index.css`) |
+| [T-055](T-055.md) | One format module for numbers, bytes, percentages, clocks | 2.5 | no | T-523 (`Models.tsx`) |
+| [T-056](T-056.md) | One login helper and one schema fixture for the backend tests | 3 | no | T-050 (nine shared test modules) |
+| [T-057](T-057.md) | Remove the empty tests tree, orphan scripts and stale gate docs | 3 | no | T-050 (`ci.yml`) |
+| [T-058](T-058.md) | Split Settings.tsx into its twelve pages' three files | 2 | no | none |
+| [T-059](T-059.md) | Point project insights at the shared chart helpers | 2 | no | none |
+
+The 18 frame defects in the audit (F1–F18) are the design lane's: Thai copy that is not Thai, prices the
+owner has not set, a QR that scans as nothing, and a dark-mode Approve that fails AA. No code card closes
+them.
 
 ### Wave A — trial blockers
 
@@ -1708,3 +1778,188 @@ The programme is done when:
       permission states all render as the cards describe.
 
 Programme ledger for the owner: [`parity-backlog-report.md`](../../../../.superpowers/sdd/2026-10-31-labeldesk-v2/parity-backlog-report.md).
+
+---
+
+## 11. Wave M — MLflow parity (appended 2026-11-17)
+
+Owner directive: "copy Roboflow and MLflow entirely". This wave closes the MLflow half, the way waves A–F
+close Roboflow and BEYOND. Source of truth:
+[`docs/research/mlflow-parity/MLFLOW-PARITY.md`](../../mlflow-parity/MLFLOW-PARITY.md) — **92 rows** (5 HAVE,
+48 PARTIAL, 39 MISSING, one by design), backed by five area files that carry the click-by-click flow,
+states, code evidence and a docs URL per claim.
+
+**82 cards · 211.5 agent-hours · ids `T-900`–`T-987`.** Every card follows `_BRIEF.md` §2 with the wave-M
+deviations: `| Wave | M |`, MLflow row ids in `| Parity rows |`, and an `Overlap:` first line in Notes
+naming the Roboflow card it sits beside. Flags follow house convention — one `task_<id>` key per card, 43
+in total; three of them carry most of the wave (`task_mlruns` 21 cards, `task_mltraces` 6, `task_mlgenai`
+6) and the rest are per-screen keys so a single surface can ship alone. Budget **250–270 agent-hours** end
+to end with review.
+
+| Lane | Cards | Hours | Depends on |
+| --- | --- | --- | --- |
+| M1a Runs and tracking | T-900–T-916 | 44 | wave B train lane `T-250`–`T-296` |
+| M1b Registry, versions and contract | T-918–T-931 | 37.5 | wave B `T-257`/`T-268`; independent of M1a |
+| M2 Models and deployment | T-932–T-942 | 27 | M1b (`ML2-T2.7` contract) |
+| M3 Evaluation, traces and prompts | T-946–T-965 | 53 | wave B `T-283`/`T-284`, M1a run table |
+| M4 Platform, experiments and wire API | T-968–T-987 | 50 | M1a + M1b tables; the wire routes last |
+
+**Order.** Wave M starts after wave B's train and evaluation lane merges: eleven cards extend files that
+lane rewrites (`TrainedModel`, the model detail screen, `T-283`/`T-284` comparison) and the run table the
+wire API reads belongs to M1a. M1a and M1b run in parallel — different files, different surfaces. M2
+follows M1b. M3 follows M1a and `T-283`. M4 is last: `T-983`/`T-984` (the `/api/2.0/mlflow/*` subset) open a
+new request surface onto customer run data and both carry R7 review.
+
+**Deduplication.** 19 rows point at an existing card; 13 of them need no new card at all. The `Overlap:`
+line on every card names that card, so no merge captain schedules the same work twice.
+
+### M1a Runs and tracking
+
+**17 cards · 44.0 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-900 | Guard area 1: the training run record stays honest | 2.5 | no | `none` | `apps/backend/tests/test_mlruns_guard.py` |
+| T-901 | Run settings block: the parameters a run used | 2.0 | yes | `task_mlruns` | `apps/backend/app/services/run_view.py` |
+| T-902 | Every metric point gets a time, not just an epoch | 2.5 | no | `none` | `apps/backend/tests/test_run_metric_times.py` |
+| T-903 | Curves keep drawing while a run is still training | 2.0 | no | `none` | `apps/frontend/src/features/insights/runLive.ts` |
+| T-904 | Parallel coordinates: 1–6 runs across every metric at once | 2.5 | no | `none` | `apps/frontend/src/features/insights/parallelRuns.ts` |
+| T-905 | Continued runs: a parent link, not two unrelated rows | 2.0 | no | `none` | `apps/frontend/src/features/project/models/runLineage.ts` |
+| T-906 | Run tags and a run note | 2.5 | yes | `none` | `apps/frontend/src/features/project/models/RunTags.tsx` |
+| T-907 | A filter grammar for the run list | 3.0 | yes | `none` | `apps/backend/app/services/run_filter.py` |
+| T-908 | The filter bar on the run list | 2.5 | no | `none` | `apps/frontend/src/features/project/models/runQuery.ts` |
+| T-909 | Saved run views you can hand to a teammate | 2.5 | no | `none` | `apps/frontend/src/features/project/models/runViews.ts` |
+| T-910 | Host metrics sampled during a run | 3.0 | no | `none` | `apps/backend/app/services/system_metrics.py` |
+| T-911 | Artifacts and checkpoints of a run, listed | 3.0 | yes | `none` | `apps/backend/app/services/run_artifacts.py` |
+| T-912 | The artifacts panel on the run page | 2.5 | no | `none` | `apps/frontend/src/features/project/models/RunArtifacts.tsx` |
+| T-913 | Which dataset a run actually consumed | 2.5 | no | `none` | `apps/frontend/src/features/project/models/RunDataset.tsx` |
+| T-914 | A notebook can create and log into a run | 3.0 | yes | `task_mlruns_wire` | `apps/backend/app/models/mlruns.py` |
+| T-915 | Search, metric history, restore and artifacts on the wire | 3.0 | yes | `none` | `apps/backend/tests/test_mlrun_wire_search.py` |
+| T-916 | Prove the wire API with the real client, and document it | 3.0 | no | `none` | `apps/backend/requirements-mlflow.txt` |
+
+### M1b Registry, versions and contract
+
+**14 cards · 37.5 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-918 | Give every model row a registered name and a version number | 3.0 | no | `task_918` | `apps/backend/app/services/model_registry.py` |
+| T-919 | Group the Models rail by registered name, with search | 3.0 | no | `task_919` | `apps/frontend/src/features/project/models/RegistryRail.tsx` |
+| T-920 | Keep deleted versions as tombstones so numbers are never reused | 2.0 | yes | `task_920` | `apps/backend/tests/test_model_tombstones.py` |
+| T-921 | Free-form aliases on a version, with production reserved | 3.0 | no | `task_921` | `apps/frontend/src/features/project/models/AliasChips.tsx` |
+| T-922 | Key-value tags on a model version, filterable | 2.0 | no | `task_922` | `apps/backend/app/services/model_tags.py` |
+| T-923 | Tag chips, an editor and a tag filter on the model page | 3.0 | no | `task_923` | `apps/frontend/src/features/project/models/TagEditor.tsx` |
+| T-924 | Deprecate a version with a reason, without deleting it | 2.5 | no | `task_924` | `apps/backend/app/services/model_lifecycle.py` |
+| T-925 | A "produced by" panel on the model page | 2.5 | no | `task_925` | `apps/backend/app/services/model_provenance.py` |
+| T-926 | A declared contract on every version: input, output, parameters | 3.0 | no | `task_926` | `apps/backend/app/services/model_contract.py` |
+| T-927 | A written description on the model and on each version | 2.0 | no | `task_927` | `apps/backend/app/services/model_text.py` |
+| T-928 | Show a real example input on the model page | 2.5 | no | `task_928` | `apps/backend/app/services/model_example.py` |
+| T-929 | Restrict one model to managers or admins | 3.0 | yes | `task_929` | `apps/backend/app/services/model_access.py` |
+| T-930 | Emit model-registry events on the existing webhook channel | 3.0 | yes | `task_930` | `apps/backend/app/services/registry_events.py` |
+| T-931 | A Webhooks screen under workspace settings | 3.0 | yes | `task_931` | `apps/frontend/src/features/settings/Webhooks.tsx` |
+
+### M2 Models and deployment
+
+**11 cards · 27.0 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-932 | A family says what it can do | 2.5 | no | `none` | `apps/backend/app/adapters/base.py` |
+| T-933 | The artefact explains itself | 3.0 | yes | `task_mlartefact` | `apps/backend/app/services/artefacts.py` |
+| T-934 | A refused request costs nothing | 2.0 | no | `task_mlcontract` | `apps/backend/app/services/contract_guard.py` |
+| T-935 | The environment travels with the weights | 2.5 | no | `none` | `apps/backend/app/services/model_env.py` |
+| T-936 | How big is this model, really | 2.0 | no | `none` | `apps/backend/app/services/model_size.py` |
+| T-937 | A deployed model you can probe | 2.0 | yes | `none` | `apps/backend/app/routers/model_health.py` |
+| T-938 | Container files for one model | 3.0 | yes | `task_mlcontainer` | `apps/backend/app/services/container.py` |
+| T-939 | Drop in a new model family | 2.5 | yes | `none` | `apps/backend/app/adapters/plugins.py` |
+| T-940 | A deployment records whether it answers | 2.5 | no | `none` | `apps/backend/app/services/deploy_health.py` |
+| T-941 | Register a target you run yourself | 3.0 | yes | `task_mltarget` | `apps/backend/app/models/targets.py` |
+| T-942 | Ask a vision model your own question | 2.0 | yes | `task_mlprompt` | `apps/backend/app/routers/predict_vlm.py` |
+
+### M3 Evaluation, traces and prompts
+
+**20 cards · 53.0 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-946 | Pin an evaluation set: table, digest and create route | 3.0 | no | `task_mlruns` | `apps/backend/app/models/evaluation.py` |
+| T-947 | Score any model on a pinned set, from its panel | 2.5 | no | `task_mlruns` | `apps/frontend/src/features/evaluation/EvaluateMenu.tsx` |
+| T-948 | Release rules: store a metric threshold and judge a model | 3.0 | no | `task_mlruns` | `apps/backend/app/routers/release_rules.py` |
+| T-949 | The gate answers in the deploy dialog | 2.5 | yes | `task_mlruns` | `apps/frontend/src/features/project/deploy/GateGate.tsx` |
+| T-950 | Classification gets its own evaluation preset | 3.0 | no | `task_mlruns` | `apps/backend/tests/test_evaluate_classify.py` |
+| T-951 | A customer's own metric, declared not coded | 3.0 | yes | `task_mlruns` | `apps/backend/app/routers/custom_metrics.py` |
+| T-952 | Score a prediction file someone handed you | 2.5 | yes | `task_mlruns` | `apps/backend/app/services/external_results.py` |
+| T-953 | Is the difference real? Paired deltas with an interval | 3.0 | no | `task_mlruns` | `apps/backend/app/services/compare_stats.py` |
+| T-954 | One trace per request: table, emit call, read route | 3.0 | yes | `task_mltraces` | `apps/backend/app/services/tracing.py` |
+| T-955 | The trace list, its filters and the span waterfall | 3.0 | no | `task_mltraces` | `apps/backend/app/services/trace_query.py` |
+| T-956 | Every adapter call traced without editing the adapter | 3.0 | no | `task_mltraces` | `apps/frontend/src/features/project/settings/Tracing.tsx` |
+| T-957 | Mark any function as a step, by hand | 2.0 | no | `task_mltraces` | `apps/backend/tests/test_manual_tracing.py` |
+| T-958 | Accept OpenTelemetry traces from a customer's own service | 2.5 | yes | `task_mltraces` | `apps/backend/app/routers/otel.py` |
+| T-959 | What each call cost in time and tokens | 2.5 | no | `task_mltraces` | `apps/backend/app/services/model_cost.py` |
+| T-960 | Score a VLM answer on the axes that matter | 3.0 | yes | `task_mlgenai` | `apps/backend/app/services/judges.py` |
+| T-961 | A judge written as criteria, versioned like a prompt | 2.0 | yes | `task_mlgenai` | `apps/frontend/src/features/project/settings/CustomJudges.tsx` |
+| T-962 | Does the judge agree with your reviewers? | 2.5 | no | `task_mlgenai` | `apps/backend/app/services/judge_agreement.py` |
+| T-963 | Store the answer a human would accept | 2.0 | no | `task_mlgenai` | `apps/frontend/src/features/evaluation/Expectations.tsx` |
+| T-964 | Prompts with immutable versions and an alias | 3.0 | yes | `task_mlgenai` | `apps/backend/app/models/prompts.py` |
+| T-965 | The Playground keeps what you tried | 2.0 | no | `task_mlgenai` | `apps/frontend/src/features/playground/runs.ts` |
+
+### M4 Platform, experiments and wire API
+
+**20 cards · 50.0 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-968 | A run spec committed next to the code | 3.0 | yes | `task_968` | `apps/backend/app/services/run_spec.py` |
+| T-969 | Typed parameters and the resolved plan | 2.5 | no | `task_969` | `apps/backend/tests/test_train_params.py` |
+| T-970 | Check before you spend | 2.0 | no | `task_970` | `apps/backend/app/services/train_preflight.py` |
+| T-971 | Record the environment a run happened in | 2.5 | no | `task_971` | `apps/backend/app/services/env_fingerprint.py` |
+| T-972 | Choose where a run executes, and see who claimed it | 3.0 | yes | `task_972` | `apps/backend/app/services/workers.py` |
+| T-973 | A pipeline file becomes a workflow | 3.0 | yes | `task_973` | `apps/backend/app/services/pipeline_file.py` |
+| T-974 | Profiles: one pipeline, three settings | 2.5 | no | `task_974` | `apps/backend/tests/test_pipeline_profiles.py` |
+| T-975 | Run a pipeline from the terminal | 2.5 | no | `task_975` | `apps/backend/tests/test_pipeline_cli.py` |
+| T-976 | "Why can this person do this?" | 2.5 | yes | `task_976` | `apps/backend/tests/test_rbac_explain.py` |
+| T-977 | Refuse a request that arrived under the wrong host name | 2.0 | yes | `task_977` | `apps/backend/app/services/runtime_state.py` |
+| T-978 | Experiments exist as a container for runs | 3.0 | no | `task_978` | `apps/backend/app/services/experiments.py` |
+| T-979 | Tag, note and restore an experiment | 2.5 | no | `task_979` | `apps/backend/tests/test_experiment_meta.py` |
+| T-980 | Experiments in the sidebar, with an empty state worth reading | 2.5 | no | `task_980` | `apps/frontend/src/routes/project/experiments.routes.tsx` |
+| T-981 | One endpoint that says what this server speaks | 2.0 | no | `task_981` | `apps/backend/app/routers/version.py` |
+| T-982 | Cursors and one error shape on the public API | 3.0 | no | `task_982` | `apps/backend/app/services/page.py` |
+| T-983 | The experiments wire endpoints, on area 1's router | 3.0 | yes | `task_983` | `apps/backend/app/services/mlflow_shapes.py` |
+| T-984 | The single-verb aliases and the artifact listing on the wire | 2.0 | yes | `task_984` | `apps/backend/tests/test_wire_single_verbs.py` |
+| T-985 | Prove a third-party client can log here | 2.0 | no | `task_985` | `apps/backend/tests/test_wire_client_smoke.py` |
+| T-986 | `labeldesk doctor` | 2.5 | yes | `task_986` | `packages/sdk/labeldesk/doctor.py` |
+| T-987 | A JavaScript client from the same OpenAPI file | 2.0 | yes | `task_987` | `packages/sdk-js/package.json` |
+
+### Wave M file ownership
+
+Generated from the cards' Files sections at assembly time; ids ascending.
+
+| Shared file | Cards that touch it |
+| --- | --- |
+| `apps/backend/app/services/flags.py` | T-901, T-914, T-918, T-919, T-920, T-921, T-922, T-923, T-924, T-925, T-926, T-927, T-928, T-929, T-930, T-931, T-933, T-934, T-936, T-938, T-941, T-942, T-946, T-954, T-968, T-969, T-970, T-971, T-972, T-973, T-974, T-975, T-976, T-977, T-978, T-979, T-980, T-981, T-982, T-983, T-984, T-985, T-986, T-987 |
+| `apps/backend/app/routers/__init__.py` | T-914, T-933, T-937, T-939, T-941, T-942, T-946, T-948, T-951, T-952, T-954, T-955, T-958, T-960, T-962, T-964, T-978, T-981 |
+| `apps/backend/app/models/__init__.py` | T-914, T-941, T-946, T-948, T-951, T-952, T-954, T-956, T-959, T-960, T-961, T-963, T-964, T-965, T-972, T-978 |
+| `apps/backend/app/schema/training.py` | T-906, T-918, T-920, T-922, T-924, T-927, T-929, T-935, T-940, T-941, T-971 |
+| `apps/backend/app/schema/dataset.py` | T-968, T-974 |
+| `apps/backend/app/schema/__init__.py` | T-974 |
+| `apps/frontend/src/lib/api/models.ts` | T-906, T-908, T-913, T-918, T-919, T-921, T-922, T-923, T-924, T-925, T-926, T-927, T-928, T-929, T-933, T-935, T-937, T-938, T-939, T-941, T-942, T-947, T-949, T-953, T-959, T-968, T-969, T-970, T-971, T-972, T-978, T-979, T-983 |
+| `apps/frontend/src/lib/types.ts` | T-901, T-905, T-906, T-913, T-918, T-921, T-922, T-924, T-925, T-926, T-927, T-928, T-929, T-931, T-932, T-933, T-935, T-936, T-947, T-949, T-953 |
+| `apps/frontend/src/lib/nav/project/models.ts` | T-946, T-955, T-980 |
+| `apps/frontend/src/features/project/Models.tsx` | T-901, T-905, T-906, T-908, T-909, T-912, T-913, T-919, T-921, T-923, T-924, T-925, T-926, T-927, T-928, T-929, T-932, T-933, T-935, T-936, T-938, T-942, T-971 |
+| `apps/backend/openapi.json` | T-901, T-905, T-906, T-907, T-911, T-913, T-914, T-915, T-918, T-919, T-920, T-921, T-922, T-924, T-925, T-926, T-927, T-928, T-929, T-932, T-933, T-934, T-935, T-936, T-937, T-938, T-939, T-940, T-941, T-942, T-946, T-947, T-948, T-949, T-951, T-952, T-953, T-954, T-955, T-956, T-958, T-959, T-960, T-961, T-962, T-963, T-964, T-965, T-968, T-969, T-970, T-971, T-972, T-973, T-974, T-975, T-976, T-977, T-978, T-979, T-981, T-982, T-983, T-986 |
+| `apps/frontend/src/lib/api-types.gen.ts` | T-901, T-905, T-906, T-907, T-911, T-913, T-914, T-915, T-918, T-919, T-920, T-921, T-922, T-924, T-925, T-926, T-927, T-928, T-929, T-932, T-933, T-934, T-935, T-936, T-937, T-938, T-939, T-940, T-941, T-942, T-946, T-947, T-948, T-949, T-951, T-952, T-953, T-954, T-955, T-956, T-958, T-959, T-960, T-961, T-962, T-963, T-964, T-965, T-968, T-969, T-970, T-971, T-972, T-973, T-974, T-975, T-976, T-977, T-978, T-979, T-981, T-982, T-983, T-986 |
+
+No two cards claim the same exclusive file (checked mechanically). A test file that two cards touch is
+listed under Shared by the card that does not own the module.
+
+### Wave M completeness
+
+- MLflow rows: **92** — 5 HAVE, 48 PARTIAL, 39 MISSING (one, `ML2-T2.15`, by design).
+- Gap rows with a card or a cited existing card: **87 / 87**.
+- Cards: **82**, ids `T-900`–`T-987`, unique, contiguous inside each lane, mean 2.58 h, max 3 h.
+- R7 `yes` on **33** cards (the wire API, per-model permission, registry webhooks, artifact download,
+  trace ingest and every route that reaches customer run data).
+- Docs pages covered: each area file lists every page read, including the redirects the site's `ml/`
+  re-cut introduced.
+- Integrate-vs-build: **81 Build · 4 Wire · 2 Integrate · 3 Integrate + build · 2 none**; licensing and
+  trademark rules in `MLFLOW-PARITY.md` §1, and no card uses the MLflow name or logo as UI copy.

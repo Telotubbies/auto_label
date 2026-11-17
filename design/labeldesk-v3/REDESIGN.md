@@ -110,6 +110,11 @@ still reachable from **Settings** and from the command palette, so nothing is lo
 
 ### 3.3 Project rail (the Roboflow pattern, without Roboflow's look)
 
+> **Superseded by §13.1 (17 Nov 2026).** The five flat stages below became three collapsible
+> purpose groups with the same numbers, counts and state dots inside them. The rules that survive:
+> numbered stages in pipeline order, one active row, counts that agree with Home, dimmed-with-a-reason
+> locking, and no ALL-CAPS captions.
+
 ```
 [ PPE Detection ▾ ]                 ← project switcher, shows type icon
 Object detection · 24 approved
@@ -227,6 +232,11 @@ next to the primary.
 **Why:** one click to work; destructive bulk actions lose their prominence.
 
 ### S5 · Editor (kept, refined)
+> **Superseded by §13.3 (17 Nov 2026).** Two rail tabs became a five-tab icon rail beside a panel
+> (Labels is the default tab); the review state moved from the top bar to a floating canvas pill;
+> the tool rail moved to the right of the canvas and carries undo, redo and mark-empty; the zoom bar
+> gained Lock, Reset and a shortcut button. The three-zone frame and the solid canvas survive.
+
 **Purpose:** draw, correct, review at speed.
 **Layout:** unchanged three-zone frame — left 264 rail (Classes / Objects tabs only; Attributes,
 Comments, History, Raw move to a right inspector sheet opened by a button), canvas solid `#0F1115`
@@ -269,6 +279,11 @@ licence badges become a single "Licences" link in the summary.
 **Why:** people cannot choose between 15 variants; they can choose between three promises.
 
 ### S9 · Models & evaluation
+> **Superseded by §13.2 (17 Nov 2026).** The page now opens on a **Compare** tab with a run list
+> beside it, a hint banner, a Train → Evaluate → Compare stepper, and an accuracy-vs-latency chart that
+> selects the run. The matrix keeps its place and now colours the *errors*, which closes the open
+> finding in §10.1.
+
 **Purpose:** know if it is good enough, and what to fix.
 **Layout:** run list left (name, version, mAP, status), detail right: metric tiles (mAP50, mAP50-95,
 precision, recall) with delta vs previous run; confusion matrix with a confidence slider that
@@ -883,3 +898,171 @@ Named honestly, all Should/Could except where noted:
 
 PARITY rows: every row the v3b report listed as an open design gap now has a frame. The rest of the 334 rows are
 HAVE rows that already ship, or API/SDK/backend depth with no design delta; they are not counted as covered.
+
+---
+
+## 13. v3e — purpose-grouped rail, Models compare, editor shell (17 Nov 2026)
+
+Fourth pass. The owner shared two screenshots of the reference product they find easy to use
+(*Models → Compare* and the annotation editor) and asked for their **layout and interaction
+patterns**, explicitly not their appearance. Only structure was taken: no reference text, icon,
+colour, logo or brand appears anywhere in this file, and the screenshots were never copied into the
+repo. Everything below is drawn with the shipped glass system (`VISUAL-OVERRIDE.md`), our names and
+our icon set.
+
+The reference's own IA was adapted where our product is genuinely different; every deviation is
+named in §13.5 rather than quietly copied.
+
+### 13.1 Project rail: three purposes instead of five flat steps
+
+The rail still answers "where am I in the pipeline" (§3.3) but the rows are now collected under the
+three jobs a person actually holds in their head — get the data right, train a model, ship it.
+
+```
+┌ PPE Detection ▾ ──────────────┐   project switcher: thumbnail, name, type · approved, ▾
+│ Object detection              │
+│ 24 approved                   │
+└───────────────────────────────┘
+Data                            ⌄   group header, sentence case, 12 px, muted
+  ① Upload                   (40)   done            green dot
+  ② Annotate                 (16)   needs you       primary dot, label semibold
+  ③ Dataset                  (v2)   done
+  Insights                   (—)
+  Classes & tags             (12)
+Models                          ⌄
+  ④ Train                     (2)   last run ok
+  Models                      (3)   ← active: accent fill + 1 px primary outline
+  Model search                (—)   not started
+Deploy                          ⌄
+  ⑤ Deploy                    (—)   not started
+  Active learning           (off)
+────────────────────────────────
+  ⚙ Project settings                 outside the groups, below a rule
+```
+
+Rules:
+
+- **Groups are collapsible.** The chevron toggles the group; a collapsed group keeps its rows'
+  state as one summary count on the header ("Data · 3 need you"), so collapsing never hides an alert.
+- **Sentence case, never ALL-CAPS.** §3.2's no-shout rule applies here too; the header is 12 px
+  medium in `--muted-foreground`, not a section band.
+- **Counts are pills**, right-aligned at 208, `--muted` fill, 11 px tabular figures. `—` means the
+  count does not exist yet (Deploy has no deployment record), `off` is a state word, not a count.
+- **The state dot sits after the label** and never carries state alone: the row's accessible name is
+  `"Annotate, 16 to review, needs you"` (T-478).
+- **The active row is a tinted pill with a 1 px primary outline** — `--accent` fill, `--primary`
+  border, `--accent-foreground` text. Exactly one row is active.
+- **The numbers 1–5 survive, in pipeline order**, inside the groups. The rail lists each stage once:
+  a stage's tabs (T-479) live on its page, never as a second sibling row.
+- **Models is a row of its own**, not a `Train · Models` tab: it is a real screen with its own job
+  (compare runs, read the matrix), and the reference puts it beside Train for the same reason. This
+  amends T-479's Train tab row.
+- **Secondary destinations keep their group**: Insights and Classes & tags under Data, Model search
+  under Models (`?tab=search`, T-269–T-272), Active learning under Deploy (`?view=active-learning`,
+  T-653), Streams and Test inside ⑤ Deploy as tabs.
+- **Role gating is unchanged**: dimmed row, lock, "Request access" tooltip, never hidden (T-477).
+- **Project settings sits below the rule**, outside the three groups.
+
+Geometry: rail 232; switcher card 200 × 60 at (16, 72); group header 12 px at x = 16; rows 32 high
+on a 36 pitch; badge right edge 208; state dot at x = 152.
+
+### 13.2 Models: compare first, then interpret
+
+```
+Models                                              [Deploy v1]
+Compare runs, read the matrix, act on what it says.
+Compare   Runs (3)
+──────────────────────────────────────────────────────────────────
+ⓘ Every run that produced weights is listed under Runs …  [View runs]
+✓ Train ──── ✓ Evaluate ──── ③ Compare
+┌ Accuracy vs. latency ────────────────┐  ┌ mAP50 ┐ ┌ mAP50-95 ┐
+│  ● ppe-v2 70.3%                      │  └───────┘ └──────────┘
+│  ● baseline 61.2%        ⋯ target 65 │  ┌ Precision ┐ ┌ Recall ┐
+└──────────────────────────────────────┘  └───────────┘ └────────┘
+┌ What to fix next ────────────────────┐  ┌ Confusion matrix ─────┐
+│ helmet → vest · 7 misses             │  │  diagonal neutral,    │
+└──────────────────────────────────────┘  │  errors carry heat    │
+```
+
+- **Two tabs**, `Compare` (default) and `Runs (3)`. "Fine-tuned" in the reference is our *Runs*: the
+  list of runs that produced weights. The old "All runs" table at the bottom of S9 is gone — the tab
+  owns it, and the page keeps one table, not two.
+- **A hint banner** links the two views so a visitor who came for the list finds it in one click.
+- **The stepper names our three words**: Train → Evaluate → Compare. Done steps are success circles
+  with a tick, the current step is the primary circle with its number.
+- **The chart is the picker.** x = median latency, y = mAP50, a dashed target line, a frontier line
+  through the evaluated runs, the selected run as the filled primary point, the training run counted
+  but not plotted ("2 evaluated · 1 still training"). Clicking a point selects the run; the metric
+  tiles and the matrix follow the selection. Numbers only appear for runs that have a test result.
+- **The matrix colours the errors, not the successes** (this closes the open finding in §10.1): the
+  diagonal is neutral `#E7E7F5`, the off-diagonal cells run `#FAF9FF → #FFE0B8 → #F5B544 → #D55E00`
+  by miss count, and the legend states "off-diagonal cells are misses". Values stay printed in every
+  cell, so colour is never the only signal.
+- **One primary.** `Deploy v1` is the only filled button; `Compare runs` as a secondary button is
+  gone because the tab row replaced it.
+
+### 13.3 Editor: an icon rail, a panel, a floating tool column
+
+```
+┌ top bar: ‹ file · 1477 × 1108 · train · batch   [Reject] [Approve] [Next image →] ┐
+│        ┌───────────────── canvas (#0F1115) ─────────────────┐  ┌ ● Awaiting ▾ ⋯ ⧉┐
+│ Labels │ Annotations        ⋯ │                              │  │   tool column   │
+│ Attrib │ Classes │ Objects      │        photo + boxes        │  │  V B P U O      │
+│ Comm.  │ ● person   14  (1)   │                              │  │  ─ S K AI      │
+│ Histor │ ● helmet   14  (2)   │                              │  │  ─ C ↺ ↻      │
+│ Raw    │ + Add class          │                              │  │  ─ N          │
+│        │ Selected object …    │        ┌ −100%+ Lock Reset ? ┐│  └───────────────┘
+│        │ ✧ Label assist       │        └────────────────────┘│   Images  16 of 40
+│        │ Tags  (empty state)  │                              │   [thumb] ✓ …
+└────────┴──────────────────────┴──────────────────────────────┴───────────────────┘
+   72 px       260 px                    904 px                     204 px
+```
+
+Changed from §5 S5, and why:
+
+| Element | Now | Why |
+|---|---|---|
+| Left side | 72 px icon rail (Labels, Attributes, Comments, History, Raw data) + 260 px panel with **Classes · Objects** | The audit's fault was eight *words* competing with the class list, not the panels existing. Icons remove the competition and keep Attributes, Comments, History and Raw one click away instead of behind a sheet |
+| Attributes | own panel tab | It is per-object data, not a class list; the attribute block from A3-04 moves there |
+| Nothing-here | toolbar tool `N` (`∅`) + canvas hint | A per-image decision belongs with the drawing tools, not under a class list |
+| Review state | floating pill at the canvas' top-right, `● Awaiting review ▾ ⋯ ⧉` | The state belongs where the work is. The third zone collapses both side panels; the top bar is left for verdicts |
+| Tools | floating glass column **right of the canvas**: V select, B box, P polygon, U brush, O rotate, ─, S smart polygon, K keypoint, AI auto-label, ─, C comment, ↺ undo, ↻ redo, ─, N mark empty | The pointer is on the canvas; a 52 px column on its right edge is inside the reachable area and out of the photo |
+| Undo / redo | in the tool column (left the top bar) | Fewer top-bar items, the tools where the hand is |
+| Image strip | `Images`, `16 of 40` with ‹ ›, 172 × 68 thumbnails, filename under each, ✓ on every reviewed image, the open one outlined | Position and review progress were invisible before |
+| Bottom bar | `− 100% + · Lock · Reset · ?` | Lock (T-120), Reset to fit, and `?` opens the shortcut sheet that used to be printed on the canvas |
+| Top bar | filename + meta left; Reject, **Approve (only filled button)**, Next image (tonal) | Two filled buttons were competing for the same click |
+
+Colour and surface discipline: the rail and the floating columns are glass (`--glass-tint` +
+`--glass-hi`/`--glass-edge`); the panel, the strip and the canvas are solid (`--card`, `#0F1115`).
+The panel used to be glass in the old frame — that broke `VISUAL-OVERRIDE.md` rule 2 and is fixed
+here. Metadata moves to a 12 px floor (the tool shortcut letters inside the 44 px buttons stay 11 px
+and are supplementary to the icon and the tooltip).
+
+### 13.4 Frames changed in this pass
+
+| Frame | Change | PNG |
+|---|---|---|
+| `05 · Editor` | rebuilt to §13.3 | `frames/05-editor.png` |
+| `Editor — dark` | rebuilt to §13.3 in the dark token mapping | `frames/dark-05-editor.png` |
+| `09 · Models & evaluation` | rebuilt to §13.2, new rail | `frames/09-models-evaluation.png`, `frames/09-models.png` |
+| `M-01 · Editor · 375` | status pill, `16 of 40`, zoom pill with Lock, `Labels` panel chip; the impossible `42 of 40` is corrected | `frames/m-01-editor-375.png` |
+
+Every PNG was opened and checked against the frame at 1440 × 900 (375 × 812 for M-01).
+
+### 13.5 Deliberate deviations and what is left
+
+- **No "magic" tool.** The reference's magic wand has no counterpart in `PARITY.md` or `BEYOND.md`:
+  our mask path is brush + smart polygon (T-133–T-135). Adding an icon for a feature we do not have
+  would be a nav lie.
+- **No Test row in the Models group.** Our Test is Deploy's first tab (T-479); it appears once, in
+  Deploy, instead of twice.
+- **Versions and Streams stay inside their stage** as tabs, so the rail never lists the same
+  destination twice. The reference lists them as siblings because its Versions is a separate screen.
+- **This rail is drawn in three frames only** — 05 Editor, its dark variant, and 09 Models. The other
+  project frames (02–04, 06–08, 10, A3-*, A5-*, B*, M1–M3) still show the previous five-stage rail;
+  they need one sweep before the file is consistent. `Foundations` still draws the old `StageItem`
+  sample, and the new `RailGroup` / badge treatment is not on that page yet.
+- **Icon glyphs are placeholders.** FigCraft cannot load the app's icon set; `▦ ≡ ◗ ↺ 〈〉 ✧ ⌖ ∅ ⟳`
+  stand in for it, exactly as §10.3 already says.
+- **Thai text is still absent from the editor frames.** The canvas cannot shape Thai; `e1-editor-thai`
+  carries the Thai copy and needs the same rail change in the sweep.
