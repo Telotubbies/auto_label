@@ -19,6 +19,7 @@ from pathlib import Path
 
 import requests
 
+from .engines import run_engine_apply
 from .inventory import collect
 
 log = logging.getLogger("labeldesk-worker")
@@ -195,13 +196,15 @@ def main():
     ap.add_argument("--name", default=socket.gethostname())
     ap.add_argument("--models-dir", default=os.environ.get("LD_MODELS_DIR", "~/.labeldesk/models"),
                     help="where downloaded models live (default ~/.labeldesk/models)")
+    ap.add_argument("--engines-dir", default=os.environ.get("LD_ENGINES_DIR", "~/.labeldesk/engines"),
+                    help="where engine environments live (default ~/.labeldesk/engines)")
     ap.add_argument("--once", action="store_true", help="exit after one job (handy on Colab/Kaggle)")
     args = ap.parse_args()
     if not args.server or not args.token:
         ap.error("--server and --token are required (or LD_SERVER / LD_WORKER_TOKEN)")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     srv = Server(args.server, args.token)
-    handlers = {"train": run_train, "autolabel": run_autolabel}
+    handlers = {"train": run_train, "autolabel": run_autolabel, "engine_apply": run_engine_apply}
     log.info("worker %s polling %s for %s", args.name, args.server, args.kinds)
     while True:
         try:

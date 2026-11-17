@@ -51,7 +51,9 @@ for _kind in ("connector_sync", "retention", "extract_frames", "track_forward", 
               "event_search"):
     if _kind not in LOCAL_JOB_KINDS:
         LOCAL_JOB_KINDS.append(_kind)     # CPU/network/SAM work: never leave it unclaimed by every process
-REMOTE_JOB_KINDS = ("train", "autolabel")
+# A pip worker's kinds: GPU work plus the engine installs (T-1008) it alone may run. The embedded
+# worker never claims the engine kinds, so an install can never execute inside the API process.
+REMOTE_JOB_KINDS = ("train", "autolabel", "engine_apply", "model_pull")
 WORKER_TOKEN = _env("LD_WORKER_TOKEN")                        # shared secret for `labeldesk-worker`
 
 
