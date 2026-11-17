@@ -141,7 +141,7 @@ def live():
                                                 "password": PW, "workspace": "Payload Workspace"})
         assert made.status_code == 200, made.text
         other = c.post("/api/auth/signup", json={"name": "Bravo Owner", "email": BRAVO_EMAIL,
-                                                 "password": PW, "workspace": "Bravo Workspace"})
+                                                 "password": PW, "workspace": "Bravo Injection Workspace"})
         assert other.status_code == 200, other.text
         headers = login(c, ALPHA_EMAIL, PW)
         ws = c.get("/api/me", headers=headers).json()["workspaces"][0]["slug"]
@@ -157,8 +157,8 @@ def live():
         image = uploaded.json()["images"][0]["id"]
 
         with SessionLocal() as db:
-            bravo_ws = db.query(Workspace).filter(Workspace.slug == "bravo-workspace").one()
-            bravo_project = Project(workspace_id=bravo_ws.id, slug="bravo-proj", name="Bravo Project",
+            bravo_ws = db.query(Workspace).filter(Workspace.slug == "bravo-injection-workspace").one()   # its own tenant: the IDOR suite owns bravo-workspace
+            bravo_project = Project(workspace_id=bravo_ws.id, slug="bravo-injection-proj", name="Bravo Project",
                                     settings={})
             db.add(bravo_project)
             db.flush()
