@@ -252,5 +252,5 @@ PREP --> TRAIN : dataset
 - `docs/00-overview.md` - Project overview and 3 requirements
 - `docs/01-requirements.md` - Hardware/software requirements
 - `yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
-- `sam3_auto_label/config/ppe_4class.yaml` - 4-class config (v3)
+- `ml/sam3_auto_label/config/ppe_4class.yaml` - 4-class config (v3)
 - `yolo26_ppe/configs/production_train.yaml` - Training config

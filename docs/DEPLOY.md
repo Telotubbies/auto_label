@@ -67,7 +67,7 @@ pip install "git+https://github.com/Telotubbies/auto_label.git#subdirectory=apps
 labeldesk-worker --server https://api.labeldesk.example.com --token <LD_WORKER_TOKEN> --device 0
 ```
 ถ้าจะใช้ base weights YOLO26 ที่มีในเครื่อง ให้เพิ่ม `--pretrained-dir yolo26_ppe/models/pretrained`
-ถ้าจะใช้ SAM 3.1 auto-label ให้เพิ่ม `--sam-root sam3_auto_label` (ต้องมี checkpoint อยู่ในเครื่อง)
+ถ้าจะใช้ SAM 3.1 auto-label ให้เพิ่ม `--sam-root ml/sam3_auto_label` (ต้องมี checkpoint อยู่ในเครื่อง)
 ถ้าอยากให้รันทุกครั้งที่เปิดเครื่อง: Linux ใช้ systemd หรือ `tmux`, Windows ใช้ Task Scheduler
 
 worker ส่ง progress ทุก epoch/รูป ซึ่งเป็น heartbeat ของมัน ถ้าไม่มีการรายงานนานเกิน

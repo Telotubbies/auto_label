@@ -9,7 +9,7 @@ status: "Verified"
 
 > Architecture overview — covers 3 requirements (SAM auto-label, YOLO26 train, ground truth)
 >
-> **Status**: Verified — cross-checked against `sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py`
+> **Status**: Verified — cross-checked against `ml/sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py`
 
 ---
 
@@ -101,7 +101,7 @@ skinparam component {
   BorderColor #4285F4
 }
 
-package "sam3_auto_label/src/" {
+package "ml/sam3_auto_label/src/" {
   [config.py\n(load + validate YAML)] as CFG
   [inference.py\n(SAM 3.1 + NMS + RLE)] as INF
   [batch_segment.py\n(batch loop + checkpoint)] as BS
@@ -253,10 +253,10 @@ EXP is "Export img N+2"
 - `pipeline_cli.py:263-265` — 3 modes
 - `pipeline_cli.py:550-552` — mode names
 - `pipeline_cli.py:834-852` — mode selection
-- `sam3_auto_label/src/config.py:70-125` — `Config` dataclass
-- `sam3_auto_label/src/inference.py:347-365` — `build_model()`
-- `sam3_auto_label/src/batch_segment.py:130-435` — `main()` loop
-- `sam3_auto_label/src/exporters.py:577-589` — `EXPORTERS` registry
-- `sam3_auto_label/src/tracker.py:23-229` — `ExperimentTracker`
+- `ml/sam3_auto_label/src/config.py:70-125` — `Config` dataclass
+- `ml/sam3_auto_label/src/inference.py:347-365` — `build_model()`
+- `ml/sam3_auto_label/src/batch_segment.py:130-435` — `main()` loop
+- `ml/sam3_auto_label/src/exporters.py:577-589` — `EXPORTERS` registry
+- `ml/sam3_auto_label/src/tracker.py:23-229` — `ExperimentTracker`
 - `yolo26_ppe/configs/production_train.yaml` — YOLO26 training config
 - `yolo26_ppe/reports/final/report.pdf` — final report

@@ -77,8 +77,8 @@ if os.name == "nt":
     REPO_ROOT = Path(__file__).resolve().parent
 else:
     REPO_ROOT = Path(__file__).resolve().parent
-SAM_DIR = REPO_ROOT / "sam3_auto_label"
-YOLO_DIR = REPO_ROOT / "yolo26_ppe"
+SAM_DIR = REPO_ROOT / "ml" / "sam3_auto_label"
+YOLO_DIR = REPO_ROOT / "ml" / "yolo26_ppe"
 RAW_DIR = REPO_ROOT / "data" / "raw"
 SAM_OUTPUTS_DIR = REPO_ROOT / "data" / "sam_outputs_ground_truth"
 PREDICTIONS_DIR = YOLO_DIR / "data" / "predictions"
@@ -701,7 +701,7 @@ def run_sam_batch(datasets: List[str], fresh=False, resume=False,
         ckpt_ok, ckpt_path = check_sam_checkpoint()
         if not ckpt_ok:
             render_error(f"SAM checkpoint missing: {ckpt_path}",
-                        "Place sam3.1_multiplex.pt in sam3_auto_label/checkpoints/")
+                        "Place sam3.1_multiplex.pt in ml/sam3_auto_label/checkpoints/")
             results[ds_name] = False
             continue
 

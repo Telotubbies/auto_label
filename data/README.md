@@ -31,7 +31,7 @@ data/
 ```text
 data/raw/<batch>/
         │
-        │  SAM 3.1 (sam3_auto_label/src/batch_segment.py)
+        │  SAM 3.1 (ml/sam3_auto_label/src/batch_segment.py)
         ▼
 data/sam_outputs_ground_truth/<batch>/
     ├── coco/

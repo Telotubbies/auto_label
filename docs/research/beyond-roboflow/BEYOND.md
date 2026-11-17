@@ -156,7 +156,7 @@ buyer trust the output do not.
 
 | ID | Feature | Status | Evidence | Pri | Size |
 | --- | --- | --- | --- | --- | --- |
-| G4.1 | A per-class prompt pack (synonyms, exclusions) that can seed the class list | PARTIAL | `AutoLabelDialog.tsx:235-243` one free-text prompt per batch, `:117-127`; `sam3_auto_label/config/ppe_4class.yaml:7-22` already proves per-class prompt+threshold off-app | Must | M |
+| G4.1 | A per-class prompt pack (synonyms, exclusions) that can seed the class list | PARTIAL | `AutoLabelDialog.tsx:235-243` one free-text prompt per batch, `:117-127`; `ml/sam3_auto_label/config/ppe_4class.yaml:7-22` already proves per-class prompt+threshold off-app | Must | M |
 | G4.3 | Confidence bands with an escalation threshold and per-band counts | PARTIAL | `routers/training.py:384-397` one float one bool; `AutoLabelDialog.tsx:126` hard-codes `send_to_review: true` | Must | M |
 | G4.4 | A VLM second pass that flags a box instead of deleting it | PARTIAL | `adapters/refine.py:150-152,171-173` drops the box; `vlm_ad.py:139-148` returns a bool and no reason | Must | M |
 | G4.5 | A judge rubric returning a verdict, a reason and a score per label | MISSING | `vlm_ad.py:164-165` returns raw text used only in the playground; nothing stored | Should | M |
@@ -213,7 +213,7 @@ yield report and the packs. The rest are options, and five are marked as not wor
 | G6.2 | First-pass yield and defect Pareto per lot, line and shift | MISSING | `services/insights_stream.py:198-213` events only; `none found (yield, rework, lot)` | Must | M |
 | G6.4 | Shift handover brief at the end of a shift | MISSING | `none found (handover, shift)` | Should | S |
 | G6.5 | Glove-first Thai operator screen at the station | MISSING | No kiosk feature; `Anomaly.tsx:36-85` is a desktop layout | Should | L |
-| G6.6 | Vertical starter packs (PPE safety, IC/PCB defect) installed in one step | PARTIAL | `sam3_auto_label/config/ppe_4class.yaml:1-16`, `sam3_auto_label/ic_defect_pipeline.py:2-20`; no pack installer | Must | M |
+| G6.6 | Vertical starter packs (PPE safety, IC/PCB defect) installed in one step | PARTIAL | `ml/sam3_auto_label/config/ppe_4class.yaml:1-16`, `ml/sam3_auto_label/ic_defect_pipeline.py:2-20`; no pack installer | Must | M |
 | G6.7 | LINE alert with evidence and an acknowledgement ladder | PARTIAL | `services/alerts.py:31,217` push; `:110-132` throttle; no postback route | Should | M |
 | G6.8 | Daily safety summary PDF for an inspector | MISSING | `none found (pdf, reportlab, weasy)` | Should | M |
 | G6.10 | Shelf-gap and planogram slot compliance | MISSING | `streams/rules.py:1-19` zones only; no slot or grid primitive | Could | L |
@@ -316,7 +316,7 @@ in code; absence is the correct state.
 - **Two PARITY rows are now stale** against `c9e907d`: 7-F7.51 (notification sinks) and 7-F7.59
   (workspace deletion) were written before `task_33` shipped LINE/Slack/email channels. The
   parity lane should re-check before Wave D is estimated.
-- **`sam3_auto_label/` is untracked** and its pipelines are not wired into the app. G6.6 treats
+- **`ml/sam3_auto_label/` is untracked** and its pipelines are not wired into the app. G6.6 treats
   it as a capability we own, not as a shipped feature; if that code is abandoned, the pack card
   loses its cheapest half.
 - **No customer interviews.** Every "who uses it" is inferred from vendor documentation and the

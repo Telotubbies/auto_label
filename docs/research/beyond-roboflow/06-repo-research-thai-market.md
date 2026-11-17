@@ -95,14 +95,14 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no i18n layer, no station-locked surface.
 - **Suggested priority / size:** Must / L.
 
-### G6.6 IC/PCB defect class pack with a pass/fail station (Thai electronics QC, `sam3_auto_label/ic_defect_pipeline.py`)
+### G6.6 IC/PCB defect class pack with a pass/fail station (Thai electronics QC, `ml/sam3_auto_label/ic_defect_pipeline.py`)
 - **What the user does:** creates a project from an "IC / PCB cosmetic defects" pack, gets a class set (burnt chip, damaged IC, scorched IC, cracked chip), passes/fails whole units rather than drawing boxes, and sees per-unit defect crops saved beside the verdict.
 - **Who uses it:** an electronics QC engineer at a Chonburi or Lamphun plant who has a few hundred images and no ML team.
 - **Flow:** 1. New project → sector pack list → `[empty]` "no pack installed" until one is chosen. 2. Pack installs classes, a station, a threshold and an example dataset pointer; `[loading]` per item. 3. Upload good units → anomaly fit; upload defects → class labels. 4. Station run → per-unit verdict plus `objects/defect_XX.png` crops. 5. `[error: too few good units]` names the minimum instead of failing at training time.
 - **Why it is easy:** the defect vocabulary and the patch-anomaly recipe arrive pre-wired, so the first pass/fail run is an upload, not a research task.
 - **Products with it:** no fetched platform ships a defect-class pack; the working recipe is this repo's own pipeline, and the demand is [Unimon via research_notes](https://unimon.co.th/en/blog/thailand-manufacturing-ai-predictive-maintenance-guide).
 - **Why it matters for LabelDesk:** it is the only vertical where we have a demonstrated model, a class list and a station in one place — and the pack format is the reusable commercial unit for every other vertical here.
-- **LabelDesk code evidence:** `sam3_auto_label/ic_defect_pipeline.py:2-20` (DINOv3 patch bank + SAM 3.1, per-unit `defects.json`), `:251-254` (default prompts include "scorched ic", "cracked chip"); `routers/anomaly.py:23` (pack gate `task_29`); no pack registry in `models/project.py`.
+- **LabelDesk code evidence:** `ml/sam3_auto_label/ic_defect_pipeline.py:2-20` (DINOv3 patch bank + SAM 3.1, per-unit `defects.json`), `:251-254` (default prompts include "scorched ic", "cracked chip"); `routers/anomaly.py:23` (pack gate `task_29`); no pack registry in `models/project.py`.
 - **Suggested status:** PARTIAL — the pipeline runs standalone and is not wired into the app; there is no pack format.
 - **Suggested priority / size:** Must / M.
 
@@ -128,14 +128,14 @@ nor the shipped tasks 27–36 describe.
 - **Suggested status:** MISSING — no document output of any kind.
 - **Suggested priority / size:** Should / M.
 
-### G6.9 PPE and zone-intrusion pack installed in one step (Thai construction and factory safety, `sam3_auto_label/config/ppe_4class.yaml`)
+### G6.9 PPE and zone-intrusion pack installed in one step (Thai construction and factory safety, `ml/sam3_auto_label/config/ppe_4class.yaml`)
 - **What the user does:** installs a pack that creates the four PPE classes with working thresholds, a zone rule for a machine area, a dwell rule for a walkway, and an alert channel stub; then points it at one RTSP camera and sees violations within an hour.
 - **Who uses it:** a safety lead at a construction site or plant who has cameras and a rulebook but no model.
 - **Flow:** 1. New project → Safety pack → `[empty]` until installed. 2. Pack summary lists classes, prompts, thresholds, rules and what is still unset. 3. Add camera (RTSP), draw one zone, test on a recorded clip. 4. Live: violations appear with clip thumbnails. 5. `[error: helmet class below threshold on this camera angle]` after a calibration sample, instead of months of silent misses.
 - **Why it is easy:** the class set and thresholds are already tuned in this repo's pipeline, so the user draws one polygon instead of writing four prompts.
 - **Products with it:** the four classes (person, helmet, closed footwear, harness) and their thresholds are this repo's own config; Thai helmet-detection accuracy varying by mounting point (73.7–89.5%) is [Thai Journal via research_notes](https://ph01.tci-thaijo.org/index.php/lej/article/view/265965).
 - **Why it matters for LabelDesk:** PPE is the fastest land product in the region and we have a working class set. Shipping it as a pack, with the camera-angle caveat built into onboarding, converts a demo into a two-day install.
-- **LabelDesk code evidence:** `sam3_auto_label/config/ppe_4class.yaml:1-16` (person 0.7, helmet 0.25, closed footwear 0.25, harness 0.25); `sam3_auto_label/README.md:3`; `streams/rules.py:1-19` (count/zone/line/dwell engine); no pack installer — `Home.tsx:14-20` creates a blank project from a type card.
+- **LabelDesk code evidence:** `ml/sam3_auto_label/config/ppe_4class.yaml:1-16` (person 0.7, helmet 0.25, closed footwear 0.25, harness 0.25); `ml/sam3_auto_label/README.md:3`; `streams/rules.py:1-19` (count/zone/line/dwell engine); no pack installer — `Home.tsx:14-20` creates a blank project from a type card.
 - **Suggested status:** PARTIAL — classes, rules and prompts all exist separately; nothing installs them together.
 - **Suggested priority / size:** Must / S.
 

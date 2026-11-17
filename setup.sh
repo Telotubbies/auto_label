@@ -5,7 +5,7 @@
 # This script:
 #   1. Locates a Python interpreter to run the SAM environment setup
 #      (prefers 3.10-3.12; falls back to 3.13 with upgraded deps).
-#   2. Runs sam3_auto_label/setup.py, which creates the venv, installs
+#   2. Runs ml/sam3_auto_label/setup.py, which creates the venv, installs
 #      hardware-matched PyTorch + deps, and downloads the SAM checkpoint.
 #      Missing items (checkpoint, Python itself) prompt the user before
 #      downloading.
@@ -26,7 +26,7 @@ set -euo pipefail
 # Resolve repo root from this script's location.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
-SETUP_PY="${REPO_ROOT}/sam3_auto_label/setup.py"
+SETUP_PY="${REPO_ROOT}/ml/sam3_auto_label/setup.py"
 LAUNCH_SH="${REPO_ROOT}/auto_label.sh"
 
 # ---------------------------------------------------------------------------
@@ -127,10 +127,10 @@ echo
 SETUP_FLAGS=()
 [ "$CHECK_ONLY" -eq 1 ] && SETUP_FLAGS+=(--check)
 
-log "Running sam3_auto_label/setup.py ${SETUP_FLAGS[*]:-}"
+log "Running ml/sam3_auto_label/setup.py ${SETUP_FLAGS[*]:-}"
 echo "-----------------------------------------------------------------------------"
 # shellcheck disable=SC2086
-( cd "$REPO_ROOT/sam3_auto_label" && "$RUNNER_PY" setup.py ${SETUP_FLAGS[*]:-} )
+( cd "$REPO_ROOT/ml/sam3_auto_label" && "$RUNNER_PY" setup.py ${SETUP_FLAGS[*]:-} )
 SETUP_RC=$?
 echo "-----------------------------------------------------------------------------"
 

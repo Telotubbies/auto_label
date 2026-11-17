@@ -441,7 +441,7 @@ The `conftest.py` provides 5 session-scoped fixtures:
 | --- | --- | --- |
 | `repo_root` | Every test needs the repo root path. Without a shared fixture, each test computes it independently (code duplication). | Path duplication in every test |
 | `pipeline_cli` | `pipeline_cli.py` is not in a package. It must be imported by adding the repo root to `sys.path`. Without the fixture, each test does this manually. | sys.path manipulation in every test |
-| `config_module` | `config.py` is in `sam3_auto_label/src/`. Same sys.path issue. | Same as above |
+| `config_module` | `config.py` is in `ml/sam3_auto_label/src/`. Same sys.path issue. | Same as above |
 | `prepare_dataset_module` | `01_prepare_dataset.py` starts with a digit. Cannot be imported normally. Must use `importlib.util.spec_from_file_location`. | Cannot import the module at all |
 | `focal_patch_module` | `focal_patch.py` is in `yolo26_ppe/`. Same importlib approach for consistency. | Manual import in every test |
 

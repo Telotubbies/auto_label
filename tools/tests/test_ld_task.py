@@ -92,8 +92,8 @@ def sandbox(tmp_path: Path) -> Sandbox:
         "deploy/compose.yaml": "deploy",
         "tools/keep.txt": "tools",
         "data/raw/x.jpg": "image",
-        "yolo26_ppe/models/x.pt": "weights",
-        "sam3_auto_label/run.py": "sam",
+        "ml/yolo26_ppe/models/x.pt": "weights",
+        "ml/sam3_auto_label/run.py": "sam",
         ".gitignore": ".env.task\n",
     }
     for relative, content in files.items():
@@ -126,7 +126,7 @@ def repo_root() -> Path:
 
 @pytest.fixture
 def heavy_clone(sandbox: Sandbox, tmp_path: Path) -> Sandbox:
-    """A real clone of a throwaway repo that tracks data/ and yolo26_ppe/.
+    """A real clone of a throwaway repo that tracks data/ and the ml/ tree.
 
     The source is the synthetic sandbox, not this repository: the approved history
     rewrite removes those folders from HEAD, and the exclusion contract must stay
@@ -161,7 +161,7 @@ def heavy_clone(sandbox: Sandbox, tmp_path: Path) -> Sandbox:
         ("full", ["apps", "deploy"]),
     ],
 )
-def test_cloned_worktree_omits_data_and_yolo_weights(
+def test_cloned_worktree_omits_data_and_ml_weights(
     heavy_clone: Sandbox,
     profile: str,
     present: list[str],
@@ -172,7 +172,7 @@ def test_cloned_worktree_omits_data_and_yolo_weights(
     )
     assert tracked.returncode == 0, tracked.stderr
     top_level = tracked.stdout.split()
-    assert "data" in top_level and "yolo26_ppe" in top_level, "precondition: the fixture tracks the heavy folders"
+    assert "data" in top_level and "ml" in top_level, "precondition: the fixture tracks the heavy folders"
 
     team = {"frontend": "frontend", "backend": "backend", "full": "platform"}[profile]
     result = heavy_clone.tool("new", team, "Z9", profile, profile)
@@ -180,7 +180,7 @@ def test_cloned_worktree_omits_data_and_yolo_weights(
     assert result.returncode == 0, result.stderr
     worktree = heavy_clone.worktree(team, f"Z9-{profile}")
     assert not (worktree / "data").exists()
-    assert not (worktree / "yolo26_ppe").exists()
+    assert not (worktree / "ml").exists()
     for path in present:
         assert (worktree / path).exists(), path
 
@@ -213,8 +213,7 @@ def test_new_creates_sparse_worktree_with_ports_and_temp_paths(
     assert not (worktree / "apps/frontend").exists()
     assert not (worktree / "apps/worker").exists()
     assert not (worktree / "data").exists()
-    assert not (worktree / "yolo26_ppe").exists()
-    assert not (worktree / "sam3_auto_label").exists()
+    assert not (worktree / "ml").exists()
 
     values = read_env(worktree / ".env.task")
     assert values["LD_TASK_BRANCH"] == "task/backend/B1-ports"
@@ -263,7 +262,7 @@ def test_new_allocates_the_next_free_slot(sandbox: Sandbox) -> None:
     assert (second / "apps/frontend/index.html").is_file()
     assert not (second / "apps/backend").exists()
     assert not (second / "data").exists()
-    assert not (second / "yolo26_ppe").exists()
+    assert not (second / "ml").exists()
 
 
 def test_new_ml_profile_checks_out_ml_code_but_not_data(sandbox: Sandbox) -> None:
@@ -271,8 +270,8 @@ def test_new_ml_profile_checks_out_ml_code_but_not_data(sandbox: Sandbox) -> Non
 
     assert result.returncode == 0, result.stderr
     worktree = sandbox.worktree("ml", "M1-train")
-    assert (worktree / "yolo26_ppe/models/x.pt").is_file()
-    assert (worktree / "sam3_auto_label/run.py").is_file()
+    assert (worktree / "ml/yolo26_ppe/models/x.pt").is_file()
+    assert (worktree / "ml/sam3_auto_label/run.py").is_file()
     assert (worktree / "tools/keep.txt").is_file()
     assert (worktree / "docs/README.md").is_file()
     assert not (worktree / "data").exists()

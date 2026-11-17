@@ -23,9 +23,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$SCRIPT_DIR}"
 
-# Prefer the venv created by setup.py (sam3_auto_label/sam3_venv).
+# Prefer the venv created by setup.py (ml/sam3_auto_label/sam3_venv).
 # Fall back to /opt/sam3_venv (legacy path) or system python.
-VENV_PYTHON="${REPO_ROOT}/sam3_auto_label/sam3_venv/bin/python"
+VENV_PYTHON="${REPO_ROOT}/ml/sam3_auto_label/sam3_venv/bin/python"
 OPT_PYTHON="/opt/sam3_venv/bin/python"
 if [ -x "$VENV_PYTHON" ]; then
     PYTHON="${YOLO_PYTHON:-$VENV_PYTHON}"

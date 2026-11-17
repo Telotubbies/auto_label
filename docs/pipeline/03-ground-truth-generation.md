@@ -195,5 +195,5 @@ MANUAL --> AUTO : 100x faster
 - `yolo26_ppe/reports/source/report.tex:476-485` — human verification protocol
 - `data/sam_outputs_ground_truth/` — output directory
 - `yolo26_ppe/data/` — dataset versions
-- `sam3_auto_label/src/batch_segment.py` — auto-labeling code
-- `sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) + thresholds
+- `ml/sam3_auto_label/src/batch_segment.py` — auto-labeling code
+- `ml/sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) + thresholds

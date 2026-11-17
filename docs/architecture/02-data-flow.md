@@ -132,7 +132,7 @@ digraph DataFlow {
 
 ### Per Annotation (in COCO JSON)
 
-@import "../../sam3_auto_label/src/inference.py" {line_begin=491 line_end=520 title="inference.py:491-520 — annotation dict construction"}
+@import "../../ml/sam3_auto_label/src/inference.py" {line_begin=491 line_end=520 title="inference.py:491-520 — annotation dict construction"}
 
 ---
 
@@ -174,7 +174,7 @@ digraph DataFlow {
 
 ### Config Hash
 
-@import "../../sam3_auto_label/src/tracker.py" {line_begin=73 line_end=83 title="tracker.py:73-83 — _config_hash"}
+@import "../../ml/sam3_auto_label/src/tracker.py" {line_begin=73 line_end=83 title="tracker.py:73-83 — _config_hash"}
 
 | Item | Value |
 |--------|-----|
@@ -184,7 +184,7 @@ digraph DataFlow {
 
 ### Git Commit
 
-@import "../../sam3_auto_label/src/tracker.py" {line_begin=85 line_end=96 title="tracker.py:85-96 — _git_commit"}
+@import "../../ml/sam3_auto_label/src/tracker.py" {line_begin=85 line_end=96 title="tracker.py:85-96 — _git_commit"}
 
 | Item | Value |
 |--------|-----|

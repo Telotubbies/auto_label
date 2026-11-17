@@ -124,8 +124,8 @@ Exit Criteria (met 2026-09-10):
 
 - [ ] Python 3.10-3.12 available (or 3.13 with upgraded deps)
 - [ ] `setup.sh` runs without errors
-- [ ] venv created at `sam3_auto_label/sam3_venv/`
-- [ ] SAM checkpoint downloaded to `sam3_auto_label/checkpoints/`
+- [ ] venv created at `ml/sam3_auto_label/sam3_venv/`
+- [ ] SAM checkpoint downloaded to `ml/sam3_auto_label/checkpoints/`
 - [ ] YOLO dependencies installed
 - [ ] GPU detected (CUDA, ROCm, MPS, or CPU fallback)
 - [ ] `bash -n setup.sh` passes
@@ -191,8 +191,8 @@ The system is a CLI tool, not a long-running service. The only service component
 
 | Scenario | Symptom | Diagnosis | Mitigation |
 | --- | --- | --- | --- |
-| Checkpoint missing | SAM inference fails | `ls sam3_auto_label/checkpoints/` | Re-run `./setup.sh` or manual download |
-| venv broken | `ModuleNotFoundError` | `ls sam3_auto_label/sam3_venv/bin/python` | Delete venv, re-run `./setup.sh` |
+| Checkpoint missing | SAM inference fails | `ls ml/sam3_auto_label/checkpoints/` | Re-run `./setup.sh` or manual download |
+| venv broken | `ModuleNotFoundError` | `ls ml/sam3_auto_label/sam3_venv/bin/python` | Delete venv, re-run `./setup.sh` |
 | GPU not detected | Training on CPU (slow) | Check `rocm-smi` or `nvidia-smi` | Install GPU drivers, verify `/dev/dxg` |
 | OOM during training | `torch.cuda.OutOfMemoryError` | Check VRAM usage | Reduce batch size in config |
 | MLflow port in use | `Address already in use` | `lsof -i :5000` | Stop existing process or change port |

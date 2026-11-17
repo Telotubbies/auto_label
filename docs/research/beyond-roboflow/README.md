@@ -83,12 +83,12 @@ S ≤ 1 day, M 2–5 days, L > 1 week of one engineer.
 - Frontend: `apps/frontend/src/features/{editor,project,workspace,settings,streams,
   governance,insights,lineage,evaluation,playground,auth,landing,dashboards}`,
   `src/lib/{api,nav}`, `src/routes/`. There is no i18n layer and no Thai string in the UI.
-- Standalone experiment: `sam3_auto_label/` (untracked) is a working SAM 3.1
+- Standalone experiment: `ml/sam3_auto_label/` (untracked) is a working SAM 3.1
   text-prompt PPE pipeline with checkpoint/resume and 11 export formats — not wired
   into the app. Treat it as evidence of capability, not as a shipped feature.
 
 Ignore `apps/api/` and `apps/web/` (stale pre-rename copies) and never index
-`sam3_auto_label/sam3_venv/` (a 70k-file virtualenv that will blow up your context).
+`ml/sam3_auto_label/sam3_venv/` (a 70k-file virtualenv that will blow up your context).
 
 ## Output budget
 

@@ -11,7 +11,7 @@ status: "Verified"
 >
 > Covers 3 requirements: (1) SAM 3.1 auto-labeling, (2) YOLO26 training, (3) ground-truth generation
 >
-> **Status**: Verified — verified against actual code in `sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py` and the report `yolo26_ppe/reports/final/report.pdf`
+> **Status**: Verified — verified against actual code in `ml/sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py` and the report `yolo26_ppe/reports/final/report.pdf`
 
 ---
 
@@ -19,9 +19,9 @@ status: "Verified"
 
 | # | Requirement | Status | Module |
 |---|-------------|-------|-------|
-| **RQ1** | Auto-label PPE images with SAM 3.1 | ✅ Completed | `sam3_auto_label/` |
+| **RQ1** | Auto-label PPE images with SAM 3.1 | ✅ Completed | `ml/sam3_auto_label/` |
 | **RQ2** | Train YOLO26 on the PPE dataset (person, helmet, closed footwear, harness) | ✅ Completed | `yolo26_ppe/` |
-| **RQ3** | Generate ground truth from provided data | ✅ Completed | `sam3_auto_label/` → `data/sam_outputs_ground_truth/` |
+| **RQ3** | Generate ground truth from provided data | ✅ Completed | `ml/sam3_auto_label/` → `data/sam_outputs_ground_truth/` |
 
 > The user has run auto-labeling and the full report is at `yolo26_ppe/reports/final/report.pdf`
 
@@ -112,7 +112,7 @@ EVAL --> REPORT : comparison
 | 3 | `closed footwear` | `closed footwear` | 0.25 | ✅ |
 | 4 | `harness` | `safety harness` | 0.25 | ✅ |
 
-> Source: `sam3_auto_label/config/ppe_4class.yaml` (filename is historical — it now defines 4 classes)
+> Source: `ml/sam3_auto_label/config/ppe_4class.yaml` (filename is historical — it now defines 4 classes)
 >
 > **Note**: v3 merged `boots`+`shoes` into `closed footwear` and dropped `sandals` (non-PPE). The previous v2 five-class dataset and its nano/small models are archived under `yolo26_ppe/models/archive/version_2_5class/`.
 
@@ -231,9 +231,9 @@ stop
 
 ## References
 
-- `sam3_auto_label/README.md:1-5` — Name and purpose
-- `sam3_auto_label/src/inference.py:347-365` — SAM 3.1 model build
-- `sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) and thresholds
+- `ml/sam3_auto_label/README.md:1-5` — Name and purpose
+- `ml/sam3_auto_label/src/inference.py:347-365` — SAM 3.1 model build
+- `ml/sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) and thresholds
 - `pipeline_cli.py:263-265` — 3 modes (sam, yolo, pred)
 - `yolo26_ppe/reports/final/report.pdf` — Full report
 - `yolo26_ppe/reports/inputs/final_eval_results.json` — Metrics for 4 models

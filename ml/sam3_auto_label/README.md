@@ -7,7 +7,7 @@ Takes raw images from `../data/raw/` → detects via text prompt → exports to 
 ## Structure
 
 ```text
-sam3_auto_label/
+ml/sam3_auto_label/
 ├── src/                     # Core code (config, inference, batch_segment, exporters, tracker)
 ├── config/                  # YAML config for each dataset
 ├── sam3/                    # SAM 3.1 source code (vendored — do not modify)
@@ -23,7 +23,7 @@ sam3_auto_label/
 ## Installation
 
 ```bash
-cd sam3_auto_label
+cd ml/sam3_auto_label
 python setup.py              # full setup — create venv + install torch + download checkpoint
 python setup.py --check      # check hardware only, install nothing
 python setup.py --force-cpu  # force CPU-only

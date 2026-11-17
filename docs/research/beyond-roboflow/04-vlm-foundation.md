@@ -8,7 +8,7 @@ Method: 14 pages fetched this session (Meta SAM 3 repo, Ultralytics SAM 3 / YOLO
 augmentation docs, IDEA DINO-X API, FiftyOne Brain and Agent pages, Encord docs index, llms.txt and
 agent catalog, NVIDIA Omniverse Replicator, Gemini image-understanding docs, Qwen3-VL card). Code
 read in `apps/backend/app/{adapters,services,routers}` and
-`apps/frontend/src/features/{project,editor,playground}`. Untracked `sam3_auto_label/` is cited as
+`apps/frontend/src/features/{project,editor,playground}`. Untracked `ml/sam3_auto_label/` is cited as
 capability evidence only: its model is called from `services/segment.py`, but its batch pipeline
 (checkpoint/resume, 11 export formats) is not wired. Roboflow's auto-label, SAM and workflow rows
 already live in `docs/research/roboflow-parity/PARITY.md`; every card names the control parity does
@@ -31,7 +31,7 @@ queue, a stored score, a report — not for a missing model.
 - **Why it is easy:** the prompt sits on the class row the labeler already reads, so a new synonym costs no workflow edit and no re-upload.
 - **Products with it:** YOLO-World takes a free-form class list plus a documented empty-string background class that suppresses spurious hits (https://docs.ultralytics.com/models/yolo-world/); SAM 3 takes positive **and negative** image exemplars per concept (https://docs.ultralytics.com/models/sam-3/); DINO-X accepts text, visual and custom prompts together (https://github.com/IDEA-Research/DINO-X-API).
 - **Why it matters for LabelDesk:** per-class *descriptions* and *thresholds* are parity 3-F3.27 and 3-F3.29; exclusions and synonyms are what decides whether a zero-shot run is usable, and our vocabulary is Thai-English mixed.
-- **LabelDesk code evidence:** `features/project/AutoLabelDialog.tsx:201-233` (checkbox rows only), `:235-243` (one free-text field per batch), `:117-127` (payload has one `prompt`); `adapters/refine.py:133-143` (one prompt → `parse_prompt` → phrases); `services/segment.py:286-292` (loops prompts, one threshold). `sam3_auto_label/config/ppe_4class.yaml:7-22` already keeps a prompt **and** threshold per class in the working off-app pipeline; the app loads that repo's model (`services/segment.py:113-120`) but never reads its config.
+- **LabelDesk code evidence:** `features/project/AutoLabelDialog.tsx:201-233` (checkbox rows only), `:235-243` (one free-text field per batch), `:117-127` (payload has one `prompt`); `adapters/refine.py:133-143` (one prompt → `parse_prompt` → phrases); `services/segment.py:286-292` (loops prompts, one threshold). `ml/sam3_auto_label/config/ppe_4class.yaml:7-22` already keeps a prompt **and** threshold per class in the working off-app pipeline; the app loads that repo's model (`services/segment.py:113-120`) but never reads its config.
 - **Suggested status:** PARTIAL — class names plus one free-text line; no negative phrase, no synonyms, nothing saved on the class.
 - **Suggested priority / size:** Must / M.
 

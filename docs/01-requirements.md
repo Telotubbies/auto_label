@@ -72,7 +72,7 @@ any --> cpu : torch==2.5.1+cpu
 
 ### `requirements.txt` (non-torch)
 
-@import "../sam3_auto_label/requirements.txt" {title="requirements.txt"}
+@import "../ml/sam3_auto_label/requirements.txt" {title="requirements.txt"}
 
 > PyTorch is installed separately from `requirements.txt` because the index URL must be selected based on the GPU
 
@@ -89,7 +89,7 @@ any --> cpu : torch==2.5.1+cpu
 | `questionary` | interactive prompts |
 | `rich` | terminal formatting |
 
-> Not included in `sam3_auto_label/requirements.txt` — installed in the repo-root-level venv
+> Not included in `ml/sam3_auto_label/requirements.txt` — installed in the repo-root-level venv
 
 ---
 
@@ -100,7 +100,7 @@ any --> cpu : torch==2.5.1+cpu
 | Checkpoint | `sam3.1_multiplex.pt` |
 | Size | $3340 \text{ MB} \approx 3.34 \text{ GB}$ |
 | URL | `https://huggingface.co/facebook/sam3.1/resolve/main/sam3.1_multiplex.pt` |
-| Storage location (runtime) | `sam3_auto_label/checkpoints/sam3.1_multiplex.pt` |
+| Storage location (runtime) | `ml/sam3_auto_label/checkpoints/sam3.1_multiplex.pt` |
 
 > **⚠️ Known issue**: `setup.py:35` downloads to `models/sam3/` but `config.py:112-113` looks in `checkpoints/` — the file must be moved or symlinked manually after setup
 
@@ -194,9 +194,9 @@ any --> cpu : torch==2.5.1+cpu
 
 ## References
 
-- `sam3_auto_label/requirements.txt:1-23`
-- `sam3_auto_label/setup.py:1-405`
-- `sam3_auto_label/Dockerfile:1-77`
+- `ml/sam3_auto_label/requirements.txt:1-23`
+- `ml/sam3_auto_label/setup.py:1-405`
+- `ml/sam3_auto_label/Dockerfile:1-77`
 - `yolo26_ppe/reports/inputs/sam3_benchmark_results.json` — SAM 3.1 benchmark
 - `yolo26_ppe/reports/inputs/final_eval_results.json` — YOLO26 metrics
 - `yolo26_ppe/reports/source/report.tex:652-677` — training config

@@ -115,7 +115,7 @@ def _load_sam():
                     sys.path.insert(0, str(p))
             if not (SAM_ROOT / "checkpoints" / "sam3.1_multiplex.pt").exists():
                 raise FileNotFoundError(f"SAM checkpoint missing under {SAM_ROOT / 'checkpoints'}")
-            from config import Config                      # sam3_auto_label/src/config.py
+            from config import Config                      # ml/sam3_auto_label/src/config.py
             from inference import build_model
             _sam["proc"] = build_model(Config(base_dir=str(SAM_ROOT)))
             log.info("SAM 3.1 loaded")

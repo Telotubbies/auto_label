@@ -51,17 +51,21 @@ yarn-error.log*
 # ---------------------------------------------------------------------------
 
 # Virtual environments (the SAM pipeline keeps its own under its tree)
-sam3_auto_label/.venv_windows/
-sam3_auto_label/sam3_venv/
+ml/sam3_auto_label/.venv_windows/
+ml/sam3_auto_label/sam3_venv/
 
 # SAM 3.1 checkpoint (3.3GB — too large even for LFS, keep local only)
-sam3_auto_label/checkpoints/sam3.1_multiplex.pt
+ml/sam3_auto_label/checkpoints/sam3.1_multiplex.pt
 
 # SAM 3.1 — vendored source is tracked; keep the locked backup zip local
-sam3_auto_label/sam3_source_locked.zip
+ml/sam3_auto_label/sam3_source_locked.zip
 
 # DINOv3 is a separate git clone, keep local
-sam3_auto_label/dinov3/
+ml/sam3_auto_label/dinov3/
+
+# Pre-move residue: the ignored subtrees above still sit at the old path in a
+# checkout that predates the 2026-11-17 move. Nothing tracked lives here.
+/sam3_auto_label/
 
 # MLflow runs (auto-generated, not needed for handoff)
 yolo26_ppe/artifacts/mlflow/

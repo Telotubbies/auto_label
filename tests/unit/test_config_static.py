@@ -43,14 +43,14 @@ class TestCheckpointLocationMatch:
     """TC-12: setup.py and pipeline_cli.py must agree on the checkpoint path.
 
     Both must reference `checkpoints/sam3.1_multiplex.pt` relative to the
-    sam3_auto_label directory.
+    ml/sam3_auto_label directory.
     """
 
     EXPECTED_CKPT_NAME = "sam3.1_multiplex.pt"
     EXPECTED_CKPT_DIR = "checkpoints"
 
     def test_setup_py_uses_correct_path(self, repo_root):
-        setup_path = repo_root / "sam3_auto_label" / "setup.py"
+        setup_path = repo_root / "ml" / "sam3_auto_label" / "setup.py"
         content = setup_path.read_text(encoding="utf-8")
         assert self.EXPECTED_CKPT_NAME in content, (
             f"setup.py must reference {self.EXPECTED_CKPT_NAME}"

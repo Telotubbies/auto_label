@@ -25,7 +25,7 @@ def pipeline_cli():
 @pytest.fixture(scope="session")
 def config_module():
     """Import the SAM config module."""
-    sys.path.insert(0, str(REPO_ROOT / "sam3_auto_label" / "src"))
+    sys.path.insert(0, str(REPO_ROOT / "ml" / "sam3_auto_label" / "src"))
     import config
     return config
 

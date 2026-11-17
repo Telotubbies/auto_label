@@ -32,7 +32,7 @@
 | T-UP | upload | dropzone + per-file progress + dedupe hash (SHA-256 ฝั่ง client เทียบ server) | Upload.tsx, api /uploads |
 | T-KANBAN | kanban 4 คอลัมน์ | Unassigned→Annotating→Review→Done + assignment to user | AnnotateBoard.tsx, api /jobs, /assignments |
 | T-EDITOR | editor เต็ม | tool rail ครบ, shortcuts, undo/redo, **approve/reject**, **Smart Polygon→SAM 3.1** | Editor.tsx |
-| T-SAM | smart polygon | POST /infer/sam-point {image_id, points[]} → mask→polygon | api → `sam3_auto_label/src/inference.py` |
+| T-SAM | smart polygon | POST /infer/sam-point {image_id, points[]} → mask→polygon | api → `ml/sam3_auto_label/src/inference.py` |
 | T-DS | dataset filters | filter by class/status/split + raw query | Browse.tsx + api |
 | T-VER | versions | preprocess+augment config → export 11 formats ผ่าน `exporters.py` | misc.tsx Versions, api /versions/{id}/export |
 | T-TRAIN | train | launch `yolo26_ppe` 02_train + mAP chart + confusion matrix (อ่าน `reports/inputs/final_eval_results.json`) | misc.tsx Train, api /jobs/train |

@@ -154,12 +154,12 @@ The documentation clearly indicates which parts are commonly found in general sy
 
 | File | Responsibility |
 |------|---------|
-| `sam3_auto_label/src/config.py` | Config dataclasses + validation |
-| `sam3_auto_label/src/inference.py` | SAM 3.1 inference + NMS + RLE |
-| `sam3_auto_label/src/batch_segment.py` | Batch loop + checkpoint + ETA |
-| `sam3_auto_label/src/exporters.py` | 11 export formats |
-| `sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
-| `sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
+| `ml/sam3_auto_label/src/config.py` | Config dataclasses + validation |
+| `ml/sam3_auto_label/src/inference.py` | SAM 3.1 inference + NMS + RLE |
+| `ml/sam3_auto_label/src/batch_segment.py` | Batch loop + checkpoint + ETA |
+| `ml/sam3_auto_label/src/exporters.py` | 11 export formats |
+| `ml/sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
+| `ml/sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
 | `pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
 | `yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
 | `yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |

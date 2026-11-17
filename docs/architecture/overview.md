@@ -30,7 +30,7 @@ The browser talks only to the frontend origin. In development Vite proxies `/api
 | Remote GPU worker | `apps/worker` | Outbound-only worker that claims `train` and `autolabel` jobs, runs them on its own GPU, and posts progress and results back |
 | Self-hosted inference | `apps/inference` | Standalone service that serves exported `.onnx`, `.pt`, or `.engine` files over `/predict`; it has no workspace, API key, or billing code |
 | SDK and CLI | `packages/sdk` | Python client for `/api/v1`; the operation map is generated from the API's OpenAPI schema |
-| Batch pipeline | `sam3_auto_label`, `yolo26_ppe` | SAM auto-labeling and YOLO26 training, evaluation, and export. The target layout moves both under `ml/` |
+| Batch pipeline | `ml/sam3_auto_label`, `yolo26_ppe` | SAM auto-labeling and YOLO26 training, evaluation, and export. The target layout moves both under `ml/` |
 
 The `packages/` directory in the target layout does not exist yet. Shared Python code currently lives under `apps/backend/app`. The frontend is self-contained.
 

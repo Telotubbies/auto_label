@@ -88,7 +88,7 @@ MODELS --> ONNX : export
 
 ### 3.2 Component Design
 
-#### 3.2.1 SAM 3.1 Auto-Labeling (`sam3_auto_label/`)
+#### 3.2.1 SAM 3.1 Auto-Labeling (`ml/sam3_auto_label/`)
 
 | Component | File | Responsibility |
 | --- | --- | --- |
@@ -241,7 +241,7 @@ Consequences:
 
 Context: `pipeline_cli.py` hardcoded `/opt/sam3_venv/bin/python` and `/mnt/e/02_Projects/auto_label`, breaking on fresh machines.
 
-Decision: Use `Path(__file__).resolve().parent` for repo root and `sam3_auto_label/sam3_venv/` for the venv. Allow `YOLO_PYTHON` env override.
+Decision: Use `Path(__file__).resolve().parent` for repo root and `ml/sam3_auto_label/sam3_venv/` for the venv. Allow `YOLO_PYTHON` env override.
 
 Alternatives:
 - Keep hardcoded paths: Rejected because not portable
@@ -318,7 +318,7 @@ auto_label/
   auto_label.sh              # Entry point (shell wrapper)
   setup.sh                   # Setup script (Python detection + venv)
   pipeline_cli.py            # CLI orchestrator (3 modes)
-  sam3_auto_label/
+  ml/sam3_auto_label/
     setup.py                 # venv creation, deps, checkpoint
     requirements.txt         # SAM dependencies
     sam3_venv/               # Created by setup.py (gitignored)
