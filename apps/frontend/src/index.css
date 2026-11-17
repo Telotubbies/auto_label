@@ -127,9 +127,15 @@
   button, [role=button], [role=switch] { min-height: 24px; min-width: 24px; }
 
   /* ===== Liquid Glass (chrome only) =====
+     The four numbers are the contract (tests/glass.test.mjs pins them): blur 16 px chrome / 20 px overlay with
+     saturate(180%), tint 58 % light / 62 % dark, overlay tint 80 % / 84 %, and a 92 % opaque fill for the no-blur
+     fallback. A 1 px inner highlight stays on top. Tint is chrome only; content (cards, tables, grids, the canvas)
+     stays solid on --card.
      Solid by default. Blur turns on only where supported, and is switched back off for prefers-reduced-transparency
      and the Settings toggle (html[data-reduce-transparency], needed because Safari ignores the media query).
      Literal blur values: Safari wants the -webkit- prefix and static numbers. Max blur 20px; motion never animates blur.
+     Every class that can carry .glass is listed in both fallbacks below (the media query and the toggle), so a later
+     chrome class cannot ship a surface that only works with blur.
      The four glass roles a frame may name: --glass-tint (blur fill), --glass-solid (fallback), --glass-edge
      (1 px border), --glass-hi (top highlight). No further glass variable is added. */
   .glass {
@@ -153,10 +159,10 @@
     .glass-overlay { -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
   }
   @media (prefers-reduced-transparency: reduce) {
-    .glass, .glass-overlay { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .glass, .glass-overlay, .glass-sidebar { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
     .app-bg { background: var(--background); }
   }
-  html[data-reduce-transparency] .glass, html[data-reduce-transparency] .glass-overlay { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html[data-reduce-transparency] .glass, html[data-reduce-transparency] .glass-overlay, html[data-reduce-transparency] .glass-sidebar { background-color: var(--glass-solid); background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   html[data-reduce-transparency] .app-bg { background: var(--background); }
 
   /* Ambient wash behind the chrome so the glass has something to refract. Content cards stay solid on top. */
