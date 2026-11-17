@@ -126,9 +126,16 @@ def create_project(body: ProjectIn, c: Ctx = Depends(ws_ctx)):
     n = c.db.scalar(select(func.count(Project.id)).where(Project.workspace_id == c.ws.id, Project.deleted_at.is_(None)))
     if n >= plan(c.ws)["projects"]:
         raise HTTPException(402, f"project limit reached on the {plan(c.ws)['label']} plan")
-    base = slugify(body.name); slug = base; i = 1
-    while c.db.scalar(select(Project.id).where(Project.workspace_id == c.ws.id, Project.slug == slug)):
-        i += 1; slug = f"{base}-{i}"
+    base = slugify(body.name)
+    # V2 (T-1104): a name is not a unique key here, so say which address is taken and name a free
+    # one instead of storing `<slug>-2` behind the buyer's back. A trashed project keeps its slug,
+    # exactly like the uniqueness rule below, so deleting one does not free the address silently.
+    if c.db.scalar(select(Project.id).where(Project.workspace_id == c.ws.id, Project.slug == base)):
+        i = 2
+        while c.db.scalar(select(Project.id).where(Project.workspace_id == c.ws.id, Project.slug == f"{base}-{i}")):
+            i += 1
+        raise HTTPException(409, {"taken": f"/{c.ws.slug}/p/{base}", "suggestion": f"/{c.ws.slug}/p/{base}-{i}"})
+    slug = base
     p = Project(workspace_id=c.ws.id, slug=slug, name=body.name.strip(), type=body.type, visibility=body.visibility,
                 license=body.license, annotation_group=body.annotation_group or "objects", multilabel=body.multilabel,
                 folder_id=body.folder_id, settings={})
