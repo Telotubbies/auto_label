@@ -452,6 +452,7 @@ export function Signup() {
             enabled={cfg.data?.workspace_create}
             disabled={busy}
             onStatus={setWsState}
+            inputId="signup-workspace"
           />
 
           <FormError

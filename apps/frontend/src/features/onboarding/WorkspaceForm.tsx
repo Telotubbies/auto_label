@@ -20,15 +20,18 @@ type Props = {
   /** First run owns the submit; signup submits with its account form instead. */
   submit?: { label: string; busy?: boolean; onClick: () => void }
   onStatus?: (status: WorkspaceLinkState) => void
+  /** The name input's id; signup keeps its stable `signup-workspace` so labels and journeys find it. */
+  inputId?: string
 }
 
 export function WorkspaceForm({
-  value, onChange, fallbackName = '', enabled, disabled, error, submit, onStatus,
+  value, onChange, fallbackName = '', enabled, disabled, error, submit, onStatus, inputId,
 }: Props) {
   const flag = useFlag('task_a1_workspace_create')
   const on = enabled || flag
   const authed = useApp((s) => s.authed)
   const id = useId()
+  const nameId = inputId ?? `${id}-name`
   const [state, setState] = useState<WorkspaceLinkState>('empty')
   const [suggestion, setSuggestion] = useState('')
 
@@ -63,11 +66,11 @@ export function WorkspaceForm({
   return (
     <div className="space-y-4">
       <div>
-        <label htmlFor={`${id}-name`} className="mb-1.5 block text-sm font-medium text-foreground">
+        <label htmlFor={nameId} className="mb-1.5 block text-sm font-medium text-foreground">
           Workspace name
         </label>
         <Input
-          id={`${id}-name`}
+          id={nameId}
           type="text"
           name="organization"
           autoComplete="organization"
