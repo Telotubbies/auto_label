@@ -51,6 +51,50 @@ def test_fetch_bytes_honours_its_timeout(silent_server, monkeypatch):
     assert time.monotonic() - started < 3
 
 
+@pytest.fixture()
+def trickle_server():
+    """A loopback peer that sends headers, then one body byte per 0.1 s: a slow-drip body."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+    srv.settimeout(0.1)
+    stop = threading.Event()
+
+    def serve():
+        while not stop.is_set():
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                continue
+            try:
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n")
+                for _ in range(1000):
+                    if stop.is_set():
+                        break
+                    conn.sendall(b"x")
+                    time.sleep(0.1)
+            except OSError:                # the client hung up at its deadline
+                pass
+            finally:
+                conn.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        yield srv.getsockname()[1]
+    finally:
+        stop.set()
+        srv.close()
+
+
+def test_total_timeout_bounds_a_slow_drip_body(trickle_server, monkeypatch):
+    """Each read resets a per-read timeout, so the deadline must be re-checked across reads."""
+    monkeypatch.setattr(safefetch, "_public_ip", lambda host, port: "127.0.0.1")
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        safefetch.fetch_bytes(f"http://img.example.com:{trickle_server}/x.jpg", max_bytes=20, timeout=0.3)
+    assert time.monotonic() - started < 2, "a byte per tick must not hold the call past its one deadline"
+
+
 def test_total_budget_covers_every_redirect_hop(monkeypatch):
     """Each hop must spend the one budget the caller gave, not a fresh one (total timeout)."""
     seen: list[float] = []

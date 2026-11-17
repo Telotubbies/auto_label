@@ -62,11 +62,7 @@ def _remaining(deadline: float) -> float:
 
 
 def _arm(conn, deadline: float) -> None:
-    """Give the next socket read what is left of the total budget; a spent budget fails the call.
-
-    shortcut: the timeout is per read, so a peer that trickles bytes can overrun the wall clock
-    slightly; upgrade to a deadline-aware socket if a slow-drip host ever needs a hard cap.
-    """
+    """Give the next socket read what is left of the total budget; a spent budget fails the call."""
     left = deadline - time.monotonic()
     if left <= 0:
         conn.close()
@@ -133,11 +129,17 @@ def _get(url: str, max_bytes: int, timeout: float, max_redirects: int) -> bytes:
             conn.close()
             raise BlockedURL(f"URL returned HTTP {r.status}")
         _arm(conn, deadline)
-        data = r.read(max_bytes + 1)
+        data = bytearray()
+        while len(data) <= max_bytes:
+            _arm(conn, deadline)       # read1 does one recv, so the deadline is checked across the body
+            chunk = r.read1(max_bytes + 1 - len(data))
+            if not chunk:
+                break
+            data += chunk
         conn.close()
         if len(data) > max_bytes:
             raise BlockedURL(f"response larger than {max_bytes // (1024 * 1024)} MB")
-        return data
+        return bytes(data)
     raise BlockedURL("too many redirects")
 
 
