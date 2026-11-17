@@ -133,3 +133,30 @@ def test_total_budget_covers_every_redirect_hop(monkeypatch):
     assert len(seen) == 4                       # the first hop plus three redirects
     assert seen[0] <= 0.4
     assert seen[-1] < seen[0], "every hop got a fresh budget: the total timeout is not enforced"
+
+
+def test_a_timeout_closes_the_connection(monkeypatch):
+    """A timeout must not wait for the GC to close the socket."""
+    closed: list[bool] = []
+
+    class Sock:
+        def settimeout(self, t):
+            pass
+
+    class FakeConn:
+        sock = Sock()
+
+        def request(self, *a, **k):
+            pass
+
+        def getresponse(self):
+            raise TimeoutError("timed out")
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(safefetch, "_public_ip", lambda host, port: "93.184.216.34")
+    monkeypatch.setattr(safefetch.http.client, "HTTPConnection", lambda *a, **k: FakeConn())
+    with pytest.raises(TimeoutError):
+        safefetch._get("http://example.com/a", 10, 0.5, 0)
+    assert closed, "the connection must be closed when a timeout unwinds the read"

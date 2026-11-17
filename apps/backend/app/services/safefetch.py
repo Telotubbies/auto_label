@@ -117,29 +117,29 @@ def _get(url: str, max_bytes: int, timeout: float, max_redirects: int) -> bytes:
         port = u.port or (443 if u.scheme == "https" else 80)
         ip = _public_ip(u.hostname, port)
         conn = _pinned_connection(u, ip, port, _remaining(deadline))
-        path = (u.path or "/") + (f"?{u.query}" if u.query else "")
-        conn.request("GET", path, headers={"Host": _host_header(u, port), "User-Agent": "LabelDesk/1.0"})
-        _arm(conn, deadline)
-        r = conn.getresponse()
-        if r.status in (301, 302, 303, 307, 308) and r.getheader("Location") and max_redirects:
-            url = urljoin(url, r.getheader("Location"))
+        try:
+            path = (u.path or "/") + (f"?{u.query}" if u.query else "")
+            conn.request("GET", path, headers={"Host": _host_header(u, port), "User-Agent": "LabelDesk/1.0"})
+            _arm(conn, deadline)
+            r = conn.getresponse()
+            if r.status in (301, 302, 303, 307, 308) and r.getheader("Location") and max_redirects:
+                url = urljoin(url, r.getheader("Location"))
+                continue
+            if r.status != 200:
+                raise BlockedURL(f"URL returned HTTP {r.status}")
+            _arm(conn, deadline)
+            data = bytearray()
+            while len(data) <= max_bytes:
+                _arm(conn, deadline)   # read1 does one recv, so the deadline is checked across the body
+                chunk = r.read1(max_bytes + 1 - len(data))
+                if not chunk:
+                    break
+                data += chunk
+            if len(data) > max_bytes:
+                raise BlockedURL(f"response larger than {max_bytes // (1024 * 1024)} MB")
+            return bytes(data)
+        finally:
             conn.close()
-            continue
-        if r.status != 200:
-            conn.close()
-            raise BlockedURL(f"URL returned HTTP {r.status}")
-        _arm(conn, deadline)
-        data = bytearray()
-        while len(data) <= max_bytes:
-            _arm(conn, deadline)       # read1 does one recv, so the deadline is checked across the body
-            chunk = r.read1(max_bytes + 1 - len(data))
-            if not chunk:
-                break
-            data += chunk
-        conn.close()
-        if len(data) > max_bytes:
-            raise BlockedURL(f"response larger than {max_bytes // (1024 * 1024)} MB")
-        return bytes(data)
     raise BlockedURL("too many redirects")
 
 
