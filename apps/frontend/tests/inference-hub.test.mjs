@@ -2,9 +2,9 @@
 // Runs with the built-in Node test runner: node --test tests/inference-hub.test.mjs (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { visibleWorkspaceNav } from '../src/lib/nav.ts'
-import { tabFrom } from '../src/features/inference/tabs.ts'
+import { INFERENCE_TAB_LABELS, INFERENCE_TABS, tabFrom } from '../src/features/inference/tabs.ts'
 
 const flat = (groups) => groups.flatMap((g) => g.items)
 const inference = (groups) => flat(groups).find((i) => i.to === 'inference')
@@ -76,4 +76,52 @@ test('test_segmentation_tab_mounts_the_segmentation_panel', () => {
   assert.match(hub, /<SegmentationTab/, 'the segmentation tab renders SegmentationTab')
   assert.match(hub, /import SegmentationTab from '\.\/SegmentationTab'/, 'and imports it from its own module')
   assert.doesNotMatch(hub, /PANEL_EMPTY/, 'the placeholder map is gone')
+})
+
+// ---------- T-1021: the UI QA guards ------------------------------------------
+// Two guarantees the QA pass can never verify by eye alone, so they are checked here as well as in
+// docs/research/inference-hub/ui-qa.md. Source-checked like the other design guards, because the
+// suite has no DOM renderer.
+
+const inferenceTree = readdirSync(new URL('../src/features/inference/', import.meta.url), { recursive: true })
+  .map((f) => f.replaceAll('\\', '/'))
+  .filter((f) => /\.(ts|tsx)$/.test(f))
+const inferenceSrc = (rel) => readFileSync(new URL(`../src/features/inference/${rel}`, import.meta.url), 'utf8')
+
+/** The three things the glass system forbids in this tree: a literal colour, an arbitrary size, an inline size. */
+const violations = (text) => [
+  ...(text.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []),
+  ...(text.match(/text-\[[^\]]+\]/g) ?? []),
+  ...(text.match(/style=\{\{[^}]*fontSize/g) ?? []),
+]
+
+test('test_no_hex_or_arbitrary_font_size_in_the_inference_tree', () => {
+  assert.ok(inferenceTree.length >= 15, 'the inference tree was read')
+  for (const file of inferenceTree) {
+    assert.deepEqual(violations(inferenceSrc(file)), [],
+      `features/inference/${file} carries a literal colour, an arbitrary font size or an inline font size; `
+      + 'the shipped roles and text-sm / text-xs are the whole scale')
+  }
+  // A guard that cannot fail is not a guard: the scanner itself has to catch all three.
+  assert.deepEqual(
+    violations("const c = '#3b6cf6'\n<p className=\"text-[13px]\" style={{ fontSize: 11 }}>x</p>"),
+    ['#3b6cf6', 'text-[13px]', 'style={{ fontSize'],
+    'the scanner detects a hex literal, an arbitrary size and an inline font size')
+})
+
+test('test_every_tab_id_has_copy', () => {
+  // One map owns every tab's title (the tab bar is the panel heading). An id without copy, or
+  // without its panel module, fails here instead of shipping as a blank tab.
+  assert.deepEqual([...INFERENCE_TABS].sort(), Object.keys(INFERENCE_TAB_LABELS).sort(),
+    'the copy map lists exactly the tab ids')
+  for (const id of INFERENCE_TABS) {
+    assert.equal(typeof INFERENCE_TAB_LABELS[id], 'string', `${id} has a label`)
+    assert.ok(INFERENCE_TAB_LABELS[id].trim().length > 0, `${id} has copy, not an empty string`)
+    const panel = `${id[0].toUpperCase()}${id.slice(1)}Tab.tsx`
+    assert.ok(inferenceTree.includes(panel), `${id} has its panel module, ${panel}`)
+  }
+  const hub = inferenceSrc('InferenceHub.tsx')
+  assert.match(hub, /INFERENCE_TAB_LABELS\[id\]/, 'the tab bar and the 375 px select read the map')
+  assert.doesNotMatch(hub, /label: '(Engines|Models|Calculator|Segmentation)'/, 'no tab label is inlined in the hub')
+  assert.doesNotMatch(hub, /<option key=\{id\} value=\{id\}>[A-Z]/, 'no tab label is inlined in the select')
 })
