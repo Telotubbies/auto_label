@@ -1,5 +1,5 @@
 import type { Job, Me, Member, Project, RegistryItem, WorkspaceFlags, WorkspaceHome, WorkspaceInfo } from '../types'
-import { get, P, put } from './client'
+import { get, P, post, put } from './client'
 
 /** Session, workspace and project lookup — the calls every shell surface makes. */
 export const coreApi = {
@@ -11,6 +11,9 @@ export const coreApi = {
     addons: { available: boolean }
   }>('/config'),
   me: () => get<Me>('/me'),
+  workspaceSlug: (name: string) =>
+    get<{ slug: string; available: boolean; suggestion?: string }>(`/workspaces/slug?name=${encodeURIComponent(name)}`),
+  createWorkspace: (name: string, slug?: string) => post<{ slug: string; name: string }>('/workspaces', { name, slug }),
   workspace: (ws: string) => get<WorkspaceInfo>(`/ws/${ws}`),
   home: (ws: string) => get<WorkspaceHome>(`/ws/${ws}/home`),
   flags: (ws: string) => get<WorkspaceFlags>(`/ws/${ws}/flags`),

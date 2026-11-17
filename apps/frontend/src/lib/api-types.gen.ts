@@ -687,6 +687,7 @@ export interface WorkspaceCustomRoleIn {
 
 export interface WorkspaceIn {
   name: string
+  slug?: string | null
 }
 
 export interface WsPatch {

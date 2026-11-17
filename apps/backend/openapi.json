@@ -3288,6 +3288,17 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
           }
         },
         "required": [
@@ -7066,6 +7077,52 @@
           }
         ],
         "summary": "New Workspace",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/workspaces/slug": {
+      "get": {
+        "description": "Availability of a derived address, plus one suggestion. Never another workspace's data.",
+        "operationId": "workspace_slug_api_workspaces_slug_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Workspace Slug",
         "tags": [
           "auth"
         ]

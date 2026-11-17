@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import { Glass } from '@/components/glass'
 import { Button, Input, Spinner, toast } from '@/components/ui'
 import { CornerMarks, DotGrid } from '@/features/landing/primitives'
+import { WorkspaceForm } from '@/features/onboarding/WorkspaceForm'
+import type { WorkspaceLinkState } from '@/lib/slug'
 
 // ---------------------------------------------------------------------------------------------
 // Entry surface: Operate, but the door to a Persuade page. One glass panel, a quiet security
@@ -158,9 +160,9 @@ function FormError({ message, hint }: { message?: string; hint?: ReactNode }) {
   )
 }
 
-function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
+function Submit({ busy, disabled, children }: { busy: boolean; disabled?: boolean; children: ReactNode }) {
   return (
-    <Button type="submit" disabled={busy} aria-busy={busy} className="h-10 w-full">
+    <Button type="submit" disabled={busy || disabled} aria-busy={busy} className="h-10 w-full">
       {busy ? <Spinner className="h-4 w-4" /> : null}
       {children}
     </Button>
@@ -371,13 +373,17 @@ export function Signup() {
   const nav = useNavigate()
   const next = useNext()
   const [form, setForm] = useState({ name: '', email: '', password: '', workspace: '' })
+  const [wsState, setWsState] = useState<WorkspaceLinkState>('empty')
   useTitle('Create account')
 
   const cfg = useQuery({
     queryKey: ['config'],
-    queryFn: () => get<{ signup_enabled: boolean }>('/config'),
+    queryFn: () => get<{ signup_enabled: boolean; workspace_create?: boolean }>('/config'),
     staleTime: 5 * 60_000,
   })
+  // A blank workspace name takes the account's first name, so the preview shows that address.
+  const first = form.name.trim().split(/\s+/)[0]
+  const wsFallback = first ? `${first}'s Workspace` : ''
 
   const { busy, err, run } = useSubmit(async () => {
     await signIn('signup', {
@@ -439,23 +445,25 @@ export function Signup() {
             value={form.password}
             onChange={set('password')}
           />
-          <TextField
-            id="signup-workspace"
-            label="Workspace name"
-            type="text"
-            name="organization"
-            autoComplete="organization"
-            hint="Optional. Leave it blank and we’ll name it after you."
+          <WorkspaceForm
             value={form.workspace}
-            onChange={set('workspace')}
+            onChange={(workspace) => setForm((prev) => ({ ...prev, workspace }))}
+            fallbackName={wsFallback}
+            enabled={cfg.data?.workspace_create}
+            disabled={busy}
+            onStatus={setWsState}
           />
 
           <FormError
             message={err}
-            hint={/already exists/i.test(err) ? 'Sign in instead, or use a different address.' : undefined}
+            hint={/already exists/i.test(err)
+              ? 'Sign in instead, or use a different address.'
+              : /taken/i.test(err) ? 'The name you typed is still here. Change it above to the suggested address.' : undefined}
           />
 
-          <Submit busy={busy}>Create account</Submit>
+          <Submit busy={busy} disabled={wsState === 'loading' || wsState === 'taken' || wsState === 'invalid'}>
+            Create account
+          </Submit>
         </form>
       </AuthCard>
     </AuthShell>

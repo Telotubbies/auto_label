@@ -5,6 +5,7 @@ import secrets
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
@@ -21,7 +22,7 @@ from ..security import (hash_password, issue_access, issue_mfa_pending, new_refr
                         token_hash, verify_mfa, verify_password)
 
 _DUMMY_HASH = hash_password('timing-equaliser')
-from ..services import capabilities, secretbox, segment
+from ..services import capabilities, flags, secretbox, segment
 from ..superadmin import is_superadmin
 
 log = logging.getLogger("labeldesk")
@@ -36,15 +37,49 @@ def slugify(s: str, fallback: str = "workspace") -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:60] or fallback
 
 
-def unique_ws_slug(db: Session, name: str) -> str:
-    base = slugify(name); slug = base; n = 1
-    while db.scalar(select(Workspace.id).where(Workspace.slug == slug)):
-        n += 1; slug = f"{base}-{n}"
+# The workspace address the browser previews (lib/slug.ts) and the API stores.
+WORKSPACE_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
+RESERVED_WORKSPACE_SLUGS = {"models", "playground", "deployments", "activity", "settings", "audit", "admin",
+                           "legal", "inference", "p"}   # the shell's RESERVED_WORKSPACE_SEGMENTS
+
+
+def slugify_workspace(name: str) -> str:
+    """Derived address: 40 characters at most, and never a workspace route segment."""
+    s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].rstrip("-") or "workspace"
+    return f"{s}-ws" if s in RESERVED_WORKSPACE_SLUGS else s
+
+
+def slug_taken(db: Session, slug: str) -> bool:
+    return db.scalar(select(Workspace.id).where(Workspace.slug == slug)) is not None
+
+
+def _free_slug(db: Session, base: str, cap: int) -> str:
+    """``base``, or ``base-2``, ``base-3`` … within the character cap."""
+    slug = base; n = 1
+    while slug_taken(db, slug):
+        n += 1
+        suffix = f"-{n}"
+        slug = f"{base[:cap - len(suffix)].rstrip('-')}{suffix}"
     return slug
 
 
-def create_workspace(db: Session, owner: User, name: str) -> Workspace:
-    ws = Workspace(slug=unique_ws_slug(db, name), name=name, owner_id=owner.id, credits_period=time.strftime("%Y-%m"))
+def suggest_workspace_slug(db: Session, slug: str) -> str:
+    return _free_slug(db, slug, 40)
+
+
+def workspace_create_enabled() -> bool:
+    """Signup has no workspace yet, so this surface is gated by the process flag, not a row."""
+    return "task_a1_workspace_create" in flags.forced_on()
+
+
+def unique_ws_slug(db: Session, name: str) -> str:
+    if workspace_create_enabled():
+        return _free_slug(db, slugify_workspace(name), 40)
+    return _free_slug(db, slugify(name), 80)
+
+
+def create_workspace(db: Session, owner: User, name: str, slug: str | None = None) -> Workspace:
+    ws = Workspace(slug=slug or unique_ws_slug(db, name), name=name, owner_id=owner.id, credits_period=time.strftime("%Y-%m"))
     db.add(ws); db.flush()
     db.add(Member(workspace_id=ws.id, user_id=owner.id, role="admin"))
     audit(db, ws.id, owner.id, "workspace.create", name)
@@ -147,7 +182,8 @@ def public_config():
             "max_upload_mb": MAX_UPLOAD_MB,
             "sam": segment.sam_status(),
             "vlm": {"configured": capabilities.vlm_configured()},
-            "addons": {"available": capabilities.addons_available()}}
+            "addons": {"available": capabilities.addons_available()},
+            "workspace_create": workspace_create_enabled()}
 
 
 class SignupIn(BaseModel):
@@ -169,12 +205,20 @@ def signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(403, "this invite was sent to a different email address")
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(409, "an account with this email already exists")
+    workspace_name = body.workspace or f"{body.name.split()[0]}'s Workspace"
+    slug = None
+    if workspace_create_enabled() and not inv:
+        slug = slugify_workspace(workspace_name)
+        if not WORKSPACE_SLUG.fullmatch(slug):
+            raise HTTPException(422, "use at least 3 letters or numbers in the workspace name")
+        if slug_taken(db, slug):
+            return JSONResponse(409, {"detail": f"that address is taken — try {suggest_workspace_slug(db, slug)}"})
     u = User(email=email, name=body.name.strip(), pw_hash=hash_password(body.password))
     db.add(u); db.flush()
     if inv and not inv.accepted:
         _accept(db, inv, u)
     else:
-        create_workspace(db, u, body.workspace or f"{body.name.split()[0]}'s Workspace")
+        create_workspace(db, u, workspace_name, slug=slug)
     db.commit()
     _send_link(u, "verify", _email_token(db, u, "verify", VERIFY_TTL))
     return tokens(db, u, request)
@@ -478,9 +522,33 @@ def invite_accept(token: str, u: User = Depends(current_user), db: Session = Dep
 
 class WorkspaceIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    slug: str | None = None
+
+
+@router.get("/workspaces/slug")
+def workspace_slug(name: str, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Availability of a derived address, plus one suggestion. Never another workspace's data."""
+    if not workspace_create_enabled():
+        raise HTTPException(404, "not found")
+    slug = slugify_workspace(name)
+    if not WORKSPACE_SLUG.fullmatch(slug):
+        raise HTTPException(422, "use letters, numbers and dashes")
+    taken = slug_taken(db, slug)
+    out = {"slug": slug, "available": not taken}
+    if taken:
+        out["suggestion"] = suggest_workspace_slug(db, slug)
+    return out
 
 
 @router.post("/workspaces")
 def new_workspace(body: WorkspaceIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
-    ws = create_workspace(db, u, body.name.strip()); db.commit()
+    name = body.name.strip()
+    wanted = body.slug if workspace_create_enabled() else None
+    if wanted is not None:
+        if wanted in RESERVED_WORKSPACE_SLUGS or not WORKSPACE_SLUG.fullmatch(wanted):
+            raise HTTPException(422, "use 3-40 letters, numbers and dashes; that address is reserved")
+        if slug_taken(db, wanted):
+            return JSONResponse(status_code=409, content={"detail": "that address is taken",
+                                                          "suggestion": suggest_workspace_slug(db, wanted)})
+    ws = create_workspace(db, u, name, slug=wanted); db.commit()
     return {"slug": ws.slug, "name": ws.name}
