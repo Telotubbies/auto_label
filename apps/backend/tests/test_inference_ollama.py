@@ -185,6 +185,8 @@ def test_a_second_model_on_a_host_is_refused_with_the_remove_message(admin, host
     error = r.json()["detail"]["error"]
     assert "remove the current model first" in error
     assert "llama3.2-3b" in error
+    # The refusal is the block; it is not repeated in the warnings list.
+    assert not any("One model per host" in line for line in r.json()["detail"]["plan"]["warnings"])
 
 
 def test_a_pull_queues_the_catalogue_argv_for_the_worker(admin, host):

@@ -439,7 +439,8 @@ def _blocked(row: dict, variant_row: dict, inventory: dict | None, memory: dict 
     return reasons
 
 
-def _warnings(row: dict, inventory: dict | None, memory: dict | None, online: bool) -> list[str]:
+def _warnings(row: dict, inventory: dict | None, memory: dict | None, online: bool,
+              one_model: bool = True) -> list[str]:
     out = []
     free_gb = ((inventory or {}).get("disk") or {}).get("models_free_gb")
     if free_gb is None:
@@ -448,10 +449,11 @@ def _warnings(row: dict, inventory: dict | None, memory: dict | None, online: bo
         out.append("The host reports no GPU, so the fit estimate is unavailable.")
     if not online:
         out.append("The host is offline; the download waits for it to report again.")
-    for item in _installed(inventory):
-        if item.get("id") and item.get("id") != row["id"]:
-            out.append(ONE_MODEL.format(model=item["id"]))
-            break
+    if one_model:
+        for item in _installed(inventory):
+            if item.get("id") and item.get("id") != row["id"]:
+                out.append(ONE_MODEL.format(model=item["id"]))
+                break
     return out
 
 
@@ -541,7 +543,7 @@ def ollama_pull(host: dict, tag: str) -> dict:
         "disk_free_gb": free_gb,
         "disk_after_gb": None if free_gb is None else round(float(free_gb) - row["bytes"] / GIB, 1),
         "blocked": blocked,
-        "warnings": _warnings(row, inventory, memory, host.get("online", True)),
+        "warnings": _warnings(row, inventory, memory, host.get("online", True), one_model=False),
         "fit": memory,
     }
 
