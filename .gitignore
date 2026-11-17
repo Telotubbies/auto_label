@@ -113,6 +113,8 @@ Thumbs.db
 
 # LabelDesk app
 apps/frontend/ocr-shots/
+apps/frontend/test-results/
+apps/frontend/playwright-report/
 apps/backend/data/
 apps/backend/.pytest_cache/
 apps/worker/*.egg-info/
