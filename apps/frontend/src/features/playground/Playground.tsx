@@ -8,6 +8,7 @@ import { useFlag } from '@/lib/flags'
 import type { PlaygroundPrediction, PlaygroundResult, PlaygroundSample, RegistryItem } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Spinner, Switch, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { groupModels } from './modelGroups'
 import { RuntimeStates } from './RuntimeStates'
 import { SampleStrip } from './SampleStrip'
 import { useCamera } from './useCamera'
@@ -133,20 +134,24 @@ function ModelPicker({ items, selected, onToggle }: {
       <div className="mb-1.5 flex w-full items-center justify-between text-sm font-medium">
         Models <span className="text-xs font-normal text-muted-foreground">{selected.length} / {MAX_MODELS}</span>
       </div>
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-1.5">
-        {items.map((m) => {
-          const on = selected.includes(m.ref)
-          return (
-            <label key={m.ref} title={m.available ? m.name : m.reason}
-              className={cn('flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] hover:bg-accent',
-                !m.available && 'cursor-not-allowed opacity-50', on && 'bg-accent')}>
-              <input type="checkbox" checked={on} disabled={!m.available || (!on && selected.length >= MAX_MODELS)}
-                onChange={() => onToggle(m.ref)} className="accent-primary" />
-              <span className="flex-1 truncate">{m.name}</span>
-              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{m.family}</span>
-            </label>
-          )
-        })}
+      <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border p-1.5">
+        {groupModels(items).map((group) => (
+          <div key={group.family} role="group" aria-label={group.family} className="space-y-1">
+            <div className="px-2 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{group.family}</div>
+            {group.items.map((m) => {
+              const on = selected.includes(m.ref)
+              return (
+                <label key={m.ref} title={m.available ? m.name : m.reason}
+                  className={cn('flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] hover:bg-accent',
+                    !m.available && 'cursor-not-allowed opacity-50', on && 'bg-accent')}>
+                  <input type="checkbox" checked={on} disabled={!m.available || (!on && selected.length >= MAX_MODELS)}
+                    onChange={() => onToggle(m.ref)} className="accent-primary" />
+                  <span className="flex-1 truncate">{m.name}</span>
+                </label>
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )
