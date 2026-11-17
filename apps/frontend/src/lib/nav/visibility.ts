@@ -6,9 +6,9 @@ import { projectNav, workspaceNav } from './registry.ts'
 import type { NavGroup, ProjectNavItem, WorkspaceNavItem } from './types'
 
 /**
- * The rail as it shipped before `task_470`, frozen. T-476 deleted the `build` and `govern`
- * modules, so the old rail lives here until the flag retires: off ⇒ every old destination is
- * exactly where it was.
+ * The rail as it shipped before `task_470`, frozen apart from T-1000's flag-gated Inference row.
+ * T-476 deleted the `build` and `govern` modules, so the old rail lives here until the flag
+ * retires: off ⇒ every old destination is exactly where it was.
  */
 export const v2WorkspaceNav: NavGroup<WorkspaceNavItem>[] = [
   { id: 'core', items: [
@@ -18,6 +18,8 @@ export const v2WorkspaceNav: NavGroup<WorkspaceNavItem>[] = [
     { to: 'models', label: 'Models', icon: 'models', roles: STAFF },
     { to: 'playground', label: 'Playground', icon: 'playground', roles: STAFF },
     { to: 'deployments', label: 'Deployments', icon: 'deployments', roles: STAFF },
+    // T-1000: the Inference hub rides BUILD while this rail ships; `task_inference` owns it.
+    { to: 'inference', label: 'Inference', icon: 'models', roles: OWNER_ADMIN, flag: 'task_inference' },
   ] },
   { id: 'govern', label: 'GOVERN', items: [
     // Labels follow the Settings tab they open, so the sidebar and the page never name one screen twice.
@@ -48,9 +50,11 @@ const BUILD_TO = new Set(['models', 'playground', 'deployments'])
  * labeler view even when their workspace row says member (owner/admin keep the build surfaces).
  *
  * `uiV3` is the `task_470` flag: off renders the frozen v2 rail, unchanged.
+ * `flags` is the workspace's enabled set: a flag-gated item is hidden without it.
  */
 export function visibleWorkspaceNav(
   role: Role | null, superadmin = false, projectRole?: ProjectRole | null, uiV3 = false,
+  flags?: ReadonlySet<string>,
 ): NavGroup<WorkspaceNavItem>[] {
   const audience = role ?? 'member'
   const staffRole = audience === 'owner' || audience === 'admin'
@@ -59,6 +63,7 @@ export function visibleWorkspaceNav(
     .map((g) => ({
       ...g,
       items: g.items.filter((i) => inAudience(i.roles, audience) && (!i.superadmin || superadmin)
+        && (!i.flag || flags?.has(i.flag))
         && !(hideBuild && BUILD_TO.has(i.to))),
     }))
     .filter((g) => g.items.length > 0)
