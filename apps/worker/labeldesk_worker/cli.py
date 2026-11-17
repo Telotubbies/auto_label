@@ -98,7 +98,10 @@ def run_train(srv: Server, job: dict, args):
 def _sam(args):
     root = Path(args.sam_root or os.environ.get("LD_SAM_ROOT", ""))
     if not root.exists():
-        raise RuntimeError("SAM auto-label needs --sam-root pointing at a sam3_auto_label checkout with checkpoints/")
+        raise RuntimeError(
+            "SAM auto-label needs --sam-root or LD_SAM_ROOT pointing at a sam3_auto_label checkout "
+            "with checkpoints/ (the API default is ../labeldesk-ml/sam3_auto_label)"
+        )
     sys.path[:0] = [str(root / "src"), str(root / "sam3")]
     from config import Config
     from inference import build_model

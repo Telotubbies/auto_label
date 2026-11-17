@@ -66,8 +66,12 @@ pip install "git+https://github.com/Telotubbies/auto_label.git#subdirectory=apps
 # ถ้าใช้ NVIDIA ให้ลง torch แบบ CUDA ก่อน: https://pytorch.org/get-started/locally/
 labeldesk-worker --server https://api.labeldesk.example.com --token <LD_WORKER_TOKEN> --device 0
 ```
-ถ้าจะใช้ base weights YOLO26 ที่มีในเครื่อง ให้เพิ่ม `--pretrained-dir ml/yolo26_ppe/models/pretrained`
-ถ้าจะใช้ SAM 3.1 auto-label ให้เพิ่ม `--sam-root ml/sam3_auto_label` (ต้องมี checkpoint อยู่ในเครื่อง)
+ถ้าจะใช้ base weights YOLO26 หรือ SAM 3.1 จากเครื่อง ให้ชี้ไปที่ ML checkout (แยก repo ไว้ข้างกัน):
+`--pretrained-dir <ml>/yolo26_ppe/models/pretrained` และ `--sam-root <ml>/sam3_auto_label` (ต้องมี
+checkpoint อยู่ในเครื่อง) หรือตั้ง `LD_PRETRAINED_DIR` / `LD_SAM_ROOT` แทน flag ทั้งสามค่าเริ่มต้นที่
+sibling checkout `../labeldesk-ml` ของ repo ฝั่ง API (`LD_DEMO_MODEL_RUN` ชี้ training run ของโมเดล demo
+ค่าเริ่มต้นเดียวกัน) ถ้าไม่มี checkout นี้ ระบบยังรันได้: SAM รายงานว่าไม่พร้อม, training ใช้ weight จาก
+Ultralytics hub และ demo seed ข้ามแถวโมเดลที่ฝึกไว้
 ถ้าอยากให้รันทุกครั้งที่เปิดเครื่อง: Linux ใช้ systemd หรือ `tmux`, Windows ใช้ Task Scheduler
 
 worker ส่ง progress ทุก epoch/รูป ซึ่งเป็น heartbeat ของมัน ถ้าไม่มีการรายงานนานเกิน
