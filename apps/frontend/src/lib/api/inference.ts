@@ -51,3 +51,7 @@ export const inferenceModels = (ws: string, host: string) =>
 /** The download dry run: files, bytes, disk after, the gate and every block reason (T-1010). */
 export const inferencePlanModel = (ws: string, body: ModelPlanIn) =>
   post<ModelPlan>(`/ws/${ws}/inference/models/plan`, body)
+
+/** Queue one confirmed download (T-1012); a busy host or an installed variant comes back as a 409. */
+export const inferenceDownloadModel = (ws: string, body: ModelPlanIn) =>
+  post<{ job: Job }>(`/ws/${ws}/inference/models/download`, { ...body, confirm: true })

@@ -61,3 +61,11 @@ test('test_engines_tab_mounts_the_engines_panel_with_a_real_host_picker', () => 
   assert.doesNotMatch(hub, /No engine catalogue yet\./, 'the placeholder sentence is gone')
   assert.match(hub, /inferenceApi\.hosts\(/, 'the picker reads GET /hosts')
 })
+
+// T-1012: the models panel is the models tab, fed by the same header host picker.
+test('test_models_tab_mounts_the_models_panel', () => {
+  const hub = readFileSync(new URL('../src/features/inference/InferenceHub.tsx', import.meta.url), 'utf8')
+  assert.match(hub, /<ModelsTab/, 'the models tab renders ModelsTab')
+  assert.match(hub, /import ModelsTab from '\.\/ModelsTab'/, 'and imports it from its own module')
+  assert.doesNotMatch(hub, /No model catalogue yet\./, 'the placeholder sentence is gone')
+})

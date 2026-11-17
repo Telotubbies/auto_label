@@ -8,10 +8,10 @@ import { useWorkspaceFlags } from '@/lib/flags'
 import { INFERENCE_TAB_LABELS, INFERENCE_TABS, tabFrom, type InferenceTab } from './tabs.ts'
 import CalculatorTab from './CalculatorTab'
 import EnginesTab from './EnginesTab'
+import ModelsTab from './ModelsTab'
 
-/** Each panel is a real empty state until its own card lands; calculator and engines have their own screens. */
-const PANEL_EMPTY: Record<Exclude<InferenceTab, 'calculator' | 'engines'>, string> = {
-  models: 'No model catalogue yet.',
+/** Each panel is a real empty state until its own card lands; calculator, engines and models have their own screens. */
+const PANEL_EMPTY: Record<Exclude<InferenceTab, 'calculator' | 'engines' | 'models'>, string> = {
   segmentation: 'No segmentation model is provisioned on this host.',
 }
 
@@ -89,6 +89,9 @@ export default function InferenceHub() {
         </Glass>
         {tab === 'calculator' ? <CalculatorTab /> : tab === 'engines' ? (
           <EnginesTab ws={ws} host={host} hostsLoading={hosts.isLoading} hostsError={hosts.isError}
+            onRetryHosts={() => void hosts.refetch()} />
+        ) : tab === 'models' ? (
+          <ModelsTab ws={ws} host={host} hostsLoading={hosts.isLoading} hostsError={hosts.isError}
             onRetryHosts={() => void hosts.refetch()} />
         ) : (
           <Card className="p-4 sm:p-6">
