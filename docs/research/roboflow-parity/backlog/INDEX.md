@@ -206,6 +206,7 @@ Phase 0  G  T-001…T-007        regression guards, baseline green (19 h)
 Phase 0b G2 T-520…T-525        UI clean-up from the design audit          (12 h)
 Phase 0c G3 T-050…T-059        code clean-up: lint gate, dead code, duplicates (22 h)
 Phase 1  E  E-frame (17)       tokens, routes /p/, rails, stage frame, top bar, palette  (43 h)
+Phase 1b X  10 cards           MCP server for AI agents: 16 tools, 2 transports (27.5 h)
 Phase 2  A  47 cards           trial blockers                        (132.5 h)
 Phase 3  B  149 cards          editor / train / eval / workflow core (419 h)
 Phase 4  C  97 cards           data and people                       (278.5 h)
@@ -1170,6 +1171,47 @@ LabelDesk-native redesign. 17 frame cards run in phase 1 (before wave A) because
 | [T-496](T-496.md) | Annotate board: three lanes of batch rows, one way in | — | 3 | no | T-129 (bulk review confirm sheet), T-164 (read-only and empty states), T-479 (stage tabs), T-495 (colour source) |
 | [T-497](T-497.md) | Editor rail: two tabs, and an inspector for the rest | `3-F3.1` | 3 | no | T-489 (44 px targets), T-471 (type floor for the rail labels) |
 | [T-498](T-498.md) | Editor header: next image, review state, assists at the pointer | `3-F3.1` | 3 | no | T-497 (the rail), T-489 (hit areas), T-490 (the keyboard harness proves the path) |
+
+
+### Wave X — MCP server for AI agents (appended 2026-11-17)
+
+Owner request: *"make an MCP server so AI agents can connect to LabelDesk and use it."* One thin server over
+the existing `/api/v1` developer surface: 16 tools, 3 resources and 2 prompts, over stdio and Streamable
+HTTP. Every tool runs under the caller's own workspace key, so RBAC, workspace isolation, metering, rate
+limits and audit stay in the one place they already live — no second permission model, no second database.
+Design note: [`../../mcp/MCP-PLAN.md`](../../mcp/MCP-PLAN.md).
+
+**10 cards · 27.5 agent-hours · ids `T-990`–`T-999`.** Eight of the ten carry R7 review (the key surface, the
+credential seam, the write tools, the exposed endpoint, the audit trail and the isolation suite). Backend
+work is deliberately small: six new key-authenticated routes over the browser routes that already exist for the browser
+session, one `write` scope, one `whoami` field that carries the workspace switch, and one audit row per tool
+call. The server itself lives in `apps/mcp/` and is deployed as its own small container on the API's origin
+(`https://<domain>/mcp`), because the API image cannot share code with a `pip install`-able client without
+moving its build context.
+
+| # | Card | Hours | R7 |
+| --- | --- | --- | --- |
+| 1 | [T-990](T-990.md) — Key surface: read a project, search images, read and write labels | 3 | yes |
+| 2 | [T-991](T-991.md) — Key surface: auto-label, create a version, list deployments, infer by image | 3 | yes |
+| 3 | [T-992](T-992.md) — MCP app: skeleton, per-request key, scope-filtered tool list | 3 | yes |
+| 4 | [T-993](T-993.md) — The eight read tools, with paging caps | 3 | no |
+| 5 | [T-994](T-994.md) — Six write and spend tools behind one confirm gate | 3 | yes |
+| 6 | [T-995](T-995.md) — Resources and prompts: read before you write | 2 | no |
+| 7 | [T-996](T-996.md) — Streamable HTTP transport, per-request key, origin guard | 3 | yes |
+| 8 | [T-997](T-997.md) — Audit every tool call, prove the limits | 2.5 | yes |
+| 9 | [T-998](T-998.md) — Isolation and adversarial suite for the whole server | 2.5 | yes |
+| 10 | [T-999](T-999.md) — Ship it: sidecar, Caddy route, client setup, R7 sign-off | 2.5 | yes |
+
+**Rules that bind this wave beyond §3.** A tool is never more permissive than the route behind it: it calls
+`/api/v1` with the caller's key and nothing else. Every spend or overwrite tool takes `confirm: true` or
+answers a dry run with its cost. `tools/list` is filtered by the key's scopes (the spec allows list results
+to vary by the request's authorization). No delete, deploy, key or billing tool exists. Two independent
+switches: `task_992` per workspace, and the compose `profiles: ["mcp"]` per deployment.
+
+**Merge order.** `T-990` → `T-991` (the `write` scope, then the routes that use it) → `T-992` → `T-993`,
+`T-994`, `T-995` (each appends one `register(...)` line to `server.py`) → `T-996` → `T-997` → `T-998` →
+`T-999` last, because it changes the deployment. Shared registries are listed in
+[`.parts/wave-x.md`](.parts/wave-x.md).
 
 
 ### Wave F — BEYOND: the capability layer above parity
