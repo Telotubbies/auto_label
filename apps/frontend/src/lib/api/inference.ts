@@ -1,6 +1,6 @@
 import type {
   EngineAvailability, EngineInstallIn, EnginePlan, InferenceCatalog, InferenceEstimate, InferenceEstimateIn,
-  InferenceHost, Job,
+  InferenceHost, InferenceJob, Job,
 } from '../types'
 import { get, post } from './client'
 
@@ -32,3 +32,15 @@ export const inferenceInstallEngines = (ws: string, body: EngineInstallIn) =>
 /** Queue the removal of one installed engine; a second confirm is required. */
 export const inferenceUninstallEngine = (ws: string, body: { host: string; id: string; confirm: boolean }) =>
   post<{ job: Job }>(`/ws/${ws}/inference/engines/uninstall`, body)
+
+/** The workspace's engine jobs still on the wire, newest first (T-1009). */
+export const inferenceJobs = (ws: string) =>
+  get<InferenceJob[]>(`/ws/${ws}/inference/jobs?status=active`)
+
+/** One job, re-read once it leaves the active list so the card can say how it ended. */
+export const inferenceJob = (ws: string, id: string) =>
+  get<InferenceJob>(`/ws/${ws}/inference/jobs/${id}`)
+
+/** Ask the worker to stop; a terminal job is a no-op and a foreign id is 404. */
+export const inferenceCancelJob = (ws: string, id: string) =>
+  post<InferenceJob>(`/ws/${ws}/inference/jobs/${id}/cancel`, {})
