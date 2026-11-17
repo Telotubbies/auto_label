@@ -2168,3 +2168,155 @@ copy and regenerate; registries keep both sides' entries.
 - No card adds a dependency outside the worker's optional `inference` extra; the API gains none.
 - No card names a price, a vendor reseller, a certification or a benchmark it has not measured.
 - **Ollama appears nowhere except the exclusion statements** in the plan and the ADR.
+
+---
+
+## 13. Wave Q — quality and usability (appended 2026-11-17)
+
+Owner request: *"run LabelDesk development like a large company, with every role and full usability
+testing."* Machine limit: five opencode lanes plus one PM. Method and targets:
+[`docs/qa/USABILITY-PROGRAM.md`](../../../qa/USABILITY-PROGRAM.md); roles and cadence:
+[`docs/ORG.md`](../../../ORG.md).
+
+**27 cards · 75 agent-hours · ids `T-1200`–`T-1226`.** The wave builds the test harness once, then the
+thirteen journeys, seven area audits, the performance budgets, the Thai copy lint and one triage card per
+quality cycle. It changes **no product file**: the only new server entrypoint is a test-only one in
+`apps/backend/e2e/`, which refuses to start outside the test environment. No new dependency, no CI job,
+no route, no schema, no flag.
+
+**Fakes, not hardware.** The backend runs deterministic adapters and instant job handlers; MJPEG is a
+fixture frame; external URLs and video extraction are stubbed at the browser edge. The smoke set
+(`npm run e2e`) stays under 10 minutes; long journeys carry `@nightly` (Playwright) or the existing
+`slow` pytest marker.
+
+Every journey and area audit depends on T-1200. The one exception is the copy lint (T-1222), which is a
+static check of the message catalogue and depends on T-600–T-603 instead.
+
+**Card id bands are unchanged.** Wave Q owns `T-1200–T-1226` only; a finding's fix card is written as a
+stub first and numbered by R12 at dispatch.
+
+### 13.1 Cards, in order
+
+A **quorum** is four implementation cards merged to feat. Each wave-Q card below is first built in the
+quality slot after the group named in its row; after that it is **re-run** per quorum. The number is the
+intended order; the "after" column decides when a card is eligible, and rule §13.2.4 governs a skip.
+
+**Cycle Q1 — the first hour (closes after the entry, dataset and editor families' first pass)**
+
+| # | Card | Kind | After (group closed) | Hours |
+| --- | --- | --- | --- | --- |
+| 1 | [T-1200](T-1200.md) — Shared e2e harness: stub backend, login, steps, axe | harness | T-470–T-483 (E-frame) | 3 |
+| 2 | [T-1201](T-1201.md) — Journey: sign up, verify, sign in, recover | journey J1 | T-010–T-018 | 2 |
+| 3 | [T-1202](T-1202.md) — Journey: create a project and land on upload | journey J2 | T-019–T-029 | 2 |
+| 4 | [T-1203](T-1203.md) — Journey: upload files, a URL, and video frames | journey J3 | T-030–T-037, T-063, T-068 | 3 |
+| 5 | [T-1214](T-1214.md) — Audit area 1: entry, home, overview | audit 1 | T-010–T-047 | 3 |
+| 6 | [T-1204](T-1204.md) — Journey: annotate with box, polygon and SAM assist | journey J4 | T-120–T-130 | 3 |
+| 7 | [T-1205](T-1205.md) — Journey: review and approve a batch | journey J5 | T-133–T-149, T-093 | 2.5 |
+| 8 | [T-1216](T-1216.md) — Audit area 3: board, editor, review | audit 3 | T-120–T-174 | 3 |
+| 9 | [T-1215](T-1215.md) — Audit area 2: upload, grid, batches, health | audit 2 | T-060–T-104 | 3 |
+| 10 | [T-1223](T-1223.md) — Triage Q1: first hour | triage | cards 1–9 | 2.5 |
+
+**Cycle Q2 — the pipeline (closes after the versions, train and deploy families' first pass)**
+
+| # | Card | Kind | After (group closed) | Hours |
+| --- | --- | --- | --- | --- |
+| 11 | [T-1206](T-1206.md) — Journey: create a version and export it | journey J6 | T-190–T-199, T-219, T-232 | 3 |
+| 12 | [T-1217](T-1217.md) — Audit area 4: versions, preprocess, export, insights | audit 4 | T-190–T-232 | 3 |
+| 13 | [T-1207](T-1207.md) — Journey: train a model and compare it | journey J7 | T-255, T-261–T-263, T-276, T-280 | 3 |
+| 14 | [T-1218](T-1218.md) — Audit area 5: train, evaluation, models | audit 5 | T-250–T-296 | 3 |
+| 15 | [T-1208](T-1208.md) — Journey: deploy a model and test a prediction | journey J8 | T-313, T-314, T-317, T-318 | 2.5 |
+| 16 | [T-1219](T-1219.md) — Audit area 6: deploy, playground, streams, workflows | audit 6 | T-310–T-359 | 3 |
+| 17 | [T-1221](T-1221.md) — Performance budgets, measured and enforced | perf | T-1208 (main routes exist) | 3 |
+| 18 | [T-1224](T-1224.md) — Triage Q2: the pipeline | triage | cards 11–17 | 2.5 |
+
+**Cycle Q3 — people, agents, the hub (closes after waves C, X and I)**
+
+| # | Card | Kind | After (group closed) | Hours |
+| --- | --- | --- | --- | --- |
+| 19 | [T-1209](T-1209.md) — Journey: run a stream and use its events | journey J9 | T-337–T-357 | 3 |
+| 20 | [T-1210](T-1210.md) — Journey: members, API keys and usage | journey J10 | T-380, T-381, T-389, T-411 | 3 |
+| 21 | [T-1211](T-1211.md) — Journey: an agent works through MCP | journey J11 | T-990–T-999 | 2.5 |
+| 22 | [T-1212](T-1212.md) — Journey: the inference hub, calculator to auto-label | journey J12 | T-1000–T-1022 | 3 |
+| 23 | [T-1213](T-1213.md) — Journey: admin console, audit and policy | journey J13 | T-380–T-411, T-403, T-404 | 2.5 |
+| 24 | [T-1220](T-1220.md) — Audit area 7: settings, governance, admin, hub | audit 7 | T-380–T-411 | 3 |
+| 25 | [T-1225](T-1225.md) — Triage Q3: people, agents and the hub | triage | cards 19–24 | 2.5 |
+
+**Cycle Q4 — Thai and the last mile (closes after waves F and D)**
+
+| # | Card | Kind | After (group closed) | Hours |
+| --- | --- | --- | --- | --- |
+| 26 | [T-1222](T-1222.md) — Thai and English copy audit | copy | T-600–T-603 | 2.5 |
+| 27 | [T-1226](T-1226.md) — Triage Q4: Thai, last mile, release | triage | T-1222, then every journey and audit re-run | 3 |
+
+### 13.2 The interleave rule
+
+1. Count merged implementation cards on feat. After **four**, the next quality slot takes the next card in
+   §13.1 whose "after" group is closed. It builds the card and records the baseline.
+2. When all cards that are due are built, the quality slot **re-runs** the journey or audit covering the
+   last four cards and records the result where that card already writes it: the spec's
+   `journey-result` annotation for a journey, `docs/qa/audits/area-<n>.md` for an audit.
+3. A build lane is never kept busy by skipping a quorum. A red journey, a missed budget over 20 % or an axe
+   critical/serious is a finding: **S1 blocks the next merge batch**, S2 blocks the affected area's next
+   implementation card.
+4. Quality cards may merge out of id order when their group closes later than their id suggests; the
+   "after" column is the order, not the id.
+5. The triage card for a cycle runs only when its cycle's journeys and audits have run at least once, and
+   the next cycle's first card does not start before the triage's S1 list is empty.
+
+### 13.3 File ownership
+
+Every path below is exclusive to one card; no wave-Q card edits an existing spec, a product file or a
+shared registry except the two lines listed. `core-loop.spec.ts` (T-008), `inference-hub.spec.ts` (T-1020)
+and `thai-text.test.mjs` are read, never edited.
+
+| Card | Exclusive files |
+| --- | --- |
+| T-1200 | `apps/backend/e2e/{__init__,app,fakes}.py`, `apps/backend/tests/test_e2e_harness.py`, `apps/frontend/e2e/fixtures/{harness.ts,frame.jpg,README.md}`, `apps/frontend/tests/e2e-harness.test.mjs` |
+| T-1201 | `apps/frontend/e2e/journey-auth.spec.ts` |
+| T-1202 | `apps/frontend/e2e/journey-project.spec.ts` |
+| T-1203 | `apps/frontend/e2e/journey-upload.spec.ts`, `apps/frontend/e2e/fixtures/{duplicate.jpg,small.png}` |
+| T-1204 | `apps/frontend/e2e/journey-annotate.spec.ts` |
+| T-1205 | `apps/frontend/e2e/journey-review.spec.ts` |
+| T-1206 | `apps/frontend/e2e/journey-versions.spec.ts` |
+| T-1207 | `apps/frontend/e2e/journey-train.spec.ts` |
+| T-1208 | `apps/frontend/e2e/journey-deploy.spec.ts` |
+| T-1209 | `apps/frontend/e2e/journey-streams.spec.ts` |
+| T-1210 | `apps/frontend/e2e/journey-settings.spec.ts` |
+| T-1211 | `apps/backend/tests/test_mcp_journey.py` |
+| T-1212 | `apps/frontend/e2e/journey-inference.spec.ts` |
+| T-1213 | `apps/frontend/e2e/journey-admin.spec.ts` |
+| T-1214–T-1220 | `apps/frontend/e2e/audit-area-<n>.spec.ts`, `docs/qa/audits/area-<n>.md` |
+| T-1221 | `apps/frontend/e2e/perf-budget.spec.ts`, `apps/frontend/scripts/perf-budget.mjs`, `docs/qa/audits/performance.md` |
+| T-1222 | `apps/frontend/tests/copy-audit.test.mjs`, `docs/qa/audits/copy-th.md` |
+| T-1223–T-1226 | `docs/qa/findings/wave-q<n>.md`, `docs/qa/releases/q<n>.md` |
+
+Shared, in merge order:
+
+| Shared file | Cards | Edit |
+| --- | --- | --- |
+| `apps/frontend/playwright.config.ts` | T-1200 | the stub API command, `LD_E2E`, `LD_MAIL_DEV`, `LD_SUPERADMINS`, the project entry |
+| `apps/frontend/package.json` | T-1200, T-1221 | one `e2e` / `e2e:nightly` line, then one `perf` line |
+
+### 13.4 Findings and fix cards
+
+Every finding has the format in `USABILITY-PROGRAM.md` §10 (id, severity, persona, route, build, steps,
+expected, actual, rule, measure, evidence). The triage card dedupes by root cause and writes one
+dispatchable card stub per S1/S2 in the findings file, in the `_BRIEF.md` template, at most 3 agent-hours,
+naming its failing spec as the regression test. R12 numbers the stub at dispatch; it does not keep the
+`Q` number. S3 findings for one area become one batched card per wave; S4 goes to the copy/design pass.
+
+A wave-Q card itself never "fixes" a product finding: its deliverable is the evidence, the fix card and the
+release note.
+
+### 13.5 Wave Q completeness
+
+- Cards: **27**, ids `T-1200`–`T-1226`, unique and contiguous, mean **2.78 h**, max **3 h**.
+- Journeys: **13** (J1–J13), one file each; MCP is the one pytest journey (`slow` marker).
+- Audits: **7**, one per existing area and guard; each covers axe, keyboard, contrast, 375/768/1440 and
+  the six states.
+- R7 `yes`: **4** cards (T-1200, T-1210, T-1211, T-1213); every other card touches no product code.
+- Exclusive-file collisions: **none** with the existing 552 cards; the wave owns no route, schema, flag,
+  component or generated file.
+- No card adds a dependency. Playwright, axe and Node's test runner are already installed.
+- **Ollama appears nowhere**; the harness cannot reach it and no card names it.
+
