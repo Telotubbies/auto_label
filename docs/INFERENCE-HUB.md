@@ -215,6 +215,7 @@ installed. Substitute your own hostname, workspace slug and host name.
      -H "Content-Type: application/json" \
      -d '{"host": "gpu-demo", "tag": "qwen3:4b", "confirm": true}'
    ```
+   `confirm` must be the JSON boolean `true`; a quoted `"true"` is refused, by design.
    Or download a Hugging Face variant from the tab: pick a model, pick a variant, **Download**, read
    the files/bytes/disk-after sheet, confirm, watch `Downloading` → `Verifying` → `Installed`.
    A host that already holds a model refuses the second one until you remove the first.
@@ -265,7 +266,9 @@ Watch these, in this order:
 
 Each row gives the symptom the console shows, the cause, the fix, and what to quote when you ask for
 help: **the job id**. It is on the job card, in the job's URL, and in `GET /api/jobs/<id>`; the API
-log line for the same job carries it too. Never paste a token, and never paste a full file path.
+log line for the same job carries it too. Never paste a token: the job's log tail is scrubbed of
+anything token-shaped and of a home directory path before it is stored, but an engine's own output
+can still name a file, so paste the job id and let support read the log.
 
 | Failure | Symptom | Cause | Fix | Quote |
 | --- | --- | --- | --- | --- |
@@ -285,7 +288,8 @@ Two more conditions worth knowing, because they are not the hub's fault:
   but no Ollama server is running on that port. Step 8 starts it.
 
 The log tail in a job carries the engine's own last line, capped at 200 lines and scrubbed of anything
-token-shaped. If the last line is not enough, the full log is on the worker's stdout.
+token-shaped and of a home directory path. If the last line is not enough, the full log is on the
+worker's stdout.
 
 ---
 
