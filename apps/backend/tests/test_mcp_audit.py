@@ -6,6 +6,7 @@ key is resolved (rate limit, revoked key) leaves nothing. The `apikey.use` throt
 one-per-minute; `mcp.tool` is one per call on purpose, because an MCP call is a conversation turn,
 not a poll. No row, log line or tool result may carry the key, its prefix or the Authorization value.
 """
+import asyncio
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -39,6 +41,10 @@ for _path in (REPO_ROOT / "apps" / "mcp", REPO_ROOT / "packages" / "sdk"):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
+from labeldesk_mcp import server as mcp_server      # noqa: E402
+from labeldesk_mcp.api import Api                  # noqa: E402
+from mcp.client import Client                      # noqa: E402
+
 
 def anon() -> TestClient:
     return TestClient(app)
@@ -58,22 +64,8 @@ def workspace_id(slug: str) -> str:
         return db.scalar(select(Workspace.id).where(Workspace.slug == slug))
 
 
-def mcp_server_module():
-    """T-992's app, or a named skip while that dependency is unmerged."""
-    return pytest.importorskip(
-        "labeldesk_mcp.server",
-        reason="T-992 (apps/mcp) is an unmerged dependency: the tool-error seam lands there")
-
-
 def mcp_tool_result(response):
-    """Drive one real MCP tool (T-992's app) whose API answers `response`; answer (is_error, text)."""
-    mcp_server = mcp_server_module()
-    import asyncio
-
-    import httpx
-    from labeldesk_mcp.api import Api
-    from mcp.client import Client
-
+    """Drive one real MCP tool whose API answers `response`; answer (is_error, text)."""
     def transport(request):
         if request.url.path == "/api/v1/whoami":
             return httpx.Response(200, json={"workspace": WS, "scopes": ["read"], "mcp": True})
@@ -214,9 +206,6 @@ def test_the_rate_limit_still_answers_429(key):
     assert THROTTLE_SENTENCE in refused.text
     assert rows_since(t0) == [], "a refusal before key resolution leaves no audit row"
 
-    mcp_server_module()                      # only the tool-error half needs T-992
-    import httpx
-
     replay = httpx.Response(refused.status_code, json=refused.json(),
                             headers={"Retry-After": refused.headers["Retry-After"]})
     is_error, text = mcp_tool_result(replay)
@@ -225,8 +214,6 @@ def test_the_rate_limit_still_answers_429(key):
 
 
 def test_a_402_is_a_tool_error_with_the_plan_name():
-    import httpx
-
     is_error, text = mcp_tool_result(httpx.Response(402, json={"detail": PLAN_SENTENCE}))
 
     assert is_error is True
