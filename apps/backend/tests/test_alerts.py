@@ -286,6 +286,22 @@ def test_slack_posts_text_and_snapshot_attachment(ws_id, monkeypatch):
     assert body["attachments"][0]["image_url"].startswith("https://labeldesk.example/api/files/")
 
 
+def test_alert_says_when_the_snapshot_was_not_stored(ws_id, monkeypatch):
+    """G3.7: an alert without a snapshot carries the reason, so missing evidence is never silent."""
+    seen = {}
+    _fake_net(monkeypatch, seen=seen)
+    ch_id = _channel(ws_id, "slack")
+    event = _event()
+    event["snapshot_error"] = "storage quota reached"
+    with SessionLocal() as db:
+        d = alerts.send(db, db.get(AlertChannel, ch_id), event)
+    assert d.status == "ok"
+    body = json.loads(seen["content"])
+    assert "attachments" not in body
+    assert "Snapshot: not stored — storage quota reached" in body["text"]
+    assert d.event["snapshot_error"] == "storage quota reached"
+
+
 def test_slack_text_cannot_inject_mentions_or_markup(ws_id, monkeypatch):
     seen = {}
     _fake_net(monkeypatch, seen=seen)

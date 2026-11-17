@@ -830,11 +830,17 @@ class _Worker:
                     return
                 ws = db.get(Workspace, self.workspace_id)
                 room = metering.remaining(db, ws, "storage_bytes") if ws is not None else 0.0
+                snapshot_error = ""
                 if size and ws is not None and size <= room:
                     try:
                         snapshot, clean = self._save_frames(snapshot_jpeg, clean_jpeg, eid)
                     except Exception:
                         log.exception("stream %s: could not save event snapshot", self.id)
+                        snapshot_error = "snapshot save failed"
+                elif size:
+                    # Keep the event (the rule fired: it is the alert and the audit record) but say
+                    # in the row why its evidence is missing, instead of a bare null snapshot.
+                    snapshot_error = "storage quota reached"
                 if snapshot:
                     # The trash commits deleted_at without this lock; re-read once the bytes are on
                     # disk and erase them instead of leaving footage under a deleted project.
@@ -852,12 +858,13 @@ class _Worker:
                                     stream_event=eid)
                     with self._state_lock:
                         self._quota_error = ""
-                elif size:
+                elif snapshot_error:
                     with self._state_lock:
-                        self._quota_error = "storage quota reached: event snapshots are not being saved"
+                        self._quota_error = f"event snapshots are not being saved: {snapshot_error}"
                 db.add(StreamEvent(id=eid, stream_id=self.id, ts=ts, rule=rule_json,
                                    summary=ev.get("summary", ""), snapshot_path=snapshot,
-                                   clean_path=clean, predictions=payload,
+                                   clean_path=clean, snapshot_error=snapshot_error,
+                                   predictions=payload,
                                    **filter_fields(rule_json, payload)))
         # The event row is committed here; alerting is a side effect and must not delay capture.
         alert_bridge.notify(self.workspace_id, {
@@ -869,6 +876,7 @@ class _Worker:
             "event_id": eid,
             "created": ts,
             "snapshot_path": snapshot,
+            "snapshot_error": snapshot_error,
         })
         try:
             # Queue the reject signal; the actuator thread owns the PLC write, not this loop.
