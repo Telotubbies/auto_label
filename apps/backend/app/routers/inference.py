@@ -81,7 +81,7 @@ def engines(host: str, c: Ctx = Depends(in_scope)):
 
 
 @router.post("/estimate")
-def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(ws_ctx)):
+def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(in_scope)):
     """Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5)."""
     started = time.perf_counter()
     try:
@@ -138,7 +138,8 @@ class OllamaPullIn(BaseModel):
     """One catalogue tag the admin wants pulled; the tag is a lookup key, never an argv part."""
     host: str = Field(min_length=1, max_length=120)
     tag: str = Field(min_length=1, max_length=64)
-    confirm: bool = False
+    # T-1018: a gate, not a truthy value — "true", 1 and "yes" are refused, not coerced.
+    confirm: bool = Field(default=False, strict=True)
 
 
 @router.post("/models/ollama/pull")
@@ -175,7 +176,7 @@ class ModelDownloadIn(BaseModel):
     host: str = Field(min_length=1, max_length=120)
     id: str = Field(min_length=1, max_length=64)
     variant: str = Field(min_length=1, max_length=32)
-    confirm: bool = False
+    confirm: bool = Field(default=False, strict=True)        # T-1018: a boolean, never "true"
 
 
 def _installed(row: dict, model_id: str, variant_id: str) -> bool:
@@ -250,13 +251,13 @@ class EnginePlanIn(BaseModel):
 
 class InstallIn(EnginePlanIn):
     plan_id: str = Field(min_length=1, max_length=64)
-    confirm: bool = False
+    confirm: bool = Field(default=False, strict=True)        # T-1018: a boolean, never "true"
 
 
 class UninstallIn(BaseModel):
     host: str = Field(min_length=1, max_length=120)
     id: str = Field(min_length=1, max_length=32)
-    confirm: bool = False
+    confirm: bool = Field(default=False, strict=True)        # T-1018: a boolean, never "true"
 
 
 def _host(c: Ctx, host: str) -> dict:

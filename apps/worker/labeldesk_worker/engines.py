@@ -18,13 +18,15 @@ import threading
 import time
 from pathlib import Path
 
-from . import ollama
+from . import hf, ollama
 from .inventory import collect
 
 ALLOWED_EXECUTABLES = {"uv", "python", "python3", "docker", "rm", "ollama"}
-WRITES_OUTSIDE = {"--target", "--prefix", "-t"}       # options that plant files wherever they point
+WRITES_OUTSIDE = {"--target", "--prefix", "-t", "--root"}   # options that plant files wherever they point
 SHELL_META = (";", "|", "&", "$(", "`", ">", "<", "\n", "\r")
 DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+# T-1018: a host's own output is read by an admin, so a home directory never leaves the machine.
+HOME_PATH = re.compile(r"(?:[A-Za-z]:[\\/]Users[\\/]|/(?:home|Users|root)/)[^\s'\",;)]*")
 OLLAMA_TAG = re.compile(r"^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$")
 TIMEOUT_S = 30 * 60          # one engine, cold pip or an image pull included
 CANCEL_GRACE_S = 10
@@ -74,6 +76,11 @@ def plan_id(host: str, steps: list[dict], inventory: dict | None) -> str:
 def _pathlike(value: str) -> bool:
     return (value.startswith(("/", "./", "../", "~")) or DRIVE_PATH.match(value) is not None
             or "\\" in value or "/" in value)
+
+
+def redact(line: str) -> str:
+    """Keep the sentence an admin must read, drop a token and a home path (T-1018)."""
+    return HOME_PATH.sub("<path>", hf.redact(line))
 
 
 def guard(argv: list[str], engines_dir: Path) -> None:
@@ -178,6 +185,7 @@ def _stream(srv, job: dict, argv: list[str], cwd: Path, phase: str, percent: flo
             proc.wait()
             return proc.returncode, tail
         if line:
+            line = redact(line)                            # T-1018: no token, no home path
             tail = (tail + [line[-MAX_LINE:]])[-MAX_LOG:]
         answer = _post(srv, job, "progress", json={"progress": round(percent, 1), "phase": phase,
                                                    "log": [line[-MAX_LINE:]] if line else []})

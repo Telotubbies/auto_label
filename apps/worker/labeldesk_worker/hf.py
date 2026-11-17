@@ -12,7 +12,7 @@ from pathlib import Path
 
 MISSING_EXTRA = ('missing_extra: this model download needs Hugging Face support on the worker. '
                  'Install it with: pip install "labeldesk-worker[inference]"')
-TOKEN = re.compile(r"hf_[A-Za-z0-9]{20,}")
+TOKEN = re.compile(r"hf_[A-Za-z0-9_-]{4,}")     # T-1018: `hf_secret…` has an underscore in it
 
 
 class MissingExtra(RuntimeError):
