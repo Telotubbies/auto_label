@@ -27,8 +27,8 @@ BACKEND_APP = "apps/backend"
 # loudly instead of producing a worktree that silently checks out nothing.
 SPARSE_PROFILES = {
     "frontend": [FRONTEND_APP, "docs"],
-    "backend": [BACKEND_APP, "tools", "docs"],
-    "full": ["apps", "tools", "deploy", "docs"],
+    "backend": [BACKEND_APP, "packages/sdk", "tools", "docs"],
+    "full": ["apps", "packages", "ml", "tools", "deploy", "docs"],
     "ml": ["ml", "tools", "docs"],
 }
 

@@ -91,6 +91,7 @@ def sandbox(tmp_path: Path) -> Sandbox:
         "docs/README.md": "docs",
         "deploy/compose.yaml": "deploy",
         "tools/keep.txt": "tools",
+        "packages/sdk/pyproject.toml": "sdk",
         "data/raw/x.jpg": "image",
         "ml/yolo26_ppe/models/x.pt": "weights",
         "ml/sam3_auto_label/run.py": "sam",
@@ -154,17 +155,18 @@ def heavy_clone(sandbox: Sandbox, tmp_path: Path) -> Sandbox:
 
 
 @pytest.mark.parametrize(
-    ("profile", "present"),
+    ("profile", "present", "absent"),
     [
-        ("frontend", ["apps/frontend"]),
-        ("backend", ["apps/backend", "tools"]),
-        ("full", ["apps", "deploy"]),
+        ("frontend", ["apps/frontend"], ["ml"]),
+        ("backend", ["apps/backend", "tools", "packages/sdk"], ["ml"]),
+        ("full", ["apps", "deploy", "packages/sdk", "ml"], []),
     ],
 )
 def test_cloned_worktree_omits_data_and_ml_weights(
     heavy_clone: Sandbox,
     profile: str,
     present: list[str],
+    absent: list[str],
 ) -> None:
     tracked = run(
         ["git", "-C", str(heavy_clone.repo), "ls-tree", "-d", "--name-only", "HEAD"],
@@ -180,7 +182,8 @@ def test_cloned_worktree_omits_data_and_ml_weights(
     assert result.returncode == 0, result.stderr
     worktree = heavy_clone.worktree(team, f"Z9-{profile}")
     assert not (worktree / "data").exists()
-    assert not (worktree / "ml").exists()
+    for path in absent:
+        assert not (worktree / path).exists(), path
     for path in present:
         assert (worktree / path).exists(), path
 

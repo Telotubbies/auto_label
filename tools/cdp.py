@@ -8,7 +8,9 @@ Usage:
 
 <sel> = substring of tab url/title, numeric index from `list`, or omitted (first tab).
 """
+
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -16,7 +18,6 @@ from pathlib import Path
 
 from websocket import create_connection
 
-import os
 DEBUG = "http://localhost:" + os.environ.get("CDP_PORT", "9222")
 
 
@@ -41,8 +42,7 @@ def pick(sel):
 
 class CDP:
     def __init__(self, target):
-        self.ws = create_connection(target["webSocketDebuggerUrl"], timeout=60,
-                                    suppress_origin=True)
+        self.ws = create_connection(target["webSocketDebuggerUrl"], timeout=60, suppress_origin=True)
         self._id = 0
 
     def cmd(self, method, **params):
@@ -56,8 +56,7 @@ class CDP:
                 return msg.get("result", {})
 
     def eval(self, expr):
-        r = self.cmd("Runtime.evaluate", expression=expr, returnByValue=True,
-                     awaitPromise=True)
+        r = self.cmd("Runtime.evaluate", expression=expr, returnByValue=True, awaitPromise=True)
         if r.get("exceptionDetails"):
             sys.exit(json.dumps(r["exceptionDetails"], indent=2)[:2000])
         return r.get("result", {}).get("value")
@@ -95,8 +94,7 @@ def main():
         if full:
             m = cdp.cmd("Page.getLayoutMetrics")
             cs = m["cssContentSize"]
-            params["clip"] = {"x": 0, "y": 0, "width": cs["width"],
-                              "height": cs["height"], "scale": 1}
+            params["clip"] = {"x": 0, "y": 0, "width": cs["width"], "height": cs["height"], "scale": 1}
         data = cdp.cmd("Page.captureScreenshot", **params)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(__import__("base64").b64decode(data["data"]))
@@ -111,16 +109,14 @@ def main():
     elif op == "resize":
         w, h = int(args[2]), int(args[3])
         mobile = "--mobile" in args
-        cdp.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
-                deviceScaleFactor=1, mobile=mobile)
+        cdp.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=1, mobile=mobile)
         time.sleep(1.5)
         print(cdp.eval("JSON.stringify({w: innerWidth, h: innerHeight})"))
     elif op == "click":
         # click <sel-tab> <x> <y>
         x, y = float(args[2]), float(args[3])
         for t in ("mousePressed", "mouseReleased"):
-            cdp.cmd("Input.dispatchMouseEvent", type=t, x=x, y=y,
-                    button="left", clickCount=1)
+            cdp.cmd("Input.dispatchMouseEvent", type=t, x=x, y=y, button="left", clickCount=1)
         print("clicked", x, y)
     else:
         sys.exit(__doc__)

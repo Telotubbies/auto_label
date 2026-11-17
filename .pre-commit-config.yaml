@@ -7,20 +7,20 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        args: ["--maxkb=2048"]
+        args: ["--maxkb=1024"]
       - id: check-merge-conflict
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.3
+    rev: v0.17.3                     # keep in step with the CI pin (ruff==0.17.3)
     hooks:
-      # TODO(lint-chore): widen both hooks to apps/(api|worker|inference), tests
-      # and ml once their 196 pre-existing ruff findings are fixed (progress.md:181).
-      # Until then those files are not linted, so this gate cannot red a task for
-      # findings that predate it.
-      - id: ruff
+      # TODO(lint-chore): widen both hooks to apps/backend, apps/worker,
+      # apps/inference, packages/sdk, ml and tests once their 196 pre-existing
+      # ruff findings are fixed (progress.md:181). Until then those files are not
+      # linted, so this gate cannot red a task for findings that predate it.
+      - id: ruff-check
         args: ["--fix", "--line-length=120"]
         files: ^tools/
       - id: ruff-format
