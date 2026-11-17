@@ -2,15 +2,16 @@
 
 The API never runs an installer or a download. It writes a queued ``engine_apply`` or
 ``model_pull`` row and the audit that says who asked, and only a worker that advertises the kind
-claims it. A host runs one install at a time. ``payload`` is the one place a job's parameters
-become a worker instruction, so ``routers/remote.py`` gains a dispatch line rather than a branch
-per job kind.
+claims it. A host runs one install at a time, and a user gets ``MAX_ENQUEUES_PER_MIN`` actions a
+minute (T-1017) so a leaked session cannot install software in a loop. ``payload`` is the one place
+a job's parameters become a worker instruction, so ``routers/remote.py`` gains a dispatch line
+rather than a branch per job kind.
 """
 from sqlalchemy import select
 
 from .. import deps
 from ..models import Job
-from . import inference_models
+from . import inference_access, inference_models
 
 ENGINE_KINDS = ("engine_apply", "model_pull")     # one at a time, and both install on a host
 
@@ -25,25 +26,29 @@ def running_for_host(db, host: str):
 
 def enqueue_engine(db, c, host: str, action: str, engines: list[dict], plan_id: str) -> Job:
     """Queue one confirmed job and record who asked, for what and which job it became."""
+    inference_access.require_under_limit(db, c)
     job = Job(workspace_id=c.ws.id, project_id=None, kind="engine_apply", status="queued",
               params={"host": host, "action": action, "engines": engines, "plan_id": plan_id},
               created_by=c.user.id)
     db.add(job)
     db.flush()                                   # the audit names the id this row just got
-    deps.audit(db, c.ws.id, c.user.id, f"inference.engine_{action}", host,
-               engines=[engine["id"] for engine in engines], plan_id=plan_id, job_id=job.id)
+    deps.audit(db, c.ws.id, c.user.id, f"inference.engine_{action}", host, host=host,
+               engines=[engine["id"] for engine in engines],
+               versions={engine["id"]: engine["version"] for engine in engines},
+               plan_id=plan_id, job_id=job.id)
     db.commit()
     return job
 
 
 def enqueue_model(db, c, host: str, action: str, model_id: str, variant_id: str) -> Job:
     """Queue one confirmed model download or removal, and record who asked for it."""
+    inference_access.require_under_limit(db, c)
     job = Job(workspace_id=c.ws.id, project_id=None, kind="model_pull", status="queued",
               params={"host": host, "action": action, "model": model_id, "variant": variant_id},
               created_by=c.user.id)
     db.add(job)
     db.flush()                                   # the audit names the id this row just got
-    deps.audit(db, c.ws.id, c.user.id, f"inference.model_{action}", host,
+    deps.audit(db, c.ws.id, c.user.id, f"inference.model_{action}", host, host=host,
                model=model_id, variant=variant_id, job_id=job.id)
     db.commit()
     return job
