@@ -300,20 +300,16 @@ def production_model(db: Session, project: Project) -> TrainedModel | None:
     if deployments is not None:
         getter = getattr(deployments, "alias_model", None)
         if getter is not None:
-            for args in ((db, project), (db, project, "production")):
-                try:
-                    m = getter(*args)
-                except TypeError:
-                    continue
-                except Exception:  # noqa: BLE001 - fall back to the newest ready model
-                    log.debug("deployment alias lookup failed", exc_info=True)
-                    break
+            try:
+                m = getter(db, project, "production")
+            except Exception:  # noqa: BLE001 - fall back to the newest ready model
+                log.debug("deployment alias lookup failed", exc_info=True)
+            else:
                 if m is not None:
                     mid = getattr(m, "model_id", None) or (m if isinstance(m, str) else None)
                     m = db.get(TrainedModel, mid) if mid else m
                     if getattr(m, "status", None) == "ready":
                         return m
-                break
     return db.scalar(
         select(TrainedModel)
         .where(TrainedModel.project_id == project.id, TrainedModel.status == "ready")
