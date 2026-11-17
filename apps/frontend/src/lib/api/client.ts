@@ -26,8 +26,10 @@ export class ApiError extends Error {
   status: number
   /** The API's `X-Request-Id`: quote it and the failure's log line is one grep away. */
   requestId?: string
-  constructor(status: number, message: string, requestId?: string) {
-    super(message); this.status = status; this.requestId = requestId
+  /** The parsed error body, for a route that answers with a structured detail (e.g. a taken address). */
+  body?: unknown
+  constructor(status: number, message: string, requestId?: string, body?: unknown) {
+    super(message); this.status = status; this.requestId = requestId; this.body = body
   }
 }
 
@@ -75,7 +77,7 @@ export async function req<T>(path: string, init: RequestInit = {}, retry = true,
   }
   if (!r.ok) {
     const d = await r.json().catch(() => ({}))
-    throw new ApiError(r.status, detail(d, r.statusText), r.headers.get('X-Request-Id') ?? undefined)
+    throw new ApiError(r.status, detail(d, r.statusText), r.headers.get('X-Request-Id') ?? undefined, d)
   }
   return r.json()
 }

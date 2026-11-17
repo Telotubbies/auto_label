@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, UserPlus } from 'lucide-react'
-import { api, del, fileUrl, get, patch, post } from '@/lib/api'
+import { Activity, Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, TriangleAlert, UserPlus } from 'lucide-react'
+import { ApiError, api, del, fileUrl, get, patch, post } from '@/lib/api'
 import { projectPath } from '@/lib/routes'
+import { projectSlug } from '@/lib/slug'
 import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import type { Project } from '@/lib/types'
@@ -29,8 +30,10 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
   const anomalyOn = useFlag('task_29')
   const [f, setF] = useState({ name: '', type: 'object-detection', visibility: 'private', license: 'CC BY 4.0', annotation_group: '', classes: '', folder_id: '' })
   const [busy, setBusy] = useState(false)
+  const [taken, setTaken] = useState<{ taken: string; suggestion: string } | null>(null)
+  const slug = projectSlug(f.name)
   const create = async () => {
-    setBusy(true)
+    setBusy(true); setTaken(null)
     try {
       const p = await post<Project>(`/ws/${ws}/projects`, {
         ...f, folder_id: f.folder_id || null, annotation_group: f.annotation_group || 'objects',
@@ -38,18 +41,38 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
       })
       qc.invalidateQueries({ queryKey: ['projects', ws] }); qc.invalidateQueries({ queryKey: ['ws', ws] })
       onClose(); nav(projectPath(ws, p.slug, 'upload'))
-    } catch (e) { toast.err(e as Error) } finally { setBusy(false) }
+    } catch (e) {
+      // The address is taken: say so in place, keep the dialog and the typed name (V2).
+      if (e instanceof ApiError && e.status === 409) {
+        const detail = (e.body as { detail?: { taken?: string; suggestion?: string } } | undefined)?.detail
+        if (detail?.taken && detail.suggestion) { setTaken({ taken: detail.taken, suggestion: detail.suggestion }); return }
+      }
+      toast.err(e as Error)
+    } finally { setBusy(false) }
   }
   return (
     <Modal open={open} onClose={onClose} wide>
       <h1 className="mb-5 text-2xl font-bold tracking-tight">Let's create your project.</h1>
       <div className="grid gap-4 md:grid-cols-4">
-        <Field label="Project Name"><Input autoFocus placeholder="e.g. Hardhat Detection" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="Project Name" hint={f.name.trim() ? <>Address <span className="font-mono text-foreground">{projectPath(ws, slug)}</span></> : undefined}>
+          <Input autoFocus placeholder="e.g. Hardhat Detection" value={f.name} onChange={(e) => { setF({ ...f, name: e.target.value }); setTaken(null) }} />
+        </Field>
         <Field label="Annotation Group" hint="What you're labeling, e.g. 'ppe'"><Input placeholder="objects" value={f.annotation_group} onChange={(e) => setF({ ...f, annotation_group: e.target.value })} /></Field>
         <Field label="License"><Select className="w-full" value={f.license} onChange={(e) => setF({ ...f, license: e.target.value })}><option>CC BY 4.0</option><option>MIT</option><option>Public Domain</option><option>Proprietary</option></Select></Field>
         <Field label="Folder"><Select className="w-full" value={f.folder_id} onChange={(e) => setF({ ...f, folder_id: e.target.value })}><option value="">— none —</option>{folders.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select></Field>
       </div>
       <div className="mt-4"><Field label="Classes (optional)" hint="Comma separated — you can add more while labeling."><Input placeholder="person, helmet, vest" value={f.classes} onChange={(e) => setF({ ...f, classes: e.target.value })} /></Field></div>
+      {taken && (
+        <div role="alert" className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5">
+          <p className="flex items-start gap-2 text-sm font-medium leading-relaxed text-foreground">
+            <TriangleAlert aria-hidden className="mt-1 h-4 w-4 shrink-0 text-destructive" />
+            <span>That address is taken: <span className="font-mono">{taken.taken}</span> already belongs to another project.</span>
+          </p>
+          <p className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground">
+            Try <span className="font-mono text-foreground">{taken.suggestion}</span>, or rename this one.
+          </p>
+        </div>
+      )}
       <h2 className="mb-3 mt-6 text-sm font-semibold">Project Type</h2>
       <div className="grid gap-3 md:grid-cols-3">
         {TYPES.filter((t) => t.id !== 'anomaly-detection' || anomalyOn).map((t) => (
@@ -100,7 +123,7 @@ export default function Home() {
       <PageHeader title={currentFolder ? <><button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setFolder(null)}>{name}</button> / {currentFolder.name}</> : 'Home'}
         desc={currentFolder ? undefined : 'What needs you, what changed, and how to get set up.'}
         actions={can('admin') && <Button variant="outline" size="sm" onClick={() => nav(`/${ws}/settings/members`)}><UserPlus className="h-4 w-4" /> Invite Team</Button>} />
-      {!currentFolder && <WorkspaceDashboard ws={ws} projects={projects.data ?? []} onCreateProject={() => setShowNew(true)} />}
+      {!currentFolder && <WorkspaceDashboard ws={ws} projects={projects.data ?? []} onCreateProject={() => setShowNew(true)} dialogOpen={showNew} />}
       <section data-tour="home-projects" aria-labelledby="projects-heading">
         <div className="flex flex-wrap items-end justify-between gap-3 px-8 pt-6">
           <div>
