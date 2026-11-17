@@ -1,7 +1,8 @@
-"""Inference hub API: hosts, the engine and GPU catalogue, and per-host engine compatibility.
+"""Inference hub API: hosts, engines, models, segmentation and the engine jobs they queue.
 
 T-1001 owns the host routes and the deployment scope; every card that adds a route appends it here
-under the same route-level ``task_inference`` flag and the same admin gate.
+under the same route-level ``task_inference`` flag, the same ``inference_access.require_admin`` gate
+and the same ``inference_access.host_or_404`` lookup (T-1017: one helper, so no route can forget).
 """
 
 import logging
@@ -36,14 +37,14 @@ def in_scope(c: Ctx = Depends(ws_ctx)) -> Ctx:
 @router.get("/hosts")
 def hosts(c: Ctx = Depends(in_scope)):
     """Every host with the hardware it reports; owner/admin only."""
-    c.need("admin")
+    inference_access.require_admin(c)
     return {"hosts": host_inventory.hosts(c.db)}
 
 
 @router.get("/catalog")
 def catalog(c: Ctx = Depends(in_scope)):
     """Engine pins and GPU presets: the Engines tab and the calculator read this one list."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     body = inference_catalog.public_catalog()
     log.info("inference.catalog ws=%s role=%s outcome=ok engines=%d gpus=%d ms=%.1f",
@@ -55,11 +56,9 @@ def catalog(c: Ctx = Depends(in_scope)):
 @router.get("/engines")
 def engines(host: str, c: Ctx = Depends(in_scope)):
     """Every catalogue engine with this host's verdict; another host id is 404, never a default."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
-    host_row = next((row for row in host_inventory.hosts(c.db) if row["id"] == host), None)
-    if host_row is None:
-        raise HTTPException(404, "not found")
+    host_row = _host(c, host)
     inventory = host_row["inventory"]
     free_gb = ((inventory or {}).get("disk") or {}).get("models_free_gb")
     rows = []
@@ -81,8 +80,12 @@ def engines(host: str, c: Ctx = Depends(in_scope)):
 
 
 @router.post("/estimate")
-def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(ws_ctx)):
-    """Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5)."""
+def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(in_scope)):
+    """Pure VRAM / throughput answer; any member of the hub's workspace may read it (PLAN §12.5).
+
+    It reads no host and no catalogue row, so the calculator stays open to a plain member while the
+    deployment scope and the flag still decide whether the hub exists here at all.
+    """
     started = time.perf_counter()
     try:
         result = inference_estimate.estimate(body)
@@ -104,7 +107,7 @@ class ModelPlanIn(BaseModel):
 @router.get("/models")
 def models(host: str, c: Ctx = Depends(in_scope)):
     """Catalogue rows joined with this host's installed state, fit verdict and block reasons."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, host)
     body = inference_models.public_models(row)
@@ -118,7 +121,7 @@ def models(host: str, c: Ctx = Depends(in_scope)):
 @router.post("/models/plan")
 def plan_model(body: ModelPlanIn, c: Ctx = Depends(in_scope)):
     """The dry run for one variant; the download job is T-1011's route and writes the files."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, body.host)
     try:
@@ -144,7 +147,7 @@ class OllamaPullIn(BaseModel):
 @router.post("/models/ollama/pull")
 def pull_ollama(body: OllamaPullIn, c: Ctx = Depends(in_scope)):
     """Queue one catalogue tag as `ollama pull <tag>`; the worker runs it, the API does not."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, body.host)
     try:
@@ -187,7 +190,7 @@ def _installed(row: dict, model_id: str, variant_id: str) -> bool:
 @router.post("/models/download")
 def download_model(body: ModelDownloadIn, c: Ctx = Depends(in_scope)):
     """Queue one confirmed download; a busy host or an installed variant is refused, not queued."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, body.host)
     if not body.confirm:
@@ -214,7 +217,7 @@ def download_model(body: ModelDownloadIn, c: Ctx = Depends(in_scope)):
 def remove_model(mid: str, host: str, variant: str, confirm: bool = False,
                  c: Ctx = Depends(in_scope)):
     """Queue the removal of an installed model; an id this host does not report is 404."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, host)
     if not _installed(row, mid, variant):
@@ -261,10 +264,7 @@ class UninstallIn(BaseModel):
 
 def _host(c: Ctx, host: str) -> dict:
     """This deployment's host row; an id it does not list is 404, never a default."""
-    row = next((host_row for host_row in host_inventory.hosts(c.db) if host_row["id"] == host), None)
-    if row is None:
-        raise HTTPException(404, "not found")
-    return row
+    return inference_access.host_or_404(c.db, c, host)
 
 
 def _build(c: Ctx, host: str, choices: list[EngineChoice]) -> tuple[dict, dict]:
@@ -280,7 +280,7 @@ def _build(c: Ctx, host: str, choices: list[EngineChoice]) -> tuple[dict, dict]:
 @router.post("/engines/plan")
 def plan_engines(body: EnginePlanIn, c: Ctx = Depends(in_scope)):
     """A dry run: exact argv, bytes and disk after. It writes nothing, on the host or here."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     _, plan = _build(c, body.host, body.engines)
     log.info("inference.plan ws=%s role=%s host=%s outcome=ok engines=%d blocked=%d noop=%s ms=%.1f",
@@ -292,7 +292,7 @@ def plan_engines(body: EnginePlanIn, c: Ctx = Depends(in_scope)):
 @router.post("/engines/install")
 def install_engines(body: InstallIn, c: Ctx = Depends(in_scope)):
     """Queue one confirmed install for one host; a stale plan or a busy host is refused first."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row, plan = _build(c, body.host, body.engines)
     if not body.confirm:
@@ -319,7 +319,7 @@ def install_engines(body: InstallIn, c: Ctx = Depends(in_scope)):
 @router.post("/engines/uninstall")
 def uninstall_engine(body: UninstallIn, c: Ctx = Depends(in_scope)):
     """Queue the removal of an installed engine: its container, or the venv on that host."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, body.host)
     installed = next((engine for engine in (row["inventory"] or {}).get("engines") or []
@@ -382,7 +382,7 @@ def _job(c: Ctx, jid: str) -> Job:
 @router.get("/jobs")
 def active_jobs(status: Literal["active"] = "active", c: Ctx = Depends(in_scope)):
     """The workspace's engine jobs still on the wire, newest first, capped at 20."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     rows = c.db.scalars(select(Job).where(Job.workspace_id == c.ws.id,
                                           Job.kind.in_(inference_jobs.ENGINE_KINDS),
@@ -397,7 +397,7 @@ def active_jobs(status: Literal["active"] = "active", c: Ctx = Depends(in_scope)
 @router.get("/jobs/{jid}")
 def job_detail(jid: str, c: Ctx = Depends(in_scope)):
     """One job with its phase, log and the engines it finished, so a reload shows the same card."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _job(c, jid)
     log.info("inference.job ws=%s role=%s job=%s status=%s outcome=ok ms=%.1f",
@@ -412,7 +412,7 @@ def cancel_job(jid: str, c: Ctx = Depends(in_scope)):
     Terminal rows and a job already cancelling are left alone, so the button is idempotent and the
     card can keep reading ``Cancelling…`` until the worker acknowledges.
     """
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _job(c, jid)
     before = row.status
@@ -432,7 +432,7 @@ def cancel_job(jid: str, c: Ctx = Depends(in_scope)):
 def segmentation(ws: str, request: Request, host: str, project: str = "",
                  c: Ctx = Depends(in_scope)):
     """Segmentation rows for one host; an optional project only names the one the tab picked."""
-    c.need("admin")
+    inference_access.require_admin(c)
     started = time.perf_counter()
     row = _host(c, host)
     chosen = project_ctx(ws, project, request, c.user, c.db).project if project else None
