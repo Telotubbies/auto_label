@@ -81,15 +81,11 @@ def engines(host: str, c: Ctx = Depends(in_scope)):
 
 @router.post("/estimate")
 def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(in_scope)):
-<<<<<<< HEAD
     """Pure VRAM / throughput answer; any member of the hub's workspace may read it (PLAN §12.5).
 
     It reads no host and no catalogue row, so the calculator stays open to a plain member while the
     deployment scope and the flag still decide whether the hub exists here at all.
     """
-=======
-    """Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5)."""
->>>>>>> t/1018
     started = time.perf_counter()
     try:
         result = inference_estimate.estimate(body)
