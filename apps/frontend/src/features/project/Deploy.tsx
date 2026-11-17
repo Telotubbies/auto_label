@@ -91,7 +91,7 @@ export default function Deploy() {
               <Link to={`/${ws}/settings/api`} className="ml-1 inline-flex items-center gap-1 text-primary hover:underline"><KeyRound className="h-3.5 w-3.5" /> Manage API keys</Link></p>
             <Tabs tabs={[{ id: 'curl', label: 'cURL' }, { id: 'python', label: 'Python' }, { id: 'javascript', label: 'JavaScript' }, { id: 'url', label: 'Image URL' }]} active={lang} onChange={setLang} />
             <div className="relative">
-              <pre className="mt-3 overflow-x-auto rounded-lg bg-sidebar p-4 font-mono text-xs text-sidebar-foreground">{snippets[lang]}</pre>
+              <pre className="mt-3 overflow-x-auto rounded-lg bg-sidebar p-4 pr-12 font-mono text-xs text-sidebar-foreground">{snippets[lang]}</pre>
               <button className="absolute right-2 top-2 cursor-pointer rounded p-1 text-sidebar-foreground/70 hover:text-white" onClick={() => { navigator.clipboard.writeText(snippets[lang]); toast.ok('Copied') }} aria-label="Copy"><Copy className="h-4 w-4" /></button>
             </div>
           </Card>
