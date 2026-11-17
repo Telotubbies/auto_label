@@ -231,7 +231,7 @@ async function signUpFresh(page: Page, request: APIRequestContext, label: string
   await page.locator('#signup-name').fill(`Area 1 ${label}`)
   await page.locator('#signup-email').fill(email)
   await page.locator('#signup-password').fill(password)
-  await page.locator('#signup-workspace').fill(`Area 1 ${label} ${runId}`)
+  await page.getByLabel('Workspace name').fill(`Area 1 ${label} ${runId}`)
   await page.getByRole('button', { name: 'Create account' }).click()
   await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible({ timeout: 30_000 })
 
