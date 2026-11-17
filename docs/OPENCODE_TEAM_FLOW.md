@@ -158,6 +158,20 @@ Agents
 13. **Idempotent resume**: R0 derives state from git + board + report files only, so any restart
     continues exactly where work stopped.
 
+## 4d. Owner rules for AI-written code (adopted 2026-11-17)
+
+AI writes the code, the owner sets direction. Keep tasks small, review every result, test first.
+
+14. **Options first.** Before production code, an implementation lane lists 2-3 designs that satisfy the
+    card, each with estimated lines of code, files touched and trade-offs, picks the smallest one that
+    fully satisfies the card, and puts that table at the top of its report. Test-only cards skip it.
+15. **Report in plain words.** Every report says what was done, files changed with lines added/removed,
+    and the RED/GREEN and test/build output, so the merge captain can decide go or adjust.
+16. **R6 checks over-engineering.** The reviewer checks the options table, and raises as a finding any
+    code, option, abstraction or dependency the card did not need.
+17. **Tests are the safety net.** The merge gate is the full serial backend suite, root and tools
+    suites, node tests, the web build, and (after T-008) the Playwright e2e smoke.
+
 ## 5. Finish line
 
 `git branch` shows only `main` and `feat/labeldesk-v2`; `git worktree list` shows only the main

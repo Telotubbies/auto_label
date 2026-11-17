@@ -79,6 +79,12 @@ Best practices for every dispatch:
 - Tests during work: run only the touched test files (`pytest tests/test_x.py`); the full suite runs once per merge, by L0.
 - Every subagent ends with a short report: what changed, RED/GREEN output, open risks. No report = not done.
 
+## 5c. Options first, no over-engineering (owner directive 2026-11-17)
+
+Every implementation dispatch requires the lane to list 2-3 designs with estimated LOC and pick the
+smallest that satisfies the card, at the top of its report. Every R6 review checks that table and flags
+over-engineering as a finding. Details: `docs/OPENCODE_TEAM_FLOW.md` §4d.
+
 ## 6. Hard rules
 
 - Never push, merge to `main`, deploy, or delete anything unmerged without the owner's approval. Merging to `feat/labeldesk-v2` is allowed after a passing review.
