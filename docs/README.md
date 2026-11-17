@@ -117,6 +117,14 @@ docs/
 |------|-------|--------|
 | [qa-test-design.md](qa/qa-test-design.md) | QA design: why each test function exists + doc redundancy analysis | Verified |
 
+### ops/
+
+| File | Topic | Status |
+|------|-------|--------|
+| [SECURITY-PLAN.md](ops/SECURITY-PLAN.md) | Threat model, ASVS L2 / API Top 10 gaps, scanners, headers, limits, audit coverage (wave O) | Planned 2026-11-17 |
+| [MONITORING-PLAN.md](ops/MONITORING-PLAN.md) | Request id + JSON logs, health/readiness, metrics, traces, System health page, alerts (wave O) | Planned 2026-11-17 |
+| [PERFORMANCE-PLAN.md](ops/PERFORMANCE-PLAN.md) | Budgets, load scenarios, baseline, nightly regression gate (wave O) | Planned 2026-11-17 |
+
 ---
 
 ## How to Read
