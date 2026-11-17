@@ -176,6 +176,13 @@ export default function Home() {
                     {p.visibility === 'public' ? <Globe className="h-3.5 w-3.5 text-muted-foreground" /> : <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
                     <span className="clamp-2" title={p.name}>{p.name}</span>
                   </div>
+                  {p.description && (
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      <span className="clamp-2">{p.description.split('\n')[0]}</span>
+                      {/* shortcut: a card cannot measure its column, so "…more" marks that the rest lives in the project */}
+                      <span className="ml-1">…more</span>
+                    </div>
+                  )}
                   <div className="mt-1 text-xs text-muted-foreground">Edited {fmtAgo(p.updated)}</div>
                   <div className="text-xs text-muted-foreground tabular-nums">{p.images} Images · {p.models} Models</div>
                 </div>

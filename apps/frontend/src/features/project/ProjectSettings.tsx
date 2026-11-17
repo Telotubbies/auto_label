@@ -10,6 +10,7 @@ import { Button, Card, Field, Input, PageHeader, Select, Spinner, Switch, Tabs, 
 import { typeLabel } from '@/components/shell'
 import { ProjectPrivacySection } from '@/features/governance/Privacy'
 import { ProjectAccess } from '@/features/governance/Roles'
+import { DescriptionCard } from './DescriptionCard'
 import { useProject } from './ProjectLayout'
 import OtOutputs from './OtOutputs'
 
@@ -60,6 +61,7 @@ export default function ProjectSettings() {
         <div className="space-y-4">
           {active === 'general' && (
             <>
+              <DescriptionCard ws={ws} project={project} loading={loading} />
               <Card className="space-y-4 p-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="Name"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
