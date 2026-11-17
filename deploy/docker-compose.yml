@@ -70,6 +70,21 @@ services:
     depends_on:
       db: { condition: service_healthy }
 
+  # AI-agent endpoint (MCP) on the API's own origin, off unless the operator asks for it:
+  #   docker compose --profile mcp up -d
+  # Keys arrive per request, so the service holds no secret of its own.
+  mcp:
+    profiles: ["mcp"]
+    build:
+      context: ..
+      dockerfile: apps/mcp/Dockerfile
+    restart: unless-stopped
+    environment:
+      LABELDESK_URL: http://api:8000
+      LD_MCP_ALLOWED_HOSTS: ${LD_DOMAIN}
+      LD_MCP_ALLOWED_ORIGINS: https://${LD_DOMAIN}
+    depends_on: [api]
+
   # Self-hosted inference (optional, single tenant). No API keys or workspace settings are passed:
   # mount exported weights read-only and call http://<host>:${LD_INFERENCE_PORT}/predict.
   #   docker compose --profile inference up -d --build
