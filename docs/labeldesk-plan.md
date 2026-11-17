@@ -17,7 +17,7 @@
 | Annotate | react-konva + Zustand | ✅ editor ทำงานแล้ว; เพิ่ม Smart Polygon + approve/reject |
 | Backend | FastAPI | ✅ skeleton; ต้องต่อ pipeline จริง |
 | DB/files | PostgreSQL + MinIO | ⏳ compose profile; `DATABASE_URL` fallback sqlite |
-| GPU jobs | Redis + worker | ⏳ `api/worker.py` → `pipeline_cli.py` / `inference.py` |
+| GPU jobs | Redis + worker | ⏳ `api/worker.py` → `ml/pipeline_cli.py` / `inference.py` |
 | Auth | JWT roles Admin/Labeler/Reviewer (+OIDC ทีหลัง) | ครึ่ง — เพิ่ม roles guard |
 | Deploy | Docker Compose เครื่องเดียว | ⏳ `docker-compose.labeldesk.yml` |
 
@@ -32,10 +32,10 @@
 | T-UP | upload | dropzone + per-file progress + dedupe hash (SHA-256 ฝั่ง client เทียบ server) | Upload.tsx, api /uploads |
 | T-KANBAN | kanban 4 คอลัมน์ | Unassigned→Annotating→Review→Done + assignment to user | AnnotateBoard.tsx, api /jobs, /assignments |
 | T-EDITOR | editor เต็ม | tool rail ครบ, shortcuts, undo/redo, **approve/reject**, **Smart Polygon→SAM 3.1** | Editor.tsx |
-| T-SAM | smart polygon | POST /infer/sam-point {image_id, points[]} → mask→polygon | api → `sam3_auto_label/src/inference.py` |
+| T-SAM | smart polygon | POST /infer/sam-point {image_id, points[]} → mask→polygon | api → `ml/sam3_auto_label/src/inference.py` |
 | T-DS | dataset filters | filter by class/status/split + raw query | Browse.tsx + api |
 | T-VER | versions | preprocess+augment config → export 11 formats ผ่าน `exporters.py` | misc.tsx Versions, api /versions/{id}/export |
-| T-TRAIN | train | launch `yolo26_ppe` 02_train + mAP chart + confusion matrix (อ่าน `reports/inputs/final_eval_results.json`) | misc.tsx Train, api /jobs/train |
+| T-TRAIN | train | launch `ml/yolo26_ppe` 02_train + mAP chart + confusion matrix (อ่าน `reports/inputs/final_eval_results.json`) | misc.tsx Train, api /jobs/train |
 | T-DEP | deploy | ONNX download + test-image inference | misc.tsx ProjDeploy, api /models/{id}/infer |
 | T-DB | postgres+minio | SQLAlchemy models + presigned upload/download | api/db.py, api/storage.py |
 | T-JOBS | redis worker | enqueue sam/train/export jobs, poll status | api/worker.py, api/queue.py |

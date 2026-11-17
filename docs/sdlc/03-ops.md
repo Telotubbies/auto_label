@@ -35,7 +35,7 @@ status: "Verified"
 
 In Scope:
 - Config parsing and validation (`config.py`)
-- Path sanitization (`_sanitize_path()` in `pipeline_cli.py`)
+- Path sanitization (`_sanitize_path()` in `ml/pipeline_cli.py`)
 - Focal patch application (`focal_patch.py`)
 - Dataset preparation (`01_prepare_dataset.py`)
 - SAM batch segmentation with resume
@@ -68,7 +68,7 @@ Exit Criteria (met 2026-09-10):
 
 | ID | Title | Preconditions | Steps | Expected | Priority | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| TC-01 | SAM batch on single image | Checkpoint exists, venv ready | Run `auto_label.sh --sam --batch single_test` | COCO JSON + viz + YOLO format generated | Must | Done (skipped on Windows — needs WSL `sam3` module) |
+| TC-01 | SAM batch on single image | Checkpoint exists, venv ready | Run `ml/auto_label.sh --sam --batch single_test` | COCO JSON + viz + YOLO format generated | Must | Done (skipped on Windows — needs WSL `sam3` module) |
 | TC-02 | SAM resume from checkpoint | Partial run exists | Re-run with `--resume` | Skips completed images, continues from last | Must | Done (3 tests) |
 | TC-03 | Path traversal blocked | CLI running | Pass `--input ../../../etc/passwd` | ValueError raised, path rejected | Must | Done (11 tests) |
 | TC-04 | Focal patch verification | Ultralytics installed | `import focal_patch; assert FOCAL_PATCH_APPLIED` | `FOCAL_PATCH_APPLIED == True` | Must | Done (7 tests) |
@@ -90,7 +90,7 @@ Exit Criteria (met 2026-09-10):
 
 | Finding | Severity | ISO 27001 | Status |
 | --- | --- | --- | --- |
-| `shell=True` in `pipeline_cli.py:740` | HIGH | A.14.2.5 | Fixed: uses `shutil.copytree()` |
+| `shell=True` in `ml/pipeline_cli.py:740` | HIGH | A.14.2.5 | Fixed: uses `shutil.copytree()` |
 | Hardcoded `/opt/sam3_venv` path | HIGH | A.12.5.1 | Fixed: repo-local venv |
 | Path traversal in `resolve_input_dir` | HIGH | A.14.1.2 | Fixed: `_sanitize_path()` |
 | MLflow bound to 0.0.0.0 | HIGH | A.13.1.1 | Fixed: 127.0.0.1 |
@@ -109,7 +109,7 @@ Exit Criteria (met 2026-09-10):
 | Bare `except:` in `08_generate_report_figures.py` | CRITICAL | Fixed |
 | Focal patch not verified at runtime | MAJOR | Fixed |
 | YOLO deps not installed by setup.py | MAJOR | Fixed |
-| Dead imports in `pipeline_cli.py` | MEDIUM | Fixed |
+| Dead imports in `ml/pipeline_cli.py` | MEDIUM | Fixed |
 | `inference.py` None boxes in NMS | MAJOR | Open (TD-04) |
 | O(n^2) oversampling loop | MAJOR | Open (TD-05) |
 | Broad `except Exception:` | MAJOR | Open (TD-06) |
@@ -123,14 +123,14 @@ Exit Criteria (met 2026-09-10):
 #### Pre-Deployment Checklist
 
 - [ ] Python 3.10-3.12 available (or 3.13 with upgraded deps)
-- [ ] `setup.sh` runs without errors
-- [ ] venv created at `sam3_auto_label/sam3_venv/`
-- [ ] SAM checkpoint downloaded to `sam3_auto_label/checkpoints/`
+- [ ] `ml/setup.sh` runs without errors
+- [ ] venv created at `ml/sam3_auto_label/sam3_venv/`
+- [ ] SAM checkpoint downloaded to `ml/sam3_auto_label/checkpoints/`
 - [ ] YOLO dependencies installed
 - [ ] GPU detected (CUDA, ROCm, MPS, or CPU fallback)
-- [ ] `bash -n setup.sh` passes
-- [ ] `bash -n auto_label.sh` passes
-- [ ] `python -m py_compile pipeline_cli.py` passes
+- [ ] `bash -n ml/setup.sh` passes
+- [ ] `bash -n ml/auto_label.sh` passes
+- [ ] `python -m py_compile ml/pipeline_cli.py` passes
 - [ ] `python -m pytest tests/` passes (59 passed, 1 skipped expected)
 
 #### Deployment Steps
@@ -138,9 +138,9 @@ Exit Criteria (met 2026-09-10):
 | Step | Command | Owner | Verification |
 | --- | --- | --- | --- |
 | 1. Clone repository | `git clone https://github.com/Telotubbies/auto_label.git` | Operator | `ls auto_label/` |
-| 2. Run setup | `cd auto_label && ./setup.sh` | Operator | venv exists, checkpoint exists |
-| 3. Verify setup | `./setup.sh --check-only` | Operator | All checks pass |
-| 4. Launch pipeline | `./auto_label.sh` | Operator | CLI menu appears |
+| 2. Run setup | `cd auto_label && ./ml/setup.sh` | Operator | venv exists, checkpoint exists |
+| 3. Verify setup | `./ml/setup.sh --check-only` | Operator | All checks pass |
+| 4. Launch pipeline | `./ml/auto_label.sh` | Operator | CLI menu appears |
 | 5. Select mode | Interactive or `--sam`/`--yolo`/`--pred` | Operator | Mode starts |
 
 #### Staged Rollout
@@ -154,7 +154,7 @@ Exit Criteria (met 2026-09-10):
 #### Rollback Plan
 
 - No deployment artifacts to roll back (CLI tool, not a service)
-- venv can be deleted and recreated with `./setup.sh`
+- venv can be deleted and recreated with `./ml/setup.sh`
 - Checkpoint can be re-downloaded or manually placed
 - Git revert to previous commit if code regression
 
@@ -168,31 +168,31 @@ The system is a CLI tool, not a long-running service. The only service component
 
 | Operation | Command |
 | --- | --- |
-| Start (background) | `bash yolo26_ppe/scripts/services/manage_mlflow_background.sh start` |
-| Stop | `bash yolo26_ppe/scripts/services/manage_mlflow_background.sh stop` |
-| Status | `bash yolo26_ppe/scripts/services/manage_mlflow_background.sh status` |
-| Start (foreground) | `bash yolo26_ppe/scripts/services/run_mlflow_foreground.sh` |
+| Start (background) | `bash ml/yolo26_ppe/scripts/services/manage_mlflow_background.sh start` |
+| Stop | `bash ml/yolo26_ppe/scripts/services/manage_mlflow_background.sh stop` |
+| Status | `bash ml/yolo26_ppe/scripts/services/manage_mlflow_background.sh status` |
+| Start (foreground) | `bash ml/yolo26_ppe/scripts/services/run_mlflow_foreground.sh` |
 | UI URL | `http://127.0.0.1:5000` |
 
 #### Common Operations
 
 | Scenario | Command |
 | --- | --- |
-| Fresh setup | `./setup.sh` |
-| Check prerequisites only | `./setup.sh --check-only` |
-| Setup without launching | `./setup.sh --no-launch` |
-| Run SAM auto-labeling | `./auto_label.sh --sam --batch <name>` |
-| Train YOLO26 | `./auto_label.sh --yolo --model small_detection,medium_detection` |
-| Run prediction | `./auto_label.sh --pred --batch <name> --model small_detection` |
-| Dry run (preview only) | `./auto_label.sh --dry-run --yolo` |
-| Resume SAM batch | `./auto_label.sh --sam --batch <name> --resume` |
+| Fresh setup | `./ml/setup.sh` |
+| Check prerequisites only | `./ml/setup.sh --check-only` |
+| Setup without launching | `./ml/setup.sh --no-launch` |
+| Run SAM auto-labeling | `./ml/auto_label.sh --sam --batch <name>` |
+| Train YOLO26 | `./ml/auto_label.sh --yolo --model small_detection,medium_detection` |
+| Run prediction | `./ml/auto_label.sh --pred --batch <name> --model small_detection` |
+| Dry run (preview only) | `./ml/auto_label.sh --dry-run --yolo` |
+| Resume SAM batch | `./ml/auto_label.sh --sam --batch <name> --resume` |
 
 #### Incident Response
 
 | Scenario | Symptom | Diagnosis | Mitigation |
 | --- | --- | --- | --- |
-| Checkpoint missing | SAM inference fails | `ls sam3_auto_label/checkpoints/` | Re-run `./setup.sh` or manual download |
-| venv broken | `ModuleNotFoundError` | `ls sam3_auto_label/sam3_venv/bin/python` | Delete venv, re-run `./setup.sh` |
+| Checkpoint missing | SAM inference fails | `ls ml/sam3_auto_label/checkpoints/` | Re-run `./ml/setup.sh` or manual download |
+| venv broken | `ModuleNotFoundError` | `ls ml/sam3_auto_label/sam3_venv/bin/python` | Delete venv, re-run `./ml/setup.sh` |
 | GPU not detected | Training on CPU (slow) | Check `rocm-smi` or `nvidia-smi` | Install GPU drivers, verify `/dev/dxg` |
 | OOM during training | `torch.cuda.OutOfMemoryError` | Check VRAM usage | Reduce batch size in config |
 | MLflow port in use | `Address already in use` | `lsof -i :5000` | Stop existing process or change port |
@@ -202,8 +202,8 @@ The system is a CLI tool, not a long-running service. The only service component
 ## [2.0.0] - 2026-09-10
 
 ### Added
-- Portable `setup.sh` with Python 3.10-3.13 detection
-- `auto_label.sh` as primary entry point (replaces `run_pipeline.sh`)
+- Portable `ml/setup.sh` with Python 3.10-3.13 detection
+- `ml/auto_label.sh` as primary entry point (replaces `run_pipeline.sh`)
 - Focal Loss monkey-patch (`focal_patch.py`) for class imbalance
 - Path sanitization to prevent traversal attacks
 - SHA256 checkpoint verification framework
@@ -217,8 +217,8 @@ The system is a CLI tool, not a long-running service. The only service component
 - SHA256 config hash: replaces MD5 for collision-safe integrity
 
 ### Changed
-- `pipeline_cli.py` now uses repo-local venv instead of `/opt/sam3_venv`
-- `pipeline_cli.py` repo root derived from `__file__` instead of hardcoded path
+- `ml/pipeline_cli.py` now uses repo-local venv instead of `/opt/sam3_venv`
+- `ml/pipeline_cli.py` repo root derived from `__file__` instead of hardcoded path
 - MLflow bound to `127.0.0.1` instead of `0.0.0.0`
 - Checkpoint location changed from `models/sam3/` to `checkpoints/`
 - `run_yolo_predict` now correctly tracks per-model success/failure
@@ -226,9 +226,9 @@ The system is a CLI tool, not a long-running service. The only service component
 
 ### Fixed
 - Missing `import sys` in `01_prepare_dataset.py` (would crash on error paths)
-- `shell=True` command injection in `pipeline_cli.py:740`
+- `shell=True` command injection in `ml/pipeline_cli.py:740`
 - Bare `except:` in `08_generate_report_figures.py:282`
-- Dead `rich` imports removed from `pipeline_cli.py`
+- Dead `rich` imports removed from `ml/pipeline_cli.py`
 
 ### Security
 - Path traversal prevention via `_sanitize_path()`
@@ -262,7 +262,7 @@ The system is a CLI tool, not a long-running service. The only service component
 | ID | Action | Owner | Due | Status |
 | --- | --- | --- | --- | --- |
 | AI-01 | Create pytest suite for pure functions | QA | Next sprint | Done (76 tests, 17 TCs) |
-| AI-02 | Split `pipeline_cli.py` into modules | Engineering | Next sprint | Open |
+| AI-02 | Split `ml/pipeline_cli.py` into modules | Engineering | Next sprint | Open |
 | AI-03 | Use `production_train.yaml` as single source for recipe | Engineering | Next sprint | Open |
 | AI-04 | Fix `inference.py` None boxes in NMS | Engineering | Next sprint | Open |
 | AI-05 | Replace O(n^2) oversampling with dict/Counter | Engineering | Next sprint | Open |
@@ -318,7 +318,7 @@ The system is a CLI tool, not a long-running service. The only service component
 
 1. Expand dataset for the rare class (harness) to improve mAP50
 2. ~~Add automated tests to prevent regression~~ — Done: 60 pytest tests implemented
-3. Refactor `pipeline_cli.py` into modules for maintainability
+3. Refactor `ml/pipeline_cli.py` into modules for maintainability
 4. Extend Focal Loss to segmentation mask loss
 5. Consider ensemble of YOLO26s + SAM 3.1 for high-confidence predictions
 
@@ -329,6 +329,6 @@ The system is a CLI tool, not a long-running service. The only service component
 - `docs/pipeline/01-pipeline-flow.md` - SAM 3.1 workflow
 - `docs/pipeline/05-yolo26-training.md` - YOLO26 training details
 - `docs/pipeline/04-quality-control.md` - Quality control and confidence
-- `yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
-- `yolo26_ppe/reports/inputs/final_eval_results.json` - Raw metrics
-- `yolo26_ppe/reports/metrics/comparison_report.md` - Comparison summary
+- `ml/yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
+- `ml/yolo26_ppe/reports/inputs/final_eval_results.json` - Raw metrics
+- `ml/yolo26_ppe/reports/metrics/comparison_report.md` - Comparison summary

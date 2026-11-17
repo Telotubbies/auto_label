@@ -14,8 +14,8 @@ The first is a batch pipeline for turning raw PPE images into verified datasets,
 | LabelDesk frontend | `apps/frontend` | Implemented |
 | Remote GPU worker | `apps/worker` | Implemented |
 | Self-hosted inference | `apps/inference` | Implemented, optional |
-| Python SDK and CLI | `apps/sdk` | Implemented |
-| SAM and YOLO batch pipeline | `sam3_auto_label`, `yolo26_ppe` | Implemented |
+| Python SDK and CLI | `packages/sdk` | Implemented |
+| SAM and YOLO batch pipeline | `ml/sam3_auto_label`, `ml/yolo26_ppe` | Implemented |
 
 The application has a working self-hosted deployment path. It is not a hardened multi-tenant service. The limits section below lists the known gaps.
 
@@ -33,18 +33,21 @@ apps/
   backend/         FastAPI service, embedded job worker, tests
   worker/          labeldesk-worker package for remote train and auto-label jobs
   inference/       standalone self-hosted inference service
-  sdk/             Python client and CLI
-packages/          planned shared code; not created yet
+packages/
+  sdk/             Python client and CLI (labeldesk-sdk)
+ml/
+  sam3_auto_label/  SAM 3.1 auto-labeling pipeline
+  yolo26_ppe/       YOLO26 training, evaluation, models, reports
+research/          provider-side reports and investigation notes (not product docs)
 deploy/            Docker Compose stack, Caddyfile, env template
 tools/             scripts used by apps and tests
 tests/             repository-level pipeline tests
 docs/              architecture, ADRs, runbooks, deployment
-sam3_auto_label/   SAM 3.1 auto-labeling pipeline
-yolo26_ppe/        YOLO26 training, evaluation, models, reports
 data/              raw batches and SAM outputs; large, not for new commits
 ```
 
-The approved target layout replaces the two pipeline directories with `ml/yolo26_ppe` and `ml/sam3_auto_label`, and adds `packages/`. Neither change has landed. The pipeline paths above are the current ones.
+Deployable code lives in `apps/`, importable code in `packages/`, the offline ML
+pipeline in `ml/`. [ADR 0003](docs/adr/0003-repository-layout-v2.md) records why.
 
 ## Quick start
 
@@ -118,7 +121,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code and [SECURITY.md](S
 
 ## Known limits
 
-- The v3 4-class YOLO26m detection model reaches 0.693 mAP50, below the project target of 0.85. The canonical numbers are in `yolo26_ppe/reports/inputs/final_eval_results.json`.
+- The v3 4-class YOLO26m detection model reaches 0.693 mAP50, below the project target of 0.85. The canonical numbers are in `ml/yolo26_ppe/reports/inputs/final_eval_results.json`.
 - There is no root license file. Redistribution rights are not established by this repository. Third-party notices are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 - The root pipeline CLI has no dependency manifest of its own, so `questionary`, `rich`, `pytest`, `ruff`, and `mypy` must be installed separately for the documented commands.
 - The frontend types in `apps/frontend/src/lib/types.ts` are written by hand. Generated types from the OpenAPI schema are planned but not in place.

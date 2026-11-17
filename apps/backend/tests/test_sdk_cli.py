@@ -14,10 +14,9 @@ import pytest
 from PIL import Image as PImage
 
 API_ROOT = Path(__file__).resolve().parents[1]
-APP_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(APP_ROOT / "sdk") not in sys.path:
-    sys.path.insert(0, str(APP_ROOT / "sdk"))
+if str(REPO_ROOT / "packages" / "sdk") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "packages" / "sdk"))
 
 from app.main import app                                            # noqa: E402
 

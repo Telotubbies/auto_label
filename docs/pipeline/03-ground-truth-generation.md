@@ -9,7 +9,7 @@ status: "Verified"
 
 > Generate a ground truth dataset from submitted images using SAM 3.1 auto-labeling + human verification
 >
-> **Status**: Verified — checked against `data/sam_outputs_ground_truth/`, `yolo26_ppe/data/`, `yolo26_ppe/reports/source/report.tex:430-627`
+> **Status**: Verified — checked against `data/sam_outputs_ground_truth/`, `ml/yolo26_ppe/data/`, `ml/yolo26_ppe/reports/source/report.tex:430-627`
 
 ---
 
@@ -79,7 +79,7 @@ data/sam_outputs_ground_truth/
 
 ## Annotation Procedure
 
-> Source: `yolo26_ppe/reports/source/report.tex:463-475`
+> Source: `ml/yolo26_ppe/reports/source/report.tex:463-475`
 
 1. **Input**: raw images from `data/raw/` (multiple batches: `blurred`, `custom_capture_2026-08-14`, `flip_flops`, `single_test`, `two_test`)
 2. **SAM 3.1 inference**: text prompt per class (person, helmet, closed footwear, harness)
@@ -91,7 +91,7 @@ data/sam_outputs_ground_truth/
 
 ## Human Verification Protocol
 
-> Source: `yolo26_ppe/reports/source/report.tex:476-485`
+> Source: `ml/yolo26_ppe/reports/source/report.tex:476-485`
 
 ```plantuml {align="center"}
 @startuml
@@ -130,13 +130,13 @@ DATASET --> [*]
 - 4 classes: `person`, `helmet`, `closed footwear`, `harness`
 - 662 images (566 train / 48 val / 48 test)
 
-> Source: `yolo26_ppe/data/` directory listing. v1 (6-class) and v2 (5-class) datasets are no longer present; their trained models are archived under `yolo26_ppe/models/archive/`.
+> Source: `ml/yolo26_ppe/data/` directory listing. v1 (6-class) and v2 (5-class) datasets are no longer present; their trained models are archived under `ml/yolo26_ppe/models/archive/`.
 
 ---
 
 ## RQ1 Evaluation Metrics
 
-> Source: `yolo26_ppe/reports/source/report.tex:486-506`
+> Source: `ml/yolo26_ppe/reports/source/report.tex:486-506`
 
 | Metric | Description |
 |--------|---------|
@@ -149,7 +149,7 @@ DATASET --> [*]
 
 ## Annotation Efficiency
 
-> Source: `yolo26_ppe/reports/source/report.tex:507-530`
+> Source: `ml/yolo26_ppe/reports/source/report.tex:507-530`
 
 ```plantuml {align="center"}
 @startuml
@@ -179,7 +179,7 @@ MANUAL --> AUTO : 100x faster
 
 ## SAM 3.1 Optimization
 
-> Source: `yolo26_ppe/reports/source/report.tex:531-558`
+> Source: `ml/yolo26_ppe/reports/source/report.tex:531-558`
 
 | Optimization | Status | Result |
 |-------------|-------|-----|
@@ -191,9 +191,9 @@ MANUAL --> AUTO : 100x faster
 
 ## References
 
-- `yolo26_ppe/reports/source/report.tex:430-627` — RQ1 chapter (ground truth)
-- `yolo26_ppe/reports/source/report.tex:476-485` — human verification protocol
+- `ml/yolo26_ppe/reports/source/report.tex:430-627` — RQ1 chapter (ground truth)
+- `ml/yolo26_ppe/reports/source/report.tex:476-485` — human verification protocol
 - `data/sam_outputs_ground_truth/` — output directory
-- `yolo26_ppe/data/` — dataset versions
-- `sam3_auto_label/src/batch_segment.py` — auto-labeling code
-- `sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) + thresholds
+- `ml/yolo26_ppe/data/` — dataset versions
+- `ml/sam3_auto_label/src/batch_segment.py` — auto-labeling code
+- `ml/sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) + thresholds

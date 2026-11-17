@@ -100,7 +100,7 @@ Out of Scope:
 
 ### 2.1 Product Perspective
 
-The system consists of three modules orchestrated by `pipeline_cli.py`:
+The system consists of three modules orchestrated by `ml/pipeline_cli.py`:
 
 ```plantuml {align="center"}
 @startuml
@@ -209,9 +209,9 @@ PREP --> TRAIN : dataset
 
 | Interface | Type | Description |
 | --- | --- | --- |
-| `auto_label.sh` | CLI entry point | Shell wrapper, launches `pipeline_cli.py` |
-| `setup.sh` | Setup script | Detects Python, creates venv, installs deps, downloads checkpoint |
-| `pipeline_cli.py` | Interactive CLI | 3 modes: sam, yolo, pred |
+| `ml/auto_label.sh` | CLI entry point | Shell wrapper, launches `ml/pipeline_cli.py` |
+| `ml/setup.sh` | Setup script | Detects Python, creates venv, installs deps, downloads checkpoint |
+| `ml/pipeline_cli.py` | Interactive CLI | 3 modes: sam, yolo, pred |
 | `ppe_4class.yaml` | Config | 4 PPE classes, per-class thresholds |
 | `production_train.yaml` | Config | YOLO26 training recipe |
 | `mlflow.yaml` | Config | MLflow tracking server |
@@ -223,8 +223,8 @@ PREP --> TRAIN : dataset
 | Raw images | `data/raw/` | Variable | jpg, png, bmp, webp, tiff |
 | SAM checkpoint | HuggingFace | ~3.34 GB | PyTorch .pt |
 | Ground truth | `data/sam_outputs_ground_truth/` | 913 images | COCO JSON + 10 formats |
-| YOLO dataset | `yolo26_ppe/data/` | 662 images (v3, 4-class), 566/48/48 split | YOLO txt + data.yaml |
-| Trained models | `yolo26_ppe/models/production/` | 4 models | .pt + .onnx |
+| YOLO dataset | `ml/yolo26_ppe/data/` | 662 images (v3, 4-class), 566/48/48 split | YOLO txt + data.yaml |
+| Trained models | `ml/yolo26_ppe/models/production/` | 4 models | .pt + .onnx |
 
 ### 2.6 Traceability Matrix
 
@@ -251,6 +251,6 @@ PREP --> TRAIN : dataset
 
 - `docs/00-overview.md` - Project overview and 3 requirements
 - `docs/01-requirements.md` - Hardware/software requirements
-- `yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
-- `sam3_auto_label/config/ppe_4class.yaml` - 4-class config (v3)
-- `yolo26_ppe/configs/production_train.yaml` - Training config
+- `ml/yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
+- `ml/sam3_auto_label/config/ppe_4class.yaml` - 4-class config (v3)
+- `ml/yolo26_ppe/configs/production_train.yaml` - Training config

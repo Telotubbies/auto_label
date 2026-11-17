@@ -13,7 +13,7 @@
 /apps/backend/                  @OWNER-PLACEHOLDER
 /apps/worker/                   @OWNER-PLACEHOLDER
 /apps/inference/                @OWNER-PLACEHOLDER
-/apps/sdk/                      @OWNER-PLACEHOLDER
+/packages/sdk/                  @OWNER-PLACEHOLDER
 
 /deploy/                        @OWNER-PLACEHOLDER
 /.github/                       @OWNER-PLACEHOLDER
@@ -27,5 +27,5 @@
 /docs/STANDARDS.md              @OWNER-PLACEHOLDER
 
 /ml/                            @OWNER-PLACEHOLDER
-/sam3_auto_label/               @OWNER-PLACEHOLDER
-/yolo26_ppe/                    @OWNER-PLACEHOLDER
+/ml/sam3_auto_label/          @OWNER-PLACEHOLDER
+/ml/yolo26_ppe/                    @OWNER-PLACEHOLDER

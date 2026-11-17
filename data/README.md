@@ -31,7 +31,7 @@ data/
 ```text
 data/raw/<batch>/
         │
-        │  SAM 3.1 (sam3_auto_label/src/batch_segment.py)
+        │  SAM 3.1 (ml/sam3_auto_label/src/batch_segment.py)
         ▼
 data/sam_outputs_ground_truth/<batch>/
     ├── coco/
@@ -42,9 +42,9 @@ data/sam_outputs_ground_truth/<batch>/
     └── viz/
         └── <image>.jpg         # overlay visualization
         │
-        │  prepare dataset (yolo26_ppe/scripts/pipeline/01_prepare_dataset.py)
+        │  prepare dataset (ml/yolo26_ppe/scripts/pipeline/01_prepare_dataset.py)
         ▼
-yolo26_ppe/data/                # YOLO format dataset
+ml/yolo26_ppe/data/                # YOLO format dataset
 ```
 
 ## raw/
@@ -52,7 +52,7 @@ yolo26_ppe/data/                # YOLO format dataset
 Each subfolder = 1 batch of raw images. The folder name is the batch name used in the CLI:
 
 ```bash
-./auto_label.sh --sam --batch blurred
+./ml/auto_label.sh --sam --batch blurred
 ```
 
 Supported file types: `.jpg`, `.png` (other files are ignored)

@@ -1,6 +1,6 @@
 # ADR 0001: One repository with an app-per-directory layout
 
-- Status: Accepted
+- Status: Superseded by [ADR 0003](0003-repository-layout-v2.md) in part; the body below is the original record
 - Date: 2026-11-03
 - Owner decision: approved in the workspace plan for the LabelDesk v2 clean-up
 

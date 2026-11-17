@@ -31,8 +31,8 @@ VERSION_IMAGES = 24                    # approved so the seed leaves review work
 MODEL_NAME = "PPE Detector YOLO26n"
 STREAM_NAME = "Gate camera"
 
-# The best real nano run in the repo (yolo26_ppe/reports/metrics) and the checkpoint's own class names.
-MODEL_RUN = REPO_ROOT / "yolo26_ppe" / "models" / "archive" / "version_2_improved_baseline" / "nano_detection" / "training_run"
+# The best real nano run in the repo (ml/yolo26_ppe/reports/metrics) and the checkpoint's own class names.
+MODEL_RUN = REPO_ROOT / "ml" / "yolo26_ppe" / "models" / "archive" / "version_2_improved_baseline" / "nano_detection" / "training_run"
 MODEL_CLASSES = ["person", "helmet", "boots", "shoes", "harness"]
 
 ZONE = {"id": "gate", "label": "Gate area", "points": [0.08, 0.42, 0.92, 0.42, 0.92, 0.96, 0.08, 0.96]}

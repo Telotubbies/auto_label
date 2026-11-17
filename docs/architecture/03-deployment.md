@@ -39,7 +39,7 @@ stop
 | Step | Details |
 |---------|-----------|
 | Hardware detect | `HardwareInfo` class — OS, RAM, GPU, VRAM |
-| Venv | `sam3_auto_label/sam3_venv` |
+| Venv | `ml/sam3_auto_label/sam3_venv` |
 | PyTorch | `torch==2.5.1` + `torchvision==0.20.1` |
 | Index URL | CUDA: `cu121`, ROCm: `rocm6.1`, CPU: `cpu`, MPS: PyPI |
 | Checkpoint | `sam3.1_multiplex.pt` from HuggingFace |
@@ -96,4 +96,4 @@ No Prometheus metrics, no log aggregation, no alerting
 - `Dockerfile:1-77`
 - `docker-compose.yml:1-91`
 - `setup.py:1-405`
-- `auto_label.sh:1-51`
+- `ml/auto_label.sh:1-51`

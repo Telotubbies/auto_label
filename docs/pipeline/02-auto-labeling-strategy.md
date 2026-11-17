@@ -54,7 +54,7 @@ stop
 
 ### 1. Text Prompt (no point/box prompt)
 
-@import "../../sam3_auto_label/src/inference.py" {line_begin=404 line_end=406 title="inference.py:404-406 — text prompt loop"}
+@import "../../ml/sam3_auto_label/src/inference.py" {line_begin=404 line_end=406 title="inference.py:404-406 — text prompt loop"}
 
 | Prompt Type | Status |
 |-------------|-------|
@@ -65,7 +65,7 @@ stop
 
 ### 2. Confidence Threshold (per-category override)
 
-@import "../../sam3_auto_label/src/inference.py" {line_begin=416 line_end=416 title="inference.py:416 — threshold logic"}
+@import "../../ml/sam3_auto_label/src/inference.py" {line_begin=416 line_end=416 title="inference.py:416 — threshold logic"}
 
 $$
 T_{\text{cat}} = \begin{cases} T_{\text{global}} & \text{if } T_{\text{cat}} < 0 \\ T_{\text{cat}} & \text{otherwise} \end{cases}
@@ -81,7 +81,7 @@ $$
 
 ### 3. Cross-class NMS
 
-@import "../../sam3_auto_label/src/inference.py" {line_begin=470 line_end=474 title="inference.py:470-474 — NMS call"}
+@import "../../ml/sam3_auto_label/src/inference.py" {line_begin=470 line_end=474 title="inference.py:470-474 — NMS call"}
 
 | Parameter | Value | Note |
 |-------------|-----|---------|

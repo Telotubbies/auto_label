@@ -14,14 +14,14 @@ pytestmark = pytest.mark.integration
 
 
 def _sam_checkpoint_exists(repo_root):
-    ckpt = repo_root / "sam3_auto_label" / "checkpoints" / "sam3.1_multiplex.pt"
+    ckpt = repo_root / "ml" / "sam3_auto_label" / "checkpoints" / "sam3.1_multiplex.pt"
     return ckpt.exists()
 
 
 def _sam_venv_exists(repo_root):
     if os.name == "nt":
-        return (repo_root / "sam3_auto_label" / "sam3_venv" / "Scripts" / "python.exe").exists()
-    return (repo_root / "sam3_auto_label" / "sam3_venv" / "bin" / "python").exists()
+        return (repo_root / "ml" / "sam3_auto_label" / "sam3_venv" / "Scripts" / "python.exe").exists()
+    return (repo_root / "ml" / "sam3_auto_label" / "sam3_venv" / "bin" / "python").exists()
 
 
 def _sam3_module_available():
@@ -36,7 +36,7 @@ def _sam3_module_available():
 
 skip_no_checkpoint = pytest.mark.skipif(
     not _sam_checkpoint_exists(Path(__file__).resolve().parent.parent.parent),
-    reason="SAM 3.1 checkpoint not found — run ./setup.sh first",
+    reason="SAM 3.1 checkpoint not found — run ./ml/setup.sh first",
 )
 
 skip_no_sam3 = pytest.mark.skipif(
@@ -53,7 +53,7 @@ class TestSAMBatchSingleImage:
     def test_produces_coco_and_yolo_outputs(self, repo_root, tmp_path, monkeypatch):
         """Run SAM on one image and verify COCO JSON + YOLO format are generated."""
         import sys
-        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
 
         from config import load_config
 
@@ -70,7 +70,7 @@ class TestSAMBatchSingleImage:
         out_dir.mkdir()
 
         # Build a minimal config
-        config_path = repo_root / "sam3_auto_label" / "config" / "ppe_4class.yaml"
+        config_path = repo_root / "ml" / "sam3_auto_label" / "config" / "ppe_4class.yaml"
         cfg = load_config(str(config_path))
         cfg.output.input_dir = str(img_dir)
         cfg.output.output_dir = str(out_dir)
@@ -120,7 +120,7 @@ class TestSAMResumeFromCheckpoint:
     def test_checkpoint_skips_processed_images(self, repo_root, tmp_path):
         """Create a checkpoint, verify resume skips processed images."""
         import sys
-        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
 
         from config import Config, InferenceConfig, AnnotationConfig, OutputConfig, CheckpointConfig, Category
         from batch_segment import save_checkpoint, load_checkpoint, checkpoint_path
@@ -157,7 +157,7 @@ class TestSAMResumeFromCheckpoint:
     def test_fresh_deletes_checkpoint(self, repo_root, tmp_path):
         """--fresh flag must delete existing checkpoint state."""
         import sys
-        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
 
         from config import Config, InferenceConfig, AnnotationConfig, OutputConfig, CheckpointConfig, Category
         from batch_segment import save_checkpoint, load_checkpoint, delete_checkpoint, checkpoint_path
@@ -185,7 +185,7 @@ class TestSAMResumeFromCheckpoint:
     def test_corrupt_checkpoint_ignored(self, repo_root, tmp_path):
         """A corrupt checkpoint file must be ignored, not crash the run."""
         import sys
-        sys.path.insert(0, str(repo_root / "sam3_auto_label" / "src"))
+        sys.path.insert(0, str(repo_root / "ml" / "sam3_auto_label" / "src"))
 
         from config import Config, InferenceConfig, AnnotationConfig, OutputConfig, CheckpointConfig, Category
         from batch_segment import load_checkpoint, checkpoint_path

@@ -22,7 +22,7 @@ def test_pre_commit_ruff_hooks_only_lint_tools() -> None:
     config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
     hooks = {hook["id"]: hook for repo in config["repos"] for hook in repo["hooks"]}
 
-    assert hooks["ruff"]["files"] == "^tools/"
+    assert hooks["ruff-check"]["files"] == "^tools/"
     assert hooks["ruff-format"]["files"] == "^tools/"
     text = PRE_COMMIT.read_text(encoding="utf-8")
     assert "TODO(lint-chore)" in text

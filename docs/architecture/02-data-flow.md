@@ -132,7 +132,7 @@ digraph DataFlow {
 
 ### Per Annotation (in COCO JSON)
 
-@import "../../sam3_auto_label/src/inference.py" {line_begin=491 line_end=520 title="inference.py:491-520 — annotation dict construction"}
+@import "../../ml/sam3_auto_label/src/inference.py" {line_begin=491 line_end=520 title="inference.py:491-520 — annotation dict construction"}
 
 ---
 
@@ -174,7 +174,7 @@ digraph DataFlow {
 
 ### Config Hash
 
-@import "../../sam3_auto_label/src/tracker.py" {line_begin=73 line_end=83 title="tracker.py:73-83 — _config_hash"}
+@import "../../ml/sam3_auto_label/src/tracker.py" {line_begin=73 line_end=83 title="tracker.py:73-83 — _config_hash"}
 
 | Item | Value |
 |--------|-----|
@@ -184,7 +184,7 @@ digraph DataFlow {
 
 ### Git Commit
 
-@import "../../sam3_auto_label/src/tracker.py" {line_begin=85 line_end=96 title="tracker.py:85-96 — _git_commit"}
+@import "../../ml/sam3_auto_label/src/tracker.py" {line_begin=85 line_end=96 title="tracker.py:85-96 — _git_commit"}
 
 | Item | Value |
 |--------|-----|
@@ -276,11 +276,11 @@ digraph YOLODataFlow {
 
 | Version | Path | Used for |
 |---------|------|----------|
-| v3 combined | `yolo26_ppe/data/combined_coco_dataset_version_3/` | Combined 4-class COCO before conversion |
-| v3 | `yolo26_ppe/data/yolo_detection_dataset_version_3/` | Current detection training round |
-| v3 seg | `yolo26_ppe/data/yolo_segmentation_dataset_version_3/` | Current segmentation training round |
+| v3 combined | `ml/yolo26_ppe/data/combined_coco_dataset_version_3/` | Combined 4-class COCO before conversion |
+| v3 | `ml/yolo26_ppe/data/yolo_detection_dataset_version_3/` | Current detection training round |
+| v3 seg | `ml/yolo26_ppe/data/yolo_segmentation_dataset_version_3/` | Current segmentation training round |
 
-> Source: `yolo26_ppe/data/` directory listing. Earlier v1 (6-class) and v2 (5-class) datasets are no longer present; their models are archived under `yolo26_ppe/models/archive/`.
+> Source: `ml/yolo26_ppe/data/` directory listing. Earlier v1 (6-class) and v2 (5-class) datasets are no longer present; their models are archived under `ml/yolo26_ppe/models/archive/`.
 
 ---
 
@@ -289,5 +289,5 @@ digraph YOLODataFlow {
 - `src/tracker.py:33-71` — schema
 - `src/tracker.py:73-83` — config_hash
 - `src/tracker.py:85-96` — git_commit
-- `yolo26_ppe/data/` — dataset versions
-- `yolo26_ppe/reports/source/report.tex:345-429` — dataset chapter
+- `ml/yolo26_ppe/data/` — dataset versions
+- `ml/yolo26_ppe/reports/source/report.tex:345-429` — dataset chapter

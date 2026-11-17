@@ -95,7 +95,7 @@ class TestNoShellTrue:
     """TC-11: shell=True must be eliminated from pipeline_cli.py (ISO 27001 A.14.2.5)."""
 
     def test_no_shell_true_in_pipeline_cli(self, repo_root):
-        cli_path = repo_root / "pipeline_cli.py"
+        cli_path = repo_root / "ml" / "pipeline_cli.py"
         content = cli_path.read_text(encoding="utf-8")
         # Find all shell=True occurrences, excluding comments
         findings = []

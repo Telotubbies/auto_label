@@ -10,7 +10,7 @@ The backend is a FastAPI application. FastAPI builds an OpenAPI document from th
 
 The frontend currently defines its own types in `apps/frontend/src/lib/types.ts` and calls the API through `apps/frontend/src/lib/api.ts`. Nothing checks those types against the backend. A backend field rename can merge and leave the frontend reading a missing property until a user hits the screen.
 
-The SDK is further along. `tools/gen_sdk.py` projects the OpenAPI document down to an operation map in `apps/sdk/labeldesk/_generated.py`. `apps/backend/tests/test_sdk_cli.py` regenerates the map from the live schema and fails when the committed map drifts. That test only covers operations, methods, paths, scopes, and parameters. It does not cover response body types, and it does not cover the frontend.
+The SDK is further along. `tools/gen_sdk.py` projects the OpenAPI document down to an operation map in `packages/sdk/labeldesk/_generated.py`. `apps/backend/tests/test_sdk_cli.py` regenerates the map from the live schema and fails when the committed map drifts. That test only covers operations, methods, paths, scopes, and parameters. It does not cover response body types, and it does not cover the frontend.
 
 A separate repository would make this worse. The producer and consumer would release on different schedules, and the contract would need its own versioning and publication process.
 

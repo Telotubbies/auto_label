@@ -5,11 +5,17 @@ A self-hosted computer-vision labeling SaaS modelled on Roboflow's workflow:
 
 ```
 apps/
-  api/      FastAPI + SQLAlchemy (SQLite dev / Postgres prod), DB-backed job queue, embedded worker
-  web/      React 19 + Vite + Tailwind v4 + TanStack Query + react-konva
-  worker/   `labeldesk-worker` pip package: runs train / auto-label jobs on any GPU box over HTTPS
-deploy/     docker-compose (Caddy HTTPS + web + api + Postgres), env template
+  backend/    FastAPI + SQLAlchemy (SQLite dev / Postgres prod), DB-backed job queue, embedded worker
+  frontend/   React 19 + Vite + Tailwind v4 + TanStack Query + react-konva
+  worker/     `labeldesk-worker` pip package: runs train / auto-label jobs on any GPU box over HTTPS
+  inference/  standalone self-hosted inference service
+packages/
+  sdk/        `labeldesk-sdk`: Python client and CLI for /api/v1
+deploy/       docker-compose (Caddy HTTPS + web + api + Postgres), env template
 ```
+
+Deployable code is in `apps/`, importable code in `packages/`, the offline ML
+pipeline in `ml/`.
 
 ## Features
 

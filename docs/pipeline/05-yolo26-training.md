@@ -9,7 +9,7 @@ status: "Verified"
 
 > Train 4 YOLO26 models to compare the accuracy–efficiency trade-off for PPE detection
 >
-> **Status**: Verified — checked against `yolo26_ppe/`, `yolo26_ppe/reports/final/report.pdf`, `yolo26_ppe/configs/`
+> **Status**: Verified — checked against `ml/yolo26_ppe/`, `ml/yolo26_ppe/reports/final/report.pdf`, `ml/yolo26_ppe/configs/`
 
 ---
 
@@ -24,7 +24,7 @@ Compare the performance and computational efficiency of 4 YOLO26 models (v3 data
 | YOLO26s-seg | Segmentation | Small |
 | YOLO26m-seg | Segmentation | Medium |
 
-> Source: `yolo26_ppe/reports/source/report.tex`, `yolo26_ppe/models/production/`
+> Source: `ml/yolo26_ppe/reports/source/report.tex`, `ml/yolo26_ppe/models/production/`
 
 ---
 
@@ -83,7 +83,7 @@ stop
 | Hardware | AMD RX 7800 XT (ROCm, WSL2) |
 | Random seed | 42 |
 
-> Source: `yolo26_ppe/scripts/pipeline/02_train_models.py`, `yolo26_ppe/configs/production_train.yaml`
+> Source: `ml/yolo26_ppe/scripts/pipeline/02_train_models.py`, `ml/yolo26_ppe/configs/production_train.yaml`
 >
 > Note: `medium_segmentation` stage 1 early-stopped at epoch 117 (best epoch 96) — normal early-stopping, not a failure.
 
@@ -100,7 +100,7 @@ stop
 | Test | 48 |
 | **Total** | **662** |
 
-> Source: `yolo26_ppe/reports/final/report.pdf`, `yolo26_ppe/data/yolo_detection_dataset_version_3/`
+> Source: `ml/yolo26_ppe/reports/final/report.pdf`, `ml/yolo26_ppe/data/yolo_detection_dataset_version_3/`
 
 ### Class Distribution (annotations)
 
@@ -116,7 +116,7 @@ stop
 - **Oversampling target**: harness → 500 annotations via image duplication (cap 10x)
 - **Focal Loss**: `focal_patch.py` monkey-patches `v8DetectionLoss.bce` (gamma=1.5, alpha=0.25)
 
-> Source: `yolo26_ppe/scripts/pipeline/01_prepare_dataset.py`, `yolo26_ppe/reports/metrics/comparison_report.md`
+> Source: `ml/yolo26_ppe/scripts/pipeline/01_prepare_dataset.py`, `ml/yolo26_ppe/reports/metrics/comparison_report.md`
 
 ---
 
@@ -128,7 +128,7 @@ stop
 skinparam linetype ortho
 skinparam backgroundColor #FEFEFE
 
-package "yolo26_ppe/data/" {
+package "ml/yolo26_ppe/data/" {
   file "combined_coco_dataset_version_3" as v3c
   file "yolo_detection_dataset_version_3" as v3d
   file "yolo_segmentation_dataset_version_3" as v3s
@@ -140,7 +140,7 @@ v3c --> v3s : convert (4 classes)
 @enduml
 ```
 
-> Source: `yolo26_ppe/data/` directory listing
+> Source: `ml/yolo26_ppe/data/` directory listing
 
 ---
 
@@ -148,21 +148,21 @@ v3c --> v3s : convert (4 classes)
 
 YOLO26 training uses **MLflow** for experiment tracking (unlike SAM 3.1 which uses SQLite):
 
-@import "../../yolo26_ppe/configs/mlflow.yaml" {title="mlflow.yaml"}
+@import "../../ml/yolo26_ppe/configs/mlflow.yaml" {title="mlflow.yaml"}
 
-> MLflow tracking URI and configuration are in `yolo26_ppe/configs/mlflow.yaml`
+> MLflow tracking URI and configuration are in `ml/yolo26_ppe/configs/mlflow.yaml`
 
 ---
 
 ## Training Config
 
-@import "../../yolo26_ppe/configs/production_train.yaml" {title="production_train.yaml"}
+@import "../../ml/yolo26_ppe/configs/production_train.yaml" {title="production_train.yaml"}
 
 ---
 
 ## Augmentation Config
 
-@import "../../yolo26_ppe/configs/production_augmentation.yaml" {title="production_augmentation.yaml"}
+@import "../../ml/yolo26_ppe/configs/production_augmentation.yaml" {title="production_augmentation.yaml"}
 
 ---
 
@@ -177,7 +177,7 @@ YOLO26 training uses **MLflow** for experiment tracking (unlike SAM 3.1 which us
 
 > **Summary**: 50-epoch tuning trials could not match the 150-epoch baseline — all baseline weights were retained. These results are from the archived v2 5-class cohort; the current v3 models were trained with the fixed two-stage recipe above.
 >
-> Source: `yolo26_ppe/reports/metrics/` (tune_*.json)
+> Source: `ml/yolo26_ppe/reports/metrics/` (tune_*.json)
 
 ### Tuned Parameters
 
@@ -187,10 +187,10 @@ YOLO26 training uses **MLflow** for experiment tracking (unlike SAM 3.1 which us
 
 ## References
 
-- `yolo26_ppe/reports/final/report.pdf` — full report
-- `yolo26_ppe/reports/source/report.tex:628-747` — RQ2 chapter
-- `yolo26_ppe/reports/inputs/final_eval_results.json` — metrics
-- `yolo26_ppe/reports/metrics/comparison_report.md` — comparison summary
-- `yolo26_ppe/configs/production_train.yaml` — training config
-- `yolo26_ppe/configs/production_augmentation.yaml` — augmentation config
-- `yolo26_ppe/configs/mlflow.yaml` — MLflow config
+- `ml/yolo26_ppe/reports/final/report.pdf` — full report
+- `ml/yolo26_ppe/reports/source/report.tex:628-747` — RQ2 chapter
+- `ml/yolo26_ppe/reports/inputs/final_eval_results.json` — metrics
+- `ml/yolo26_ppe/reports/metrics/comparison_report.md` — comparison summary
+- `ml/yolo26_ppe/configs/production_train.yaml` — training config
+- `ml/yolo26_ppe/configs/production_augmentation.yaml` — augmentation config
+- `ml/yolo26_ppe/configs/mlflow.yaml` — MLflow config

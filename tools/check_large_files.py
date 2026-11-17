@@ -17,7 +17,7 @@ from pathlib import Path
 # The empty tree object is a fixed SHA in every repository; a root commit has no
 # parent, so diffing against it treats every file in that commit as added.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-FORBIDDEN_PREFIXES = ("data/", "yolo26_ppe/models/", "sam3_auto_label/checkpoints/")
+FORBIDDEN_PREFIXES = ("data/", "ml/yolo26_ppe/models/", "ml/sam3_auto_label/checkpoints/")
 FORBIDDEN_SUFFIXES = (
     ".pt",
     ".pth",

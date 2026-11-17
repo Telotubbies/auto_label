@@ -342,7 +342,7 @@ A training run is a job with a fixed stage sequence. Each stage writes a status 
 | 1 | Queue | Job created with `family`, `variant`, hyperparameters and `version_id`. Credits checked (v1); the user sets a max-credit / max-time cap per run, and training stops at the cap with the best checkpoint kept. Queue priority FIFO per workspace [v1] |
 | 2 | Acquire GPU | Scheduler: wait for an exclusive GPU lease, unload SAM, put vLLM to sleep, pause streams (3.6) [demo] |
 | 3 | Materialise data | From the version's export cache: `ultralytics` → YOLO txt + `data.yaml` (classify → folder layout); `mmdet` → COCO JSON + generated config [demo / mmdet later] |
-| 4 | Resolve weights | Local pretrained (`yolo26_ppe/models/pretrained`), else hub name, or a previous model's `best.pt` when the user chooses "continue from model" (fine-tune chaining) [demo] |
+| 4 | Resolve weights | Local pretrained (`ml/yolo26_ppe/models/pretrained`), else hub name, or a previous model's `best.pt` when the user chooses "continue from model" (fine-tune chaining) [demo] |
 | 5 | Build config | family defaults ⊕ health-check suggestions ⊕ user values. Batch `auto` uses the trainer's auto-batch (~60 % VRAM). AMP on. Seed fixed. Early stopping `patience`. Final config saved as `train_config.json` |
 | 6 | Train | Adapter `train()` with callbacks: per-epoch metrics normalised to common keys (table below) → `/progress` → live charts [v1]. Cancel = stop at epoch end [v1]. Checkpoints `last` and `best`. A no-progress watchdog fails the job if no epoch reports within 3× the median epoch time. A failed or stopped run can **resume** from `last` [demo] |
 | 7 | OOM guard | CUDA OOM in the first epoch → retry once with half the batch, logged in the job [demo] |
@@ -421,7 +421,7 @@ Order is chosen so the end-to-end demo works as early as possible; P1 items come
 | 6 | Streams: models, StreamManager, grabber/sampler/tracker, watchdog, MJPEG, page with live view + timeline, count/zone/line rules, to-dataset | P0 | 4.5 h |
 | 7 | GPU scheduler: ledger, LRU evict, exclusive training with vLLM sleep | P0 | 1.5 h |
 | 7b | Pipelines (3.10) demo items: stratified split + pHash leakage grouping, per-format export cache, `recipe.json` replay, train stage stepper + OOM retry + no-progress watchdog, single pycocotools evaluator on test (12 metrics, per-class AP, confusion matrix, F1-optimal threshold), model leaderboard, EDA box-size / label-quality / possible-missing-box checks + recommendations | P0 | 4 h |
-| 8 | Demo script + seed (project, version, trained model, looping video stream) + pre-download weights: YOLO26 n/s/m (det/seg) are already in `yolo26_ppe/models/pretrained/`; RT-DETR-l, YOLO-World-s/m (+ its CLIP text encoder) and the vLLM model must be fetched once | P0 | 1 h |
+| 8 | Demo script + seed (project, version, trained model, looping video stream) + pre-download weights: YOLO26 n/s/m (det/seg) are already in `ml/yolo26_ppe/models/pretrained/`; RT-DETR-l, YOLO-World-s/m (+ its CLIP text encoder) and the vLLM model must be fetched once | P0 | 1 h |
 | 9 | VLM stream rule + dwell rule | P1 | 1.5 h |
 | 10 | TensorRT export (engine pre-built before the demo, persistent engine cache) | P1 | 1 h |
 | 11 | `rfdetr` adapter (RF-DETR N–L) + `hf` adapter (D-FINE, RT-DETRv2) | P1 | 3 h |
@@ -461,7 +461,7 @@ Exit criteria: P0 tests green, GPU smoke passes, one clean rehearsal.
 
 1. **WSL2** (Ubuntu): NVIDIA driver on Windows, CUDA visible in WSL (`nvidia-smi`).
 2. **vLLM** in a WSL venv (or `vllm/vllm-openai` container): the exact command in 3.4 (`VLLM_SERVER_DEV_MODE=1`, `--enable-sleep-mode`, `--host 127.0.0.1`, port 8000). Never expose port 8000 beyond localhost. Env `LD_VLM_URL=http://localhost:8000/v1`, `LD_VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct-AWQ`.
-3. **API + embedded worker in WSL2**, next to vLLM, because the working SAM 3.1 env (`sam3_auto_label/sam3_venv`, `run_*.sh`) is already Linux/WSL: `uvicorn app.main:app --host 0.0.0.0 --port 8010` (single process, no `--reload`), `LD_SAM_ENABLED=1`, `LD_TRAIN_DEVICE=0`, `LD_DATA_DIR` on the WSL filesystem (not `/mnt/e`, which is slow). API → vLLM is WSL-local `localhost:8000`.
+3. **API + embedded worker in WSL2**, next to vLLM, because the working SAM 3.1 env (`ml/sam3_auto_label/sam3_venv`, `run_*.sh`) is already Linux/WSL: `uvicorn app.main:app --host 0.0.0.0 --port 8010` (single process, no `--reload`), `LD_SAM_ENABLED=1`, `LD_TRAIN_DEVICE=0`, `LD_DATA_DIR` on the WSL filesystem (not `/mnt/e`, which is slow). API → vLLM is WSL-local `localhost:8000`.
 4. **Web**: `npm run dev` on Windows or WSL. The browser on Windows reaches WSL services via localhost forwarding. The Vite proxy must not buffer the MJPEG route; if it does, the `<img>` points straight at `:8010`.
 5. **MMDet (P1)**: separate WSL venv running a second `labeldesk-worker --adapters mmdet`, pulling only `mmdet` jobs.
 6. **Pre-demo checklist**: models pre-downloaded (no network dependency), TensorRT engines pre-built into a persistent cache (first compile can take 15+ minutes), demo video in place, smoke script green, browser tabs pre-opened.

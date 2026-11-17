@@ -60,8 +60,8 @@ package "YOLO26 Layer" #FCE8E6 {
 package "Data Layer" #F3E5F5 {
   file "data/raw/" as RAW
   file "data/sam_outputs_ground_truth/" as GT
-  file "yolo26_ppe/data/" as YOLO_DATA
-  file "yolo26_ppe/models/production/" as MODELS
+  file "ml/yolo26_ppe/data/" as YOLO_DATA
+  file "ml/yolo26_ppe/models/production/" as MODELS
 }
 
 SH --> CLI : launch
@@ -88,7 +88,7 @@ MODELS --> ONNX : export
 
 ### 3.2 Component Design
 
-#### 3.2.1 SAM 3.1 Auto-Labeling (`sam3_auto_label/`)
+#### 3.2.1 SAM 3.1 Auto-Labeling (`ml/sam3_auto_label/`)
 
 | Component | File | Responsibility |
 | --- | --- | --- |
@@ -106,7 +106,7 @@ Design decisions:
 - Checkpoint is a JSON file with per-image status, enabling resume after crash
 - NMS is cross-class (suppresses overlapping detections across all PPE classes)
 
-#### 3.2.2 YOLO26 Training (`yolo26_ppe/`)
+#### 3.2.2 YOLO26 Training (`ml/yolo26_ppe/`)
 
 | Component | File | Responsibility |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ Design decisions:
 - 2-stage training for all models: Stage 1 (150 epochs) + Stage 2 fine-tune (50 epochs)
 - MLflow is optional (graceful degradation if import fails)
 
-#### 3.2.3 CLI Orchestrator (`pipeline_cli.py`)
+#### 3.2.3 CLI Orchestrator (`ml/pipeline_cli.py`)
 
 | Function | Responsibility |
 | --- | --- |
@@ -239,16 +239,16 @@ Consequences:
 | Date | 2026-09-10 |
 | Deciders | Engineering Team |
 
-Context: `pipeline_cli.py` hardcoded `/opt/sam3_venv/bin/python` and `/mnt/e/02_Projects/auto_label`, breaking on fresh machines.
+Context: `ml/pipeline_cli.py` hardcoded `/opt/sam3_venv/bin/python` and `/mnt/e/02_Projects/auto_label`, breaking on fresh machines.
 
-Decision: Use `Path(__file__).resolve().parent` for repo root and `sam3_auto_label/sam3_venv/` for the venv. Allow `YOLO_PYTHON` env override.
+Decision: Use `Path(__file__).resolve().parent` for repo root and `ml/sam3_auto_label/sam3_venv/` for the venv. Allow `YOLO_PYTHON` env override.
 
 Alternatives:
 - Keep hardcoded paths: Rejected because not portable
 - Global venv at `/opt`: Rejected because requires root, not per-project
 
 Consequences:
-- Positive: Works on any machine after `setup.sh`
+- Positive: Works on any machine after `ml/setup.sh`
 - Negative: None identified
 
 ### 3.5 Deployment Architecture
@@ -277,7 +277,7 @@ node "Developer Machine" as DEV {
   node "Storage" as DISK {
     [data/raw/] as RAW
     [data/sam_outputs/] as GT
-    [yolo26_ppe/models/] as MOD
+    [ml/yolo26_ppe/models/] as MOD
   }
 }
 
@@ -315,10 +315,10 @@ YOLO --> MOD : write
 
 ```text
 auto_label/
-  auto_label.sh              # Entry point (shell wrapper)
-  setup.sh                   # Setup script (Python detection + venv)
-  pipeline_cli.py            # CLI orchestrator (3 modes)
-  sam3_auto_label/
+  ml/auto_label.sh           # Entry point (shell wrapper)
+  ml/setup.sh                # Setup script (Python detection + venv)
+  ml/pipeline_cli.py         # CLI orchestrator (3 modes)
+  ml/sam3_auto_label/
     setup.py                 # venv creation, deps, checkpoint
     requirements.txt         # SAM dependencies
     sam3_venv/               # Created by setup.py (gitignored)
@@ -331,7 +331,7 @@ auto_label/
       tracker.py             # SQLite experiment tracking
     config/
       ppe_4class.yaml         # 4 PPE classes + thresholds
-  yolo26_ppe/
+  ml/yolo26_ppe/
     focal_patch.py            # Focal Loss monkey-patch
     configs/
       production_train.yaml   # Training recipe
@@ -401,7 +401,7 @@ Run: `python -m pytest tests/` → 75 passed, 1 skipped (TC-01 needs WSL `sam3` 
 | ID | Debt | Severity | Effort |
 | --- | --- | --- | --- |
 | TD-01 | No automated tests (0% coverage) | Critical | Resolved |
-| TD-02 | `pipeline_cli.py` is 1,630 lines (monolith) | Major | Medium |
+| TD-02 | `ml/pipeline_cli.py` is 1,630 lines (monolith) | Major | Medium |
 | TD-03 | YOLO recipe duplicated in 2 files | Major | Low |
 | TD-04 | `inference.py` passes None to NMS when no boxes | Major | Low |
 | TD-05 | O(n^2) oversampling naming in `01_prepare_dataset.py` | Major | Low |

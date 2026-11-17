@@ -27,7 +27,7 @@ status: "Verified"
 | **RQ2** | Train YOLO26 on the PPE dataset | ✅ Completed | [pipeline/05-yolo26-training.md](pipeline/05-yolo26-training.md) |
 | **RQ3** | Generate ground truth from provided data | ✅ Completed | [pipeline/03-ground-truth-generation.md](pipeline/03-ground-truth-generation.md) |
 
-> Full report: `yolo26_ppe/reports/final/report.pdf`
+> Full report: `ml/yolo26_ppe/reports/final/report.pdf`
 
 ---
 
@@ -154,16 +154,16 @@ The documentation clearly indicates which parts are commonly found in general sy
 
 | File | Responsibility |
 |------|---------|
-| `sam3_auto_label/src/config.py` | Config dataclasses + validation |
-| `sam3_auto_label/src/inference.py` | SAM 3.1 inference + NMS + RLE |
-| `sam3_auto_label/src/batch_segment.py` | Batch loop + checkpoint + ETA |
-| `sam3_auto_label/src/exporters.py` | 11 export formats |
-| `sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
-| `sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
-| `pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
-| `yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
-| `yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |
-| `yolo26_ppe/configs/mlflow.yaml` | MLflow config |
-| `yolo26_ppe/reports/final/report.pdf` | Full report |
-| `yolo26_ppe/reports/inputs/final_eval_results.json` | YOLO26 metrics |
-| `yolo26_ppe/reports/metrics/comparison_report.md` | Comparison summary |
+| `ml/sam3_auto_label/src/config.py` | Config dataclasses + validation |
+| `ml/sam3_auto_label/src/inference.py` | SAM 3.1 inference + NMS + RLE |
+| `ml/sam3_auto_label/src/batch_segment.py` | Batch loop + checkpoint + ETA |
+| `ml/sam3_auto_label/src/exporters.py` | 11 export formats |
+| `ml/sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
+| `ml/sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
+| `ml/pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
+| `ml/yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
+| `ml/yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |
+| `ml/yolo26_ppe/configs/mlflow.yaml` | MLflow config |
+| `ml/yolo26_ppe/reports/final/report.pdf` | Full report |
+| `ml/yolo26_ppe/reports/inputs/final_eval_results.json` | YOLO26 metrics |
+| `ml/yolo26_ppe/reports/metrics/comparison_report.md` | Comparison summary |
