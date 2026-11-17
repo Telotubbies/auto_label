@@ -125,6 +125,13 @@ docs/
 | [MONITORING-PLAN.md](ops/MONITORING-PLAN.md) | Request id + JSON logs, health/readiness, metrics, traces, System health page, alerts (wave O) | Planned 2026-11-17 |
 | [PERFORMANCE-PLAN.md](ops/PERFORMANCE-PLAN.md) | Budgets, load scenarios, baseline, nightly regression gate (wave O) | Planned 2026-11-17 |
 
+### inference/
+
+| File | Topic | Status |
+|------|-------|--------|
+| [INFERENCE-HUB.md](INFERENCE-HUB.md) | Inference Hub operator runbook: the three locks, env, first install, six failures, rollback | Mocked tests pass; GPU smoke pending |
+| [INFERENCE-HUB-USERS.md](INFERENCE-HUB-USERS.md) | Inference Hub user page: the four tabs, the estimate, gated licences, the auto-label handoff | Mocked tests pass; GPU smoke pending |
+
 ---
 
 ## How to Read
