@@ -2005,3 +2005,166 @@ listed under Shared by the card that does not own the module.
   re-cut introduced.
 - Integrate-vs-build: **81 Build · 4 Wire · 2 Integrate · 3 Integrate + build · 2 none**; licensing and
   trademark rules in `MLFLOW-PARITY.md` §1, and no card uses the MLflow name or logo as UI copy.
+
+---
+
+## 12. Wave I — Inference Hub (appended 2026-11-17)
+
+Owner directive: a LabelDesk "Inference Hub" with four surfaces — engine installs, a model catalogue,
+a VRAM/throughput calculator, and a segmentation catalogue wired to auto-label. Plan:
+[`docs/research/inference-hub/PLAN.md`](../../inference-hub/PLAN.md); decision:
+[`docs/adr/0005-inference-hub.md`](../../../adr/0005-inference-hub.md).
+
+**23 cards · 62.5 agent-hours · ids `T-1000`–`T-1022`.** Every card is 1–3 hours, names its exclusive
+files, and specifies the tests that must fail first. Wave I carries no PARITY or BEYOND row: it is a
+new surface, so the `Parity rows` field reads `— (owner request 2026-11-17)` and the closest BEYOND
+rows are cited in the plan, not claimed.
+
+**The three locks.** `task_inference` (workspace flag, off by default) gates routes and the rail entry;
+`LD_INFERENCE_WORKSPACE` bounds the hub to one workspace on a multi-tenant deployment;
+`LD_ALLOW_ENGINE_INSTALL=1` is required on a worker before any install job may execute. All three are
+tested, and the flag-off state is in every card's acceptance list.
+
+**Hard rules for this wave.**
+1. **Nothing executes in the API process.** `engine_apply` and `model_pull` live in
+   `REMOTE_JOB_KINDS` and the `labeldesk-worker` handler map; they are never added to
+   `LOCAL_JOB_KINDS`, and a test proves the embedded worker leaves them queued.
+2. **No user string becomes a command, a path or a URL.** The client sends catalogue ids and enums; the
+   server builds `argv`; the worker re-validates the plan and runs `shell=False` with an allowlist.
+3. **No real download in CI.** Fake `uv`/`python`/`docker` and a local hub fixture; a socket guard
+   fails the suite on `huggingface.co`, `pypi.org` or a registry.
+4. **Never Ollama.** No card installs, downloads, invokes or documents Ollama, in this wave or later.
+5. **No new design system.** Glass from `components/glass.tsx` on chrome only; dense tables, results and
+   logs stay solid; no new token, hex, font size or icon library.
+
+### I1 Shell, estimate, host truth
+
+**6 cards · 16.0 hours.**
+
+| Task | Title | Hours | Role | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-1000 | Inference Hub shell: flag, route, rail entry, admin gate | 2.0 | R4+R3 | yes | `task_inference` | `apps/frontend/src/features/inference/InferenceHub.tsx` |
+| T-1001 | Host inventory: the worker reports its own hardware | 3.0 | R3 | yes | `task_inference` | `apps/backend/app/services/host_inventory.py` |
+| T-1002 | Engine and GPU catalogue: one source of pins and presets | 3.0 | R3 | yes | `task_inference` | `apps/backend/app/services/inference_catalog.py` |
+| T-1003 | Engine compatibility: say blocked before the button exists | 2.0 | R3 | no | `task_inference` | `apps/backend/app/services/inference_compat.py` |
+| T-1004 | VRAM and throughput estimator: one module, one answer | 3.0 | R3 | no | `task_inference` | `apps/backend/app/services/inference_estimate.py` |
+| T-1005 | Calculator screen: inputs, per-GPU result, visible assumptions | 3.0 | R4 | no | `task_inference` | `apps/frontend/src/features/inference/CalculatorTab.tsx` |
+
+### I2 Engines: plan, install, follow, uninstall
+
+**4 cards · 12.0 hours.**
+
+| Task | Title | Hours | Role | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-1006 | Install plan and enqueue: a dry run, then one job | 3.0 | R3 | yes | `task_inference` | `apps/backend/app/services/inference_plan.py` |
+| T-1007 | Engines tab: select, compare, review the plan, confirm | 3.0 | R4 | yes | `task_inference` | `apps/frontend/src/features/inference/EnginesTab.tsx` |
+| T-1008 | Worker engine job: run the plan, keep the log, cancel cleanly | 3.0 | R3 | yes | `task_inference` | `apps/worker/labeldesk_worker/engines.py` |
+| T-1009 | Job card: progress, log sheet, cancel and uninstall | 3.0 | R4+R3 | no | `task_inference` | `apps/frontend/src/features/inference/InstallProgress.tsx` |
+
+### I3 Models: catalogue, download, disk
+
+**4 cards · 10.5 hours.**
+
+| Task | Title | Hours | Role | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-1010 | Model catalogue: pins, quant variants, licence and gate | 3.0 | R3 | yes | `task_inference` | `apps/backend/app/services/inference_models.py` |
+| T-1011 | Worker model download: resume, verify, never fill the disk | 3.0 | R3 | yes | `task_inference` | `apps/worker/labeldesk_worker/model_pull.py` |
+| T-1012 | Models tab: filter, compare, download with a disk check | 3.0 | R4 | yes | `task_inference` | `apps/frontend/src/features/inference/ModelsTab.tsx` |
+| T-1013 | Host assets: what is installed, how much disk, reclaim it | 2.5 | R4 | no | `task_inference` | `apps/frontend/src/features/inference/AssetsPanel.tsx` |
+
+### I4 Segmentation and auto-label
+
+**3 cards · 7.5 hours.**
+
+| Task | Title | Hours | Role | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-1014 | Segmentation catalogue: models, VRAM, licence, provisioned state | 2.5 | R3 | no | `task_inference` | `apps/backend/app/services/inference_segmentation.py` |
+| T-1015 | Segmentation tab: cards, provisioned state, use for auto-label | 3.0 | R4 | no | `task_inference` | `apps/frontend/src/features/inference/SegmentationTab.tsx` |
+| T-1016 | Auto-label accepts a preselected model from a link | 2.0 | R4 | no | `task_inference` | `apps/frontend/tests/autolabel-prefill.test.mjs` |
+
+### I5 Hardening, QA and release
+
+**6 cards · 16.5 hours.**
+
+| Task | Title | Hours | Role | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-1017 | Access, audit and limits: three locks on one action | 2.5 | R3 | yes | `task_inference` | `apps/backend/tests/test_inference_access.py` |
+| T-1018 | Adversarial suite: prove the boundary, not just the happy path | 3.0 | R3 | yes | `task_inference` | `apps/backend/tests/test_inference_isolation.py` |
+| T-1019 | Mocked installer harness: CI never downloads a weight | 3.0 | R3+R8 | yes | `task_inference` | `apps/worker/tests/conftest.py` |
+| T-1020 | E2E smoke: the four surfaces on a mocked worker | 2.5 | R8 | no | `task_inference` | `apps/frontend/e2e/inference-hub.spec.ts` |
+| T-1021 | UI QA: light, dark and 375 px across the four surfaces | 2.0 | R9 | no | `task_inference` | `docs/research/inference-hub/ui-qa.md` |
+| T-1022 | Ship it: operator runbook, user docs, rollout and rollback | 2.5 | R11+R3 | yes | `task_inference` | `docs/INFERENCE-HUB.md` |
+
+### Order and dependencies
+
+Merge order is the id order with these hard predecessors:
+
+| Card | Needs before it can be reviewed |
+| --- | --- |
+| T-1001 | T-1000 (flag) |
+| T-1003 | T-1001 (inventory), T-1002 (catalogue) |
+| T-1004 | T-1002 (GPU presets) |
+| T-1005 | T-1000, T-1002, T-1004 |
+| T-1006 | T-1002, T-1003 |
+| T-1007 | T-1006 (plan/install routes really exist) |
+| T-1008 | T-1006 (payload/enqueue), T-1001 (inventory) |
+| T-1009 | T-1008 (job), T-1007 (tab) |
+| T-1010 | T-1002 (engine ids), T-1004 (fit helper) |
+| T-1011 | T-1010, T-1008 |
+| T-1012 | T-1010, T-1011, T-1009, T-1005 |
+| T-1013 | T-1011, T-1012 |
+| T-1014 | T-1001 |
+| T-1015 | T-1014, T-1016 |
+| T-1016 | none (inert until T-1015 links to it) |
+| T-1017 | T-1006, T-1008, T-1011 |
+| T-1018 | T-1006, T-1008, T-1011, T-1017 |
+| T-1019 | T-1008, T-1011 |
+| T-1020 | T-1007, T-1009, T-1012, T-1013, T-1015, T-1016 |
+| T-1021 | T-1007, T-1009, T-1012, T-1013, T-1015 |
+| T-1022 | T-1017–T-1021 |
+
+Phase gates: P0 and P1 have no side effects and ship first; P2 ships only with
+`LD_ALLOW_ENGINE_INSTALL=1` on a lab host; P3 after one clean install and one clean download; P4 after
+P1; P5 closes the wave. Each phase merges with the flag off and is demoable before the next starts.
+
+### Wave I file ownership
+
+Generated from the cards' Files sections; ids ascending. Only shared files are listed; every other
+path is exclusive to one card and checked mechanically.
+
+| Shared file | Cards that touch it, in merge order |
+| --- | --- |
+| `apps/backend/app/services/flags.py` | T-1000 |
+| `apps/backend/app/routers/__init__.py` | T-1001 |
+| `apps/backend/app/routers/inference.py` | T-1001, T-1002, T-1003, T-1004, T-1006, T-1009, T-1010, T-1011, T-1014, T-1017 |
+| `apps/backend/app/routers/remote.py` | T-1001, T-1008 |
+| `apps/backend/app/models/insights.py` | T-1001 |
+| `apps/backend/app/schema/insights.py` + `schema/__init__.py` | T-1001 |
+| `apps/backend/app/config.py` | T-1008 |
+| `apps/backend/app/services/inference_access.py` | T-1001, T-1017 |
+| `apps/backend/app/services/inference_jobs.py` | T-1006, T-1011, T-1017 |
+| `apps/backend/tests/test_flags.py` | T-1000 |
+| `apps/worker/labeldesk_worker/cli.py` | T-1001, T-1008, T-1011 |
+| `apps/worker/pyproject.toml` | T-1011 |
+| `apps/frontend/src/routes/workspace.routes.tsx` | T-1000 |
+| `apps/frontend/src/lib/nav/types.ts`, `visibility.ts`, `workspace/core.ts`, `registry.ts`, `components/shell/AppSidebar.tsx` | T-1000 |
+| `apps/frontend/src/features/inference/InferenceHub.tsx` | T-1000, T-1005, T-1007, T-1012, T-1015 |
+| `apps/frontend/src/lib/api/inference.ts` | T-1001, T-1002, T-1006, T-1009, T-1010, T-1012, T-1013, T-1014 |
+| `apps/frontend/src/lib/types.ts` | T-1001, T-1002, T-1003, T-1004, T-1006, T-1009, T-1010, T-1012, T-1014 |
+| `apps/frontend/tests/inference-hub.test.mjs` | T-1000, T-1005, T-1007, T-1012, T-1015 |
+| `apps/backend/openapi.json` + `apps/frontend/src/lib/api-types.gen.ts` | every card with a route; generated together and never hand-merged |
+
+Hot-file rules from §4c apply: on a rebase that touches the router or the generated pair, take feat's
+copy and regenerate; registries keep both sides' entries.
+
+### Wave I completeness
+
+- Cards: **23**, ids `T-1000`–`T-1022`, unique and contiguous, mean **2.72 h**, max **3 h**.
+- R7 `yes`: **13** cards (T-1000, T-1001, T-1002, T-1006, T-1007, T-1008, T-1010, T-1011, T-1012,
+  T-1017, T-1018, T-1019, T-1022).
+- Every card has a User story, UX flow, Backend changes, Frontend changes, Files, Tests to write
+  first, and Acceptance criteria with the flag-off and cross-workspace cases (or an explicit
+  "no frontend surface" / "no new route" line where the card genuinely has none).
+- No card adds a dependency outside the worker's optional `inference` extra; the API gains none.
+- No card names a price, a vendor reseller, a certification or a benchmark it has not measured.
+- **Ollama appears nowhere except the exclusion statements** in the plan and the ADR.
