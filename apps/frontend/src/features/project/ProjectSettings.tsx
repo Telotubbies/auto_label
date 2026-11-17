@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { api, del, patch } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
+import { useProjectPermissions } from '@/lib/perms'
 import { Button, Card, Field, Input, PageHeader, Select, Spinner, Switch, Tabs, toast } from '@/components/ui'
 import { typeLabel } from '@/components/shell'
 import { ProjectPrivacySection } from '@/features/governance/Privacy'
@@ -17,7 +18,7 @@ const TABS = [
   { id: 'access', label: 'Access' },
 ]
 
-export default function ProjectSettings({ initialTab }: { initialTab?: string }) {
+export default function ProjectSettings() {
   const { project, ws } = useProject()
   const qc = useQueryClient()
   const nav = useNavigate()
@@ -26,18 +27,15 @@ export default function ProjectSettings({ initialTab }: { initialTab?: string })
   const otEnabled = useFlag('task_40')
   const tabs = otEnabled ? [...TABS, { id: 'ot', label: 'OT output' }] : TABS
   const [params] = useSearchParams()
-  const requested = params.get('tab') ?? initialTab ?? ''
+  const requested = params.get('tab') ?? ''
   const active = tabs.some((t) => t.id === requested) ? requested : 'general'
   const [f, setF] = useState({ name: project.name, visibility: project.visibility, license: project.license, annotation_group: project.annotationGroup })
   const al = project.settings.active_learning ?? {}
   const [learn, setLearn] = useState({ enabled: !!al.enabled, below: al.below ?? 0.5, sample_pct: al.sample_pct ?? 0, include_empty: al.include_empty ?? true })
 
   // Workspace admins always manage the project; otherwise its manager role grants access.
-  const perms = useQuery({
-    queryKey: ['permissions', ws, project.slug], queryFn: () => api.permissions(ws, project.slug),
-    enabled: !admin, retry: false, staleTime: 60_000,
-  })
-  const manager = admin || perms.data?.project_role === 'manager'
+  const { isManager, loading } = useProjectPermissions(ws, project.slug)
+  const manager = admin || isManager
 
   const save = (body: Record<string, unknown>) => patch(api.P(ws, project.slug), body)
     .then(() => { qc.invalidateQueries({ queryKey: ['project', ws, project.slug] }); qc.invalidateQueries({ queryKey: ['projects', ws] }); toast.ok('Saved') }).catch(toast.err)
@@ -46,7 +44,7 @@ export default function ProjectSettings({ initialTab }: { initialTab?: string })
     nav(`/${ws}/${project.slug}/settings?tab=${id}`, { replace: true })
   }
 
-  if (!admin && perms.isLoading) {
+  if (!admin && loading) {
     return <div className="flex h-full items-center justify-center text-muted-foreground"><Spinner /></div>
   }
   if (!manager) return <Navigate to={`/${ws}/${project.slug}`} replace />

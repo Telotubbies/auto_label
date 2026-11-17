@@ -47,7 +47,6 @@ export interface WidgetTheme {
 export type WidgetOption = Record<string, unknown>
 
 export const WIDGET_SIZES = [3, 4, 6, 12] as const
-export const MAX_WIDGETS = 24
 
 export const MEASURES: Record<WidgetSource, string[]> = {
   dataset: ['annotations', 'images'],

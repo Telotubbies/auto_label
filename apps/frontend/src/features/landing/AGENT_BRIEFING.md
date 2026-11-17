@@ -12,7 +12,7 @@ You own **one file**. Never edit `primitives.tsx`, `Landing.tsx`, `App.tsx`, `th
 - Icons: `lucide-react`, 16–20 px, `aria-hidden` unless they carry meaning.
 
 ## Primitives (`../primitives`)
-`SectionShell` (section + container: `className`, `innerClassName`, `id`, `aria-labelledby`), `SectionHeading` (`id`, `tag`, `icon`, `title`, `intro`, `align`), `TagPill` (`icon`, `children`), `MockWindow` (`title`, `meta`, `children`, `bodyClassName`), `CornerMarks`, `DotGrid`, `Reveal` (`delay` ms).
+`SectionShell` (section + container: `className`, `id`, `aria-labelledby`), `SectionHeading` (`id`, `tag`, `icon`, `title`, `intro`, `align`), `TagPill` (`icon`, `children`), `MockWindow` (`title`, `meta`, `children`, `bodyClassName`), `CornerMarks`, `DotGrid`, `Reveal` (`delay` ms).
 
 ## Non-negotiables
 - Semantic landmarks: your root is the right element (`section` with `aria-labelledby` pointing at the h2 `id`; nav is inside a `header`; footer is `<footer>`). Headings descend h1 → h2 → h3, no skips.

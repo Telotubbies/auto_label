@@ -18,6 +18,7 @@ export function useProjectPermissions(ws: string, project: string) {
   return {
     permissions,
     ready: q.isSuccess,
+    loading: q.isPending,
     isManager: q.data?.project_role === 'manager',
     /** Effective project role (explicit row or inherited); null until /permissions resolves. */
     role: q.data?.project_role ?? null,

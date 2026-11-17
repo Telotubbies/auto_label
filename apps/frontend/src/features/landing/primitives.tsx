@@ -4,12 +4,10 @@ import { cn } from '@/lib/utils'
 import { Glass } from '@/components/glass'
 
 /** Page section: shared width, gutters and vertical rhythm. */
-export function SectionShell({ className, innerClassName, children, ...props }: {
-  innerClassName?: string
-} & ComponentPropsWithoutRef<'section'>) {
+export function SectionShell({ className, children, ...props }: ComponentPropsWithoutRef<'section'>) {
   return (
     <section className={cn('relative', className)} {...props}>
-      <div className={cn('mx-auto w-full max-w-6xl px-5 sm:px-8', innerClassName)}>{children}</div>
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">{children}</div>
     </section>
   )
 }
