@@ -6,6 +6,7 @@ serve a cloud deployment. Auth: header `X-Worker-Token: $LD_WORKER_TOKEN`.
 import hmac
 import json
 import logging
+import re
 import shutil
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
@@ -23,6 +24,7 @@ from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Wor
 from ..security import sign_path
 from ..services import host_inventory, exporters, metering, ml, versioning
 from ..services import finalize
+from ..services import inference_catalog, inference_jobs, inference_plan
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 log = logging.getLogger("labeldesk.remote")
@@ -80,14 +82,49 @@ def _payload(db: Session, j: Job) -> dict:
                 "weights_url": sign_path(m.weights, ttl=24 * 3600) if m else None,
                 "classes": {c.name: c.id for c in classes}, "prompts": [{"id": c.id, "name": c.name} for c in wanted],
                 "images": [{"id": i.id, "url": sign_path(i.path, ttl=24 * 3600)} for i in db.scalars(q)]}
+    if j.kind in inference_jobs.ENGINE_KINDS:
+        # T-1011 appends the model_pull branch; until then it travels as the plain payload.
+        return _engine_payload(db, j) if j.kind == "engine_apply" else inference_jobs.payload(db, j)
     raise HTTPException(400, f"job kind {j.kind} is not remote-capable")
+
+
+def _engine_payload(db: Session, j: Job) -> dict:
+    """One install/uninstall plan, with every argv rebuilt from the catalogue.
+
+    An install also carries the plan's steps (pin, argv, bytes, ``install``), because the worker
+    recomputes the plan id from its own inventory before it runs anything (T-1008). Nothing the
+    request body carried reaches an argv: the catalogue row supplies it.
+    """
+    p = inference_jobs.payload(db, j)
+    steps = []
+    for item in p["engines"]:
+        engine = inference_catalog.engine(str(item.get("id") or ""))
+        runtime = str(item.get("runtime") or (engine["runtimes"] or ["uv"])[0])
+        version = str(item.get("version") or engine["version"])
+        step = {"id": engine["id"], "version": version, "runtime": runtime,
+                "argv": (inference_plan.uninstall_commands(engine, runtime, version)
+                         if p["action"] == "uninstall"
+                         else inference_plan._commands(engine, runtime))}
+        if p["action"] == "install" and p["plan_id"]:
+            step.update(disk_mb=engine["disk_mb"], status="install")
+        steps.append(step)
+    return {**p, "engines": steps}
 
 
 @router.post("/claim", dependencies=[Depends(worker_auth)])
 def claim(body: ClaimIn, db: Session = Depends(get_db)):
     kinds = [k for k in body.kinds if k in REMOTE_JOB_KINDS]
     host_inventory.record(db, body.name, body.name, body.inventory)     # before selecting: the host is online
-    for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(kinds)).order_by(Job.created).limit(5)):
+    # A window wider than one job's worth of candidates, because an engine job belongs to exactly one
+    # host and other hosts' rows may sit ahead of this worker's job in the queue.
+    for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(kinds))
+                          .order_by(Job.created).limit(50)):
+        j = db.get(Job, jid)
+        if j is None:
+            continue
+        target = (j.params or {}).get("host")
+        if target and target != body.name:      # T-1008: an install is never taken by another host
+            continue
         if db.execute(update(Job).where(Job.id == jid, Job.status == "queued")
                       .values(status="running", started=now(), executor="remote",
                               result={"worker": body.name, "heartbeat": now()})).rowcount:
@@ -102,13 +139,27 @@ def claim(body: ClaimIn, db: Session = Depends(get_db)):
             # even received the payload yet, so refresh the clock once the payload exists.
             j.result = {**(j.result or {}), "heartbeat": now()}
             db.commit()
+            if j.kind in inference_jobs.ENGINE_KINDS:
+                log.info("inference.engine_claim host=%s job=%s action=%s engines=%d",
+                         body.name, j.id, (j.params or {}).get("action"),
+                         len((j.params or {}).get("engines") or []))
             return {"job": {"id": j.id, "kind": j.kind, "payload": payload}}
     return {"job": None}
+
+
+_TOKEN = re.compile(r"hf_[A-Za-z0-9_-]{4,}")
+
+
+def _redact(text: str) -> str:
+    """A worker's log line is read by an admin: keep the sentence, never a credential."""
+    return _TOKEN.sub("hf_***", text)
 
 
 class ProgressIn(BaseModel):
     progress: float
     history: list[dict] | None = None
+    log: list[str] | None = None        # T-1008: an install's log tail, one entry per output line
+    phase: str | None = None            # T-1008: "installing vllm"
 
 
 @router.post("/jobs/{jid}/progress", dependencies=[Depends(worker_auth)])
@@ -119,6 +170,15 @@ def progress(jid: str, body: ProgressIn, db: Session = Depends(get_db)):
     j.progress = round(body.progress, 1)
     if j.kind in REMOTE_JOB_KINDS:      # progress is the only liveness signal a pip worker sends (I9)
         j.result = {**(j.result or {}), "heartbeat": now()}
+    if j.kind in inference_jobs.ENGINE_KINDS and (body.log or body.phase):
+        # Host-supplied text shown to an admin: cap it, then redact, before it is stored.
+        result = dict(j.result or {})
+        lines = list(result.get("log") or [])
+        lines += [_redact(line)[:500] for line in (body.log or [])[-500:] if isinstance(line, str)]
+        result["log"] = lines[-200:]
+        if body.phase:
+            result["phase"] = _redact(body.phase)[:120]
+        j.result = result
     if body.history is not None and j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         tm.history = body.history
@@ -250,6 +310,7 @@ async def complete(jid: str, background_tasks: BackgroundTasks, result: str = Fo
 
 class FailIn(BaseModel):
     error: str
+    result: dict | None = None      # T-1008: a failed engine job keeps the engines that already succeeded
 
 
 @router.post("/jobs/{jid}/fail", dependencies=[Depends(worker_auth)])
@@ -261,6 +322,8 @@ def fail(jid: str, body: FailIn, db: Session = Depends(get_db)):
         _keep_model_id(db, j)
         return {"ok": True}
     j.status, j.error, j.finished = "failed", safe_text(body.error, j.kind), now()
+    if body.result and isinstance(body.result.get("engines"), list):
+        j.result = {**(j.result or {}), "engines": body.result["engines"][:8]}
     if j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         if tm:

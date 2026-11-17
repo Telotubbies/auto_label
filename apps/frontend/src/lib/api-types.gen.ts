@@ -302,6 +302,7 @@ export interface ExportModelIn {
 
 export interface FailIn {
   error: string
+  result?: Record<string, unknown> | null
 }
 
 export interface FlagIn {
@@ -460,6 +461,8 @@ export interface PrivacyPatch {
 
 export interface ProgressIn {
   history?: Record<string, unknown>[] | null
+  log?: string[] | null
+  phase?: string | null
   progress: number
 }
 
