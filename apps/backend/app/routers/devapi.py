@@ -9,12 +9,15 @@ from sqlalchemy import func, select
 
 from ..apikeys import KeyCtx, key_ctx
 from ..deps import Ctx
-from ..models import Image, Job, LabelClass, Project, TrainedModel, Version
+from ..models import Image, Job, LabelClass, Project, TrainedModel, User, Version
 from ..security import sign_path
+from ..services import labeling_ops
+from ..services.flags import is_enabled
+from . import images as images_router
 from . import training as training_router
 from . import versions as versions_router
-from .images import image_out, ingest
-from .projects import job_out
+from .images import ingest
+from .projects import job_out, project_out
 
 router = APIRouter(prefix="/api/v1", tags=["developer"])
 
@@ -22,6 +25,21 @@ router = APIRouter(prefix="/api/v1", tags=["developer"])
 def _ctx(k: KeyCtx, project: Project | None = None) -> Ctx:
     """Developer calls run as the workspace admin: the key's scopes already gate the action."""
     return Ctx(user=None, ws=k.ws, role="admin", db=k.db, project=project)
+
+
+def _writer_ctx(k: KeyCtx, project: Project | None = None) -> Ctx:
+    """Write calls carry the key's issuer: label_events.user_id is NOT NULL, so a write needs a user."""
+    user = k.db.get(User, k.key.created_by) if k.key.created_by else None
+    return Ctx(user=user or k.db.get(User, k.ws.owner_id), ws=k.ws, role="admin", db=k.db, project=project)
+
+
+def _image(k: KeyCtx, image_id: str) -> tuple[Image, Project]:
+    """An image is reachable only through a live project of the key's own workspace; else 404 like a miss."""
+    img = k.db.get(Image, image_id)
+    p = k.db.get(Project, img.project_id) if img else None
+    if img is None or img.deleted_at is not None or p is None or p.workspace_id != k.ws.id:
+        raise HTTPException(404, "image not found")
+    return img, p
 
 
 def _scopes(*names: str) -> dict:
@@ -32,7 +50,8 @@ def _scopes(*names: str) -> dict:
 def whoami(k: KeyCtx = Depends(key_ctx)):
     k.need("read")
     return {"workspace": k.ws.slug, "name": k.ws.name, "plan": k.ws.plan,
-            "scopes": list(k.scopes), "publishable": bool(k.key.publishable)}
+            "scopes": list(k.scopes), "publishable": bool(k.key.publishable),
+            "mcp": is_enabled("task_992", k.db, k.ws.id)}
 
 
 @router.get("/projects", operation_id="list_projects", **_scopes("read"))
@@ -52,14 +71,41 @@ def list_projects(k: KeyCtx = Depends(key_ctx)):
              "classes": classes.get(p.id, [])} for p in rows]
 
 
-@router.get("/projects/{project}/images", operation_id="list_images", **_scopes("read"))
-def list_images(project: str, offset: int = 0, limit: int = 100, k: KeyCtx = Depends(key_ctx)):
+@router.get("/projects/{project}", operation_id="get_project", **_scopes("read"))
+def get_project(project: str, k: KeyCtx = Depends(key_ctx)):
     k.need("read")
-    p = k.project(project)
-    s = select(Image).where(Image.project_id == p.id, Image.deleted_at.is_(None))
-    total = k.db.scalar(select(func.count()).select_from(s.subquery()))
-    rows = k.db.scalars(s.order_by(Image.created, Image.id).offset(max(0, offset)).limit(min(max(limit, 1), 1000))).all()
-    return {"total": total, "items": [image_out(i) for i in rows]}
+    out = project_out(k.db, k.project(project), detail=True)
+    out.pop("settings", None)                 # settings can carry webhook and connector values
+    return out
+
+
+@router.get("/projects/{project}/images", operation_id="list_images", **_scopes("read"))
+def list_images(project: str, q: str = "", split: str = "", status: str = "", class_id: str = "", tag: str = "",
+                batch_id: str = "", annotated: str = "", sort: str = "oldest", offset: int = 0, limit: int = 100,
+                k: KeyCtx = Depends(key_ctx)):
+    k.need("read")
+    # one filter implementation: the Dataset screen's route owns the query, the ranking and the masking
+    return images_router.list_images(q=q, split=split, status=status, class_id=class_id, tag=tag,
+                                     batch_id=batch_id, annotated=annotated, sort=sort, offset=offset,
+                                     limit=limit, c=_ctx(k, k.project(project)))
+
+
+@router.get("/images/{image_id}", operation_id="get_image", **_scopes("read"))
+def get_image(image_id: str, k: KeyCtx = Depends(key_ctx)):
+    k.need("read")
+    img, p = _image(k, image_id)
+    return images_router._image_with_annotations(_ctx(k, p), img)
+
+
+@router.put("/images/{image_id}/annotations", operation_id="write_annotations", **_scopes("write"))
+def write_annotations(image_id: str, body: images_router.AnnotationsIn, k: KeyCtx = Depends(key_ctx)):
+    """Replace one image's annotations. A key has no consensus draft, so the ordinary write path runs."""
+    k.need("write")
+    img, p = _image(k, image_id)
+    c = _writer_ctx(k, p)
+    checked = [images_router._check_ann(a, is_enabled("task_32", k.db, k.ws.id)) for a in body.annotations]
+    images_router._check_class_ids(c, checked)
+    return labeling_ops.save_annotations(k.db, c, img, checked)
 
 
 @router.post("/projects/{project}/upload", operation_id="upload_images", **_scopes("upload"))

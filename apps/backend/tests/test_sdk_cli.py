@@ -26,7 +26,10 @@ GEN_SDK = REPO_ROOT / "tools" / "gen_sdk.py"
 EXPECTED_SCOPES = {
     "whoami": "read",
     "list_projects": "read",
+    "get_project": "read",
     "list_images": "read",
+    "get_image": "read",
+    "write_annotations": "write",
     "upload_images": "upload",
     "upload_images_v1": "upload",
     "list_versions": "read",

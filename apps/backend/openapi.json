@@ -4902,6 +4902,135 @@
         ]
       }
     },
+    "/api/v1/images/{image_id}": {
+      "get": {
+        "operationId": "get_image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "api_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Image",
+        "tags": [
+          "developer"
+        ],
+        "x-scopes": [
+          "read"
+        ]
+      }
+    },
+    "/api/v1/images/{image_id}/annotations": {
+      "put": {
+        "description": "Replace one image's annotations. A key has no consensus draft, so the ordinary write path runs.",
+        "operationId": "write_annotations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "api_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotationsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Annotations",
+        "tags": [
+          "developer"
+        ],
+        "x-scopes": [
+          "write"
+        ]
+      }
+    },
     "/api/v1/jobs/{job_id}": {
       "get": {
         "operationId": "get_job",
@@ -5270,6 +5399,65 @@
         ]
       }
     },
+    "/api/v1/projects/{project}": {
+      "get": {
+        "operationId": "get_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "api_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project",
+        "tags": [
+          "developer"
+        ],
+        "x-scopes": [
+          "read"
+        ]
+      }
+    },
     "/api/v1/projects/{project}/autolabel": {
       "post": {
         "operationId": "run_auto_label",
@@ -5349,6 +5537,86 @@
             "required": true,
             "schema": {
               "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "split",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Split",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "class_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "annotated",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Annotated",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "oldest",
+              "title": "Sort",
               "type": "string"
             }
           },
