@@ -572,6 +572,7 @@ function FirstRun() {
   const nav = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
+  const [plan, setPlan] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const cfg = useQuery({
@@ -584,8 +585,9 @@ function FirstRun() {
     setBusy(true); setErr('')
     try {
       const on = cfg.data?.workspace_create
-      const w = await post<{ slug: string }>('/workspaces', { name: name.trim(), slug: on ? workspaceSlug(name) : undefined })
+      const w = await post<{ slug: string }>('/workspaces', { name: name.trim(), slug: on ? workspaceSlug(name) : undefined, plan: plan || 'free' })
       await qc.invalidateQueries({ queryKey: ['me'] })
+      sessionStorage.setItem('startedPlan', plan || 'free')
       nav(`/${w.slug}`)
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -607,6 +609,8 @@ function FirstRun() {
           <WorkspaceForm
             value={name}
             onChange={setName}
+            plan={plan}
+            onPlan={setPlan}
             enabled={cfg.data?.workspace_create}
             disabled={busy}
             error={err}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, TriangleAlert, UserPlus } from 'lucide-react'
@@ -117,12 +117,25 @@ export default function Home() {
   const act = (fn: () => Promise<unknown>, ok?: string) => fn().then(() => { refresh(); ok && toast.ok(ok) }).catch(toast.err)
   const name = 'Projects'; void me
   const currentFolder = folders.data?.find((x) => x.id === folder)
+  // One-time note from the creation screens, carried through the account guard's redirect.
+  const [started, setStarted] = useState('')
+  useEffect(() => {
+    const tier = sessionStorage.getItem('startedPlan')
+    if (!tier) return
+    sessionStorage.removeItem('startedPlan')
+    setStarted(tier)
+  }, [])
 
   return (
     <div className="anim-page min-h-full">
       <PageHeader title={currentFolder ? <><button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setFolder(null)}>{name}</button> / {currentFolder.name}</> : 'Home'}
         desc={currentFolder ? undefined : 'What needs you, what changed, and how to get set up.'}
         actions={can('admin') && <Button variant="outline" size="sm" onClick={() => nav(`/${ws}/settings/members`)}><UserPlus className="h-4 w-4" /> Invite Team</Button>} />
+      {started ? (
+        <p role="status" className="mx-8 mt-4 rounded-lg border border-border/70 bg-muted px-3 py-2.5 text-sm leading-relaxed text-foreground">
+          Started on {started.charAt(0).toUpperCase() + started.slice(1)}. You can change this in Settings → Plan & Usage.
+        </p>
+      ) : null}
       {!currentFolder && <WorkspaceDashboard ws={ws} projects={projects.data ?? []} onCreateProject={() => setShowNew(true)} dialogOpen={showNew} />}
       <section data-tour="home-projects" aria-labelledby="projects-heading">
         <div className="flex flex-wrap items-end justify-between gap-3 px-8 pt-6">
