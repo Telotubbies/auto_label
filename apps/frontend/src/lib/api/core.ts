@@ -1,4 +1,4 @@
-import type { Me, Member, Project, RegistryItem, WorkspaceFlags, WorkspaceHome, WorkspaceInfo } from '../types'
+import type { Job, Me, Member, Project, RegistryItem, WorkspaceFlags, WorkspaceHome, WorkspaceInfo } from '../types'
 import { get, P, put } from './client'
 
 /** Session, workspace and project lookup — the calls every shell surface makes. */
@@ -19,4 +19,5 @@ export const coreApi = {
   project: (ws: string, p: string) => get<Project>(P(ws, p)),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),
   registry: (ws: string) => get<RegistryItem[]>(`/ws/${ws}/registry`),
+  jobsList: (ws: string) => get<Job[]>(`/ws/${ws}/jobs`),
 }

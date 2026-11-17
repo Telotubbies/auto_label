@@ -8,6 +8,7 @@ import { RESERVED_WORKSPACE_SEGMENTS, WORKSPACE_PAGE_LABELS } from '@/lib/nav'
 import { PROJECT_ROUTE_MATCH, projectPath } from '@/lib/routes'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
 import { Glass } from '../glass'
+import { JobButton } from './JobButton'
 import { projNav } from './ProjectPanel'
 
 const THEME_CYCLE: { id: ModePref; icon: typeof Sun; label: string }[] = [
@@ -80,6 +81,7 @@ export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
       </nav>
       <div className="ml-auto flex items-center gap-2">
         <div id="topbar-actions" className="flex items-center gap-2" />
+        <JobButton />
         <GpuBadge />
         <button type="button" onClick={() => setThemePrefs({ mode: next.id })} aria-label={`${cur.label}. Switch to ${next.label.toLowerCase()}`}
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground">
