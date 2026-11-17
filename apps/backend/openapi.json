@@ -3049,6 +3049,33 @@
         "title": "TrackIn",
         "type": "object"
       },
+      "TypeRequestIn": {
+        "properties": {
+          "example": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example"
+          },
+          "wanted": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Wanted",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wanted"
+        ],
+        "title": "TypeRequestIn",
+        "type": "object"
+      },
       "UninstallIn": {
         "properties": {
           "confirm": {
@@ -20904,6 +20931,62 @@
           }
         ],
         "summary": "Restore",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/api/ws/{ws}/type-requests": {
+      "post": {
+        "description": "Record \"I need a type you do not offer yet\" as one audit row, not a new table (T-017).",
+        "operationId": "request_project_type_api_ws__ws__type_requests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TypeRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Request Project Type",
         "tags": [
           "workspace"
         ]

@@ -4,6 +4,7 @@ import { api, fileUrl } from '@/lib/api'
 import { projectPath } from '@/lib/routes'
 import { useFlag, useWorkspaceFlags } from '@/lib/flags'
 import { useApp } from '@/lib/store'
+import { typeLabel } from '@/features/project/projectTypes'
 import {
   canSeeProjectItem, groupSummary, SECONDARY, stageFacts, visibleProjectNav, visibleStageGroups,
 } from '@/lib/nav'
@@ -34,8 +35,8 @@ export function projectNavGroups(
 /** Unfiltered shape used for breadcrumb label lookup. */
 export const projNav = projectNavGroups(() => true)
 
-export const typeLabel = (t: string) =>
-  ({ 'object-detection': 'Object Detection', 'instance-segmentation': 'Instance Segmentation', classification: 'Classification', 'keypoint-detection': 'Keypoint Detection', 'anomaly-detection': 'Anomaly Detection' } as Record<string, string>)[t] ?? t
+// One catalogue for the grid, the Home filter and this rail (T-017).
+export { typeLabel }
 
 /**
  * One rail model for both widths: the three purpose groups with the numbers, counts, states and

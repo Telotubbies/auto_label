@@ -132,6 +132,26 @@ def get_usage(c: Ctx = Depends(ws_ctx)):
     return out
 
 
+# --- project type requests ------------------------------------------------------------
+
+class TypeRequestIn(BaseModel):
+    wanted: str = Field(min_length=1, max_length=300)
+    example: str | None = Field(default=None, max_length=300)
+
+
+@router.post("/type-requests", status_code=201)
+def request_project_type(body: TypeRequestIn, c: Ctx = Depends(ws_ctx)):
+    """Record "I need a type you do not offer yet" as one audit row, not a new table (T-017)."""
+    c.perm("workspace.read")
+    wanted = body.wanted.strip()
+    if not wanted:
+        raise HTTPException(422, "wanted must not be blank")
+    audit(c.db, c.ws.id, c.user.id, "project.type_request", wanted,
+          example=(body.example or "").strip() or None)
+    c.db.commit()
+    return {"ok": True}
+
+
 # --- members & invites ---------------------------------------------------------------
 
 @router.get("/members")

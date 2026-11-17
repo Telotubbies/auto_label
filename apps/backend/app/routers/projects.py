@@ -23,6 +23,9 @@ PALETTE = ["#8b5cf6", "#22c55e", "#3b82f6", "#f97316", "#ec4899", "#eab308", "#1
            "#6366f1", "#84cc16", "#06b6d4", "#a855f7", "#f43f5e", "#10b981", "#0ea5e9", "#d946ef"]
 # project slugs share the /:ws/<name> namespace with these workspace pages
 RESERVED = {"models", "deployments", "activity", "settings", "qa"}
+# The five project types that existed before T-017, still valid with `task_a1_types` off.
+ORIGINAL_PROJECT_TYPES = ("object-detection", "instance-segmentation", "classification", "keypoint-detection",
+                          "anomaly-detection")
 
 
 LEAN_JOB_KEYS = ("id", "kind", "status", "progress", "error", "created", "finished")
@@ -119,8 +122,10 @@ class ProjectIn(BaseModel):
 @router.post("")
 def create_project(body: ProjectIn, c: Ctx = Depends(ws_ctx)):
     c.need("admin")
-    if body.type not in PROJECT_TYPES:
-        raise HTTPException(400, f"type must be one of {PROJECT_TYPES}")
+    # T-017: the three extra types arrive behind `task_a1_types`; the five older ones never depend on it.
+    allowed = PROJECT_TYPES if flags.is_enabled("task_a1_types", c.db, c.ws.id) else ORIGINAL_PROJECT_TYPES
+    if body.type not in allowed:
+        raise HTTPException(400, f"type must be one of {allowed}")
     if body.type == "anomaly-detection" and not flags.is_enabled("task_29", c.db, c.ws.id):
         raise HTTPException(400, "anomaly detection is not enabled for this workspace")
     n = c.db.scalar(select(func.count(Project.id)).where(Project.workspace_id == c.ws.id, Project.deleted_at.is_(None)))
@@ -137,7 +142,8 @@ def create_project(body: ProjectIn, c: Ctx = Depends(ws_ctx)):
         raise HTTPException(409, {"taken": f"/{c.ws.slug}/p/{base}", "suggestion": f"/{c.ws.slug}/p/{base}-{i}"})
     slug = base
     p = Project(workspace_id=c.ws.id, slug=slug, name=body.name.strip(), type=body.type, visibility=body.visibility,
-                license=body.license, annotation_group=body.annotation_group or "objects", multilabel=body.multilabel,
+                license=body.license, annotation_group=body.annotation_group or "objects",
+                multilabel=body.multilabel or body.type == "multi-label-classification",
                 folder_id=body.folder_id, settings={})
     c.db.add(p); c.db.flush()
     try:

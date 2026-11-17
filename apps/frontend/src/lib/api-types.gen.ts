@@ -637,6 +637,11 @@ export interface TrackIn {
   frames?: number
 }
 
+export interface TypeRequestIn {
+  example?: string | null
+  wanted: string
+}
+
 export interface UninstallIn {
   confirm?: boolean
   host: string

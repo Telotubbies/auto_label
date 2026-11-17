@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, TriangleAlert, UserPlus } from 'lucide-react'
+import { Activity, Box, FolderOpen, FolderPlus, Globe, Layers, Lock, Plus, Scan, Search, Shapes, Tags, TriangleAlert, UserPlus, Video } from 'lucide-react'
 import { ApiError, api, del, fileUrl, get, patch, post } from '@/lib/api'
 import { projectPath } from '@/lib/routes'
 import { projectSlug } from '@/lib/slug'
@@ -10,24 +10,22 @@ import { useApp } from '@/lib/store'
 import type { Project } from '@/lib/types'
 import { Badge, Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, fmtAgo, toast } from '@/components/ui'
 import { typeLabel } from '@/components/shell'
+import { availableTypes, type ProjectType } from '@/features/project/projectTypes'
 import { WorkspaceDashboard } from './Dashboard'
+import { TypeRequestSheet } from './TypeRequestSheet'
 import { cn } from '@/lib/utils'
 
-const TYPES = [
-  { id: 'object-detection', icon: Box, desc: 'Identify objects and their positions with bounding boxes.', tags: ['Bounding Boxes', 'Counts'] },
-  { id: 'instance-segmentation', icon: Shapes, desc: 'Detect objects and their exact shape with polygons.', tags: ['Polygons', 'Measuring'] },
-  { id: 'classification', icon: Scan, desc: 'Assign a label to the whole image.', tags: ['Image Labels', 'Filtering'] },
-  { id: 'keypoint-detection', icon: Scan, desc: 'Place named joints and draw skeletons for pose, faces or products.', tags: ['Keypoints', 'Skeletons'] },
-  { id: 'anomaly-detection', icon: Activity, desc: 'Learn what a good product looks like and flag deviations with a heatmap.', tags: ['Good-only', 'Heatmap'] },
-]
+const TYPE_ICONS = { box: Box, shapes: Shapes, layers: Layers, scan: Scan, tags: Tags, video: Video, activity: Activity }
 
 type Folder = { id: string; name: string; projectCount: number }
 
-function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => void; folders: Folder[] }) {
+function NewProject({ open, onClose, folders, types, asking, onAsk }: {
+  open: boolean; onClose: () => void; folders: Folder[]; types: ProjectType[]; asking: boolean; onAsk: () => void
+}) {
   const { ws = '' } = useParams()
   const nav = useNavigate()
   const qc = useQueryClient()
-  const anomalyOn = useFlag('task_29')
+  const typesOn = useFlag('task_a1_types')
   const [f, setF] = useState({ name: '', type: 'object-detection', visibility: 'private', license: 'CC BY 4.0', annotation_group: '', classes: '', folder_id: '' })
   const [busy, setBusy] = useState(false)
   const [taken, setTaken] = useState<{ taken: string; suggestion: string } | null>(null)
@@ -51,7 +49,7 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
     } finally { setBusy(false) }
   }
   return (
-    <Modal open={open} onClose={onClose} wide aria-label="Create a project">
+    <Modal open={open} onClose={() => { if (!asking) onClose() }} wide aria-label="Create a project">
       <h1 className="mb-5 text-2xl font-bold tracking-tight">Let's create your project.</h1>
       <div className="grid gap-4 md:grid-cols-4">
         <Field label="Project Name" hint={f.name.trim() ? <>Address <span className="font-mono text-foreground">{projectPath(ws, slug)}</span></> : undefined}>
@@ -75,14 +73,29 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
       )}
       <h2 className="mb-3 mt-6 text-sm font-semibold">Project Type</h2>
       <div className="grid gap-3 md:grid-cols-3">
-        {TYPES.filter((t) => t.id !== 'anomaly-detection' || anomalyOn).map((t) => (
-          <button key={t.id} onClick={() => setF({ ...f, type: t.id })}
-            className={cn('cursor-pointer rounded-lg border p-4 text-left transition-colors', f.type === t.id ? 'border-primary bg-accent/30' : 'hover:bg-muted')}>
-            <div className="mb-1.5 flex items-center gap-2 font-semibold"><t.icon className="h-4 w-4 text-primary" />{typeLabel(t.id)}</div>
-            <p className="text-sm text-muted-foreground">{t.desc}</p>
-            <div className="mt-2 flex flex-wrap gap-1">{t.tags.map((x) => <Badge key={x}>{x}</Badge>)}</div>
-          </button>
-        ))}
+        {types.map((t) => {
+          const Icon = TYPE_ICONS[t.icon]
+          const selected = f.type === t.id
+          return (
+            <button key={t.id} onClick={() => setF({ ...f, type: t.id })} aria-pressed={selected}
+              className={cn('cursor-pointer rounded-lg border p-4 text-left transition-colors', selected ? 'border-primary bg-accent/30' : 'hover:bg-muted')}>
+              <div className="mb-1.5 flex items-center gap-2 font-semibold">
+                <Icon className="h-4 w-4 text-primary" />{t.label}
+                {selected && <Badge className="ml-auto bg-primary/15 text-primary">Selected</Badge>}
+              </div>
+              <p className="text-sm text-muted-foreground">{t.outcome}</p>
+              <div className="mt-2 flex flex-wrap gap-1">{t.chips.map((x) => <Badge key={x}>{x}</Badge>)}</div>
+            </button>
+          )
+        })}
+        {typesOn && (
+          <div className="md:col-span-3">
+            <button type="button" onClick={onAsk}
+              className="cursor-pointer text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+              Need a different type?
+            </button>
+          </div>
+        )}
       </div>
       <div className="mt-6 flex items-center justify-between border-t pt-4">
         <div className="flex gap-2">
@@ -101,6 +114,9 @@ export default function Home() {
   const me = useApp((s) => s.me)
   const nav = useNavigate()
   const qc = useQueryClient()
+  const typesOn = useFlag('task_a1_types')
+  const anomalyOn = useFlag('task_29')
+  const types = availableTypes(new Set([...(typesOn ? ['task_a1_types'] : []), ...(anomalyOn ? ['task_29'] : [])]))
   const projects = useQuery({ queryKey: ['projects', ws], queryFn: () => api.projects(ws) })
   const folders = useQuery({ queryKey: ['folders', ws], queryFn: () => get<Folder[]>(`/ws/${ws}/folders`) })
   const [q, setQ] = useState('')
@@ -108,6 +124,7 @@ export default function Home() {
   const [sort, setSort] = useState('updated')
   const [folder, setFolder] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
+  const [asking, setAsking] = useState(false)
   const list = useMemo(() => {
     let l = (projects.data ?? []).filter((p) => p.name.toLowerCase().includes(q.toLowerCase()) && (!type || p.type === type))
     l = folder ? l.filter((p) => p.folderId === folder) : q ? l : l.filter((p) => !p.folderId)
@@ -133,7 +150,7 @@ export default function Home() {
         </div>
       <div className="flex flex-wrap items-center gap-3 px-8">
         <div className="relative w-64"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <Select aria-label="Filter by project type" value={type} onChange={(e) => setType(e.target.value)}><option value="">All types</option>{TYPES.map((t) => <option key={t.id} value={t.id}>{typeLabel(t.id)}</option>)}</Select>
+        <Select aria-label="Filter by project type" value={type} onChange={(e) => setType(e.target.value)}><option value="">All types</option>{types.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</Select>
         <Select aria-label="Sort projects" value={sort} onChange={(e) => setSort(e.target.value)}><option value="updated">Date edited</option><option value="name">Name</option><option value="images">Image count</option></Select>
         <div className="ml-auto flex gap-2">
           {can('reviewer') && <Button variant="outline" size="sm" onClick={() => { const n = prompt('Folder name'); n && act(() => post(`/ws/${ws}/folders`, { name: n })) }}><FolderPlus className="h-4 w-4" /> New Folder</Button>}
@@ -189,7 +206,10 @@ export default function Home() {
         )}
       </div>
       </section>
-      <NewProject open={showNew} onClose={() => setShowNew(false)} folders={folders.data ?? []} />
+      <NewProject open={showNew} onClose={() => setShowNew(false)} folders={folders.data ?? []} types={types}
+        asking={asking} onAsk={() => setAsking(true)} />
+      {/* A sibling of the create dialog: a fixed overlay inside .glass would position against the glass, not the viewport. */}
+      <TypeRequestSheet open={asking} onClose={() => setAsking(false)} ws={ws} />
     </div>
   )
 }
