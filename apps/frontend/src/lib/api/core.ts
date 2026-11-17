@@ -20,6 +20,9 @@ export const coreApi = {
   setFlag: (ws: string, key: string, enabled: boolean) =>
     put<{ key: string; enabled: boolean }>(`/ws/${ws}/flags/${encodeURIComponent(key)}`, { enabled }),
   projects: (ws: string) => get<Project[]>(`/ws/${ws}/projects`),
+  /** "I need a type you do not offer yet" — one audit row on the server (T-017). */
+  requestType: (ws: string, body: { wanted: string; example?: string }) =>
+    post<{ ok: boolean }>(`/ws/${ws}/type-requests`, body),
   project: (ws: string, p: string) => get<Project>(P(ws, p)),
   members: (ws: string) => get<{ members: Member[]; invites: { token: string; email: string; role: string; link: string }[] }>(`/ws/${ws}/members`),
   registry: (ws: string) => get<RegistryItem[]>(`/ws/${ws}/registry`),
