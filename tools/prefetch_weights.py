@@ -7,7 +7,7 @@ Run from the repo root on the demo box (CPU is enough for this step):
     python tools/prefetch_weights.py --dry-run
     python tools/prefetch_weights.py --pretrained-dir D:/labeldesk-weights --skip-vlm
 
-Zoo checkpoints land in ``LD_PRETRAINED_DIR`` (default ``yolo26_ppe/models/pretrained``)
+Zoo checkpoints land in ``LD_PRETRAINED_DIR`` (default ``ml/yolo26_ppe/models/pretrained``)
 so ``UltralyticsAdapter`` finds them locally instead of hitting the hub during the demo.
 Each world model gets one ``set_classes(["person"])`` call, which also pulls the CLIP
 text encoder. The vLLM model is fetched with ``huggingface-cli download``, falling back

@@ -36,8 +36,8 @@ apps/
 packages/
   sdk/             Python client and CLI (labeldesk-sdk)
 ml/
-  sam3_auto_label/ SAM 3.1 auto-labeling pipeline
-  ml/yolo26_ppe/      YOLO26 training, evaluation, models, reports
+  sam3_auto_label/  SAM 3.1 auto-labeling pipeline
+  yolo26_ppe/       YOLO26 training, evaluation, models, reports
 research/          provider-side reports and investigation notes (not product docs)
 deploy/            Docker Compose stack, Caddyfile, env template
 tools/             scripts used by apps and tests
