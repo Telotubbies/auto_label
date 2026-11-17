@@ -2,6 +2,7 @@
 // Runs with the built-in Node test runner: node --test tests/inference-hub.test.mjs (from apps/frontend)
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { visibleWorkspaceNav } from '../src/lib/nav.ts'
 import { tabFrom } from '../src/features/inference/tabs.ts'
 
@@ -42,4 +43,12 @@ test('test_tab_defaults_to_engines_and_survives_a_reload', () => {
   assert.equal(tabFrom('?tab=segmentation'), 'segmentation')
   assert.equal(tabFrom('?tab=not-a-tab'), 'engines')
   assert.equal(tabFrom('?other=1'), 'engines')
+})
+
+// T-1005: the calculator panel is the calculator (form, results, assumptions), not a placeholder card.
+test('test_calculator_tab_mounts_the_calculator', () => {
+  const hub = readFileSync(new URL('../src/features/inference/InferenceHub.tsx', import.meta.url), 'utf8')
+  assert.match(hub, /tab === 'calculator' \? <CalculatorTab \/>/, 'the calculator tab renders CalculatorTab')
+  assert.match(hub, /import CalculatorTab from '\.\/CalculatorTab'/, 'and imports it from its own module')
+  assert.doesNotMatch(hub, /calculator arrives with the sizing card/, 'the placeholder sentence is gone')
 })
