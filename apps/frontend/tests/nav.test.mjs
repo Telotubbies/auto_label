@@ -524,3 +524,14 @@ test('the project index renders the overview, not the dataset grid', () => {
   assert.ok(indexSrc.includes('<Navigate to="browse" replace />'),
     'flag off keeps the dataset-grid redirect exactly as today')
 })
+
+// --- T-478: the project rail is the stage manifest, at both widths ------------------------------
+test('the project rail renders the stage manifest from one model', () => {
+  assert.match(shellSrc, /useFlag\('task_470'\)/, 'the rail reads the ui_v3 flag')
+  assert.match(shellSrc, /visibleStageGroups\(/, 'flag on renders the five numbered stages')
+  assert.match(shellSrc, /useProjectRail/, 'one rail model serves both widths')
+  assert.match(projectLayoutSrc, /useProjectRail\(project\)/, 'the compact strip renders the same groups')
+  // Flag off: the frozen v2 groups stay the rail's source, unchanged.
+  assert.match(shellSrc, /projectNavGroups\(visible, projectRole/, 'flag off keeps the grouped panel')
+  assert.match(projectLayoutSrc, /RailGroup|rail\.groups/, 'the strip reads the rail model')
+})
