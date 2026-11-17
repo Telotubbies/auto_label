@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+﻿import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
 const WS = 'labeldesk-demo'
@@ -6,7 +6,7 @@ const PR = 'ppe-detection'
 const FIXTURE = path.join(import.meta.dirname, 'fixtures', 'one.jpg')
 const VERSION = 'T-008 core loop'
 
-test('core loop: sign in → project → upload → annotate → version → train entry → deploy', async ({ page }) => {
+test('core loop: sign in โ’ project โ’ upload โ’ annotate โ’ version โ’ train entry โ’ deploy', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
   page.on('pageerror', (e) => consoleErrors.push(e.message))
@@ -32,7 +32,7 @@ test('core loop: sign in → project → upload → annotate → version → tra
 
   await test.step('2. Open project', async () => {
     await page.locator('[data-tour="home-projects"]').getByRole('link', { name: /PPE Detection/ }).first().click()
-    await expect(page).toHaveURL(new RegExp(`/${WS}/${PR}/browse$`))
+    await expect(page).toHaveURL(new RegExp(`/${WS}/p/${PR}/dataset$`))
     await expect(page.getByRole('heading', { name: 'Dataset' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'PPE Detection' })).toBeVisible()
   })
@@ -84,7 +84,7 @@ test('core loop: sign in → project → upload → annotate → version → tra
   })
 
   await test.step('5. Version', async () => {
-    await page.goto(`/${WS}/${PR}/browse`)
+    await page.goto(`/${WS}/p/${PR}/dataset`)
     await expect(page.getByRole('heading', { name: 'Dataset' })).toBeVisible()
     await page.getByRole('link', { name: 'Versions' }).click()
     await expect(page.getByRole('heading', { name: 'Versions' })).toBeVisible()
