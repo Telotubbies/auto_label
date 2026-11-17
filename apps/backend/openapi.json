@@ -1145,6 +1145,100 @@
         "title": "DashboardPatch",
         "type": "object"
       },
+      "EstimateIn": {
+        "properties": {
+          "batch": {
+            "title": "Batch",
+            "type": "integer"
+          },
+          "context": {
+            "title": "Context",
+            "type": "integer"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "gpu": {
+            "$ref": "#/components/schemas/GpuIn"
+          },
+          "gpu_count": {
+            "default": 1,
+            "title": "Gpu Count",
+            "type": "integer"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelIn"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Tokens"
+          },
+          "quant": {
+            "enum": [
+              "fp32",
+              "bf16",
+              "fp16",
+              "fp8",
+              "int8",
+              "int4",
+              "gguf_q8",
+              "gguf_q4_k_m"
+            ],
+            "title": "Quant",
+            "type": "string"
+          },
+          "tensor_parallel": {
+            "default": 1,
+            "title": "Tensor Parallel",
+            "type": "integer"
+          },
+          "usable": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usable"
+          },
+          "users": {
+            "default": 1,
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "quant",
+          "context",
+          "batch",
+          "gpu",
+          "engine"
+        ],
+        "title": "EstimateIn",
+        "type": "object"
+      },
       "ExportIn": {
         "properties": {
           "format": {
@@ -1233,6 +1327,56 @@
           "email"
         ],
         "title": "ForgotIn",
+        "type": "object"
+      },
+      "GpuIn": {
+        "properties": {
+          "bw_gbs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bw Gbs"
+          },
+          "fp16_tflops": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fp16 Tflops"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "vram_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vram Gb"
+          }
+        },
+        "title": "GpuIn",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1569,6 +1713,45 @@
           "code"
         ],
         "title": "MfaVerifyIn",
+        "type": "object"
+      },
+      "ModelIn": {
+        "properties": {
+          "active_params_b": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Params B"
+          },
+          "head_dim": {
+            "title": "Head Dim",
+            "type": "integer"
+          },
+          "kv_heads": {
+            "title": "Kv Heads",
+            "type": "integer"
+          },
+          "layers": {
+            "title": "Layers",
+            "type": "integer"
+          },
+          "params_b": {
+            "title": "Params B",
+            "type": "number"
+          }
+        },
+        "required": [
+          "params_b",
+          "layers",
+          "kv_heads",
+          "head_dim"
+        ],
+        "title": "ModelIn",
         "type": "object"
       },
       "OcrExportIn": {
@@ -8085,6 +8268,62 @@
           }
         ],
         "summary": "Engines",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/estimate": {
+      "post": {
+        "description": "Pure VRAM / throughput answer; any member may read it, nothing is stored (PLAN §12.5).",
+        "operationId": "estimate_api_ws__ws__inference_estimate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Estimate",
         "tags": [
           "inference"
         ]

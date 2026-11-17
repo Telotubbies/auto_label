@@ -1,5 +1,5 @@
-import type { EngineAvailability, InferenceCatalog, InferenceHost } from '../types'
-import { get } from './client'
+import type { EngineAvailability, InferenceCatalog, InferenceEstimate, InferenceEstimateIn, InferenceHost } from '../types'
+import { get, post } from './client'
 
 /** Inference hub (T-1001): the hosts this deployment can install engines on. Later hub cards append. */
 export const inferenceApi = {
@@ -13,3 +13,7 @@ export const inferenceCatalog = (ws: string) => get<InferenceCatalog>(`/ws/${ws}
 export const inferenceEngines = (ws: string, host: string) =>
   get<{ host: InferenceHost; engines: EngineAvailability[] }>(
     `/ws/${ws}/inference/engines?host=${encodeURIComponent(host)}`)
+
+/** The pure VRAM / throughput answer; T-1005's calculator is the only caller (T-1004). */
+export const inferenceEstimate = (ws: string, body: InferenceEstimateIn) =>
+  post<InferenceEstimate>(`/ws/${ws}/inference/estimate`, body)
