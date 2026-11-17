@@ -36,3 +36,15 @@ test('test_the_choice_travels_with_creation_and_lands_as_a_note', () => {
   assert.match(home, /Started on /, 'the landing note names the tier')
   assert.match(home, /Settings → Plan & Usage\./, 'the note says where to change it')
 })
+
+test('test_a_paid_choice_is_a_request_not_a_grant', () => {
+  const picker = read('../src/features/onboarding/PlanPicker.tsx')
+  const settings = read('../src/features/settings/Settings.tsx')
+  assert.match(picker, /Settings → Plan/, 'the picker says where a paid plan starts')
+  assert.match(picker, /billing\s+is available/, 'and that billing unlocks it')
+  assert.doesNotMatch(picker, /[$฿]/, 'still no price of any currency')
+  assert.match(settings, /requested_plan/, 'Settings → Plan reads the requested plan')
+  assert.match(settings, /Not applied/, 'and says it was not applied')
+  const auth = read('../src/features/auth/Auth.tsx')
+  assert.match(auth, /startedPlan', 'free'/, 'the landing note never claims the requested paid tier')
+})

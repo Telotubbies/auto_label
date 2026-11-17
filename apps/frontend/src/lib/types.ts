@@ -22,6 +22,8 @@ export interface UsageDailyMeter {
 }
 export interface Usage {
   plan: string; plan_label: string; limits: { projects: number; images: number; seats: number; credits: number; label: string }
+  /** The tier asked for at creation; shown but never applied while billing is unavailable. */
+  requested_plan?: string | null
   credits_used: number; credits_left: number; period: string; projects: number; images: number; seats: number; models: number
   daily?: Record<string, number | string>[]
   /** Absent on older API builds: the metered section hides itself. */

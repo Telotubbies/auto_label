@@ -8,7 +8,8 @@ USERS = {
     "platform_admin": "BOOLEAN DEFAULT FALSE"}
 WORKSPACES = {"require_mfa": "BOOLEAN DEFAULT FALSE",
               "data_region": "VARCHAR(16) DEFAULT 'th'",
-              "quotas": "JSON"}
+              "quotas": "JSON",
+              "requested_plan": "VARCHAR(32)"}
 MEMBERS = {"custom_role_id": "VARCHAR(32)"}
 PROJECT_MEMBERS = {"custom_role_id": "VARCHAR(32)"}
 REFRESH_TOKENS = {

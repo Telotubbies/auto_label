@@ -394,8 +394,9 @@ export function Signup() {
       workspace: form.workspace.trim(),
       plan: plan || 'free',
     })
+    // Every workspace starts Free: the paid choice above is a request, so the note says Free.
     // The workspace lands after a redirect through the account guard, which drops router state.
-    sessionStorage.setItem('startedPlan', plan || 'free')
+    sessionStorage.setItem('startedPlan', 'free')
     nav(next, { replace: true })
   })
 

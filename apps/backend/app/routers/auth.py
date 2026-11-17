@@ -77,10 +77,14 @@ def plan_choice_enabled() -> bool:
     return "task_a1_plan_choice" in flags.forced_on()
 
 
-def requested_plan(chosen: str | None) -> str:
-    """The tier a new workspace starts on; ignored unless the choice surface is on."""
+# A new workspace starts here. Billing is not wired, so a paid tier is never granted at creation.
+START_PLAN = "trial" if "trial" in PLANS else "free"
+
+
+def requested_plan(chosen: str | None) -> str | None:
+    """The tier a buyer asked for, recorded for Settings → Plan; never the tier they get."""
     if not chosen or not plan_choice_enabled():
-        return "free"
+        return None
     if chosen not in PLANS:
         raise HTTPException(422, "unknown plan")
     return chosen
@@ -92,9 +96,10 @@ def unique_ws_slug(db: Session, name: str) -> str:
     return _free_slug(db, slugify(name), 80)
 
 
-def create_workspace(db: Session, owner: User, name: str, slug: str | None = None, tier: str = "free") -> Workspace:
-    ws = Workspace(slug=slug or unique_ws_slug(db, name), name=name, owner_id=owner.id, plan=tier,
-                   credits_period=time.strftime("%Y-%m"))
+def create_workspace(db: Session, owner: User, name: str, slug: str | None = None,
+                     requested: str | None = None) -> Workspace:
+    ws = Workspace(slug=slug or unique_ws_slug(db, name), name=name, owner_id=owner.id, plan=START_PLAN,
+                   requested_plan=requested, credits_period=time.strftime("%Y-%m"))
     db.add(ws); db.flush()
     db.add(Member(workspace_id=ws.id, user_id=owner.id, role="admin"))
     audit(db, ws.id, owner.id, "workspace.create", name)
@@ -222,7 +227,7 @@ def signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(409, "an account with this email already exists")
     workspace_name = body.workspace or f"{body.name.split()[0]}'s Workspace"
-    plan_choice = requested_plan(body.plan)
+    requested = requested_plan(body.plan)
     slug = None
     if workspace_create_enabled() and not inv:
         slug = slugify_workspace(workspace_name)
@@ -235,7 +240,7 @@ def signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
     if inv and not inv.accepted:
         _accept(db, inv, u)
     else:
-        create_workspace(db, u, workspace_name, slug=slug, tier=plan_choice)
+        create_workspace(db, u, workspace_name, slug=slug, requested=requested)
     db.commit()
     _send_link(u, "verify", _email_token(db, u, "verify", VERIFY_TTL))
     return tokens(db, u, request)
@@ -578,7 +583,7 @@ def workspace_slug(name: str, u: User = Depends(current_user), db: Session = Dep
 @router.post("/workspaces")
 def new_workspace(body: WorkspaceIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     name = body.name.strip()
-    tier = requested_plan(body.plan)
+    requested = requested_plan(body.plan)
     wanted = body.slug if workspace_create_enabled() else None
     if wanted is not None:
         if wanted in RESERVED_WORKSPACE_SLUGS or not WORKSPACE_SLUG.fullmatch(wanted):
@@ -586,5 +591,5 @@ def new_workspace(body: WorkspaceIn, u: User = Depends(current_user), db: Sessio
         if slug_taken(db, wanted):
             return JSONResponse(status_code=409, content={"detail": "that address is taken",
                                                           "suggestion": suggest_workspace_slug(db, wanted)})
-    ws = create_workspace(db, u, name, slug=wanted, tier=tier); db.commit()
+    ws = create_workspace(db, u, name, slug=wanted, requested=requested); db.commit()
     return {"slug": ws.slug, "name": ws.name}

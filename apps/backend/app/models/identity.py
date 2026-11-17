@@ -32,6 +32,8 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255))
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     plan: Mapped[str] = mapped_column(String(32), default="free")
+    # The tier asked for at creation; recorded, never granted: no billing provider is wired.
+    requested_plan: Mapped[str | None] = mapped_column(String(32), nullable=True)
     credits_used: Mapped[float] = mapped_column(Float, default=0.0)
     credits_period: Mapped[str] = mapped_column(String(7), default="")   # YYYY-MM the counter belongs to
     require_mfa: Mapped[bool] = mapped_column(Boolean, default=False)    # members must enrol TOTP to enter

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 /** One tier as the API states it: the allowance it grants, never a price. */
 export type PlanOption = { id: string; label: string; projects: number; credits: number; seats: number }
 
-/** The tier a workspace starts on until someone picks another. */
+/** The chip selected before anyone picks another. A paid choice is a request, not a grant. */
 export const DEFAULT_PLAN = 'free'
 
 /**
@@ -57,7 +57,8 @@ export function PlanPicker({ value, onChange }: { value?: string; onChange?: (id
         ))}
       </div>
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        Seats count per person who opens the editor. No payment is taken.
+        Seats count per person who opens the editor. Paid plans start from Settings → Plan once billing
+        is available; no payment is taken here.
       </p>
     </fieldset>
   )
