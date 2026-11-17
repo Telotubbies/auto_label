@@ -43,6 +43,7 @@ def _enabled(api: Api) -> None:
 
 def build_server(api: Api) -> MCPServer:
     """Both transports build this server; the key differs per request, the tools do not."""
+    from . import meta
     from .tools_read import register
     from .tools_write import register as register_write
 
@@ -62,4 +63,5 @@ def build_server(api: Api) -> MCPServer:
 
     register(server, api)
     register_write(server, api)
+    meta.register(server, api)
     return server
