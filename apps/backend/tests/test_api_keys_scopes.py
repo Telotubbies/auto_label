@@ -167,3 +167,22 @@ def test_whoami_needs_read_and_refuses_publishable(admin):
     reader = make_key(admin, "reader-who", scopes=["read"])
     body = anon().get("/api/v1/whoami", headers={"Authorization": f"Bearer {reader['key']}"})
     assert body.status_code == 200 and body.json()["workspace"] == WS
+
+
+def test_key_list_exposes_prefix_and_last_used_but_never_the_secret(admin):
+    """T-001 guard for 1-F1.5: the plaintext exists only in the create response; the row keeps the
+    prefix, its scopes and the last-used stamp, so Settings -> API keys can list the key after the
+    one-time reveal without ever holding it again."""
+    k = make_key(admin, "guard-once", scopes=["read"])
+    assert k["key"] and k["prefix"], "1-F1.5: creating a key returns the secret together with its prefix"
+    assert k["key"].startswith(k["prefix"]) and len(k["prefix"]) < len(k["key"])
+    try:
+        row = next(r for r in admin.get(f"/api/ws/{WS}/keys").json() if r["id"] == k["id"])
+        assert row["prefix"] == k["prefix"], "1-F1.5: the list identifies a key by its prefix"
+        assert row["scopes"] == ["read"] and row["publishable"] is False
+        assert isinstance(row["created"], (int, float))
+        assert row["last_used"] is None, "1-F1.5: an unused key says so of itself"
+        assert "key" not in row and "hash" not in row, "1-F1.5: the secret is never listed again"
+    finally:
+        assert admin.delete(f"/api/ws/{WS}/keys/{k['id']}").status_code == 200
+
