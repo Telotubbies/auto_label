@@ -52,3 +52,12 @@ test('test_calculator_tab_mounts_the_calculator', () => {
   assert.match(hub, /import CalculatorTab from '\.\/CalculatorTab'/, 'and imports it from its own module')
   assert.doesNotMatch(hub, /calculator arrives with the sizing card/, 'the placeholder sentence is gone')
 })
+
+// T-1007: the engines panel is the engines tab, and the header picker is fed by the host list.
+test('test_engines_tab_mounts_the_engines_panel_with_a_real_host_picker', () => {
+  const hub = readFileSync(new URL('../src/features/inference/InferenceHub.tsx', import.meta.url), 'utf8')
+  assert.match(hub, /<EnginesTab/, 'the engines tab renders EnginesTab')
+  assert.match(hub, /import EnginesTab from '\.\/EnginesTab'/, 'and imports it from its own module')
+  assert.doesNotMatch(hub, /No engine catalogue yet\./, 'the placeholder sentence is gone')
+  assert.match(hub, /inferenceApi\.hosts\(/, 'the picker reads GET /hosts')
+})
