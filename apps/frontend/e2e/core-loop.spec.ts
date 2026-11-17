@@ -32,7 +32,7 @@ test('core loop: sign in → project → upload → annotate → version → tra
 
   await test.step('2. Open project', async () => {
     await page.locator('[data-tour="home-projects"]').getByRole('link', { name: /PPE Detection/ }).first().click()
-    await expect(page).toHaveURL(new RegExp(`/${WS}/p/${PR}/dataset$`))
+    await expect(page).toHaveURL(new RegExp(`/${WS}/p/${PR}/browse$`))
     await expect(page.getByRole('heading', { name: 'Dataset' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'PPE Detection' })).toBeVisible()
   })
