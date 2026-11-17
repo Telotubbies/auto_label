@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import {
-  isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, RESERVED_WORKSPACE_SEGMENTS,
+  GROUPS, isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, RESERVED_WORKSPACE_SEGMENTS, STAGES,
   v2WorkspaceNav, visibleProjectNav, visibleWorkspaceNav, WORKSPACE_PAGE_LABELS, workspaceIndexPath,
   workspaceNav,
 } from '../src/lib/nav.ts'
@@ -477,6 +477,15 @@ test('every settings tab keeps Settings lit once governance left the rail', () =
   for (const path of ['/acme/settings', '/acme/settings/members', '/acme/settings/usage', '/acme/settings/api']) {
     assert.equal(isWorkspaceNavActive(settings, path, '/acme', items), true, `Settings must be current at ${path}`)
   }
+})
+
+// --- T-477: the stage manifest is the v3 rail's source; the v2 groups stay untouched -----------
+test('the stage manifest is the rail source and the v2 groups are untouched', () => {
+  assert.deepEqual(STAGES.map((s) => s.id), ['upload', 'annotate', 'dataset', 'train', 'deploy'])
+  assert.deepEqual(GROUPS.map((g) => g.label), ['Data', 'Models', 'Deploy'])
+  // Flag off renders `projectNav` exactly as before: six groups, no numbered row.
+  assert.deepEqual(projectNav.map((g) => g.label), ['DATA', 'LABEL', 'MODELS', 'STUDIO', 'DEPLOY', 'SETTINGS'])
+  assert.equal(projectNav.flatMap((g) => g.items).some((i) => 'number' in i), false)
 })
 
 // Acceptance: the active row is the shared treatment — accent fill, 1 px primary outline — and the
