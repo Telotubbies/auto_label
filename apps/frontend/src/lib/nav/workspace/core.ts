@@ -1,4 +1,4 @@
-import { STAFF } from '../audience.ts'
+import { OWNER_ADMIN, STAFF } from '../audience.ts'
 import type { NavGroup, WorkspaceNavItem } from '../types'
 
 /**
@@ -12,5 +12,6 @@ export const coreNav: NavGroup<WorkspaceNavItem> = {
     { to: 'models', label: 'Models', icon: 'models', roles: STAFF },
     { to: 'deployments', label: 'Deployments', icon: 'deployments', roles: STAFF },
     { to: 'activity', label: 'Activity', icon: 'activity', roles: STAFF },
+    { to: 'inference', label: 'Inference', icon: 'models', roles: OWNER_ADMIN, flag: 'task_inference' },
   ],
 }

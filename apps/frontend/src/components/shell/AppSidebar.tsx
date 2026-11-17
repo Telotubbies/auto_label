@@ -3,7 +3,7 @@ import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-route
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, ChevronsLeft, LogOut, Plus, User, X, Zap } from 'lucide-react'
 import { api, post } from '@/lib/api'
-import { useFlag } from '@/lib/flags'
+import { useFlag, useWorkspaceFlags } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { isWorkspaceNavActive, RESERVED_WORKSPACE_SEGMENTS, visibleWorkspaceNav } from '@/lib/nav'
 import { useProjectPermissions } from '@/lib/perms'
@@ -82,7 +82,9 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   const base = `/${ws}`
   // `task_470` (`ui_v3`): off keeps the v2 rail and its links exactly where they were.
   const uiV3 = useFlag('task_470')
-  const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null, uiV3)
+  // T-1000: a flag-gated destination (Inference) is visible only while its workspace flag is on.
+  const enabled = new Set(useWorkspaceFlags().data?.enabled ?? [])
+  const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null, uiV3, enabled)
   const main = groups.filter((g) => g.id !== 'footer')
   const footer = groups.find((g) => g.id === 'footer')?.items ?? []
   // Active nesting is resolved against what this role renders, so a hidden longer item

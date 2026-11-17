@@ -456,14 +456,18 @@ test('test_flag_off_restores_the_v2_rail', () => {
     ['GOVERN', ['Members', 'Audit log', 'Plan & Usage', 'API Keys']],
     [null, ['Activity', 'Settings', 'Admin']],
   ]
-  assert.deepEqual(groupLabels(v2WorkspaceNav), V2)
+  // T-1000 appends a flag-gated Inference row to the v2 BUILD group. The filtered role views
+  // below pass no flag set, so they stay exactly the pre-inference rail.
+  const V2_RAW = V2.map(([label, items]) => [label, label === 'BUILD' ? [...items, 'Inference'] : items])
+  assert.deepEqual(groupLabels(v2WorkspaceNav), V2_RAW)
   // The default (no flag argument) is off, so nothing changes for a workspace that never opts in.
   assert.deepEqual(wsLabels('admin'), [...V2.slice(0, 3), [null, ['Activity', 'Settings']]])
   assert.deepEqual(wsLabels('owner', true), V2)
-  // …and the sidebar really reads the flag and hands it to the rail builder.
+  // …and the sidebar really reads the flags and hands the enabled set to the rail builder.
   assert.match(shellSrc, /useFlag\('task_470'\)/, 'AppSidebar must read the ui_v3 flag')
-  assert.match(shellSrc, /visibleWorkspaceNav\(role, superadmin, [^)]*uiV3\)/,
-    'the flag must reach visibleWorkspaceNav')
+  assert.match(shellSrc, /useWorkspaceFlags\(\)/, 'AppSidebar must read the workspace flag set')
+  assert.match(shellSrc, /visibleWorkspaceNav\(role, superadmin, [^)]*uiV3, enabled\)/,
+    'the enabled flags must reach visibleWorkspaceNav')
 })
 
 test('the playground keeps its URL without a rail entry', () => {
@@ -534,4 +538,26 @@ test('the project rail renders the stage manifest from one model', () => {
   // Flag off: the frozen v2 groups stay the rail's source, unchanged.
   assert.match(shellSrc, /projectNavGroups\(visible, projectRole/, 'flag off keeps the grouped panel')
   assert.match(projectLayoutSrc, /RailGroup|rail\.groups/, 'the strip reads the rail model')
+})
+
+// --- T-1000: the Inference hub is a flag-gated workspace destination ----------------------------
+test('test_inference_is_a_reserved_workspace_page', () => {
+  // The shell reads this set to tell a workspace page from a project slug, and the breadcrumb
+  // needs the label. Both are the hub's, not a project's.
+  assert.ok(RESERVED_WORKSPACE_SEGMENTS.has('inference'))
+  assert.equal(WORKSPACE_PAGE_LABELS.inference, 'Inference')
+})
+
+test('test_inference_route_is_lazy_and_admin_gated', () => {
+  assert.match(appSrc, /lazy\(\(\) => import\('@\/features\/inference\/InferenceHub'\)\)/)
+  assert.match(appSrc, /<Route path="inference" element=\{<Gate min="admin"><InferenceHub \/><\/Gate>\} \/>/)
+})
+
+test('test_inference_is_a_flag_gated_item_in_both_rails', () => {
+  for (const rail of [v2WorkspaceNav, workspaceNav]) {
+    const item = rail.flatMap((g) => g.items).find((i) => i.to === 'inference')
+    assert.equal(item?.label, 'Inference')
+    assert.equal(item?.flag, 'task_inference')
+    assert.deepEqual(item?.roles, ['owner', 'admin'])
+  }
 })

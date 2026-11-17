@@ -1011,3 +1011,33 @@ export interface InferenceHost {
   /** Null until a worker on a build that reports hardware claims a job. */
   inventory: InferenceHostInventory | null
 }
+
+// ---------- inference hub (T-1002) --------------------------------------------
+/** One installable engine, pinned: `container` and the install argv stay server-side. */
+export interface EngineRow {
+  id: string; name: string; summary: string; version: string
+  runtimes: string[]; os: string[]; accelerator: string[]
+  min_driver: string | null; cuda_min: string | null; cuda_max: string | null
+  disk_mb: number; source_url: string; checked_on: string; notes: string
+}
+
+/** One calculator preset; `cpu` is the only row with no vendor numbers or source. */
+export interface GpuPreset {
+  id: string; name: string; vram_gb: number; bw_gbs: number; fp16_tflops: number
+  source_url: string | null
+}
+
+/** The Engines tab and the calculator read this one list. */
+export interface InferenceCatalog {
+  engines: EngineRow[]; gpus: GpuPreset[]; sources: string[]
+}
+
+// ---------- inference hub: engine compatibility (T-1003) ----------------------
+/** A blocked engine cannot be selected; a warning one still can, with its reason shown. */
+export type EngineStatus = 'ok' | 'warn' | 'blocked'
+export interface EngineAvailability extends EngineRow {
+  installed: boolean
+  compatibility: { status: EngineStatus; reasons: string[]; warnings: string[] }
+  /** Free GB left on the host after this engine's own footprint, signed. */
+  disk_after_gb: number | null
+}

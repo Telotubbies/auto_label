@@ -7989,6 +7989,107 @@
         ]
       }
     },
+    "/api/ws/{ws}/inference/catalog": {
+      "get": {
+        "description": "Engine pins and GPU presets: the Engines tab and the calculator read this one list.",
+        "operationId": "catalog_api_ws__ws__inference_catalog_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Catalog",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/engines": {
+      "get": {
+        "description": "Every catalogue engine with this host's verdict; another host id is 404, never a default.",
+        "operationId": "engines_api_ws__ws__inference_engines_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Engines",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
     "/api/ws/{ws}/inference/hosts": {
       "get": {
         "description": "Every host with the hardware it reports; owner/admin only.",
