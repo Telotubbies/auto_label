@@ -54,33 +54,15 @@ def _insights():
     return insights_embedding
 
 
-def _own_clip() -> tuple | None:
-    """(torch, model, processor, device) or None; the same weights the insights map uses."""
-    try:
-        import torch
-        from transformers import CLIPModel, CLIPProcessor
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = CLIPModel.from_pretrained(CLIP_MODEL_ID)
-        processor = CLIPProcessor.from_pretrained(CLIP_MODEL_ID)
-        model.eval()
-        model.to(device)
-    except Exception:  # noqa: BLE001 - not installed, offline or out of memory
-        log.info("CLIP embeddings are not available; callers fall back to cheap features", exc_info=True)
-        return None
-    return (torch, model, processor, device)
-
-
 def _load_clip() -> tuple | None:
-    """Lease loader: reuse Task 20a's backend when it exists, else load our own copy."""
+    """Lease loader: Task 20a's loaded backend, shared with the insights map."""
     insights = _insights()
     if insights is not None:
         try:
             return insights._clip_backend()
         except Exception:  # noqa: BLE001 - a broken 20a install must not break drift
             log.info("Task 20a could not load CLIP; callers fall back to cheap features", exc_info=True)
-            return None
-    return _own_clip()
+    return None
 
 
 def _drop_clip(_state=None) -> None:
