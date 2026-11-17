@@ -21,6 +21,7 @@ import requests
 
 from .engines import run_engine_apply
 from .inventory import collect
+from .model_pull import run_model_pull
 
 log = logging.getLogger("labeldesk-worker")
 
@@ -204,7 +205,8 @@ def main():
         ap.error("--server and --token are required (or LD_SERVER / LD_WORKER_TOKEN)")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     srv = Server(args.server, args.token)
-    handlers = {"train": run_train, "autolabel": run_autolabel, "engine_apply": run_engine_apply}
+    handlers = {"train": run_train, "autolabel": run_autolabel, "engine_apply": run_engine_apply,
+                "model_pull": run_model_pull}
     log.info("worker %s polling %s for %s", args.name, args.server, args.kinds)
     while True:
         try:
