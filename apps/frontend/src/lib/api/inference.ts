@@ -1,6 +1,6 @@
 import type {
   EngineAvailability, EngineInstallIn, EnginePlan, InferenceCatalog, InferenceEstimate, InferenceEstimateIn,
-  InferenceHost, InferenceJob, InferenceModels, Job, ModelPlan, ModelPlanIn,
+  InferenceHost, InferenceJob, InferenceModels, InferenceSegmentation, Job, ModelPlan, ModelPlanIn,
 } from '../types'
 import { get, post } from './client'
 
@@ -55,3 +55,8 @@ export const inferencePlanModel = (ws: string, body: ModelPlanIn) =>
 /** Queue one confirmed download (T-1012); a busy host or an installed variant comes back as a 409. */
 export const inferenceDownloadModel = (ws: string, body: ModelPlanIn) =>
   post<{ job: Job }>(`/ws/${ws}/inference/models/download`, { ...body, confirm: true })
+
+/** The Segmentation tab (T-1014): rows and this host's verdict; `project` only names the chosen one. */
+export const inferenceSegmentation = (ws: string, host: string, project: string) =>
+  get<InferenceSegmentation>(`/ws/${ws}/inference/segmentation?host=${encodeURIComponent(host)}` +
+    (project ? `&project=${encodeURIComponent(project)}` : ''))

@@ -1152,3 +1152,19 @@ export interface ModelPlan {
   } | null
 }
 export interface ModelPlanIn { host: string; id: string; variant: string }
+
+// ---------- inference hub: segmentation catalogue (T-1014) ---------------------
+/** One segmentation model: memory at both working resolutions, licence and this host's verdict. */
+export interface SegmentationModel {
+  id: string; name: string; family: string; params_m: number
+  licence: { name: string; url: string; non_commercial: boolean }
+  vram: { '512': number; '1024': number }
+  engine: string; source_url: string; note: string
+  /** `reason` starts with the chip text: Ready, Missing checkpoint, Adapter not installed, Not supported on this OS. */
+  provisioned: { ok: boolean; reason: string }
+  auto_label: { ref: string | null; engine_hint: string; classes_required: boolean }
+}
+/** The Segmentation tab's one request; `project` is null when none was chosen. */
+export interface InferenceSegmentation {
+  models: SegmentationModel[]; project: { slug: string; name: string } | null
+}
