@@ -36,6 +36,9 @@ EXPECTED_SCOPES = {
     "list_models": "read",
     "get_model": "read",
     "predict": "infer",
+    "run_auto_label": "write",
+    "create_version": "write",
+    "list_deployments": "read",
 }
 
 
@@ -67,7 +70,7 @@ def test_generated_operations_match_openapi():
     got = load_gen_sdk().operations(app.openapi())
     assert got == _generated.OPERATIONS, "run `python tools/gen_sdk.py` — the committed SDK is stale"
     assert set(got) == set(EXPECTED_SCOPES)
-    assert len(got) == 12
+    assert len(got) == 15
     for op, spec in got.items():
         assert spec["scopes"] == [EXPECTED_SCOPES[op]], op
         assert spec["path"].startswith("/api/v1"), op

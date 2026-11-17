@@ -11,7 +11,7 @@ PROJECT_TYPES = ("object-detection", "instance-segmentation", "classification", 
                  "anomaly-detection")
 SPLITS = ("train", "valid", "test")
 STATUSES = ("unassigned", "annotating", "review", "done")
-API_SCOPES = ("read", "upload", "train", "infer")
+API_SCOPES = ("read", "upload", "write", "train", "infer")
 CONNECTOR_KINDS = ("s3", "gcs", "azure")
 WEBHOOK_EVENTS = ("job.done", "model.ready", "stream.event")
 DATA_REGIONS = ("th", "sg", "us")

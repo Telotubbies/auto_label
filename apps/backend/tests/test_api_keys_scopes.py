@@ -111,7 +111,7 @@ def test_train_and_infer_scopes_pass_auth(admin):
 
 def test_legacy_key_without_scopes_keeps_full_access(admin):
     k = make_key(admin, "legacy")
-    assert k["scopes"] == ["read", "upload", "train", "infer"]
+    assert k["scopes"] == ["read", "upload", "write", "train", "infer"]
     h = {"Authorization": f"Bearer {k['key']}"}
     assert anon().get("/api/v1/projects", headers=h).status_code == 200
     assert anon().post(f"/api/v1/projects/{PR}/upload", headers=h,
