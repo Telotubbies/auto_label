@@ -265,6 +265,17 @@ export interface DashboardPatch {
   widgets?: Record<string, unknown>[] | null
 }
 
+export interface EngineChoice {
+  id: string
+  runtime: string
+  version: string
+}
+
+export interface EnginePlanIn {
+  engines: EngineChoice[]
+  host: string
+}
+
 export interface EstimateIn {
   batch: number
   context: number
@@ -333,6 +344,13 @@ export interface ImagePatch {
   split?: string | null
   status?: string | null
   tags?: string[] | null
+}
+
+export interface InstallIn {
+  confirm?: boolean
+  engines: EngineChoice[]
+  host: string
+  plan_id: string
 }
 
 export interface InterpolateIn {
@@ -595,6 +613,12 @@ export interface TagRename {
 export interface TrackIn {
   annotation_id: string
   frames?: number
+}
+
+export interface UninstallIn {
+  confirm?: boolean
+  host: string
+  id: string
 }
 
 export interface ValidationError {

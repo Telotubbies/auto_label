@@ -1076,3 +1076,28 @@ export interface InferenceEstimate {
   }
   ttft_ms: number; assumptions: string[]; sources: string[]
 }
+
+// ---------- inference hub: install plan and jobs (T-1006) ---------------------
+/** One engine in a plan: the commands it will run, or why it will not. */
+export interface EnginePlanStep {
+  id: string; version: string; runtime: string
+  status: 'install' | 'installed' | 'blocked'
+  /** Fixed argv, one entry per command; joined with spaces for display only, never sent back. */
+  argv: string[][]; disk_mb: number
+  installed_version?: string; reason?: string
+}
+/** A dry run for a selection on one host; `plan_id` is the one a confirm must quote back. */
+export interface EnginePlan {
+  plan_id: string; host: string; steps: EnginePlanStep[]
+  total_disk_mb: number; disk_free_gb: number | null; disk_after_gb: number | null
+  warnings: string[]; blocked: { id: string; reason: string }[]
+  /** True when nothing is left to install: already present, or blocked. */
+  noop: boolean
+}
+/** A confirmed install: the reviewed selection plus the plan it was reviewed as. */
+export interface EngineInstallIn {
+  host: string
+  engines: { id: string; version: string; runtime: string }[]
+  plan_id: string
+  confirm: boolean
+}

@@ -1145,6 +1145,61 @@
         "title": "DashboardPatch",
         "type": "object"
       },
+      "EngineChoice": {
+        "description": "One engine the admin picked: a catalogue id, the catalogue version and a runtime it offers.",
+        "properties": {
+          "id": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "runtime": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Runtime",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "runtime"
+        ],
+        "title": "EngineChoice",
+        "type": "object"
+      },
+      "EnginePlanIn": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineChoice"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Engines",
+            "type": "array"
+          },
+          "host": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "engines"
+        ],
+        "title": "EnginePlanIn",
+        "type": "object"
+      },
       "EstimateIn": {
         "properties": {
           "batch": {
@@ -1489,6 +1544,43 @@
           }
         },
         "title": "ImagePatch",
+        "type": "object"
+      },
+      "InstallIn": {
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineChoice"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Engines",
+            "type": "array"
+          },
+          "host": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "plan_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "engines",
+          "plan_id"
+        ],
+        "title": "InstallIn",
         "type": "object"
       },
       "InterpolateIn": {
@@ -2825,6 +2917,33 @@
           "annotation_id"
         ],
         "title": "TrackIn",
+        "type": "object"
+      },
+      "UninstallIn": {
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "host": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "id"
+        ],
+        "title": "UninstallIn",
         "type": "object"
       },
       "ValidationError": {
@@ -8268,6 +8387,174 @@
           }
         ],
         "summary": "Engines",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/engines/install": {
+      "post": {
+        "description": "Queue one confirmed install for one host; a stale plan or a busy host is refused first.",
+        "operationId": "install_engines_api_ws__ws__inference_engines_install_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Install Engines",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/engines/plan": {
+      "post": {
+        "description": "A dry run: exact argv, bytes and disk after. It writes nothing, on the host or here.",
+        "operationId": "plan_engines_api_ws__ws__inference_engines_plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnginePlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Plan Engines",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/engines/uninstall": {
+      "post": {
+        "description": "Queue the removal of an installed engine: its container, or the venv on that host.",
+        "operationId": "uninstall_engine_api_ws__ws__inference_engines_uninstall_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UninstallIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Uninstall Engine",
         "tags": [
           "inference"
         ]
