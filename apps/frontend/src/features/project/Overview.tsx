@@ -49,7 +49,7 @@ export default function Overview() {
         }
       />
       <div className="px-8 pb-10">
-        <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
+        <div className="min-[1800px]:grid min-[1800px]:grid-cols-[minmax(0,1fr)_360px] min-[1800px]:items-start min-[1800px]:gap-6">
           {loading ? (
             <ol aria-label="Project pipeline" aria-busy="true" className="grid gap-3 md:grid-cols-5">
               {STAGE_ORDER.map((id) => <li key={id}><Card className="h-[168px] animate-pulse" /></li>)}
@@ -61,8 +61,9 @@ export default function Overview() {
               ))}
             </ol>
           )}
-          {/* The 360 px column: health, latest run, blockers and activity. Below xl it follows the board. */}
-          <div className="mt-6 xl:mt-0"><OverviewAside ws={ws} project={project} /></div>
+          {/* The 360 px column: health, latest run, blockers and activity. It shares the row only
+              where five 160 px cards still fit beside it (1800 px); below that it follows the board. */}
+          <div className="mt-6 min-[1800px]:mt-0"><OverviewAside ws={ws} project={project} /></div>
         </div>
       </div>
     </div>
