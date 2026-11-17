@@ -69,3 +69,11 @@ test('test_models_tab_mounts_the_models_panel', () => {
   assert.match(hub, /import ModelsTab from '\.\/ModelsTab'/, 'and imports it from its own module')
   assert.doesNotMatch(hub, /No model catalogue yet\./, 'the placeholder sentence is gone')
 })
+
+// T-1015: the segmentation panel is its own module with the project picker, not a placeholder card.
+test('test_segmentation_tab_mounts_the_segmentation_panel', () => {
+  const hub = readFileSync(new URL('../src/features/inference/InferenceHub.tsx', import.meta.url), 'utf8')
+  assert.match(hub, /<SegmentationTab/, 'the segmentation tab renders SegmentationTab')
+  assert.match(hub, /import SegmentationTab from '\.\/SegmentationTab'/, 'and imports it from its own module')
+  assert.doesNotMatch(hub, /PANEL_EMPTY/, 'the placeholder map is gone')
+})
