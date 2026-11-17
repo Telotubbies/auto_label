@@ -21,6 +21,10 @@ status: "Verified"
 
 ## 1. Test Strategy
 
+The suite this document designs is the ML pipeline suite. It moved with the ML code to the
+`labeldesk-ml` repository (ADR 0004), so every `tests/…` path below is relative to that
+repository's root, not to this one. This repository has no root `tests/` tree.
+
 ### 1.1 Archetype and Pyramid Ratio
 
 This project is a CLI tool with logic-dense pure functions and heavy

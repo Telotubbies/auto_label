@@ -21,7 +21,7 @@ The web app lives in `apps/frontend` and the API in `apps/backend`; those are th
 - Put feature code in its own module. Routers, worker handlers, web routes, navigation entries, API client files, models, and migrations should not all be appended to one shared file.
 - Add tests for every behavior change. Use fakes for GPU and network calls, and mark real hardware tests with `gpu` or `slow`.
 - Do not put secrets, tokens, or absolute machine paths in code or tests.
-- Follow the formatters and linters in the standards: `ruff format` and `ruff check` for Python, `biome check` for TypeScript. The frontend build must pass with `npm run build`.
+- Follow the formatters and linters in the standards: `ruff format` and `ruff check` for Python. TypeScript has no separate lint step; the frontend build must pass with `npm run build`.
 - Use conventional commit subjects: `feat:`, `fix:`, `chore:`, `docs:`. Keep the subject in lowercase and under about 72 characters.
 
 ## Documentation

@@ -1,7 +1,7 @@
 // Task 40 screenshots: sign in, seed two OT outputs through the API, capture light/dark/375/flag-off.
 // Usage: node scripts/ot-shot.mjs <webUrl> <apiUrl> <outDir>
 // Requires the API on the apiUrl and the Vite dev server on the webUrl.
-import { chromium } from 'playwright'
+import { chromium } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 
 const [web = 'http://localhost:5173', api = 'http://localhost:8010', out = '.'] = process.argv.slice(2)

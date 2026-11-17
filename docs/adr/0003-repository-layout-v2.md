@@ -24,9 +24,9 @@ Keep one repository. Refine the layout to:
     ml/         sam3_auto_label, yolo26_ppe, pipeline_cli.py, auto_label.sh, setup.sh
     research/   reports/, notes/
     data/       offline pipeline datasets; new bytes are ignored
-    deploy/ tools/ tests/ docs/
+    deploy/ tools/ docs/
 
-A directory is an app if it has its own deploy or release target and sits at the end of the dependency graph; otherwise it is a package. `tests/` means "repository-level tests"; app tests stay in `apps/*/tests/`. `docs/research/` is product research and stays in `docs/`.
+A directory is an app if it has its own deploy or release target and sits at the end of the dependency graph; otherwise it is a package. Every test lives with its owner (`apps/*/tests/`, `tools/tests/`, and the ML repository's own suite); there is no root `tests/`. `docs/research/` is product research and stays in `docs/`.
 
 ## Alternatives considered
 

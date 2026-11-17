@@ -1,7 +1,7 @@
 // Pixel-sampled text contrast audit: finds text whose rendered background (gradients included) is too close
 // in luminance to its own colour. Not a replacement for axe — this covers axe's color-contrast *incomplete*.
 //   node scripts/contrast-audit.mjs <url> [width] [light|dark]
-import { chromium } from 'playwright'
+import { chromium } from '@playwright/test'
 
 const [url, widthArg, schemeArg] = process.argv.slice(2)
 const width = Number(widthArg ?? 1440)
