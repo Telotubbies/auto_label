@@ -7,7 +7,10 @@ import { AriaComponent, AxisPointerComponent, BrushComponent, GridComponent, Leg
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart3, Download, Table2 } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
-import { useThemePrefs } from '@/lib/theme'
+import { toRgb, useChartTheme, type ChartTheme } from '@/features/insights/charts'
+
+// The project-insight pages import these two from here; both are the shared helpers, not copies.
+export { toRgb as cssColor, useChartTheme }
 
 // Only the series and components Insights uses, so the lazy route does not ship all of ECharts.
 echarts.use([
@@ -15,70 +18,6 @@ echarts.use([
   AriaComponent, AxisPointerComponent, BrushComponent, GridComponent, LegendComponent, ToolboxComponent, TooltipComponent,
   CanvasRenderer,
 ])
-
-/** Colours zrender can parse: comma-separated rgb()/hsl(), hex, or a keyword. */
-export function cssColor(value: string): string {
-  const v = value.trim()
-  const oklch = v.match(/^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)/i)
-  if (oklch) {
-    const L = oklch[2] ? Number(oklch[1]) / 100 : Number(oklch[1])
-    const C = Number(oklch[3])
-    const h = (Number(oklch[4]) * Math.PI) / 180
-    const a = C * Math.cos(h)
-    const b = C * Math.sin(h)
-    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
-    const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
-    const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
-    const toByte = (x: number) => Math.round(255 * Math.min(1, Math.max(0, x)))
-    const gamma = (x: number) => (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055)
-    return `rgb(${toByte(gamma(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s))},${toByte(gamma(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s))},${toByte(gamma(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s))})`
-  }
-  // Modern space-separated syntax (rgb(68 1 84), hsl(20 70% 45% / .5)) is not understood by zrender.
-  const fn = v.match(/^(rgb|hsl)a?\((.*)\)$/i)
-  if (fn && !fn[2].includes(',')) {
-    const parts = fn[2].trim().replace(/\s*\/\s*/g, ' ').split(/\s+/)
-    const name = fn[1].toLowerCase() === 'hsl' && parts.length > 3 ? 'hsla' : fn[1]
-    return `${name}(${parts.join(',')})`
-  }
-  return v
-}
-
-export interface ChartTheme {
-  fg: string
-  muted: string
-  border: string
-  card: string
-  primary: string
-  warning: string
-  success: string
-  info: string
-  destructive: string
-  font: string
-  reduceMotion: boolean
-}
-
-/** Reads the live Task 11 tokens; re-runs when the user or the OS changes theme. */
-export function useChartTheme(): ChartTheme {
-  const prefs = useThemePrefs()
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const queries = ['(prefers-color-scheme: dark)', '(prefers-reduced-motion: reduce)'].map((q) => matchMedia(q))
-    const bump = () => setTick((t) => t + 1)
-    queries.forEach((q) => q.addEventListener('change', bump))
-    return () => queries.forEach((q) => q.removeEventListener('change', bump))
-  }, [])
-  return useMemo(() => {
-    const s = typeof document === 'undefined' ? null : getComputedStyle(document.documentElement)
-    const read = (name: string, fallback: string) => cssColor(s?.getPropertyValue(name).trim() || fallback)
-    return {
-      fg: read('--foreground', '#18181b'), muted: read('--muted-foreground', '#52525b'),
-      border: read('--border', '#d4d4d8'), card: read('--card', '#ffffff'), primary: read('--primary', '#2563eb'),
-      warning: read('--warning', '#b45309'), success: read('--success', '#15803d'), info: read('--info', '#1d4ed8'),
-      destructive: read('--destructive', '#dc2626'), font: s?.getPropertyValue('--font-ui').trim() || 'system-ui, sans-serif',
-      reduceMotion: !!s && matchMedia('(prefers-reduced-motion: reduce)').matches,
-    }
-  }, [prefs.seed, prefs.mode, prefs.contrast, prefs.scheme, prefs.reduceTransparency, tick])
-}
 
 export const tooltipStyle = (t: ChartTheme) => ({
   backgroundColor: t.card, borderColor: t.border, borderWidth: 1, textStyle: { color: t.fg, fontSize: 12 },
@@ -193,10 +132,10 @@ export function ChartCard({ title, desc, ariaLabel, option, table, height = 280,
   const opt = useMemo<ChartOption>(() => ({
     ...option,
     backgroundColor: 'transparent',
-    animation: option.animation === false ? false : !t.reduceMotion,
+    animation: option.animation === false ? false : !t.reducedMotion,
     textStyle: { ...((option.textStyle ?? {}) as Record<string, unknown>), fontFamily: t.font, color: t.fg },
     aria: { enabled: true, description: ariaLabel },
-  }), [option, ariaLabel, t.reduceMotion, t.font, t.fg])
+  }), [option, ariaLabel, t.reducedMotion, t.font, t.fg])
   return (
     <Card className="flex min-w-0 flex-col p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1.5">

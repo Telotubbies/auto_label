@@ -331,8 +331,8 @@ export function ChartCard({ title, description, summary, exportName, csvRows, js
 }
 
 // ---------- tables & states --------------------------------------------------
-export function DataTable({ caption, head, rows, rowHeader = true }: {
-  caption: ReactNode; head: ReactNode[]; rows: ReactNode[][]; rowHeader?: boolean
+export function DataTable({ caption, head, rows }: {
+  caption: ReactNode; head: ReactNode[]; rows: ReactNode[][]
 }) {
   return (
     <table className="w-full min-w-[320px] text-sm">
@@ -347,7 +347,7 @@ export function DataTable({ caption, head, rows, rowHeader = true }: {
       <tbody>
         {rows.map((row, ri) => (
           <tr key={ri} className="border-b last:border-0">
-            {row.map((cell, ci) => ci === 0 && rowHeader
+            {row.map((cell, ci) => ci === 0
               ? <th key={ci} scope="row" className="px-2 py-1.5 text-left font-normal">{cell}</th>
               : <td key={ci} className={cn('px-2 py-1.5 tabular-nums', ci > 0 && 'text-right')}>{cell}</td>)}
           </tr>
@@ -397,11 +397,11 @@ export function ErrorState({ title = 'Could not load this view', message, onRetr
 }
 
 /** Small colour swatch + label used by legends and tables. */
-export function Swatch({ color, label, dashed }: { color: string; label: ReactNode; dashed?: boolean }) {
+export function Swatch({ color, label }: { color: string; label: ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <svg width={14} height={8} aria-hidden="true" className="shrink-0">
-        <line x1={0} y1={4} x2={14} y2={4} stroke={color} strokeWidth={2} strokeDasharray={dashed ? '4 2' : undefined} />
+        <line x1={0} y1={4} x2={14} y2={4} stroke={color} strokeWidth={2} />
       </svg>
       {label}
     </span>
