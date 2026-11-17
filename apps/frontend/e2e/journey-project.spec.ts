@@ -13,6 +13,9 @@ const projectName = `J2 Gate Check ${runId}`
 // The address the server derives from the name (`slugify`: lower case, non-alphanumerics to dashes).
 const projectSlug = `j2-gate-check-${runId}`
 const address = `/${seeded.workspace}/p/${projectSlug}`
+// J2e creates its own project: T-1104 refuses a second project under J2's name.
+const j2eName = `J2e Scope Check ${runId}`
+const j2eAddress = `/${seeded.workspace}/p/j2e-scope-check-${runId}`
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const at = (path: string) => new RegExp(`${escapeRe(path)}$`)
@@ -207,7 +210,7 @@ test('J2 create a project and land on upload', async ({ page, request }) => {
     const batch = page.getByLabel(/Batch name/i)
     await expect(batch).toBeVisible()
     const placeholder = await batch.getAttribute('placeholder')
-    expect(batch.inputValue() || placeholder || '', 'the batch name has a default').toMatch(/uploaded on/i)
+    expect((await batch.inputValue()) || placeholder || '', 'the batch name has a default').toMatch(/uploaded on/i)
 
     const split = page.getByLabel(/Train \/ Valid \/ Test/i)
     await expect(split).toBeVisible()
@@ -339,14 +342,14 @@ test('J2e the project is created in the seeded workspace and in no other', async
 
   await openNewProject(page)
   await chooseType(page, /Object Detection/i)
-  await nameField(page).fill(projectName)
+  await nameField(page).fill(j2eName)
   await submit(page)
   await expect(dialog(page)).toHaveCount(0, { timeout: 30_000 })
 
   // Reload: the project is the shipped record, not client state, and its counts are still zero.
-  await page.goto(address)
+  await page.goto(j2eAddress)
   await page.reload()
-  await expect(page.getByRole('heading', { name: projectName })).toBeVisible()
+  await expect(page.getByRole('heading', { name: j2eName })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Project pipeline' }).getByRole('heading')).toHaveCount(5)
   const rows = await stageRows(page)
   expect(rows).toHaveLength(5)
@@ -364,7 +367,7 @@ test('J2e the project is created in the seeded workspace and in no other', async
   await expect(otherPage.getByRole('heading', { name: 'Home', exact: true })).toBeVisible({ timeout: 30_000 })
   await otherPage.getByRole('button', { name: 'End tour' }).click()
   await expect(otherPage.getByRole('heading', { name: 'Getting started' })).toBeVisible()
-  await expect(otherPage.getByText(projectName)).toHaveCount(0)
+  await expect(otherPage.getByText(j2eName)).toHaveCount(0)
   await other.close()
 })
 

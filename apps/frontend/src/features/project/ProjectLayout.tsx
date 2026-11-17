@@ -68,7 +68,7 @@ function ProjectShell({ project, slug }: { project: Project; slug: string }) {
                     {/* StageItem renders its own <li>; the strip keeps each one from shrinking. */}
                     <ul className="flex gap-1 [&>li]:shrink-0">
                       {g.items.map((row) => (
-                        <StageItem key={row.id} row={row} facts={rail.facts} ws={ws} slug={slug}
+                        <StageItem row={row} key={row.id} facts={rail.facts} ws={ws} slug={slug}
                           active={row.id === rail.activeId} loading={rail.loading} />
                       ))}
                     </ul>
