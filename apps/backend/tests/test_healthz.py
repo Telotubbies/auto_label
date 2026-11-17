@@ -82,7 +82,7 @@ def test_readyz_is_200_when_every_check_passes(c):
 
 
 def test_readyz_is_503_for_a_database_on_a_closed_port(c, monkeypatch):
-    dead = create_engine("postgresql://labeldesk:x@127.0.0.1:1/labeldesk",
+    dead = create_engine("postgresql+psycopg2://labeldesk:x@127.0.0.1:1/labeldesk",
                          connect_args={"connect_timeout": 1})
     monkeypatch.setattr(health, "SessionLocal", sessionmaker(bind=dead))
     try:
@@ -122,7 +122,7 @@ def test_readyz_is_503_with_a_stale_worker_row(c):
 
 
 def test_readyz_never_leaks_internals(c, monkeypatch, caplog):
-    dead = create_engine("postgresql://labeldesk:x@127.0.0.1:1/labeldesk",
+    dead = create_engine("postgresql+psycopg2://labeldesk:x@127.0.0.1:1/labeldesk",
                          connect_args={"connect_timeout": 1})
     monkeypatch.setattr(health, "SessionLocal", sessionmaker(bind=dead))
     try:
