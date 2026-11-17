@@ -113,15 +113,17 @@ export default function SegmentationTab({ ws, host, hostsLoading, hostsError, on
   const hostId = host?.id ?? ''
   const projects = useQuery({ queryKey: ['projects', ws], queryFn: () => api.projects(ws), enabled: !!ws })
   const [project, setProject] = useState('')
+  const [chosen, setChosen] = useState(false)
   const list = projects.data ?? []
 
   // The card asks for the last opened project; until a pick is made, the remembered one (or the most
   // recently updated) is the default. A remembered slug that no longer exists falls back, not 404s.
+  // Once the picker has been touched, "Choose a project" means none, and nothing re-selects behind it.
   useEffect(() => {
-    if (project || !list.length) return
+    if (chosen || !list.length) return
     const next = pickProject(list as Project[], lastProject(ws))
     if (next) setProject(next)
-  }, [list, project, ws])
+  }, [chosen, list, ws])
 
   const models = useQuery({
     queryKey: ['inference-segmentation', ws, hostId, project],
@@ -173,6 +175,7 @@ export default function SegmentationTab({ ws, host, hostsLoading, hostsError, on
             <span className="text-xs font-medium text-muted-foreground">Project</span>
             <Select aria-label="Project" className="w-full sm:w-72" value={project}
               onChange={(e) => {
+                setChosen(true)
                 setProject(e.target.value)
                 rememberProject(ws, e.target.value)
               }}>
