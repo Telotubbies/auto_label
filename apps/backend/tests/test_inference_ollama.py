@@ -200,6 +200,25 @@ def test_a_pull_queues_the_catalogue_argv_for_the_worker(admin, host):
         assert step["runtime"] == "ollama"
 
 
+def test_a_busy_host_is_refused_with_the_running_job(admin, host):
+    first = admin.post(PULL_URL, json={"host": host, "tag": "qwen3:4b", "confirm": True})
+    assert first.status_code == 200, first.text
+    second = admin.post(PULL_URL, json={"host": host, "tag": "qwen3:8b", "confirm": True})
+    assert second.status_code == 409, second.text
+    detail = second.json()["detail"]
+    assert "already running" in detail["error"]
+    assert detail["job_id"] == first.json()["job"]["id"]
+
+
+def test_an_already_installed_tag_is_refused(admin, host):
+    with SessionLocal() as db:
+        db.get(Worker, host).inventory = _inventory(models=[{"id": "qwen3-4b", "bytes": 1}])
+        db.commit()
+    r = admin.post(PULL_URL, json={"host": host, "tag": "qwen3:4b", "confirm": True})
+    assert r.status_code == 409, r.text
+    assert "already installed" in r.json()["detail"]["error"]
+
+
 def test_a_member_is_403_and_flag_off_is_404(admin, labeler, host):
     body = {"host": host, "tag": "qwen3:4b", "confirm": True}
     assert labeler.post(PULL_URL, json=body).status_code == 403
