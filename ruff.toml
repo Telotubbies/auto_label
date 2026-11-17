@@ -6,8 +6,6 @@ target-version = "py311"
 
 exclude = [
     "apps/backend/data",
-    "apps/backend/02_Projectsld-tmppytest",
-    "ml/sam3_auto_label",
 ]
 
 [lint]
