@@ -8,12 +8,11 @@ import { useProjectPermissions } from '@/lib/perms'
 import type { ImageItem } from '@/lib/types'
 import { Badge, Button, Dropdown, EmptyState, Input, PageHeader, Select, Spinner, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { splitColor } from '@/lib/theme'
 import { useProject } from './ProjectLayout'
 import { AutoLabelDialog } from './AutoLabelDialog'
 import { colsForWidth, rowHeightForWidth } from './datasetGrid'
 import { countLine } from './datasetCopy'
-
-const SPLIT_TONE: Record<string, string> = { train: 'bg-violet-600', valid: 'bg-blue-600', test: 'bg-orange-500' }
 
 // Stable across renders, so React does not resubscribe the width listener on every re-render.
 const subscribeResize = (onChange: () => void) => {
@@ -180,7 +179,7 @@ export default function Dataset() {
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor(im) } }}>
                   <img src={fileUrl(im.thumbnail)} alt={im.name} loading="lazy" className="w-full object-cover" style={{ height: rowH - 36 }} />
                   <div className="absolute left-1.5 top-1.5 flex gap-1">
-                    <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white', SPLIT_TONE[im.split])}>{im.split}</span>
+                    <span className={cn('rounded px-1.5 py-0.5 text-xs font-semibold uppercase', splitColor(im.split))}>{im.split}</span>
                     {im.annotationCount === 0 && <span className="rounded bg-gray-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">NULL</span>}
                   </div>
                   {can('project.review') && (

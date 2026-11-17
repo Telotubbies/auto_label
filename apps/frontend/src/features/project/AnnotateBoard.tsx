@@ -100,7 +100,7 @@ export default function AnnotateBoard() {
                       {col.id === 'annotating' && <Button size="sm" variant="outline" onClick={() => open(c, 'annotating')}><PencilLine className="h-3.5 w-3.5" /> Annotate</Button>}
                       {col.id === 'annotating' && c.annotated > 0 && <Button size="sm" onClick={() => move(c, 'annotating', 'review', { only_annotated: true })}><Send className="h-3.5 w-3.5" /> Submit</Button>}
                       {col.id === 'review' && canManage && <Button size="sm" variant="outline" onClick={() => open(c, 'review', true)}>Review</Button>}
-                      {col.id === 'review' && canManage && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => move(c, 'review', 'done')}><CheckCheck className="h-3.5 w-3.5" /> Approve all</Button>}
+                      {col.id === 'review' && canManage && <Button size="sm" className="bg-success text-background hover:bg-success/90" onClick={() => move(c, 'review', 'done')}><CheckCheck className="h-3.5 w-3.5" /> Approve all</Button>}
                       {col.id === 'review' && canManage && <Button size="sm" variant="ghost" onClick={() => move(c, 'review', 'annotating')}>Reject all</Button>}
                       {col.id === 'done' && <Button size="sm" variant="outline" onClick={() => nav(`../browse?batch=${c.batchId ?? ''}`)}>View</Button>}
                     </div>

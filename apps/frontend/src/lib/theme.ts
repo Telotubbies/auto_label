@@ -150,6 +150,32 @@ export function classColor(i: number): string {
   return `hsl(${h.toFixed(0)} 70% ${n % 2 ? 45 : 60}%)`
 }
 
+// ---------- the one colour source for split and status chips ------------------
+// The tones are shipped token classes, so they re-derive with the theme and no screen carries a raw
+// Tailwind hue. A chip always prints its word; colour is additive, never the only signal.
+const NEUTRAL_TONE = 'bg-secondary text-secondary-foreground'
+const SPLIT_TONES: Record<string, string> = {
+  train: NEUTRAL_TONE,
+  valid: 'bg-info/15 text-info',
+  test: 'bg-warning/15 text-warning',
+}
+const STATUS_TONES: Record<string, string> = {
+  done: 'bg-success/15 text-success',
+  running: 'bg-info/15 text-info',
+  queued: 'bg-warning/15 text-warning',
+  failed: 'bg-destructive/15 text-destructive',
+}
+
+/** Token classes for a split chip; an unknown split keeps the neutral tone and its raw word. */
+export function splitColor(split: string): string {
+  return SPLIT_TONES[split] ?? NEUTRAL_TONE
+}
+
+/** The four semantic status roles; an unknown status stays neutral and still carries its word. */
+export function statusTone(status: string): { label: string; className: string } {
+  return { label: status, className: STATUS_TONES[status] ?? NEUTRAL_TONE }
+}
+
 const VIRIDIS = ['#440154', '#482878', '#3E4A89', '#31688E', '#26828E', '#1F9E89', '#35B779', '#6DCD59', '#B4DE2C', '#FDE725']
 /** Viridis colour for t in [0,1] (heatmaps). */
 export function viridis(t: number): string {
