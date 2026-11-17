@@ -80,7 +80,7 @@ class VlmAdapter:
             return Availability(False, str(e))
         except httpx.HTTPError as e:
             return Availability(False, f"vLLM error at {self.url}: {e}")
-        return Availability(True, vram_mb=6500)
+        return Availability(True)
 
     def capabilities(self, variant: str) -> set[str]:
         return {"detect", "open-vocab", "vqa"}

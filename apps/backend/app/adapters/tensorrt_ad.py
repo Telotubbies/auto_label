@@ -7,7 +7,7 @@ from PIL import Image as PImage
 
 from ..config import DATA_DIR
 from .base import Availability, register
-from .ultralytics_ad import VRAM_MB, _load, _run, caps_for, lease_key
+from .ultralytics_ad import _load, _run, caps_for, lease_key
 
 log = logging.getLogger("labeldesk.tensorrt")
 
@@ -20,7 +20,7 @@ class TensorrtAdapter:
             return Availability(False, "ultralytics not installed")
         if importlib.util.find_spec("tensorrt") is None:      # engines need the TensorRT runtime
             return Availability(False, "tensorrt not installed")
-        return Availability(True, vram_mb=VRAM_MB)
+        return Availability(True)
 
     def capabilities(self, variant: str) -> set[str]:
         return caps_for(variant)
