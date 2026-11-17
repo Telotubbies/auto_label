@@ -1,7 +1,42 @@
 import type { ProjectRole, Role } from '../types'
-import { canSeeProjectItem, inAudience, NO_BUILD } from './audience.ts'
+import { BILLING_AUDIENCE, canSeeProjectItem, inAudience, NO_BUILD, OWNER_ADMIN, STAFF } from './audience.ts'
 import { projectNav, workspaceNav } from './registry.ts'
 import type { NavGroup, ProjectNavItem, WorkspaceNavItem } from './types'
+
+/**
+ * The rail as it shipped before `task_470`, frozen. T-476 deleted the `build` and `govern`
+ * modules, so the old rail lives here until the flag retires: off ⇒ every old destination is
+ * exactly where it was.
+ */
+export const v2WorkspaceNav: NavGroup<WorkspaceNavItem>[] = [
+  { id: 'core', items: [
+    { to: '', label: 'Projects', icon: 'projects', end: true, roles: STAFF },
+  ] },
+  { id: 'build', label: 'BUILD', items: [
+    { to: 'models', label: 'Models', icon: 'models', roles: STAFF },
+    { to: 'playground', label: 'Playground', icon: 'playground', roles: STAFF },
+    { to: 'deployments', label: 'Deployments', icon: 'deployments', roles: STAFF },
+  ] },
+  { id: 'govern', label: 'GOVERN', items: [
+    // Labels follow the Settings tab they open, so the sidebar and the page never name one screen twice.
+    { to: 'settings/members', label: 'Members', icon: 'members', roles: OWNER_ADMIN },
+    { to: 'audit', label: 'Audit log', icon: 'audit', roles: OWNER_ADMIN },
+    { to: 'settings/usage', label: 'Plan & Usage', icon: 'usage', roles: BILLING_AUDIENCE },
+    { to: 'settings/api', label: 'API Keys', icon: 'integrations', roles: OWNER_ADMIN },
+  ] },
+  { id: 'footer', items: [
+    { to: 'activity', label: 'Activity', icon: 'activity', roles: STAFF },
+    // Settings holds the caller's own profile, security and preferences, so every role keeps it.
+    { to: 'settings', label: 'Settings', icon: 'settings' },
+    { to: 'admin', label: 'Admin', icon: 'admin', superadmin: true },
+  ] },
+]
+
+/**
+ * The workspace ML surfaces the v2 BUILD group held. A labeler works around them, not in them:
+ * they keep Projects, Activity and Settings, in both rails.
+ */
+const BUILD_TO = new Set(['models', 'playground', 'deployments'])
 
 /**
  * A workspace role arrives after /me resolves. Until then the sidebar shows the member view:
@@ -9,18 +44,20 @@ import type { NavGroup, ProjectNavItem, WorkspaceNavItem } from './types'
  *
  * Inside a project, the effective project role also applies: a project labeler sees the IA
  * labeler view even when their workspace row says member (owner/admin keep the build surfaces).
+ *
+ * `uiV3` is the `task_470` flag: off renders the frozen v2 rail, unchanged.
  */
 export function visibleWorkspaceNav(
-  role: Role | null, superadmin = false, projectRole?: ProjectRole | null,
+  role: Role | null, superadmin = false, projectRole?: ProjectRole | null, uiV3 = false,
 ): NavGroup<WorkspaceNavItem>[] {
   const audience = role ?? 'member'
   const staffRole = audience === 'owner' || audience === 'admin'
   const hideBuild = NO_BUILD.includes(audience) || (projectRole === 'labeler' && !staffRole)
-  return workspaceNav
-    .filter((g) => !(hideBuild && g.id === 'build'))
+  return (uiV3 ? workspaceNav : v2WorkspaceNav)
     .map((g) => ({
       ...g,
-      items: g.items.filter((i) => inAudience(i.roles, audience) && (!i.superadmin || superadmin)),
+      items: g.items.filter((i) => inAudience(i.roles, audience) && (!i.superadmin || superadmin)
+        && !(hideBuild && BUILD_TO.has(i.to))),
     }))
     .filter((g) => g.items.length > 0)
 }
