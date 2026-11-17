@@ -11,6 +11,11 @@
 
 {$LD_DOMAIN} {
 	import hardening
+	# AI-agent endpoint (MCP), present only when the compose `mcp` profile runs; `route` keeps this
+	# order, so /mcp never falls through to the SPA.
+	route /mcp* {
+		reverse_proxy mcp:8020
+	}
 	# web container serves the SPA and proxies /api to the api container
 	reverse_proxy web:80
 }

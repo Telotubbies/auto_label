@@ -1,0 +1,7 @@
+data/
+*.pt
+apps/frontend/node_modules
+design*/
+research/
+docs/
+.git/
