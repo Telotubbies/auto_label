@@ -40,6 +40,8 @@ class Worker(Base):
     current_job: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started: Mapped[float] = mapped_column(Float, default=now)
     last_seen: Mapped[float] = mapped_column(Float, default=now, index=True)
+    # The worker's own hardware report (T-1001); null until a build that reports claims.
+    inventory: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class UsageEvent(Base):

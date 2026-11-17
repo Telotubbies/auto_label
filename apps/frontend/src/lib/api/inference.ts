@@ -1,0 +1,15 @@
+import type { EngineAvailability, InferenceCatalog, InferenceHost } from '../types'
+import { get } from './client'
+
+/** Inference hub (T-1001): the hosts this deployment can install engines on. Later hub cards append. */
+export const inferenceApi = {
+  hosts: (ws: string) => get<{ hosts: InferenceHost[] }>(`/ws/${ws}/inference/hosts`),
+}
+
+/** Engine pins and GPU presets for the Inference hub (T-1002). */
+export const inferenceCatalog = (ws: string) => get<InferenceCatalog>(`/ws/${ws}/inference/catalog`)
+
+/** One verdict per engine for one host (T-1003); a blocked row cannot be selected. */
+export const inferenceEngines = (ws: string, host: string) =>
+  get<{ host: InferenceHost; engines: EngineAvailability[] }>(
+    `/ws/${ws}/inference/engines?host=${encodeURIComponent(host)}`)

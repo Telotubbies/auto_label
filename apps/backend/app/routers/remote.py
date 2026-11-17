@@ -21,7 +21,7 @@ from ..errors import safe_error, safe_text
 from ..gpu import scheduler
 from ..models import Image, Job, LabelClass, Project, TrainedModel, Version, Workspace, now, set_annotations
 from ..security import sign_path
-from ..services import exporters, metering, ml, versioning
+from ..services import host_inventory, exporters, metering, ml, versioning
 from ..services import finalize
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
@@ -38,6 +38,7 @@ def worker_auth(x_worker_token: str = Header("")):
 class ClaimIn(BaseModel):
     name: str = "worker"
     kinds: list[str] = ["train", "autolabel"]
+    inventory: dict | None = None      # T-1001: the worker's own hardware report; optional for old builds
 
 
 def _payload(db: Session, j: Job) -> dict:
@@ -85,6 +86,7 @@ def _payload(db: Session, j: Job) -> dict:
 @router.post("/claim", dependencies=[Depends(worker_auth)])
 def claim(body: ClaimIn, db: Session = Depends(get_db)):
     kinds = [k for k in body.kinds if k in REMOTE_JOB_KINDS]
+    host_inventory.record(db, body.name, body.name, body.inventory)     # before selecting: the host is online
     for jid in db.scalars(select(Job.id).where(Job.status == "queued", Job.kind.in_(kinds)).order_by(Job.created).limit(5)):
         if db.execute(update(Job).where(Job.id == jid, Job.status == "queued")
                       .values(status="running", started=now(), executor="remote",
