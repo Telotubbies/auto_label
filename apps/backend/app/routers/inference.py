@@ -15,7 +15,7 @@ from sqlalchemy import select
 from ..deps import Ctx, ws_ctx
 from ..models import Job, now
 from ..services import (host_inventory, inference_access, inference_catalog, inference_compat,
-                        inference_estimate, inference_jobs, inference_plan)
+                        inference_estimate, inference_jobs, inference_models, inference_plan)
 from ..services.flags import require_flag
 from .projects import job_out
 
@@ -91,6 +91,46 @@ def estimate(body: inference_estimate.EstimateIn, c: Ctx = Depends(ws_ctx)):
              c.ws.slug, c.ws_role, result["fits"], result["total_gb"],
              (time.perf_counter() - started) * 1000)
     return result
+
+
+class ModelPlanIn(BaseModel):
+    """One catalogue model and one of its variants, on one host."""
+    host: str = Field(min_length=1, max_length=120)
+    id: str = Field(min_length=1, max_length=64)
+    variant: str = Field(min_length=1, max_length=32)
+
+
+@router.get("/models")
+def models(host: str, c: Ctx = Depends(in_scope)):
+    """Catalogue rows joined with this host's installed state, fit verdict and block reasons."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _host(c, host)
+    body = inference_models.public_models(row)
+    log.info("inference.models ws=%s role=%s host=%s outcome=ok rows=%d blocked=%d ms=%.1f",
+             c.ws.slug, c.ws_role, row["id"], len(body["models"]),
+             sum(1 for model in body["models"] if model["blocked"]),
+             (time.perf_counter() - started) * 1000)
+    return body
+
+
+@router.post("/models/plan")
+def plan_model(body: ModelPlanIn, c: Ctx = Depends(in_scope)):
+    """The dry run for one variant; the download job is T-1011's route and writes the files."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _host(c, body.host)
+    try:
+        plan = inference_models.plan(row, body.id, body.variant)
+    except KeyError:
+        raise HTTPException(404, "not found") from None
+    except inference_models.InvalidRepo as exc:
+        raise HTTPException(400, str(exc)) from None
+    log.info("inference.model_plan ws=%s role=%s host=%s model=%s variant=%s outcome=ok "
+             "blocked=%d bytes=%d ms=%.1f", c.ws.slug, c.ws_role, row["id"], body.id,
+             body.variant, len(plan["blocked"]), plan["total_bytes"],
+             (time.perf_counter() - started) * 1000)
+    return plan
 
 
 class EngineChoice(BaseModel):

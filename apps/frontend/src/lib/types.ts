@@ -1119,3 +1119,36 @@ export interface InferenceJob {
   result: { engines: InferenceJobEngine[] }
   created: number; finished: number | null
 }
+// ---------- inference hub: model catalogue (T-1010) ---------------------------
+/** One quantisation of a catalogue row; `blocked` names every reason its download is disabled. */
+export interface InferenceModelVariant {
+  id: string; quant: string; format: 'safetensors' | 'gguf'; engine: string
+  bytes: number; vram_gb: number | null; fits: boolean | null
+  fit_verdict: string | null; assumed_context: number; installed: boolean
+  blocked: string[]
+}
+/** A downloadable weight set: licence, gate, exact commit and its variants. */
+export interface InferenceModel {
+  id: string; name: string; family: string; repo: string; revision: string
+  ollama_tag: string | null; params_b: number; context_max: number
+  licence: { name: string; url: string; gated: boolean; non_commercial: boolean }
+  engine: string[]; safetensors_only: boolean; source_url: string; checked_on: string
+  variants: InferenceModelVariant[]
+  installed: boolean; fits: boolean | null; blocked: string[]
+}
+/** The Models tab's one request; `assumed_context` is the context the fit verdict uses. */
+export interface InferenceModels {
+  host: string | null; assumed_context: number; models: InferenceModel[]
+}
+export interface ModelPlanFile { path: string; bytes: number; sha256: string | null }
+/** The download dry run: files, bytes, disk after, the gate and every block reason. */
+export interface ModelPlan {
+  plan_id: string; model: string; variant: string; files: ModelPlanFile[]
+  total_bytes: number; disk_free_gb: number | null; disk_after_gb: number | null
+  gate: { gated: boolean; licence: string; url: string; non_commercial: boolean }
+  token_present: boolean; blocked: string[]; warnings: string[]
+  fit: {
+    fits: boolean; total_gb: number; usable_gb: number; shortfall_gb: number; verdict: string
+  } | null
+}
+export interface ModelPlanIn { host: string; id: string; variant: string }

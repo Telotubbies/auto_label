@@ -415,6 +415,12 @@ export interface ModelIn {
   params_b: number
 }
 
+export interface ModelPlanIn {
+  host: string
+  id: string
+  variant: string
+}
+
 export interface OcrExportIn {
   format?: string
   mask_pii?: boolean
