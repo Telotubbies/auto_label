@@ -1,27 +1,42 @@
+import { useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Glass } from '@/components/glass'
 import { Card, EmptyState, PageHeader, Select, Spinner, Tabs } from '@/components/ui'
+import { inferenceApi } from '@/lib/api/inference'
 import { useWorkspaceFlags } from '@/lib/flags'
 import { INFERENCE_TAB_LABELS, INFERENCE_TABS, tabFrom, type InferenceTab } from './tabs.ts'
 import CalculatorTab from './CalculatorTab'
+import EnginesTab from './EnginesTab'
 
-/** Each panel is a real empty state until its own card lands; the calculator has its own screen. */
-const PANEL_EMPTY: Record<Exclude<InferenceTab, 'calculator'>, string> = {
-  engines: 'No engine catalogue yet.',
+/** Each panel is a real empty state until its own card lands; calculator and engines have their own screens. */
+const PANEL_EMPTY: Record<Exclude<InferenceTab, 'calculator' | 'engines'>, string> = {
   models: 'No model catalogue yet.',
   segmentation: 'No segmentation model is provisioned on this host.',
 }
 
 /**
- * `/:ws/inference` — one admin-only page under the `task_inference` flag. The host picker, the
- * catalogues, the calculator and the segmentation cards arrive with their own cards; this shell
- * owns the header, the host-picker slot, the four tabs and the URL-synced selection.
+ * `/:ws/inference` — one admin-only page under the `task_inference` flag. The header owns the host
+ * picker for every tab; the panels arrive with their own cards.
  */
 export default function InferenceHub() {
   const { ws = '' } = useParams()
   const flags = useWorkspaceFlags()
   const [params, setParams] = useSearchParams()
   const tab = tabFrom(params.toString())
+  const hosts = useQuery({
+    queryKey: ['inference-hosts', ws],
+    queryFn: () => inferenceApi.hosts(ws),
+    enabled: !!ws,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+  const [hostId, setHostId] = useState('')
+  const list = hosts.data?.hosts ?? []
+  // Default: the first online host with a GPU (PLAN §4.1), else the first host the workspace lists.
+  const host = list.find((row) => row.id === hostId)
+    ?? list.find((row) => row.online && (row.inventory?.gpus?.length ?? 0) > 0)
+    ?? list[0] ?? null
 
   // A shared link must not bounce to the workspace index while the flag query is in flight.
   if (flags.isLoading) {
@@ -43,10 +58,19 @@ export default function InferenceHub() {
         desc="Install inference engines, download models and size them against this host."
         actions={
           <div className="w-full sm:w-auto">
-            {/* T-1001 fills this picker; until a worker reports, its one honest value is "none". */}
-            <Select aria-label="Host" disabled className="w-full sm:w-56" defaultValue="none">
-              <option value="none">No host has reported</option>
-            </Select>
+            {hosts.isLoading ? (
+              <div className="h-9 w-full sm:w-56" role="status" aria-label="Loading hosts">
+                <div aria-hidden className="h-9 w-full animate-pulse rounded-md bg-muted" />
+              </div>
+            ) : (
+              <Select aria-label="Host" className="w-full sm:w-56" value={host?.id ?? ''}
+                disabled={!list.length} onChange={(e) => setHostId(e.target.value)}>
+                {!list.length && <option value="">No host has reported</option>}
+                {list.map((row) => (
+                  <option key={row.id} value={row.id}>{row.host}{row.online ? '' : ' (offline)'}</option>
+                ))}
+              </Select>
+            )}
           </div>
         }
       />
@@ -63,7 +87,10 @@ export default function InferenceHub() {
             </Select>
           </div>
         </Glass>
-        {tab === 'calculator' ? <CalculatorTab /> : (
+        {tab === 'calculator' ? <CalculatorTab /> : tab === 'engines' ? (
+          <EnginesTab ws={ws} host={host} hostsLoading={hosts.isLoading} hostsError={hosts.isError}
+            onRetryHosts={() => void hosts.refetch()} />
+        ) : (
           <Card className="p-4 sm:p-6">
             <h2 className="text-sm font-medium">{INFERENCE_TAB_LABELS[tab]}</h2>
             <EmptyState title={PANEL_EMPTY[tab]} />
