@@ -18,15 +18,15 @@ def load_ci() -> dict:
     return yaml.safe_load(CI.read_text(encoding="utf-8"))
 
 
-def test_pre_commit_ruff_hooks_only_lint_tools() -> None:
+def test_pre_commit_lints_backend_but_does_not_format_it() -> None:
     config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
     hooks = {hook["id"]: hook for repo in config["repos"] for hook in repo["hooks"]}
 
-    assert hooks["ruff-check"]["files"] == "^tools/"
+    assert hooks["ruff-check"]["files"] == "^(tools/|apps/backend/)"
+    # A format hook over apps/backend would rewrite 271 files in one commit.
     assert hooks["ruff-format"]["files"] == "^tools/"
     text = PRE_COMMIT.read_text(encoding="utf-8")
-    assert "TODO(lint-chore)" in text
-    assert "progress.md:181" in text
+    assert "TODO(lint-chore)" not in text
 
 
 def test_ci_triggers_on_pull_requests_and_the_shared_branches() -> None:
@@ -48,8 +48,8 @@ def test_ci_runs_the_full_api_suite() -> None:
     assert any("requirements.txt" in run for run in runs)
     setup = [step for step in steps if str(step.get("uses", "")).startswith("actions/setup-python")]
     assert setup and setup[0]["with"]["python-version"] == "3.11"
-    # TODO(lint-chore): drop this once progress.md:181 adds ruff to the api job.
-    assert not any("ruff" in run for run in runs)
+    # The lint step runs before pytest so a typo fails before the suite pays its 6 minutes.
+    assert any("ruff check" in run and "apps/backend" in run for run in runs)
 
 
 def test_ci_builds_and_tests_the_web_app() -> None:

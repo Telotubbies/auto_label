@@ -1,7 +1,6 @@
 """C5: class names must never become paths outside the export root."""
 import json
 import os
-from pathlib import Path
 
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 os.environ["LD_SAM_ENABLED"] = "0"

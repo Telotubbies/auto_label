@@ -11,7 +11,6 @@ os.environ["LD_SAM_ENABLED"] = "0"
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.main import app

@@ -1,0 +1,12 @@
+# One cheap, honest gate over app code: pyflakes only. Style, import sorting and
+# formatting stay out on purpose — a format hook here would rewrite 271 files in
+# one commit and bury every review.
+line-length = 120
+target-version = "py311"
+
+exclude = [
+    "apps/backend/data",
+]
+
+[lint]
+select = ["F"]

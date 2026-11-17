@@ -20,7 +20,7 @@ from ..services.flags import is_enabled, require_workspace_flag
 from ..services.tiling import Tiling
 from ..streams import creds
 from ..streams.event_fields import class_key
-from ..streams.manager import check_source, display_source, manager
+from ..streams.manager import check_source, manager
 from .images import ingest, safe_name
 
 P = "/api/ws/{ws}/projects/{project}/streams"

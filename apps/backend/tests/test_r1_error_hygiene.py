@@ -5,7 +5,6 @@ import uuid
 os.environ.setdefault("LD_WORKER_TOKEN", "test-worker-token-0123456789abcdef")
 
 import pytest
-from sqlalchemy import select
 
 from app.db import Base, SessionLocal, engine
 from app.models import Job, Project, Workspace
