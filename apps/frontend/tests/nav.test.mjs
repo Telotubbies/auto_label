@@ -561,3 +561,46 @@ test('test_inference_is_a_flag_gated_item_in_both_rails', () => {
     assert.deepEqual(item?.roles, ['owner', 'admin'])
   }
 })
+
+// --- T-1107: the rail and the Jobs trigger say what the eye reads (WCAG 2.5.3) ------------------
+// axe `label-content-name-mismatch`: the accessible name must contain the visible text, as one
+// contiguous string. The rail invented "Upload, 40, done" over a row that reads "1 Upload done 40";
+// the Jobs trigger wrote "Jobs, 1 active" over "Jobs 1". Both names now come from what is on screen.
+test('a rail row is named by its visible text, in reading order, number first', () => {
+  const item = source('../src/components/shell/StageItem.tsx')
+  // No row renames itself, so the name cannot disagree with the row.
+  assert.doesNotMatch(item, /aria-label=/, 'a rail row carries no aria-label')
+
+  // Reading order is the rendered order: number, label, state word, count.
+  const order = ['{row.number}', '{row.label}', '{word &&', "count === null ? '\u2014' : count"]
+  const at = order.map((token) => item.indexOf(token))
+  order.forEach((token, i) => assert.notEqual(at[i], -1, `${token} is rendered`))
+  for (let i = 1; i < at.length; i += 1) {
+    assert.ok(at[i] > at[i - 1], `"${order[i]}" must render after "${order[i - 1]}"`)
+  }
+
+  // The pipeline number is part of what the eye reads, so it is exposed to the name, not hidden.
+  assert.doesNotMatch(item, /aria-hidden className="w-4/, 'the stage number is not aria-hidden')
+})
+
+test('a locked rail row keeps the request-access meaning as a description, not a rename', () => {
+  const item = source('../src/components/shell/StageItem.tsx')
+  assert.match(item, /aria-describedby=\{descId\}/, 'the lock is described, not renamed')
+  assert.match(item, /id=\{descId\}/, 'the description the id points at exists')
+  assert.match(item, /Locked for your role/, 'the description says why the row is dimmed')
+  assert.match(item, /[Rr]equest access/, 'and how to ask for it')
+})
+
+test('the Jobs trigger names itself "Jobs <count>", exactly like the row reads', () => {
+  const button = source('../src/components/shell/JobButton.tsx')
+  // axe reads the name from the content only when nothing overrides it; an aria-label that adds a
+  // state word ("Jobs 1 active") still fails label-content-name-mismatch, so the word is not added.
+  assert.doesNotMatch(button, /aria-label=/, 'the trigger is named by its content')
+  // The visible word stays available to the name at the icon-only width instead of display:none.
+  assert.match(button, /<span className="sr-only sm:not-sr-only">Jobs<\/span>/,
+    'the label is visually hidden below sm, never hidden from the name')
+  assert.match(button, /\{active > 0 &&/, 'the count is a text badge beside it')
+  // The dot stays decoration, so the result it signals is said in words instead of by colour.
+  assert.match(button, /\{dot && <span className="sr-only">new result<\/span>\}/,
+    'a landed result is part of the name, not a colour-only dot')
+})
