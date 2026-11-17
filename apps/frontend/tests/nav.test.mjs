@@ -7,6 +7,7 @@ import {
   isWorkspaceNavActive, LEGACY_PROJECT_PATHS, projectNav, RESERVED_WORKSPACE_SEGMENTS,
   visibleProjectNav, visibleWorkspaceNav, WORKSPACE_PAGE_LABELS, workspaceIndexPath, workspaceNav,
 } from '../src/lib/nav.ts'
+import { STAGE_TABS, tabsFor } from '../src/lib/nav/project/stages.ts'
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 /** Concatenated sources of a split module, so a check follows the code into its feature files. */
@@ -378,4 +379,19 @@ test('the compact project strip and the project panel derive from one role-filte
     'the strip must not filter on permission alone: project.classes is granted to labelers')
   assert.ok(projectLayoutSrc.includes('const items = projectNavGroups(canProject, projectRole'),
     'the strip must reuse its single items list instead of recomputing it')
+})
+
+// T-479: Versions, Health and Streams live inside their stage as tabs, so the rail lists each
+// destination once. A tab id may never also be a stage id.
+test('every stage tab is a child of its stage', () => {
+  const stages = Object.keys(STAGE_TABS)
+  for (const stage of stages) {
+    assert.ok(STAGE_TABS[stage].length > 1, `${stage} hosts tabs only when there is more than one`)
+    for (const tab of STAGE_TABS[stage]) {
+      assert.ok(!stages.includes(tab.id), `${tab.id} is a tab, not a stage of its own`)
+      assert.ok(tab.perm, `${stage}/${tab.id} must keep the permission its child route gates on`)
+    }
+  }
+  assert.deepEqual(tabsFor('train'), [], 'Train is a destination, not a tab host')
+  assert.deepEqual(stages.sort(), ['dataset', 'deploy'])
 })
