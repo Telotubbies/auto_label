@@ -14,6 +14,7 @@ import {
   BANDS, NO_FILTERS, defaultVariant, filterModels, gib, rowState, type ModelFilters,
 } from './modelRows'
 import InstallProgress from './InstallProgress'
+import AssetsPanel from './AssetsPanel'
 import ModelSheet from './ModelSheet'
 
 const POLL_MS = 2000
@@ -172,8 +173,7 @@ export default function ModelsTab({ ws, host, hostsLoading, hostsError, onRetryH
   return (
     <div className="space-y-3">
       {progress}
-      {/* T-1013 mounts the host assets panel here; the installed row's link lands on it. */}
-      <div id="host-assets" />
+      <AssetsPanel ws={ws} host={host} />
       {!host ? (
         <Card className="p-6">
           <EmptyState title="Pick a host to see what fits."
