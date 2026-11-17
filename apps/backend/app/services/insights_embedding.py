@@ -200,7 +200,7 @@ def _clip_vectors(state: tuple, rows: list) -> list[tuple[Image, np.ndarray]]:
     for row in rows:
         try:
             im = imaging.load(row.thumb or row.path).convert("RGB")
-        except Exception:        # unreadable row: omitted rather than given a fake position
+        except Exception:  # noqa: S112  # unreadable row: omitted rather than given a fake position
             continue
         images.append(im)
         valid.append(row)
@@ -228,7 +228,7 @@ def _clip_features(state: tuple, rows: list) -> list[tuple[Image, np.ndarray]]:
             for row in batch:
                 try:
                     out.extend(_clip_vectors(state, [row]))
-                except Exception:
+                except Exception:  # noqa: S112  # a row that fails even alone is omitted, not faked
                     continue
     return out
 
@@ -238,7 +238,7 @@ def _cv_features(rows: list) -> list[tuple[Image, np.ndarray]]:
     for row in rows:
         try:
             out.append((row, _features(row)))
-        except Exception:        # unreadable row: omitted rather than given a fake position
+        except Exception:  # noqa: S112  # unreadable row: omitted rather than given a fake position
             continue
     return out
 

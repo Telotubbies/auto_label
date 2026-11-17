@@ -365,7 +365,7 @@ def annotations_for(b: Bundle, path: str, W: int, H: int) -> list[tuple[str, dic
                 bb = o.find("bndbox")
                 x1, y1, x2, y2 = (float(bb.find(k).text) for k in ("xmin", "ymin", "xmax", "ymax"))
                 out.append((o.find("name").text, {"kind": "bbox", "x": x1 / W, "y": y1 / H, "w": (x2 - x1) / W, "h": (y2 - y1) / H}))
-        except Exception:
+        except Exception:  # noqa: S110  # one malformed VOC file must not hide the other annotations
             pass
     return out
 

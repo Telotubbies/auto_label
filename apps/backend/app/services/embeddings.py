@@ -85,7 +85,7 @@ def _drop_clip(_state=None) -> None:
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    except Exception:  # noqa: BLE001 - torch missing: nothing was placed on a card
+    except Exception:  # noqa: BLE001, S110  # torch missing: nothing was placed on a card
         pass
 
 

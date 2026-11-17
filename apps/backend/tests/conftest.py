@@ -77,7 +77,7 @@ def pytest_sessionfinish(session, exitstatus):
     try:
         from app.db import engine
         engine.dispose()                 # close pooled SQLite handles or Windows blocks the delete
-    except Exception:
+    except Exception:  # noqa: S110  # an app that never started has no engine to dispose
         pass
     gc.collect()
     for _ in range(20):                  # a worker thread may still be finishing its last write

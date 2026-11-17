@@ -86,7 +86,7 @@ def _load(variant: str, weights: str | None):
         try:
             import torch
             torch.cuda.empty_cache()
-        except Exception:                        # CPU-only installs have nothing to free
+        except Exception:  # noqa: S110  # CPU-only installs have nothing to free
             pass
 
     return scheduler.lease(f"rfdetr|{weights or variant}", VRAM_MB.get(variant, VRAM_MB_DEFAULT), _make, _drop)

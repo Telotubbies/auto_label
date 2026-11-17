@@ -44,7 +44,7 @@ def _jwks_client():
     if _cache["jwks_client"] and now - _cache["ts"] < _CACHE_TTL:
         return _cache["jwks_client"]
     try:
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # noqa: S310  # operator-configured issuer URL, never user input
             f"{ISSUER}/.well-known/openid-configuration", timeout=5
         ) as r:
             cfg = json.loads(r.read())

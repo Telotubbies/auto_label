@@ -103,7 +103,7 @@ def ingest(db: Session, c: Ctx, files: list[tuple[str, bytes]], batch_name: str,
                   created_by=user_id)
     db.add(batch); db.flush()
     known = set(db.scalars(select(Image.sha256).where(Image.project_id == p.id, Image.deleted_at.is_(None))))
-    rng = random.Random()
+    rng = random.Random()  # noqa: S311  # ingest split sampling, not a security decision
     out, dups, annotated, failed = [], 0, 0, []
 
     def class_for(name: str) -> LabelClass:

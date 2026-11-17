@@ -1,0 +1,22 @@
+# gitleaks allowlist for the known test fixtures (T-1303). Every entry names one file, so a real key
+# anywhere else still fails the security job. Rule: a path is added here only with the comment that
+# says what the fake value is, never to silence a finding in product code.
+title = "LabelDesk"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials that exist only to test the encryption and auth paths."
+paths = [
+  '''apps/backend/tests/test_task24_security\.py''',       # "plain-s3-secret": proves connector secrets are encrypted at rest
+  '''apps/backend/tests/test_account\.py''',               # RFC 6238 TOTP test vector from the standard's appendix
+  '''apps/backend/tests/test_mcp_http_transport\.py''',    # "ld_live_train_key_do_not_leak": fake MCP key
+  '''apps/backend/tests/test_mcp_isolation\.py''',         # "ld_test_isolation_key": fake MCP key
+  '''apps/backend/tests/test_mcp_read_tools\.py''',        # "ld_live_s3cret_key_do_not_leak": fake MCP key
+  '''apps/backend/tests/test_mcp_resources\.py''',         # "ld_live_s3cret_key_do_not_leak": fake MCP key
+  '''apps/backend/tests/test_mcp_server\.py''',            # "ld_live_s3cret_key_do_not_leak": fake MCP key
+  '''apps/backend/tests/test_mcp_write_tools\.py''',       # "ld_live_write_s3cret_key_do_not_leak": fake MCP key
+  '''apps/frontend/playwright\.config\.ts''',              # LD_SECRET for the e2e harness, not a deployment secret
+  '''apps/frontend/e2e/journey-auth\.spec\.ts''',          # the J1 journey's throwaway account password
+]

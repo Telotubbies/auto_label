@@ -1,8 +1,9 @@
 # Gates: tools (ruff check + format + ld-task tests), api (ruff check, then the
-# full pytest suite, including the committed OpenAPI document), pipeline (the
-# pipeline tests that ship with the ML code), web (npm ci, build and node tests;
-# the build checks the generated API types), large-files (new data, weights or
-# big blobs), and one `gate` aggregator that branch protection requires.
+# full pytest suite, including the committed OpenAPI document), web (npm ci, the
+# npm audit split, build and node tests; the build checks the generated API
+# types), security (pip-audit, gitleaks and the licence report), large-files (new
+# data, weights or big blobs), and one `gate` aggregator that branch protection
+# requires.
 name: CI
 
 on:
@@ -67,7 +68,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check pytest
       - name: Install API dependencies
         run: python -m pip install --disable-pip-version-check -r "$BACKEND_APP/requirements.txt"
-      - name: Lint API (pyflakes)
+      - name: Lint API (pyflakes + bandit)
         # Pinned to the tools job's version: ruff's default rule set grows between releases.
         run: |
           python -m pip install --disable-pip-version-check ruff==0.17.3
@@ -90,6 +91,12 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ${{ env.FRONTEND_APP }}
         run: npm ci
+      - name: Node CVEs (production blocks; dev prints)
+        # High/critical in a production dependency blocks the merge; the dev tree is noisy, so it prints.
+        working-directory: ${{ env.FRONTEND_APP }}
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm audit --audit-level=high || true
       - name: Build frontend and check the generated API types
         working-directory: ${{ env.FRONTEND_APP }}
         run: npm run build
@@ -99,13 +106,54 @@ jobs:
 
   # The ML pipeline tests moved to Telotubbies/labeldesk-ml with ADR 0004 and run in that repo's CI.
 
+  security:
+    name: security scanners
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ${{ env.BACKEND_APP }}/requirements.txt
+      - name: Install scanners
+        # Pinned for the same reason as ruff: a new pip-audit can change how it resolves the tree.
+        run: python -m pip install --disable-pip-version-check "pip-audit==2.10.1"
+      - name: Python CVEs (pip-audit)
+        # A waiver needs an id, a reason and an expiry date in security/audit-ignore.txt.
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        run: |
+          waivers=""
+          while IFS='|' read -r id _rest; do
+            id="$(printf '%s' "$id" | tr -d '[:space:]')"
+            case "$id" in ""|\#*) continue ;; esac
+            waivers="$waivers --ignore-vuln $id"
+          done < security/audit-ignore.txt
+          python -m pip_audit -r "$BACKEND_APP/requirements.txt" --strict $waivers
+      - name: Licences (unknown or missing blocks)
+        # --no-deps: check_licenses.py reads each requirement's metadata, not the imported tree.
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps -r "$BACKEND_APP/requirements.txt"
+          python tools/check_licenses.py
+      - name: Secrets (gitleaks)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        # Pinned release URL and no Docker: the binary is the whole tool.
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks dir . --redact --no-banner -c .gitleaks.toml
+
   gate:
     name: gate
     # Required check for branch protection. Deliberately has no `paths` filter: a
     # skipped path-filtered workflow leaves a required check "Pending" and blocks
     # the PR, including the PR that reverts a bad merge.
     if: always()
-    needs: [tools, api, web, large-files]
+    needs: [tools, api, web, security, large-files]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -113,7 +161,8 @@ jobs:
         env:
           RESULTS: >-
             ${{ needs.tools.result }} ${{ needs.api.result }}
-            ${{ needs.web.result }} ${{ needs.large-files.result }}
+            ${{ needs.web.result }} ${{ needs.security.result }}
+            ${{ needs.large-files.result }}
         run: |
           for result in $RESULTS; do
             if [ "$result" != "success" ]; then

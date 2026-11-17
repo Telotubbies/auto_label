@@ -1,0 +1,13 @@
+# Licences the owner accepts, one per line (T-1303). Anything else blocks the licence gate.
+# A line is "<licence>  # why" when the exception deserves a sentence.
+MIT
+BSD
+Apache-2.0
+ISC
+MPL-2.0
+0BSD
+CC-BY-4.0
+MIT-CMU
+LGPL          # psycopg2-binary ships "LGPL with exceptions": linked, never vendored
+PSF
+AGPL-3.0      # Ultralytics — deliberate, badge kept (owner rule: keep the license badge)
