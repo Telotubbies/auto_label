@@ -71,14 +71,11 @@ _dry_run = False
 # =============================================================================
 # Config — all paths and model definitions (testable without GPU)
 # =============================================================================
-# Platform-aware repo root: use WSL path on Linux/WSL, Windows path on Windows.
-# This allows the CLI to run on both WSL2 (training/inference) and Windows (dry-run, checks).
-if os.name == "nt":
-    REPO_ROOT = Path(__file__).resolve().parent
-else:
-    REPO_ROOT = Path(__file__).resolve().parent
-SAM_DIR = REPO_ROOT / "ml" / "sam3_auto_label"
-YOLO_DIR = REPO_ROOT / "ml" / "yolo26_ppe"
+# The ML layer's entry point: this file lives in ml/, while data/ stays at the repo root.
+ML_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = ML_ROOT.parent
+SAM_DIR = ML_ROOT / "sam3_auto_label"
+YOLO_DIR = ML_ROOT / "yolo26_ppe"
 RAW_DIR = REPO_ROOT / "data" / "raw"
 SAM_OUTPUTS_DIR = REPO_ROOT / "data" / "sam_outputs_ground_truth"
 PREDICTIONS_DIR = YOLO_DIR / "data" / "predictions"

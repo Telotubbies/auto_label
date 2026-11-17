@@ -82,7 +82,7 @@ any --> cpu : torch==2.5.1+cpu
 - **Do not modify** (`README.md:73`)
 - Imported as `sam3.model_builder`, `sam3.model.sam3_image_processor`, `sam3.eval.postprocessors`, `sam3.perflib.*`
 
-### Parent repo CLI (`pipeline_cli.py`)
+### Parent repo CLI (`ml/pipeline_cli.py`)
 
 | Package | Purpose |
 |---------|---------|

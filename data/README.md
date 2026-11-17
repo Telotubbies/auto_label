@@ -52,7 +52,7 @@ ml/yolo26_ppe/data/                # YOLO format dataset
 Each subfolder = 1 batch of raw images. The folder name is the batch name used in the CLI:
 
 ```bash
-./auto_label.sh --sam --batch blurred
+./ml/auto_label.sh --sam --batch blurred
 ```
 
 Supported file types: `.jpg`, `.png` (other files are ignored)

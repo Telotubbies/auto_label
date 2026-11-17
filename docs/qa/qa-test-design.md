@@ -259,7 +259,7 @@ the `sam3` vendored module requires the WSL/Linux venv.
 ### 2.8 TC-07 + TC-08: YOLO Training (`tests/integration/test_yolo_training.py`)
 
 These tests verify the structure of the training pipeline without running
-actual GPU training. The `MODELS` dict in `pipeline_cli.py` defines the 4
+actual GPU training. The `MODELS` dict in `ml/pipeline_cli.py` defines the 4
 model variants. If the dict changes, training produces the wrong models.
 
 #### TestYOLOTrainingFourModels (6 tests)
@@ -440,7 +440,7 @@ The `conftest.py` provides 5 session-scoped fixtures:
 | Fixture | Why It Must Exist | What Happens Without It |
 | --- | --- | --- |
 | `repo_root` | Every test needs the repo root path. Without a shared fixture, each test computes it independently (code duplication). | Path duplication in every test |
-| `pipeline_cli` | `pipeline_cli.py` is not in a package. It must be imported by adding the repo root to `sys.path`. Without the fixture, each test does this manually. | sys.path manipulation in every test |
+| `pipeline_cli` | `ml/pipeline_cli.py` is not in a package. It must be imported by adding `ml/` to `sys.path`. Without the fixture, each test does this manually. | sys.path manipulation in every test |
 | `config_module` | `config.py` is in `ml/sam3_auto_label/src/`. Same sys.path issue. | Same as above |
 | `prepare_dataset_module` | `01_prepare_dataset.py` starts with a digit. Cannot be imported normally. Must use `importlib.util.spec_from_file_location`. | Cannot import the module at all |
 | `focal_patch_module` | `focal_patch.py` is in `ml/yolo26_ppe/`. Same importlib approach for consistency. | Manual import in every test |

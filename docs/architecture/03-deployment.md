@@ -96,4 +96,4 @@ No Prometheus metrics, no log aggregation, no alerting
 - `Dockerfile:1-77`
 - `docker-compose.yml:1-91`
 - `setup.py:1-405`
-- `auto_label.sh:1-51`
+- `ml/auto_label.sh:1-51`

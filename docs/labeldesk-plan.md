@@ -17,7 +17,7 @@
 | Annotate | react-konva + Zustand | ✅ editor ทำงานแล้ว; เพิ่ม Smart Polygon + approve/reject |
 | Backend | FastAPI | ✅ skeleton; ต้องต่อ pipeline จริง |
 | DB/files | PostgreSQL + MinIO | ⏳ compose profile; `DATABASE_URL` fallback sqlite |
-| GPU jobs | Redis + worker | ⏳ `api/worker.py` → `pipeline_cli.py` / `inference.py` |
+| GPU jobs | Redis + worker | ⏳ `api/worker.py` → `ml/pipeline_cli.py` / `inference.py` |
 | Auth | JWT roles Admin/Labeler/Reviewer (+OIDC ทีหลัง) | ครึ่ง — เพิ่ม roles guard |
 | Deploy | Docker Compose เครื่องเดียว | ⏳ `docker-compose.labeldesk.yml` |
 

@@ -17,7 +17,7 @@ def repo_root() -> Path:
 @pytest.fixture(scope="session")
 def pipeline_cli():
     """Import pipeline_cli as a module (it is not inside a package)."""
-    sys.path.insert(0, str(REPO_ROOT))
+    sys.path.insert(0, str(REPO_ROOT / "ml"))
     import pipeline_cli
     return pipeline_cli
 

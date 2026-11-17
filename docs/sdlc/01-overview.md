@@ -100,7 +100,7 @@ Out of Scope:
 
 ### 2.1 Product Perspective
 
-The system consists of three modules orchestrated by `pipeline_cli.py`:
+The system consists of three modules orchestrated by `ml/pipeline_cli.py`:
 
 ```plantuml {align="center"}
 @startuml
@@ -209,9 +209,9 @@ PREP --> TRAIN : dataset
 
 | Interface | Type | Description |
 | --- | --- | --- |
-| `auto_label.sh` | CLI entry point | Shell wrapper, launches `pipeline_cli.py` |
-| `setup.sh` | Setup script | Detects Python, creates venv, installs deps, downloads checkpoint |
-| `pipeline_cli.py` | Interactive CLI | 3 modes: sam, yolo, pred |
+| `ml/auto_label.sh` | CLI entry point | Shell wrapper, launches `ml/pipeline_cli.py` |
+| `ml/setup.sh` | Setup script | Detects Python, creates venv, installs deps, downloads checkpoint |
+| `ml/pipeline_cli.py` | Interactive CLI | 3 modes: sam, yolo, pred |
 | `ppe_4class.yaml` | Config | 4 PPE classes, per-class thresholds |
 | `production_train.yaml` | Config | YOLO26 training recipe |
 | `mlflow.yaml` | Config | MLflow tracking server |

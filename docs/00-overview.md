@@ -11,7 +11,7 @@ status: "Verified"
 >
 > Covers 3 requirements: (1) SAM 3.1 auto-labeling, (2) YOLO26 training, (3) ground-truth generation
 >
-> **Status**: Verified — verified against actual code in `ml/sam3_auto_label/src/`, `ml/yolo26_ppe/`, `pipeline_cli.py` and the report `ml/yolo26_ppe/reports/final/report.pdf`
+> **Status**: Verified — verified against actual code in `ml/sam3_auto_label/src/`, `ml/yolo26_ppe/`, `ml/pipeline_cli.py` and the report `ml/yolo26_ppe/reports/final/report.pdf`
 
 ---
 
@@ -160,7 +160,7 @@ stop
 @enduml
 ```
 
-> `pipeline_cli.py` has 3 modes: `sam`, `yolo`, `pred` — can be invoked interactively or directly via CLI
+> `ml/pipeline_cli.py` has 3 modes: `sam`, `yolo`, `pred` — can be invoked interactively or directly via CLI
 
 ---
 
@@ -234,7 +234,7 @@ stop
 - `ml/sam3_auto_label/README.md:1-5` — Name and purpose
 - `ml/sam3_auto_label/src/inference.py:347-365` — SAM 3.1 model build
 - `ml/sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) and thresholds
-- `pipeline_cli.py:263-265` — 3 modes (sam, yolo, pred)
+- `ml/pipeline_cli.py:263-265` — 3 modes (sam, yolo, pred)
 - `ml/yolo26_ppe/reports/final/report.pdf` — Full report
 - `ml/yolo26_ppe/reports/inputs/final_eval_results.json` — Metrics for 4 models
 - `ml/yolo26_ppe/reports/metrics/comparison_report.md` — Comparison summary

@@ -59,7 +59,7 @@ class TestCheckpointLocationMatch:
         assert self.EXPECTED_CKPT_DIR in content
 
     def test_pipeline_cli_uses_correct_path(self, repo_root):
-        cli_path = repo_root / "pipeline_cli.py"
+        cli_path = repo_root / "ml" / "pipeline_cli.py"
         content = cli_path.read_text(encoding="utf-8")
         assert self.EXPECTED_CKPT_NAME in content, (
             f"pipeline_cli.py must reference {self.EXPECTED_CKPT_NAME}"

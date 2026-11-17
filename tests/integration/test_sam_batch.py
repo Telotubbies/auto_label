@@ -36,7 +36,7 @@ def _sam3_module_available():
 
 skip_no_checkpoint = pytest.mark.skipif(
     not _sam_checkpoint_exists(Path(__file__).resolve().parent.parent.parent),
-    reason="SAM 3.1 checkpoint not found — run ./setup.sh first",
+    reason="SAM 3.1 checkpoint not found — run ./ml/setup.sh first",
 )
 
 skip_no_sam3 = pytest.mark.skipif(

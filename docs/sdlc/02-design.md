@@ -123,7 +123,7 @@ Design decisions:
 - 2-stage training for all models: Stage 1 (150 epochs) + Stage 2 fine-tune (50 epochs)
 - MLflow is optional (graceful degradation if import fails)
 
-#### 3.2.3 CLI Orchestrator (`pipeline_cli.py`)
+#### 3.2.3 CLI Orchestrator (`ml/pipeline_cli.py`)
 
 | Function | Responsibility |
 | --- | --- |
@@ -239,7 +239,7 @@ Consequences:
 | Date | 2026-09-10 |
 | Deciders | Engineering Team |
 
-Context: `pipeline_cli.py` hardcoded `/opt/sam3_venv/bin/python` and `/mnt/e/02_Projects/auto_label`, breaking on fresh machines.
+Context: `ml/pipeline_cli.py` hardcoded `/opt/sam3_venv/bin/python` and `/mnt/e/02_Projects/auto_label`, breaking on fresh machines.
 
 Decision: Use `Path(__file__).resolve().parent` for repo root and `ml/sam3_auto_label/sam3_venv/` for the venv. Allow `YOLO_PYTHON` env override.
 
@@ -248,7 +248,7 @@ Alternatives:
 - Global venv at `/opt`: Rejected because requires root, not per-project
 
 Consequences:
-- Positive: Works on any machine after `setup.sh`
+- Positive: Works on any machine after `ml/setup.sh`
 - Negative: None identified
 
 ### 3.5 Deployment Architecture
@@ -315,9 +315,9 @@ YOLO --> MOD : write
 
 ```text
 auto_label/
-  auto_label.sh              # Entry point (shell wrapper)
-  setup.sh                   # Setup script (Python detection + venv)
-  pipeline_cli.py            # CLI orchestrator (3 modes)
+  ml/auto_label.sh           # Entry point (shell wrapper)
+  ml/setup.sh                # Setup script (Python detection + venv)
+  ml/pipeline_cli.py         # CLI orchestrator (3 modes)
   ml/sam3_auto_label/
     setup.py                 # venv creation, deps, checkpoint
     requirements.txt         # SAM dependencies
@@ -401,7 +401,7 @@ Run: `python -m pytest tests/` → 75 passed, 1 skipped (TC-01 needs WSL `sam3` 
 | ID | Debt | Severity | Effort |
 | --- | --- | --- | --- |
 | TD-01 | No automated tests (0% coverage) | Critical | Resolved |
-| TD-02 | `pipeline_cli.py` is 1,630 lines (monolith) | Major | Medium |
+| TD-02 | `ml/pipeline_cli.py` is 1,630 lines (monolith) | Major | Medium |
 | TD-03 | YOLO recipe duplicated in 2 files | Major | Low |
 | TD-04 | `inference.py` passes None to NMS when no boxes | Major | Low |
 | TD-05 | O(n^2) oversampling naming in `01_prepare_dataset.py` | Major | Low |

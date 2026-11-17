@@ -9,23 +9,24 @@
 #   - ROCm GPU environment setup (HSA_OVERRIDE_GFX_VERSION for RX 7800 XT)
 #
 # Usage:
-#   ./auto_label.sh                          # interactive mode (dropdowns)
-#   ./auto_label.sh --sam --batch blurred    # direct mode
-#   ./auto_label.sh --yolo --batch blurred --model small_detection
-#   ./auto_label.sh --help
-#   ./auto_label.sh --version
-#   ./auto_label.sh --dry-run --yolo ...     # preview without executing
+#   ./ml/auto_label.sh                          # interactive mode (dropdowns)
+#   ./ml/auto_label.sh --sam --batch blurred    # direct mode
+#   ./ml/auto_label.sh --yolo --batch blurred --model small_detection
+#   ./ml/auto_label.sh --help
+#   ./ml/auto_label.sh --version
+#   ./ml/auto_label.sh --dry-run --yolo ...     # preview without executing
 # =============================================================================
 
 set -e
 
-# Resolve repo root from this script's location (works on any machine).
+# This script lives in ml/; resolve the repo root one level up.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${REPO_ROOT:-$SCRIPT_DIR}"
+ML_ROOT="$SCRIPT_DIR"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 # Prefer the venv created by setup.py (ml/sam3_auto_label/sam3_venv).
 # Fall back to /opt/sam3_venv (legacy path) or system python.
-VENV_PYTHON="${REPO_ROOT}/ml/sam3_auto_label/sam3_venv/bin/python"
+VENV_PYTHON="${SCRIPT_DIR}/sam3_auto_label/sam3_venv/bin/python"
 OPT_PYTHON="/opt/sam3_venv/bin/python"
 if [ -x "$VENV_PYTHON" ]; then
     PYTHON="${YOLO_PYTHON:-$VENV_PYTHON}"
@@ -61,4 +62,4 @@ else
     echo "   Install AMD Adrenalin driver on Windows: https://www.amd.com/en/support"
 fi
 
-exec "$PYTHON" "${REPO_ROOT}/pipeline_cli.py" "$@"
+exec "$PYTHON" "${SCRIPT_DIR}/pipeline_cli.py" "$@"

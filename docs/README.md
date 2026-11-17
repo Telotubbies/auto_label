@@ -160,7 +160,7 @@ The documentation clearly indicates which parts are commonly found in general sy
 | `ml/sam3_auto_label/src/exporters.py` | 11 export formats |
 | `ml/sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
 | `ml/sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
-| `pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
+| `ml/pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
 | `ml/yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
 | `ml/yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |
 | `ml/yolo26_ppe/configs/mlflow.yaml` | MLflow config |

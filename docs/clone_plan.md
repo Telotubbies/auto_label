@@ -51,7 +51,7 @@
 | Routing/Data | react-router v7 + TanStack Query + Zustand (canvas/UI state) |
 | Annotate canvas | **react-konva** — bbox + polygon + edit + zoom/pan + shortcuts + SAM-assist |
 | Backend | `api/` — FastAPI + SQLAlchemy + SQLite (100 users พอ) + JWT auth (roles: admin/annotator/viewer) |
-| Jobs | FastAPI BackgroundTasks → wrap `pipeline_cli.py` / `ml/sam3_auto_label` (SAM batch, YOLO train) |
+| Jobs | FastAPI BackgroundTasks → wrap `ml/pipeline_cli.py` / `ml/sam3_auto_label` (SAM batch, YOLO train) |
 | Serve | dev: vite proxy → uvicorn :8000; prod: nginx static + uvicorn (ทีหลัง) |
 
 ## Folder Structure

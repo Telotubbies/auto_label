@@ -13,21 +13,22 @@
 #      run_pipeline.sh, now auto_label.sh). Extra args are forwarded to the pipeline.
 #
 # Usage:
-#   ./setup.sh                    # full setup, then launch pipeline
-#   ./setup.sh --check-only       # run setup.py --check, do not launch
-#   ./setup.sh -- --sam --batch x # args after "--" go to auto_label.sh
-#   ./setup.sh --no-launch        # setup only, do not launch pipeline
+#   ./ml/setup.sh                    # full setup, then launch pipeline
+#   ./ml/setup.sh --check-only       # run setup.py --check, do not launch
+#   ./ml/setup.sh -- --sam --batch x # args after "--" go to auto_label.sh
+#   ./ml/setup.sh --no-launch        # setup only, do not launch pipeline
 #
 # Requirements: bash 4+ (WSL2, Linux, macOS). On Windows run inside WSL2.
 # =============================================================================
 
 set -euo pipefail
 
-# Resolve repo root from this script's location.
+# This script lives in ml/; the repo root is one level up.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$SCRIPT_DIR"
-SETUP_PY="${REPO_ROOT}/ml/sam3_auto_label/setup.py"
-LAUNCH_SH="${REPO_ROOT}/auto_label.sh"
+ML_ROOT="$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SETUP_PY="${SCRIPT_DIR}/sam3_auto_label/setup.py"
+LAUNCH_SH="${SCRIPT_DIR}/auto_label.sh"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -130,7 +131,7 @@ SETUP_FLAGS=()
 log "Running ml/sam3_auto_label/setup.py ${SETUP_FLAGS[*]:-}"
 echo "-----------------------------------------------------------------------------"
 # shellcheck disable=SC2086
-( cd "$REPO_ROOT/ml/sam3_auto_label" && "$RUNNER_PY" setup.py ${SETUP_FLAGS[*]:-} )
+( cd "$SCRIPT_DIR/sam3_auto_label" && "$RUNNER_PY" setup.py ${SETUP_FLAGS[*]:-} )
 SETUP_RC=$?
 echo "-----------------------------------------------------------------------------"
 
@@ -150,7 +151,7 @@ log "Setup complete."
 # ---------------------------------------------------------------------------
 if [ "$LAUNCH" -ne 1 ]; then
     log "--no-launch set: skipping pipeline launch."
-    log "Run ./auto_label.sh manually when ready."
+    log "Run ./ml/auto_label.sh manually when ready."
     exit 0
 fi
 

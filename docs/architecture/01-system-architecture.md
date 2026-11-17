@@ -9,7 +9,7 @@ status: "Verified"
 
 > Architecture overview — covers 3 requirements (SAM auto-label, YOLO26 train, ground truth)
 >
-> **Status**: Verified — cross-checked against `ml/sam3_auto_label/src/`, `ml/yolo26_ppe/`, `pipeline_cli.py`
+> **Status**: Verified — cross-checked against `ml/sam3_auto_label/src/`, `ml/yolo26_ppe/`, `ml/pipeline_cli.py`
 
 ---
 
@@ -167,7 +167,7 @@ REPORT --> PDF
 
 ## pipeline_cli.py — 3 Modes
 
-> Source: `pipeline_cli.py:263-265, 550-552, 834-852`
+> Source: `ml/pipeline_cli.py:263-265, 550-552, 834-852`
 
 ```plantuml {align="center"}
 @startuml
@@ -250,9 +250,9 @@ EXP is "Export img N+2"
 
 ## References
 
-- `pipeline_cli.py:263-265` — 3 modes
-- `pipeline_cli.py:550-552` — mode names
-- `pipeline_cli.py:834-852` — mode selection
+- `ml/pipeline_cli.py:263-265` — 3 modes
+- `ml/pipeline_cli.py:550-552` — mode names
+- `ml/pipeline_cli.py:834-852` — mode selection
 - `ml/sam3_auto_label/src/config.py:70-125` — `Config` dataclass
 - `ml/sam3_auto_label/src/inference.py:347-365` — `build_model()`
 - `ml/sam3_auto_label/src/batch_segment.py:130-435` — `main()` loop
