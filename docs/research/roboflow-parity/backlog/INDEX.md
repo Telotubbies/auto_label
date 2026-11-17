@@ -2320,3 +2320,182 @@ release note.
 - No card adds a dependency. Playwright, axe and Node's test runner are already installed.
 - **Ollama appears nowhere**; the harness cannot reach it and no card names it.
 
+## 14. Wave O — security, monitoring, performance (appended 2026-11-17)
+
+Owner directive 2026-11-17: "after UX/UI, the priorities are **security, monitoring, performance
+testing**", planned for the whole product — FastAPI backend, React frontend, job worker, MCP server and
+the future inference hub — with small, proven, self-hostable tools a single machine can run.
+
+Source of truth, one per area:
+
+- [`docs/ops/SECURITY-PLAN.md`](../../../ops/SECURITY-PLAN.md) — threat model shape, ASVS L2 / API Top 10
+  gaps, the gate's block/warn split, headers, rate limits, audit coverage.
+- [`docs/ops/MONITORING-PLAN.md`](../../../ops/MONITORING-PLAN.md) — request id and JSON logs, health and
+  readiness, the full metric list, optional traces, frontend telemetry, the System health page, the
+  Prometheus/Grafana profile and four alerts.
+- [`docs/ops/PERFORMANCE-PLAN.md`](../../../ops/PERFORMANCE-PLAN.md) — budgets, the four load scenarios,
+  the committed baseline, the 10 % regression rule and the nightly job that is not in the gate.
+
+**25 cards · 65 agent-hours · ids `T-1300`–`T-1324`**, every card 2–3 h, tests first. Two new roles:
+**R12 SRE** (monitoring, dashboards, alerts, runbooks) and **R13 performance engineer** (`tools/perf/`,
+budgets, baseline, nightly report). Both are read-only outside their own files. No card adds a product
+feature; three add a dependency (`prometheus-client`, `web-vitals`, `mcp`-style OTel set behind a flag)
+and one adds a dev-only tool (`locust` in `tools/perf/requirements-perf.txt`).
+
+### O1 Security (department R7 and up)
+
+**8 cards · 21.0 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-1303 | Security scanners in the gate: SAST, CVEs, secrets, licences | 3.0 | yes | `none` | `tools/check_licenses.py` |
+| T-1304 | Cross-workspace IDOR and auth-bypass matrix, in the gate | 3.0 | yes | `none` | `apps/backend/tests/test_sec_idor.py` |
+| T-1305 | Injection, path traversal and SSRF: one adversarial file | 3.0 | yes | `none` | `apps/backend/tests/test_sec_injection.py` |
+| T-1306 | The application threat model (STRIDE, eleven boundaries) | 3.0 | yes | `none` | `docs/ops/THREAT-MODEL.md` |
+| T-1307 | OWASP ASVS L2 and API Top 10: every row mapped | 2.5 | yes | `none` | `docs/ops/ASVS-GAPS.md` |
+| T-1308 | Security headers everywhere, and a closed `/api/metrics` | 2.0 | yes | `none` | `apps/backend/tests/test_sec_headers.py` |
+| T-1309 | Rate limits for every route class | 2.0 | yes | `none` | `apps/backend/tests/test_sec_ratelimit.py` |
+| T-1310 | Close the audit-log holes | 2.5 | yes | `none` | `apps/backend/tests/test_audit_coverage.py` |
+
+### O2 Monitoring and observability
+
+**10 cards · 26.5 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-1300 | One request id, one JSON log line, browser to API to worker | 3.0 | yes | `none` | `apps/backend/app/logging_setup.py` |
+| T-1301 | `/healthz` and `/readyz`, and a Compose that waits for them | 2.0 | no | `none` | `apps/backend/app/routers/health.py` |
+| T-1302 | `/api/metrics`: request rate, errors and latency percentiles | 3.0 | yes | `none` | `apps/backend/app/metrics.py` |
+| T-1311 | Queue, job, worker, GPU and disk metrics | 3.0 | no | `none` | `apps/backend/tests/test_metrics_system.py` |
+| T-1312 | Optional OpenTelemetry traces behind `LD_OTEL=1` | 2.5 | no | `none` | `apps/backend/app/tracing.py` |
+| T-1313 | Frontend errors and web vitals, sent to the API | 3.0 | yes | `none` | `apps/backend/app/routers/telemetry.py` |
+| T-1314 | Workspace system-health endpoint | 2.5 | yes | `none` | `apps/backend/app/routers/system.py` |
+| T-1315 | System health page (Liquid Glass) | 2.5 | no | `none` | `apps/frontend/src/features/system/SystemHealth.tsx` |
+| T-1316 | Prometheus and Grafana in an off-by-default Compose profile | 2.0 | yes | `none` | `deploy/prometheus/prometheus.yml` |
+| T-1317 | Four alert rules, one checker, one runbook each | 3.0 | yes | `none` | `apps/backend/app/services/system_check.py` |
+
+### O3 Performance testing
+
+**7 cards · 17.5 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-1318 | Performance budgets in one machine-readable file | 2.0 | no | `none` | `docs/ops/perf/budgets.json` |
+| T-1319 | Seeded 10k fixture and the four load scenarios | 3.0 | no | `none` | `tools/perf/seed.py` |
+| T-1320 | First baseline, and `compare.py` with the 10 % rule | 2.5 | no | `none` | `tools/perf/compare.py` |
+| T-1321 | Frontend timing gate: LCP, INP, CLS on four pages | 2.5 | no | `none` | `apps/frontend/e2e/perf.spec.ts` |
+| T-1322 | Bundle budget: a ceiling per chunk in the existing build | 2.0 | no | `none` | `apps/frontend/scripts/check-bundle.mjs` |
+| T-1323 | N+1 query guard in tests, slow-statement log in production | 3.0 | no | `none` | `apps/backend/tests/test_perf_queries.py` |
+| T-1324 | Nightly perf workflow and the report artefact | 2.5 | no | `none` | `.github/workflows/nightly-perf.yml` |
+
+### Order and dependencies
+
+Cheapest, highest value first — the first five cards are the ones that make everything else measurable
+and are worth merging before any other wave-O work starts.
+
+| # | Card | Needs before review | Why here |
+| --- | --- | --- | --- |
+| 1 | T-1300 | none | the id every other signal joins on |
+| 2 | T-1301 | T-1300 (its 503 line is a log line) | two routes, no schema, unblocks Compose health |
+| 3 | T-1302 | T-1300 (middleware seam) | the registry T-1311 and T-1313 extend |
+| 4 | T-1303 | none (can run in parallel with 1–3) | turns the gate red once, then keeps it honest |
+| 5 | T-1304 | none | proves tenancy before any new route is added |
+| 6 | T-1305 | T-1304 (shared fixture shape) | the other half of the adversarial surface |
+| 7 | T-1306 | T-1303 (scanner evidence) | docs record what the scanners found |
+| 8 | T-1307 | T-1303, T-1306 | maps standards onto the cards above |
+| 9 | T-1308 | T-1302 (`/api/metrics` exists) | closes the surface 1302 opened |
+| 10 | T-1309 | T-1300, T-1308 | 429s need the id and the header set |
+| 11 | T-1310 | none | six audit calls, independent |
+| 12 | T-1311 | T-1302 | extends the registry |
+| 13 | T-1313 | T-1300, T-1302 | counters exist before the client posts |
+| 14 | T-1314 | T-1301, T-1311 | the data the page shows |
+| 15 | T-1315 | T-1314 | the page itself |
+| 16 | T-1316 | T-1302, T-1311 | the series the dashboard queries |
+| 17 | T-1317 | T-1311, T-1316 optional | alerts read series, not the dashboard |
+| 18 | T-1312 | T-1300 | optional; can slip past the wave |
+| 19 | T-1318 | none | budgets before any measurement |
+| 20 | T-1319 | T-1318 | scenarios report against the classes |
+| 21 | T-1323 | none (parallel with T-1319) | query counts are independent of load |
+| 22 | T-1322 | T-1318 | reads the bundle section |
+| 23 | T-1320 | T-1319 | the first real run |
+| 24 | T-1321 | T-1319, T-1313, T-1318 | needs the seeded API and the app's vitals |
+| 25 | T-1324 | T-1319, T-1320, T-1321, T-1322 | runs everything and writes the report |
+
+Hard sequencing rules:
+
+- **T-1300 before T-1302 before T-1311/T-1313.** All three add to one metrics module; a parallel branch
+  would conflict on the same file with no shared registry line to keep.
+- **T-1303 is merged before T-1309.** The `S` rules must be clean before a rate-limit refactor touches the
+  same request path, or the ignore list becomes a hiding place.
+- **T-1304 and T-1305 do not edit product code** except a one-line fix when a real defect is found; that
+  fix is named in the report and R7 reviews it.
+- **T-1317 does not depend on T-1316.** Alerts must work on a deployment that never starts Prometheus.
+- **No perf card enters the 15-minute gate** except T-1322 (0.3 s) and the two files from T-1323 (~10 s).
+  T-1321 and T-1324 are nightly/dispatch only.
+- **Generated pair:** every card that adds a route regenerates `apps/backend/openapi.json` and
+  `apps/frontend/src/lib/api-types.gen.ts`; never hand-merged (§4c rule 2).
+
+### Wave O file ownership
+
+Only shared files are listed; every other path is exclusive to one card. Merge order = id order.
+
+| Shared file | Cards that touch it, in merge order |
+| --- | --- |
+| `apps/backend/app/main.py` | T-1300, T-1301, T-1302, T-1308, T-1309, T-1312 |
+| `apps/backend/app/config.py` | T-1302, T-1308, T-1312, T-1313, T-1317, T-1323 |
+| `apps/backend/app/metrics.py` | T-1302, T-1308, T-1311, T-1313 |
+| `apps/backend/app/routers/__init__.py` | T-1301, T-1313, T-1314 (one `ROUTERS` line each) |
+| `apps/backend/app/routers/health.py` | T-1301, T-1308 (the CSP report route may live here) |
+| `apps/backend/app/worker.py` | T-1300, T-1311, T-1312, T-1317 |
+| `apps/backend/app/deps.py` | T-1300 (context values), T-1309 (`request.state.user_id`) |
+| `apps/backend/requirements.txt` | T-1302 (`prometheus-client`), T-1312 (OTel trio) |
+| `apps/backend/app/routers/auth.py`, `images.py`, `projects.py` | T-1310 only in wave O (hot files from waves B/M: rebase last, one hunk) |
+| `apps/backend/tests/conftest.py` | T-1323 (one autouse fixture; T-056 owns the file) |
+| `apps/frontend/src/lib/api/client.ts` | T-1300 |
+| `apps/frontend/src/main.tsx`, `App.tsx` | T-1313 |
+| `apps/frontend/src/routes/workspace.routes.tsx` | T-1315 |
+| `apps/frontend/src/lib/nav/workspace/footer.ts`, `lib/nav/registry.ts` | T-1315 (one line each) |
+| `apps/frontend/src/lib/types.ts` | T-1315 (additive) |
+| `apps/frontend/package.json` | T-1313 (`web-vitals`), T-1321 (`perf` script), T-1322 (`budget` script) |
+| `apps/frontend/playwright.config.ts` | T-1321 (one `perf` project) |
+| `apps/frontend/vite.config.ts` | T-1322 (`build.manifest = true`) |
+| `.github/workflows/ci.yml` | T-1303 (`security` job + gate entry), T-1322 (one comment line) |
+| `ruff.toml` | T-1303 (`select`, `per-file-ignores`) |
+| `deploy/docker-compose.yml` | T-1301 (healthcheck), T-1312 (OTel env), T-1316 (two services), T-1317 (alert env) |
+| `deploy/.env.example` | T-1312, T-1316, T-1317 |
+| `docs/DEPLOY.md` | T-1316 (monitoring section), T-1323 (slow-query paragraph) |
+| `tools/tests/test_docs_ops.py` | T-1306 (creates), T-1307 (three appended cases) |
+| `apps/backend/openapi.json` + `apps/frontend/src/lib/api-types.gen.ts` | every card with a route; generated together |
+
+Hot-file rules from §4c apply. `main.py` is the busiest file in this wave (six cards, every edit a line
+or a small block); merge in id order, and leave the middleware order exactly as the monitoring plan
+states it: headers → request id → rate limit → metrics → routes.
+
+### Wave O completeness
+
+- Cards: **25**, ids `T-1300`–`T-1324`, unique and contiguous, mean **2.6 h**, max **3 h**.
+- R7 `yes`: **14** cards (T-1300, T-1302, T-1303, T-1304, T-1305, T-1306, T-1307, T-1308, T-1309,
+  T-1310, T-1313, T-1314, T-1316, T-1317).
+- Every card has a Problem, a Design, exclusive and shared Files, tests to write first, and acceptance
+  criteria that name the failure it prevents.
+- New runtime dependencies: `prometheus-client` (T-1302), `web-vitals` (T-1313), the OTel trio behind
+  `LD_OTEL` (T-1312). New dev-only tool: `locust` (T-1319, in `tools/perf/requirements-perf.txt`).
+  Nothing else.
+- No card adds a database table or a migration. T-1309 and T-1310 change runtime behaviour and say so.
+- Self-hostable throughout: Prometheus, Grafana, gitleaks, pip-audit and locust all run on one machine;
+  the monitoring profile is off by default; no hosted APM, no telemetry leaving the deployment.
+- No card starts, uses or downloads anything Ollama-related; the inference-hub boundary is referenced
+  from T-1306, not re-planned.
+
+### Owner decisions that gate this wave
+
+1. **Security (SECURITY-PLAN §7):** key expiry, AGPL warn-vs-block, the custom-role divergence, zip
+   uploads, Dependabot, and `/metrics` staying internal.
+2. **Monitoring (MONITORING-PLAN §7):** alert recipient, who sees the System health page, retention,
+   Prometheus rules vs the in-product checker, log rotation, Grafana exposure, trace backend.
+3. **Performance (PERFORMANCE-PLAN §7):** a self-hosted runner for the strict 10 % nightly, the ratchet
+   policy, where the nightly runs, job-throughput targets, the `recharts` removal, the real concurrency
+   profile, report retention.
+
+Until 1 is answered, T-1303 ships with AGPL as a warning and CVEs blocking; until 3 is answered, T-1324
+runs on a shared runner with the 25 % allowance and prints which threshold it used.
