@@ -67,7 +67,7 @@ def build(host: dict, engines: list[dict], inventory: dict | None) -> dict:
     ``host`` is the host row: its id identifies the plan and its ``online`` flag decides whether an
     install may be planned at all. Unknown ids, versions and runtimes raise ``InvalidSelection``.
     """
-    free = (inventory or {}).get("disk", {}).get("models_free_gb")
+    free = ((inventory or {}).get("disk") or {}).get("models_free_gb")
     steps, blocked, warnings = [], [], []
     for choice in engines:
         try:
