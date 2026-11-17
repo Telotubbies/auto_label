@@ -12,6 +12,8 @@ queue precision becomes the feedback statistic. This module is pure; the cached 
 storage live in ``suspect_queue``.
 """
 
+from .boxes import box_iou
+
 MATCH_IOU = 0.5
 SHIFT_IOU = 0.3
 KINDS = ("wrong_class", "shifted_box", "extra_box")
@@ -40,14 +42,6 @@ def _predictions(predictions: list[dict], width: int, height: int) -> list[tuple
     return out
 
 
-def _iou(a: tuple, b: tuple) -> float:
-    x1, y1 = max(a[0], b[0]), max(a[1], b[1])
-    x2, y2 = min(a[0] + a[2], b[0] + b[2]), min(a[1] + a[3], b[1] + b[3])
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    union = a[2] * a[3] + b[2] * b[3] - inter
-    return inter / union if union > 0 else 0.0
-
-
 def score_image(
     annotations: list[dict],
     predictions: list[dict],
@@ -71,7 +65,7 @@ def score_image(
             continue
         best, best_iou = None, -1.0
         for norm, raw in preds:
-            iou = _iou(truth, norm)
+            iou = box_iou(truth, norm)
             if iou > best_iou:
                 best, best_iou = raw, iou
         own = _name(class_names.get(ann.get("classId")))
