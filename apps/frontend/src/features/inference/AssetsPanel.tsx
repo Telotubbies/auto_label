@@ -150,7 +150,7 @@ export default function AssetsPanel({ ws, host }: { ws: string; host: InferenceH
                 <caption className="sr-only">Models installed on {host.host}, what they take and when the host saw them</caption>
                 <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                   <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">Model</th>
+                    <th scope="col" className="sticky left-0 z-10 bg-muted/60 px-3 py-2 font-medium">Model</th>
                     <th scope="col" className="px-3 py-2 font-medium">Variant</th>
                     <th scope="col" className="whitespace-nowrap px-3 py-2 font-medium">Size</th>
                     <th scope="col" className="whitespace-nowrap px-3 py-2 font-medium">Installed</th>
@@ -162,7 +162,7 @@ export default function AssetsPanel({ ws, host }: { ws: string; host: InferenceH
                     const variant = variantOf(row)
                     return (
                       <tr key={`${row.id}/${row.variant ?? ''}`} className="border-t">
-                        <td className="px-3 py-2.5 font-medium">{nameOf(row)}</td>
+                        <td className="sticky left-0 bg-card px-3 py-2.5 font-medium">{nameOf(row)}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">{labelOf(row, variant) || 'unknown'}</td>
                         <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">{gib(row.bytes)}</td>
                         {/* The host's file mtime, as it reported it; the UI never invents a date. */}

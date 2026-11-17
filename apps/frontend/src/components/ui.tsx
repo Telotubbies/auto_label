@@ -51,10 +51,24 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
 }
 
 export function Tabs({ tabs, active, onChange }: { tabs: { id: string; label: ReactNode }[]; active: string; onChange: (id: string) => void }) {
+  const base = useId()
+  const idOf = (id: string) => `${base}-tab-${id}`
+  // ARIA tabs pattern: one tab stop for the bar, the arrows (and Home/End) move between tabs.
+  const move = (e: React.KeyboardEvent, index: number) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+      : step ? (index + step + tabs.length) % tabs.length : -1
+    if (next < 0) return
+    e.preventDefault()
+    onChange(tabs[next].id)
+    document.getElementById(idOf(tabs[next].id))?.focus()
+  }
   return (
-    <div className="flex border-b">
-      {tabs.map((t) => (
-        <button key={t.id} onClick={() => onChange(t.id)}
+    <div role="tablist" className="flex border-b">
+      {tabs.map((t, index) => (
+        <button key={t.id} type="button" role="tab" id={idOf(t.id)}
+          aria-selected={active === t.id} tabIndex={active === t.id ? 0 : -1}
+          onClick={() => onChange(t.id)} onKeyDown={(e) => move(e, index)}
           className={cn('flex items-end gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors cursor-pointer',
             active === t.id ? 'border-primary font-medium text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
           {t.label}
@@ -104,17 +118,46 @@ type ModalProps = {
   | { title?: undefined; 'aria-label': string }
 )
 
+/** Everything a dialog can hold that takes a Tab; a disabled control is not one of them. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), '
+  + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+const focusable = (root: HTMLElement | null) =>
+  Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
+
 export function Modal({ open, onClose, title, children, wide, 'aria-label': ariaLabel }: ModalProps) {
   const titleId = useId()
+  const root = useRef<HTMLDivElement>(null)
+  const restoreTo = useRef<HTMLElement | null>(null)
+  // PLAN §4.4: the dialog takes focus on open, gives it back to its trigger on close.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [onClose])
+    if (!open) return
+    restoreTo.current = document.activeElement as HTMLElement | null
+    root.current?.querySelector<HTMLElement>('[role="dialog"]')?.focus()
+    return () => restoreTo.current?.focus?.()
+  }, [open])
+  // Tab cycles inside the dialog; Escape closes it.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key !== 'Tab') return
+      const items = focusable(root.current)
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (!root.current?.contains(active)) { e.preventDefault(); first.focus() }
+      else if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
   if (!open) return null
   return (
-    <div className="anim-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-scrim/40" onMouseDown={onClose}>
-      <Glass strength="overlay" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : ariaLabel} className={cn('anim-modal relative my-8 w-full rounded-2xl text-popover-foreground shadow-2xl', wide ? 'max-w-5xl' : 'max-w-lg')} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
+    <div ref={root} className="anim-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-scrim/40" onMouseDown={onClose}>
+      <Glass strength="overlay" role="dialog" aria-modal="true" tabIndex={-1} aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : ariaLabel} className={cn('anim-modal relative my-8 w-full rounded-2xl text-popover-foreground shadow-2xl focus:outline-none', wide ? 'max-w-5xl' : 'max-w-lg')} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
         <button onClick={onClose} aria-label="Close" className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:bg-accent cursor-pointer"><X className="h-5 w-5" /></button>
         {title && <div id={titleId} className="px-6 pt-5 text-xl font-semibold">{title}</div>}
         <div className="p-6">{children}</div>

@@ -8562,7 +8562,7 @@
     },
     "/api/ws/{ws}/inference/catalog": {
       "get": {
-        "description": "Engine pins and GPU presets: the Engines tab and the calculator read this one list.",
+        "description": "Engine pins and GPU presets: the Engines tab and the calculator read this one list.\n\nPLAN §12.5 lets any workspace member open the Calculator, and its card picker needs the GPU\npresets (T-1110 row 14). The list is static catalogue data with no host, no argv and no digest\nin it, so it is read-only for every member of the workspace; installs and downloads stay admin.",
         "operationId": "catalog_api_ws__ws__inference_catalog_get",
         "parameters": [
           {

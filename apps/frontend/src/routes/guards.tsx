@@ -92,11 +92,19 @@ export function WorkspaceHome() {
   return target ? <Navigate to={`/${ws}/${target}`} replace /> : <Home />
 }
 
-export function Gate({ min, children }: { min: Role; children: React.ReactNode }) {
+/**
+ * Workspace role gate. `min` keeps the rank rule ("admin or higher"); `roles` names the exact
+ * audience for a page that is not a rank — T-1110 row 14 opens the read-only Calculator to owner,
+ * admin and member, and to nobody below (an annotator outranks nothing here, it is simply not
+ * named).
+ */
+export function Gate(props: { children: React.ReactNode }
+  & ({ min: Role; roles?: never } | { roles: Role[]; min?: never })) {
   const can = useApp((s) => s.can)
   const role = useApp((s) => s.role)
   if (!role) return null
-  return can(min) ? <>{children}</> : <Navigate to=".." replace />
+  const allowed = props.roles ? props.roles.includes(role) : can(props.min)
+  return allowed ? <>{props.children}</> : <Navigate to=".." replace />
 }
 
 /** Project routes gate on the effective project permission, not the workspace rank (I7). */

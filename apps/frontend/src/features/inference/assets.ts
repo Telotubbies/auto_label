@@ -15,9 +15,10 @@ export type InventoryLike = {
 /** The host said nothing about its models; distinct from a host that said it has none. */
 export const NO_INVENTORY = 'This host has not reported what it has installed.'
 export const NOTHING_INSTALLED = 'Nothing installed yet. Download a model from the catalogue.'
-export const LOW_DISK = 'Under 10% free. Remove a model or raise `LD_MODELS_MAX_GB`.'
+export const LOW_DISK = 'Under 10 GB or 10% free. Remove a model to make room.'
 
-const LOW = 0.1
+const LOW_SHARE = 0.1
+const LOW_GB = 10
 const ENGINE_NAME: Record<string, string> = {
   ollama: 'Ollama', vllm: 'vLLM', llamacpp: 'llama.cpp', sglang: 'SGLang',
   tensorrtllm: 'TensorRT-LLM', onnxruntime: 'ONNX Runtime GenAI', triton: 'Triton Inference Server',
@@ -36,10 +37,11 @@ export const diskPct = (disk: DiskLike) => {
   return share === null ? null : Math.round(share * 100)
 }
 
-/** Under 10% free is the warning state; exactly 10% is not. */
+/** PLAN §9: under 10 GB free, or under 10% of the disk. Exactly 10 of either is not "under". */
 export const lowDisk = (disk: DiskLike) => {
+  const free = disk?.models_free_gb
   const share = freeShare(disk)
-  return share !== null && share < LOW
+  return share !== null && typeof free === 'number' && (free < LOW_GB || share < LOW_SHARE)
 }
 
 /** Largest first: disk pressure is the reason this panel exists. A missing size sorts last. */

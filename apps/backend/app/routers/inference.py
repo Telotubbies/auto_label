@@ -43,8 +43,12 @@ def hosts(c: Ctx = Depends(in_scope)):
 
 @router.get("/catalog")
 def catalog(c: Ctx = Depends(in_scope)):
-    """Engine pins and GPU presets: the Engines tab and the calculator read this one list."""
-    inference_access.require_admin(c)
+    """Engine pins and GPU presets: the Engines tab and the calculator read this one list.
+
+    PLAN §12.5 lets any workspace member open the Calculator, and its card picker needs the GPU
+    presets (T-1110 row 14). The list is static catalogue data with no host, no argv and no digest
+    in it, so it is read-only for every member of the workspace; installs and downloads stay admin.
+    """
     started = time.perf_counter()
     body = inference_catalog.public_catalog()
     log.info("inference.catalog ws=%s role=%s outcome=ok engines=%d gpus=%d ms=%.1f",

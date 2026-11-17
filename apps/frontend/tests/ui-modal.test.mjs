@@ -22,3 +22,15 @@ test('test_modal_takes_an_aria_label_when_it_has_no_title', () => {
   assert.match(ui, /title\?: undefined;\s*'aria-label': string/,
     'the type requires aria-label when title is absent, so tsc catches an unnamed dialog')
 })
+
+// T-1110 (row 3 of docs/research/inference-hub/ui-qa.md): PLAN §4.4 requires a dialog to take
+// focus, keep Tab inside it, and give focus back to the control that opened it. Source-checked for
+// the three mechanisms; e2e/inference-hub.spec.ts presses the keys and reads activeElement.
+test('test_modal_traps_focus_and_gives_it_back', () => {
+  assert.match(ui, /document\.activeElement/, 'the element that opened the dialog is remembered')
+  assert.match(ui, /restore\?\.\(\)|restoreTo\.current\?\.focus/, 'and focused again when it closes')
+  assert.match(ui, /\[role="dialog"\]/, 'the panel itself takes focus on open')
+  assert.match(ui, /tabIndex=\{-1\}/, 'a panel that takes focus must be focusable programmatically')
+  assert.match(ui, /e\.key !== 'Tab'/, 'Tab is intercepted, so focus cannot leave the dialog')
+  assert.match(ui, /focusable\(/, 'the cycle walks the controls the dialog actually shows')
+})

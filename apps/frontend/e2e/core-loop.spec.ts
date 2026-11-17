@@ -58,7 +58,7 @@ test('core loop: sign in → project → upload → annotate → version → tra
     await area.waitFor({ state: 'visible' })
     await area.locator('canvas').first().waitFor({ state: 'visible' })
 
-    await page.getByRole('button', { name: 'Classes' }).click()
+    await page.getByRole('tab', { name: 'Classes' }).click()
     await page.getByTestId('class-option').filter({ hasText: 'helmet' }).first().click()
     await page.getByTestId('tool-bbox').click()
 
@@ -71,14 +71,14 @@ test('core loop: sign in → project → upload → annotate → version → tra
     await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.35)
     await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.6)
 
-    await page.getByRole('button', { name: 'Objects' }).click()
+    await page.getByRole('tab', { name: 'Objects' }).click()
     await expect(page.getByTestId('object-row')).toHaveCount(1)
     await expect(page.getByTestId('object-row').first()).toContainText('helmet')
     expect((await saved).ok()).toBe(true)
 
     await page.reload()
     await page.getByTestId('canvas-area').waitFor({ state: 'visible' })
-    await page.getByRole('button', { name: 'Objects' }).click()
+    await page.getByRole('tab', { name: 'Objects' }).click()
     await expect(page.getByTestId('object-row')).toHaveCount(1)
     await expect(page.getByTestId('object-row').first()).toContainText('helmet')
   })

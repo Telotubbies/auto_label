@@ -123,7 +123,7 @@ def test_public_catalog_hides_the_install_argv_and_digest():
         assert row["source_url"] in public["sources"]
 
 
-def test_catalog_is_admin_only_and_flag_gated(admin, labeler):
+def test_catalog_is_flag_gated_and_open_to_members(admin, labeler):
     assert admin.get(CATALOG).status_code == 404          # flag off by default
     assert admin.put(f"/api/ws/{WS}/flags/{FLAG}", json={"enabled": True}).status_code == 200
     r = admin.get(CATALOG)
@@ -131,6 +131,11 @@ def test_catalog_is_admin_only_and_flag_gated(admin, labeler):
     body = r.json()
     assert len(body["engines"]) == len(cat.ENGINES)
     assert len(body["gpus"]) == 11
-    assert labeler.get(CATALOG).status_code == 403
+    # T-1110 row 14 / PLAN §12.5: the catalogue is static data with no host in it, and the member's
+    # read-only calculator needs the GPU presets. The install and download routes stay admin-only.
+    member = labeler.get(CATALOG)
+    assert member.status_code == 200
+    assert "argv" not in member.text and "sha256:" not in member.text
     assert admin.put(f"/api/ws/{WS}/flags/{FLAG}", json={"enabled": False}).status_code == 200
     assert admin.get(CATALOG).status_code == 404
+    assert labeler.get(CATALOG).status_code == 404          # the flag still closes it
