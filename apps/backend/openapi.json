@@ -8737,6 +8737,173 @@
         ]
       }
     },
+    "/api/ws/{ws}/inference/jobs": {
+      "get": {
+        "description": "The workspace's engine jobs still on the wire, newest first, capped at 20.",
+        "operationId": "active_jobs_api_ws__ws__inference_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "const": "active",
+              "default": "active",
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Active Jobs",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/jobs/{jid}": {
+      "get": {
+        "description": "One job with its phase, log and the engines it finished, so a reload shows the same card.",
+        "operationId": "job_detail_api_ws__ws__inference_jobs__jid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "title": "Jid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Job Detail",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/jobs/{jid}/cancel": {
+      "post": {
+        "description": "Ask a running job to stop; a queued job no worker will claim is cancelled outright.\n\nTerminal rows and a job already cancelling are left alone, so the button is idempotent and the\ncard can keep reading ``Cancelling…`` until the worker acknowledges.",
+        "operationId": "cancel_job_api_ws__ws__inference_jobs__jid__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jid",
+            "required": true,
+            "schema": {
+              "title": "Jid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Job",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
     "/api/ws/{ws}/invites": {
       "post": {
         "operationId": "invite_api_ws__ws__invites_post",

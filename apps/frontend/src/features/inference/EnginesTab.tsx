@@ -3,8 +3,8 @@
  * confirm. The host picker lives in the hub header (Models and Segmentation share it); this panel only
  * consumes the chosen host and clears its ticks when that host changes.
  */
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, MoreHorizontal } from 'lucide-react'
 import { Glass } from '@/components/glass'
 import { Button, Card, Dropdown, EmptyState, Select, Spinner } from '@/components/ui'
@@ -15,6 +15,7 @@ import {
   changeHost, footerCopy, rowStatusCopy, selectable, toggle, totals, type Selection,
 } from './engineRows'
 import EngineSheet from './EngineSheet'
+import InstallProgress from './InstallProgress'
 
 const WORKER = 'labeldesk-worker --kinds train,autolabel,engine_apply,model_pull'
 const TONE: Record<EngineStatus, string> = {
@@ -46,6 +47,7 @@ export default function EnginesTab({ ws, host, hostsLoading, hostsError, onRetry
   onRetryHosts: () => void
 }) {
   const hostId = host?.id ?? ''
+  const qc = useQueryClient()
   const engines = useQuery({
     queryKey: ['inference-engines', ws, hostId],
     enabled: !!hostId,
@@ -83,23 +85,37 @@ export default function EnginesTab({ ws, host, hostsLoading, hostsError, onRetry
     setQueued((current) => new Set([...current, ...ids]))
     setQueuedOn(host?.host ?? jobId)
     setSel((current) => ({ ...current, selected: new Set(), notice: null }))
+    // The job card polls the active list; a fresh job has to appear without a page reload.
+    void qc.invalidateQueries({ queryKey: ['inference-jobs', ws] })
   }
 
+  // A finished job changes the host's inventory and this table's status column, so both refetch.
+  const settled = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['inference-engines', ws, hostId] })
+    void qc.invalidateQueries({ queryKey: ['inference-hosts', ws] })
+  }, [qc, ws, hostId])
+
+  const progress = <InstallProgress ws={ws} onSettled={settled} />
+
   if (hostsLoading) {
-    return <SkeletonRows />
+    return <div className="space-y-3">{progress}<SkeletonRows /></div>
   }
 
   if (hostsError) {
     return (
-      <Card className="p-6">
-        <p className="text-sm text-destructive">Engines did not load for this host.</p>
-        <Button variant="outline" size="sm" className="mt-2" onClick={onRetryHosts}>Retry</Button>
-      </Card>
+      <div className="space-y-3">
+        {progress}
+        <Card className="p-6">
+          <p className="text-sm text-destructive">Engines did not load for this host.</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={onRetryHosts}>Retry</Button>
+        </Card>
+      </div>
     )
   }
 
   return (
     <div className="space-y-3">
+      {progress}
       {!host ? (
         <Card className="p-6">
           <EmptyState title="Start a worker, then pick it here."

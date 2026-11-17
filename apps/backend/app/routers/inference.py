@@ -6,11 +6,14 @@ under the same route-level ``task_inference`` flag and the same admin gate.
 
 import logging
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from ..deps import Ctx, ws_ctx
+from ..models import Job, now
 from ..services import (host_inventory, inference_access, inference_catalog, inference_compat,
                         inference_estimate, inference_jobs, inference_plan)
 from ..services.flags import require_flag
@@ -201,3 +204,81 @@ def uninstall_engine(body: UninstallIn, c: Ctx = Depends(in_scope)):
              c.ws.slug, c.ws_role, row["id"], job.id, engine["id"],
              (time.perf_counter() - started) * 1000)
     return {"job": job_out(job)}
+
+
+# --- engine jobs: the card, its log and its cancel (T-1009) -----------------------------------
+ACTIVE_STATUSES = ("queued", "running", "cancelling")
+JOBS_CAP = 20
+
+
+def job_view(row: Job) -> dict:
+    """A job the browser may read: the phase and log tail the worker wrote, never ``params``.
+
+    ``params`` holds the install argv, so it never leaves the server; the host and the action are
+    lifted out of it because the card has to name the machine and say whether it installs or removes.
+    """
+    result = row.result or {}
+    params = row.params or {}
+    return {"id": row.id, "kind": row.kind, "status": row.status, "progress": row.progress,
+            "phase": result.get("phase") or "", "log": list(result.get("log") or []),
+            "error": row.error, "host": params.get("host", ""),
+            "action": params.get("action", "install"),
+            "result": {"engines": result.get("engines") or []},
+            "created": row.created, "finished": row.finished}
+
+
+def _job(c: Ctx, jid: str) -> Job:
+    """This workspace's job; an id it does not own is 404, never another tenant's row."""
+    row = c.db.get(Job, jid)
+    if row is None or row.workspace_id != c.ws.id:
+        raise HTTPException(404, "not found")
+    return row
+
+
+@router.get("/jobs")
+def active_jobs(status: Literal["active"] = "active", c: Ctx = Depends(in_scope)):
+    """The workspace's engine jobs still on the wire, newest first, capped at 20."""
+    c.need("admin")
+    started = time.perf_counter()
+    rows = c.db.scalars(select(Job).where(Job.workspace_id == c.ws.id,
+                                          Job.kind.in_(inference_jobs.ENGINE_KINDS),
+                                          Job.status.in_(ACTIVE_STATUSES))
+                        .order_by(Job.created.desc()).limit(JOBS_CAP)).all()
+    body = [job_view(row) for row in rows]
+    log.info("inference.jobs ws=%s role=%s status=%s outcome=ok jobs=%d ms=%.1f",
+             c.ws.slug, c.ws_role, status, len(body), (time.perf_counter() - started) * 1000)
+    return body
+
+
+@router.get("/jobs/{jid}")
+def job_detail(jid: str, c: Ctx = Depends(in_scope)):
+    """One job with its phase, log and the engines it finished, so a reload shows the same card."""
+    c.need("admin")
+    started = time.perf_counter()
+    row = _job(c, jid)
+    log.info("inference.job ws=%s role=%s job=%s status=%s outcome=ok ms=%.1f",
+             c.ws.slug, c.ws_role, row.id, row.status, (time.perf_counter() - started) * 1000)
+    return job_view(row)
+
+
+@router.post("/jobs/{jid}/cancel")
+def cancel_job(jid: str, c: Ctx = Depends(in_scope)):
+    """Ask a running job to stop; a queued job no worker will claim is cancelled outright.
+
+    Terminal rows and a job already cancelling are left alone, so the button is idempotent and the
+    card can keep reading ``Cancelling…`` until the worker acknowledges.
+    """
+    c.need("admin")
+    started = time.perf_counter()
+    row = _job(c, jid)
+    before = row.status
+    if row.status == "queued":
+        row.status, row.finished = "cancelled", now()
+    elif row.status == "running":
+        row.status = "cancelling"
+    c.db.commit()
+    log.info("inference.jobs.cancel ws=%s role=%s job=%s before=%s after=%s outcome=ok ms=%.1f",
+             c.ws.slug, c.ws_role, row.id, before, row.status,
+             (time.perf_counter() - started) * 1000)
+    return job_view(row)
+

@@ -1101,3 +1101,21 @@ export interface EngineInstallIn {
   plan_id: string
   confirm: boolean
 }
+
+// ---------- inference hub: engine jobs (T-1009) --------------------------------
+/** One engine a finished job built, as the worker reported it. */
+export interface InferenceJobEngine { id: string; version: string; runtime?: string; path?: string }
+/** An engine job the browser may read: no `params` field, because that is where the argv lives. */
+export interface InferenceJob {
+  id: string; kind: 'engine_apply' | 'model_pull'
+  status: 'queued' | 'running' | 'cancelling' | 'done' | 'failed' | 'cancelled'
+  progress: number
+  /** The worker's current step, e.g. `installing vllm`. */
+  phase: string
+  /** Redacted log lines, newest last and capped at 200 by the API. */
+  log: string[]
+  error: string
+  host: string; action: 'install' | 'uninstall'
+  result: { engines: InferenceJobEngine[] }
+  created: number; finished: number | null
+}
