@@ -2,6 +2,7 @@
 
 import os
 import threading
+import pytest
 
 os.environ["LD_EMBEDDED_WORKER"] = "1"
 os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
