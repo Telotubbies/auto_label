@@ -8,7 +8,6 @@ import tempfile
 import time
 import uuid
 from collections import Counter
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 os.environ.setdefault("LD_DATA_DIR", tempfile.mkdtemp(prefix="ld-test-"))

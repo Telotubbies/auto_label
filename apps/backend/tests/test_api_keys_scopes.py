@@ -67,7 +67,7 @@ def test_publishable_key_is_inference_only(admin):
     assert k["key"].startswith("ld_pub_")
     # write and read endpoints refuse it
     h = {"Authorization": f"Bearer {k['key']}"}
-    assert anon().get(f"/api/v1/projects", headers=h).status_code == 403
+    assert anon().get("/api/v1/projects", headers=h).status_code == 403
     assert anon().post(f"/api/v1/projects/{PR}/upload", headers=h,
                        files={"files": ("a.jpg", jpeg())}).status_code == 403
 
@@ -80,7 +80,7 @@ def test_read_scope_only(admin):
     assert r.status_code == 200, r.text
     assert any(p["slug"] == PR for p in r.json())
     assert c.get(f"/api/v1/projects/{PR}/images", headers=h).status_code == 200
-    assert c.get(f"/api/v1/models", headers=h).status_code == 200
+    assert c.get("/api/v1/models", headers=h).status_code == 200
     # upload needs the upload scope; train needs train; predict needs infer
     assert c.post(f"/api/v1/projects/{PR}/upload", headers=h,
                   files={"files": ("a.jpg", jpeg())}).status_code == 403

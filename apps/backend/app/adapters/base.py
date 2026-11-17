@@ -1,7 +1,7 @@
 """Adapter contract shared by every model family (ultralytics, sam3, vlm, ...)."""
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path, PureWindowsPath
+from pathlib import PureWindowsPath
 from typing import Protocol
 
 from PIL import Image as PImage

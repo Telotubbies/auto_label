@@ -10,12 +10,12 @@ os.environ["LD_SAM_ENABLED"] = "0"
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PImage
-from sqlalchemy import Text, cast, select
+from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import (Connector, Image, Job, LabelClass, Member, Project, ProjectMember, TrainedModel, User, Version,
+from app.models import (Image, Job, LabelClass, Member, Project, ProjectMember, TrainedModel, User, Version,
                         Workspace)
 from app.security import hash_password
 

@@ -2,7 +2,6 @@
 import importlib.util
 import json
 import os
-import sys
 from pathlib import Path
 
 os.environ.setdefault("LD_EMBEDDED_WORKER", "1")

@@ -1,10 +1,8 @@
-# Gates: tools (ruff check + format + ld-task tests), api (full pytest suite,
-# including the committed OpenAPI document), pipeline (the repository-level
-# tests at the root), web (npm ci, build and node tests; the build checks the
-# generated API types), large-files (new data, weights or big blobs), and one
-# `gate` aggregator that branch protection requires.
-# API ruff is still the pending lint chore in progress.md:181; until it lands the
-# api job runs tests only and the tools job lints tools/ only.
+# Gates: tools (ruff check + format + ld-task tests), api (ruff check, then the
+# full pytest suite, including the committed OpenAPI document), pipeline (the
+# pipeline tests that ship with the ML code), web (npm ci, build and node tests;
+# the build checks the generated API types), large-files (new data, weights or
+# big blobs), and one `gate` aggregator that branch protection requires.
 name: CI
 
 on:
@@ -69,6 +67,11 @@ jobs:
         run: python -m pip install --disable-pip-version-check pytest
       - name: Install API dependencies
         run: python -m pip install --disable-pip-version-check -r "$BACKEND_APP/requirements.txt"
+      - name: Lint API (pyflakes)
+        # Pinned to the tools job's version: ruff's default rule set grows between releases.
+        run: |
+          python -m pip install --disable-pip-version-check ruff==0.17.3
+          ruff check apps/backend
       - name: Run the API test suite
         working-directory: ${{ env.BACKEND_APP }}
         run: python -m pytest -q

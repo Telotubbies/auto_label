@@ -353,7 +353,7 @@ def test_mfa_changes_revoke_other_sessions_but_keep_the_caller():
     c = TestClient(app)
     first = c.post("/api/auth/signup", json={"name": "Session Tester", "email": email, "password": PW}).json()
     c.headers["Authorization"] = f"Bearer {first['token']}"
-    second = login(c, email).json()
+    login(c, email)
     assert len(c.get("/api/me/sessions").json()) == 2
 
     setup = c.post("/api/auth/mfa/setup", json={"password": PW}).json()
