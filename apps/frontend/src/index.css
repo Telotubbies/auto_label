@@ -92,9 +92,6 @@
   :lang(th) { line-height: 1.6; word-break: normal; overflow-wrap: anywhere; }
   @media (prefers-contrast: more) { * { border-color: var(--foreground); } }
 }
-/* Thai is never cut with slice(): clip with CSS instead */
-.truncate-th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* Annotation canvas well: a neutral surface in both themes so class colours and the image stay true. */
 @layer base {
   .canvas-well { background: color-mix(in oklab, var(--background) 74%, var(--foreground) 26%); }

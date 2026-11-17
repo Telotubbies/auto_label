@@ -110,10 +110,6 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   )
 }
 
-export function Kebab({ items }: { items: { label: ReactNode; onClick?: () => void; danger?: boolean }[] }) {
-  return <Dropdown align="right" trigger={<Button variant="ghost" size="icon" className="h-7 w-7"><span className="text-lg leading-none">⋮</span></Button>} items={items} />
-}
-
 export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
   return (
     <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center">
