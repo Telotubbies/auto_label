@@ -9,6 +9,9 @@ import path from 'node:path'
 // The wipe runs once, in the server command below; doing it at config load races a second load.
 const dataDir = path.join(process.env.TMP || tmpdir(), 'labeldesk-e2e-data')
 
+// The API's output, so a failed sign-in can name it instead of a bare timeout (see e2e/fixtures).
+const apiLog = path.join(process.env.TMP || tmpdir(), 'labeldesk-e2e-api.log')
+
 // Playwright evaluates this file in the runner and again in the worker process, so a port chosen
 // here must survive the second load: the first load writes it down, later loads read it.
 const portFile = path.join(process.env.TMP || tmpdir(), 'labeldesk-e2e-ports.json')
@@ -52,10 +55,11 @@ export default defineConfig({
     trace: 'retain-on-failure',
     viewport: { width: 1440, height: 900 },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'e2e', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: `python -c "import os,shutil;shutil.rmtree(os.environ['LD_E2E_DATA'],ignore_errors=True)" && python -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
+      // e2e/app.py is the real API with the fake worker; it refuses to start without LD_E2E=1.
+      command: `python -c "import os,shutil;shutil.rmtree(os.environ['LD_E2E_DATA'],ignore_errors=True)" && python -m uvicorn e2e.app:app --host 127.0.0.1 --port ${apiPort} > "${apiLog}" 2>&1`,
       cwd: path.resolve(import.meta.dirname, '../backend'),
       url: `${apiUrl}/api/health`,
       reuseExistingServer: false,
@@ -64,8 +68,12 @@ export default defineConfig({
         ...process.env,
         LD_DATA_DIR: dataDir,
         LD_E2E_DATA: dataDir,
+        LD_E2E: '1',
+        LD_EMBEDDED_WORKER: '1',
+        LD_MAIL_DEV: '1',
+        LD_RATE_LIMIT: '0',          // the suite signs in once per spec, past the 8-per-5-minutes login limit
         LD_SEED_DEMO: '1',
-        LD_EMBEDDED_WORKER: '0',
+        LD_SUPERADMINS: 'demo@labeldesk.dev',
         LD_ENV: 'development',
         LD_SECRET: 'labeldesk-e2e-smoke-secret-0123456789',
       },
