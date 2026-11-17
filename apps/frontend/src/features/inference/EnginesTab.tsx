@@ -90,7 +90,10 @@ export default function EnginesTab({ ws, host, hostsLoading, hostsError, onRetry
   }
 
   // A finished job changes the host's inventory and this table's status column, so both refetch.
+  // The row is no longer queued: the refetched status (`Installed <version>`) owns the cell again.
   const settled = useCallback(() => {
+    setQueued(new Set())
+    setQueuedOn(null)
     void qc.invalidateQueries({ queryKey: ['inference-engines', ws, hostId] })
     void qc.invalidateQueries({ queryKey: ['inference-hosts', ws] })
   }, [qc, ws, hostId])
