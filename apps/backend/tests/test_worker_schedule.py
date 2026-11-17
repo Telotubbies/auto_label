@@ -2,6 +2,9 @@
 
 import os
 import threading
+import time
+from types import SimpleNamespace
+
 import pytest
 
 os.environ["LD_EMBEDDED_WORKER"] = "1"
@@ -50,7 +53,9 @@ def test_loop_survives_a_failed_iteration_and_backs_off(monkeypatch):
     monkeypatch.setattr(worker, "POLL", 0.05)
     monkeypatch.setattr(worker, "BACKOFF_MAX_S", 0.2)
     monkeypatch.setattr(worker, "_claim", claim)
-    monkeypatch.setattr(worker.time, "sleep", sleep)   # injected clock: no wall-clock assertion
+    # The worker's own clock, never the process-wide time module: another live thread's sleep would
+    # land in `pauses`, and silencing every real sleep would change what the rest of the run does.
+    monkeypatch.setattr(worker, "time", SimpleNamespace(sleep=sleep, monotonic=time.monotonic))
     with pytest.raises(_Stop):
         worker.loop()                                  # stop=None, so only the injected clock exits
     assert pauses == [0.05, 0.1, 0.2], "a repeated failure must idle longer, up to the cap"

@@ -40,6 +40,7 @@ os.environ["LD_PUBLIC_URL"] = "http://localhost:5173"   # the dev inbox also req
 os.environ["LD_SEED_DEMO"] = "1"
 # The suite exercises the shipped surfaces; a workspace turns them off through the same flag API.
 os.environ["LD_FLAGS_ON"] = "task_10b,task_20c,task_22,task_23,task_33"
+os.environ["YOLO_AUTOINSTALL"] = "false"           # a test never pip-installs a package over the network
 
 import pytest
 from fastapi.testclient import TestClient
@@ -117,6 +118,18 @@ def _reset_demo_credits(request):
     top_up()
     yield
     top_up()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _pin_image_decoder():
+    """Ultralytics wraps `PIL.Image.open` so the first failed decode pip-installs pi-heif over the
+    network (~15 s, longer under load) and then raises ModuleNotFoundError instead of the real
+    error. Tests delete and corrupt images on purpose, so that install runs inside a job and eats
+    its wait budget: `test_unreadable_frame_file_does_not_fail_the_search` timed out at 20 s in the
+    full serial run and passed alone only because no earlier module had imported the wrapper.
+    Pinning it shut keeps the real FileNotFoundError and keeps every job offline."""
+    from ultralytics.utils import patches
+    patches._pil_plugins_registered = True
 
 
 @pytest.fixture(scope="session", autouse=True)
