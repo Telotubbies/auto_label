@@ -1,7 +1,5 @@
 import type { NavGroup, ProjectNavItem, WorkspaceNavItem } from './types'
 import { coreNav } from './workspace/core.ts'
-import { buildNav } from './workspace/build.ts'
-import { governNav } from './workspace/govern.ts'
 import { footerNav } from './workspace/footer.ts'
 import { dataNav } from './project/data.ts'
 import { labelNav } from './project/label.ts'
@@ -12,13 +10,13 @@ import { settingsNav } from './project/settings.ts'
 
 /**
  * Nav v2 information architecture, kept free of React so the role matrix stays unit-testable.
- * Structure follows the IA report tree: workspace = core + BUILD + GOVERN + footer, and the
- * project panel = DATA / LABEL / MODELS / DEPLOY / SETTINGS.
+ * Structure follows the IA report tree: workspace = core + footer, and the project panel =
+ * DATA / LABEL / MODELS / DEPLOY / SETTINGS.
  *
  * Each group lives in its own feature module; this file only fixes the render order, so adding a
  * nav entry touches one feature file instead of a shared hot file.
  */
-export const workspaceNav: NavGroup<WorkspaceNavItem>[] = [coreNav, buildNav, governNav, footerNav]
+export const workspaceNav: NavGroup<WorkspaceNavItem>[] = [coreNav, footerNav]
 
 export const projectNav: NavGroup<ProjectNavItem>[] = [
   dataNav, labelNav, modelsNav, studioNav, deployNav, settingsNav,

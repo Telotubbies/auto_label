@@ -3,6 +3,7 @@ import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-route
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, ChevronsLeft, LogOut, Plus, User, X, Zap } from 'lucide-react'
 import { api, post } from '@/lib/api'
+import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { isWorkspaceNavActive, RESERVED_WORKSPACE_SEGMENTS, visibleWorkspaceNav } from '@/lib/nav'
 import { useProjectPermissions } from '@/lib/perms'
@@ -35,14 +36,22 @@ function NewWorkspace({ open, onClose }: { open: boolean; onClose: () => void })
   )
 }
 
-function SideNavLink({ to, label, icon: Icon, active, collapsed, onClick }: {
-  to: string; label: string; icon: typeof ICONS[keyof typeof ICONS]; active: boolean; collapsed: boolean; onClick?: () => void
+function SideNavLink({ to, label, icon: Icon, active, collapsed, v3, onClick }: {
+  to: string; label: string; icon: typeof ICONS[keyof typeof ICONS]; active: boolean; collapsed: boolean
+  v3?: boolean; onClick?: () => void
 }) {
+  // One row treatment shared with the project rail (T-478): the accent fill plus a 1 px primary
+  // outline, so the current row never relies on colour alone. Flag off keeps the shipped v2 row.
+  const look = v3
+    ? (active ? 'border border-primary bg-accent font-medium text-accent-foreground'
+      : 'border border-transparent text-sidebar-foreground hover:bg-sidebar-accent/60')
+    : (active ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+      : 'text-sidebar-foreground hover:bg-sidebar-accent/60')
   return (
     <Link to={to} onClick={onClick} aria-label={label} aria-current={active ? 'page' : undefined} title={collapsed ? label : undefined}
       className={cn(
         'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-all duration-150',
-        active ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60',
+        look,
         collapsed && 'justify-center px-0',
       )}>
       <Icon className="h-4 w-4 shrink-0" aria-hidden />{!collapsed && <span className="truncate">{label}</span>}
@@ -71,7 +80,9 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
   // Bar geometry only: a width, not a display string, so it stays a number.
   const creditsPct = u ? (u.credits_used / u.limits.credits) * 100 : 0
   const base = `/${ws}`
-  const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null)
+  // `task_470` (`ui_v3`): off keeps the v2 rail and its links exactly where they were.
+  const uiV3 = useFlag('task_470')
+  const groups = visibleWorkspaceNav(role, superadmin, inProject ? projectRole : null, uiV3)
   const main = groups.filter((g) => g.id !== 'footer')
   const footer = groups.find((g) => g.id === 'footer')?.items ?? []
   // Active nesting is resolved against what this role renders, so a hidden longer item
@@ -137,7 +148,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
               : <div id={`ws-nav-${g.id}`} className="px-2.5 pb-1 pt-2 text-sm font-semibold tracking-wider text-muted-foreground">{g.label}</div>)}
             {g.items.map((i) => (
               <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
-                active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
+                active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} v3={uiV3} onClick={onClose} />
             ))}
           </div>
         ))}
@@ -151,7 +162,7 @@ export function AppSidebar({ mobileOpen = false, onClose }: { mobileOpen?: boole
         )}
         {footer.map((i) => (
           <SideNavLink key={i.label} to={`${base}/${i.to}`} label={i.label} icon={ICONS[i.icon]}
-            active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} onClick={onClose} />
+            active={isWorkspaceNavActive(i, pathname, base, navItems)} collapsed={rail} v3={uiV3} onClick={onClose} />
         ))}
         <div className="flex items-center gap-2 px-2.5 py-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{me?.name?.[0]?.toUpperCase() ?? '?'}</span>
