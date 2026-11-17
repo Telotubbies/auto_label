@@ -10,6 +10,7 @@ os.environ["LD_WORKER_TOKEN"] = "test-worker-token-0123456789abcdef"
 os.environ["LD_SAM_ENABLED"] = "0"
 
 from app import worker
+from app.services import heartbeat
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -64,6 +65,27 @@ def test_loop_survives_a_failed_iteration_and_backs_off(monkeypatch):
     with pytest.raises(_Stop):
         worker.loop()                                  # stop=None, so only the injected clock exits
     assert pauses == [0.05, 0.1, 0.2], "a repeated failure must idle longer, up to the cap"
+
+
+def test_a_failed_iteration_still_beats_the_heartbeat(monkeypatch):
+    """m-4: a failed run must not leave its job id (or a stale last_seen) as the worker's last word."""
+    beats: list[dict] = []
+    stop = threading.Event()
+
+    def claim():
+        stop.set()
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(worker, "recover", lambda: None)
+    monkeypatch.setattr(worker, "_schedule_ops", lambda: None)
+    monkeypatch.setattr(worker, "POLL", 0.01)
+    monkeypatch.setattr(worker, "BACKOFF_MAX_S", 0.01)
+    monkeypatch.setattr(worker, "_claim", claim)
+    monkeypatch.setattr(heartbeat, "beat", lambda kinds=None, current_job=None, force=False:
+                        beats.append({"job": current_job, "force": force}))
+    worker.loop(stop)
+    assert len(beats) == 2, f"the failure path must beat too: {beats}"
+    assert beats[1] == {"job": None, "force": True}, "a throttled beat would leave the stale state in place"
 
 
 def test_backoff_is_bounded(monkeypatch):

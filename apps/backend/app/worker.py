@@ -301,6 +301,10 @@ def loop(stop: threading.Event | None = None):
             failures += 1
             pause = _backoff(failures)
             log.exception("worker iteration failed; idling %.1f s", pause)
+            try:                              # clear the job and refresh last_seen even on the failure path
+                heartbeat.beat(LOCAL_JOB_KINDS, force=True)
+            except Exception:
+                log.exception("could not record the worker heartbeat")
         else:
             failures, pause = 0, 0.0 if jid else POLL
         if pause:
