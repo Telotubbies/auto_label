@@ -2499,3 +2499,123 @@ states it: headers → request id → rate limit → metrics → routes.
 
 Until 1 is answered, T-1303 ships with AGPL as a warning and CVEs blocking; until 3 is answered, T-1324
 runs on a shared runner with the 25 % allowance and prints which threshold it used.
+
+---
+
+## 15. Wave R — Rust hot paths (appended 2026-11-17)
+
+Owner decision 2026-11-17: Rust ships **only** as Python extension modules for measured hot paths
+(PyO3 + maturin, `abi3` wheels), never as a rewrite. Python stays the product language for FastAPI, jobs,
+ML glue, the SDK and the MCP app. Plan, measurements and the rejected candidates:
+`docs/research/rust-hybrid/PLAN.md`. Decision record: `docs/adr/0006-rust-python-hybrid.md`.
+
+New role this wave creates: **R14 Rust systems engineer** (extends the R13 performance engineer; owns
+`packages/labeldesk-core/`, `app/kernels*.py` and `tools/perf/bench_kernels.py`, and does not change
+product behaviour without a card).
+
+**The rule that gates every card here:** no Rust card without a perf baseline showing **at least 2x on a
+real scenario** — kernel speedup ≥ `2 / share`, with the share measured on the wave O harness
+(T-1319/T-1320), not guessed. Eleven candidates were measured on 2026-11-17; two cleared the rule.
+
+### R1 Toolchain
+
+**1 card · 3 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-1400 | Rust toolchain, crate skeleton and the Python fallback pattern | 3.0 | **yes** | `none` | `packages/labeldesk-core/Cargo.toml` |
+
+### R2 Ported hot paths
+
+**2 cards · 6.5 hours.**
+
+| Task | Title | Hours | R7 | Flag | First exclusive file |
+| --- | --- | --- | --- | --- | --- |
+| T-1401 | Evaluation matching as one native call per image | 4.0 | no | `none` | `packages/labeldesk-core/src/sweep.rs` |
+| T-1402 | Dedupe grouping: hash pairing and disjoint set in one native call | 2.5 | no | `none` | `packages/labeldesk-core/src/dedupe.rs` |
+
+### R3 Review
+
+No card: the 30-day check of ADR 0006's exit criterion (did any kernel give 2x on a real job?) is a ledger
+line for R0, not a build. If the answer is no, the crate is removed.
+
+### Order and dependencies
+
+| # | Card | Needs before review | Why here |
+| --- | --- | --- | --- |
+| 1 | T-1400 | T-1320 (baseline shape), T-1319 (fixture for the benchmark) | the pattern, the fallback and the gate policy must exist before any kernel |
+| 2 | T-1401 | **T-1320 baseline row for the `evaluate` job**, T-1400 | the one candidate that clears 2x on today's numbers (measured 19.7 ms/image at 25 gt / 300 pred) |
+| 3 | T-1402 | T-1400, the reduced-decode/hash-cache fix, a baseline showing ≥10 % share | 78 s at 10k hashes is real but only 6 % of the job until the decode stops dominating |
+
+Hard sequencing rules:
+
+- **T-1400 before T-1401 before T-1402.** One seam (`app/kernels.py`), one crate, one CI job; a parallel
+  branch would add a second seam and a second wheel build.
+- **Every kernel card starts by recording the before number** and closes instead of merging when the
+  measured share cannot give 2x. "Close it with the numbers" is an accepted outcome, not a failure.
+- **The `rust` CI job never becomes a dependency of the `api` job.** The 15-minute gate runs the fallback;
+  the new job runs in parallel and the `gate` aggregator gains one entry.
+- **No `unsafe` without an R7 review and a written safety argument.** `cargo-audit` and `cargo-deny` run in
+  the merge gate, not in the nightly, and `Cargo.lock` is committed or the audit proves nothing.
+- **A kernel never returns a metric.** Rounding, curves, best-confidence and every user-visible number stay
+  in Python; the kernel returns counts and indices, which is what makes exact parity provable.
+- **Panics do not escape.** A panic is caught at the FFI boundary, becomes a Python exception, fails that
+  job and never the process. Import failure selects the Python fallback and logs one line.
+- **No card changes a route, a response, a schema, a flag or a job kind.** A port that changes behaviour is
+  a defect.
+
+### Wave R file ownership
+
+Only shared files are listed; every other path is exclusive to one card. Merge order = id order.
+
+| Shared file | Cards that touch it, in merge order |
+| --- | --- |
+| `packages/labeldesk-core/src/lib.rs` | T-1400 (module + panic boundary), T-1401 (register 2), T-1402 (register 1) |
+| `packages/labeldesk-core/Cargo.toml`, `Cargo.lock` | T-1400 (creates), T-1401/T-1402 (no new dependency without a report line) |
+| `apps/backend/app/kernels.py`, `kernels_py.py` | T-1400, T-1401, T-1402 (one function pair each; rebase last, keep all entries) |
+| `apps/backend/tests/test_kernels_parity.py` | T-1400 (fixtures + first cases), T-1401, T-1402 (append a case block each) |
+| `tools/perf/bench_kernels.py` | T-1400 (creates), T-1401, T-1402 (one registry line each) |
+| `.github/workflows/ci.yml` | T-1400 (the `rust` job + gate entry); T-1303/T-1322 own other parts of the file |
+| `apps/backend/Dockerfile` | T-1400 (builder stage only) |
+| `apps/backend/app/services/evaluate.py` | T-1401 only in wave R |
+| `apps/backend/app/services/versioning.py` | T-1402 only in wave R (`phash_groups` body) |
+| `docs/DEPLOY.md` | T-1400 (one paragraph: the image builds Rust in a builder stage) |
+
+Hot-file rules from §4c apply. `kernels.py` and the parity test are the busiest files in this wave; every
+edit is one function or one case block, and the fallback must stay importable without the wheel on every
+commit.
+
+### Wave R completeness
+
+- Cards: **3**, ids `T-1400`–`T-1402`, unique and contiguous, mean **3.2 h**, max **4 h**.
+- R7 `yes`: **1** (T-1400 — new build dependency, new CI job, wheel artefact, licence policy).
+- Every card has a Problem, a Design, exclusive and shared Files, tests to write first, and acceptance
+  criteria that name the failure it prevents; every kernel card names the baseline it must beat and the
+  condition under which it closes instead.
+- New toolchain: Rust + maturin (T-1400), `cargo-audit` and `cargo-deny` pinned in the `rust` job. No new
+  Python runtime dependency; no new service, deploy unit, table or migration.
+- Wheels are CI artefacts (`win_amd64`, `manylinux_2_28_x86_64`, `abi3-py311`), never committed.
+- Deliberately not planned: a Rust service or worker, Rust for new features, replacing PIL/opencv/
+  pycocotools/torch call sites, PyPI publication, macOS/ARM wheels, SIMD tuning. Nine of the eleven
+  measured candidates were rejected with numbers in `PLAN.md` §3, including the biggest number in the app
+  (full-resolution decode before perceptual hashing, 21 min at 10k images) which is a Python fix.
+- No card starts, uses or downloads anything Ollama-related.
+
+### Owner decisions that gate this wave
+
+1. **Toolchain on the build machines:** MSVC Build Tools on Windows and `build-essential` in CI/WSL —
+   acceptable, or must wheels come only from CI?
+2. **Gate cost:** one parallel `rust` job (~4 min, ~300 MB cargo cache, two pinned binaries for audit and
+   deny) — accept, or audit/deny nightly only?
+3. **Scope after measurement:** only the evaluation sweep clears 2x today. Approve T-1400 + T-1401 and leave
+   T-1402 conditional, or hold the wave until the wave O baseline exists?
+4. **Priority:** the `version` job fails its 120 s budget by roughly 10x on 10k real 12 MP images because
+   every build decodes all images for perceptual hashing. That Python fix (8–64x) is bigger than anything
+   in this wave — does it jump the queue?
+5. **Licence policy** for `cargo-deny`: deny GPL/AGPL/LGPL with MPL-2.0 by review, or a different allowlist
+   for a future sale or OEM install?
+6. **Python floor:** stay `abi3-py311` (today's CI and image), or also build 3.10 wheels for older client
+   installs?
+
+Until 1 and 2 are answered, no card in this wave starts. Until 4 is answered, T-1402 stays blocked on the
+decode fix regardless of its own numbers.
