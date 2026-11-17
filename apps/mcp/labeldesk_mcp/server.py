@@ -31,7 +31,11 @@ DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idemp
 
 
 def summarised(data: Any, line: str) -> CallToolResult:
-    """One record: the JSON a text-only host reads, its typed copy, and one line for a person."""
+    """One record: the JSON a text-only host reads, its typed copy, and one line for a person.
+
+    A tool's return annotation is the published outputSchema, so it stays the record's type while the
+    tool hands back this wrapper.
+    """
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(data, indent=2)),
                                    TextContent(type="text", text=line)],
                           structured_content=data)
