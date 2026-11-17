@@ -172,6 +172,20 @@ AI writes the code, the owner sets direction. Keep tasks small, review every res
 17. **Tests are the safety net.** The merge gate is the full serial backend suite, root and tools
     suites, node tests, the web build, and (after T-008) the Playwright e2e smoke.
 
+## 4e. Owner priorities (2026-11-17): UX/UI first, then security, monitoring and performance
+
+18. **UX/UI leads.** Every UI-touching card gets an R9 pass before merge: light, dark, 375 px, keyboard,
+    and the empty/error/loading states. It also gets a usability check against docs/qa/USABILITY-PROGRAM.md.
+    A usability finding of S1 or S2 blocks the merge.
+19. **Security on every card.** R6 runs the security checklist on every diff. A full R7 review is
+    mandatory whenever a diff touches auth, keys, uploads, outbound URLs, workers, installers or MCP.
+20. **Monitoring is part of done.** A new endpoint, job or worker step must emit a structured log line
+    (request id, workspace, outcome, duration) and count toward the metrics once the monitoring cards land.
+21. **Performance has budgets.** Each card states its budget: API p95, page load, or bundle delta. The
+    perf suite must not regress more than 10 % against the stored baseline.
+22. **Interleave 1:2.** After every two implementation cards, the queue runs one quality, security,
+    monitoring or performance card.
+
 ## 5. Finish line
 
 `git branch` shows only `main` and `feat/labeldesk-v2`; `git worktree list` shows only the main
