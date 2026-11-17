@@ -328,7 +328,6 @@ class OnnxDetector:
         self.size = _input_size(model_input.shape)
         meta = dict(self.session.get_modelmeta().custom_metadata_map or {})
         self.names = parse_names(meta.get("names"))
-        self.task = meta.get("task", "detect")
 
     def predict(self, im: Image.Image, confidence: float, iou: float = 0.5) -> dict:
         started = time.perf_counter()
