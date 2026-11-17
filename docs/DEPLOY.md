@@ -66,7 +66,7 @@ pip install "git+https://github.com/Telotubbies/auto_label.git#subdirectory=apps
 # ถ้าใช้ NVIDIA ให้ลง torch แบบ CUDA ก่อน: https://pytorch.org/get-started/locally/
 labeldesk-worker --server https://api.labeldesk.example.com --token <LD_WORKER_TOKEN> --device 0
 ```
-ถ้าจะใช้ base weights YOLO26 ที่มีในเครื่อง ให้เพิ่ม `--pretrained-dir yolo26_ppe/models/pretrained`
+ถ้าจะใช้ base weights YOLO26 ที่มีในเครื่อง ให้เพิ่ม `--pretrained-dir ml/yolo26_ppe/models/pretrained`
 ถ้าจะใช้ SAM 3.1 auto-label ให้เพิ่ม `--sam-root ml/sam3_auto_label` (ต้องมี checkpoint อยู่ในเครื่อง)
 ถ้าอยากให้รันทุกครั้งที่เปิดเครื่อง: Linux ใช้ systemd หรือ `tmux`, Windows ใช้ Task Scheduler
 

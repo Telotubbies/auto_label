@@ -1,4 +1,4 @@
-# yolo26_ppe/scripts — Pipeline and Utilities
+# ml/yolo26_ppe/scripts — Pipeline and Utilities
 
 Scripts for training, evaluating, exporting, and reporting YOLO26 PPE.
 

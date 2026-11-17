@@ -1,4 +1,4 @@
-# yolo26_ppe/configs — Configuration
+# ml/yolo26_ppe/configs — Configuration
 
 YAML configs for training, augmentation, and MLflow.
 
@@ -61,8 +61,8 @@ Reference: https://docs.ultralytics.com/guides/yolo26-training-recipe/
 ## mlflow.yaml
 
 ```yaml
-tracking_uri: sqlite:///yolo26_ppe/artifacts/mlflow/backend/mlflow.db
-artifact_root: yolo26_ppe/artifacts/mlflow
+tracking_uri: sqlite:///ml/yolo26_ppe/artifacts/mlflow/backend/mlflow.db
+artifact_root: ml/yolo26_ppe/artifacts/mlflow
 experiment_name: yolo26_ppe
 host: 127.0.0.1, port: 5000
 ```

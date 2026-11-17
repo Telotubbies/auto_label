@@ -41,12 +41,12 @@ def _load_module_from_file(name: str, filepath: Path):
 @pytest.fixture(scope="session")
 def prepare_dataset_module():
     """Load 01_prepare_dataset.py as a module for its pure helper functions."""
-    filepath = REPO_ROOT / "yolo26_ppe" / "scripts" / "pipeline" / "01_prepare_dataset.py"
+    filepath = REPO_ROOT / "ml" / "yolo26_ppe" / "scripts" / "pipeline" / "01_prepare_dataset.py"
     return _load_module_from_file("prepare_dataset", filepath)
 
 
 @pytest.fixture(scope="session")
 def focal_patch_module():
     """Load focal_patch.py as a module."""
-    filepath = REPO_ROOT / "yolo26_ppe" / "focal_patch.py"
+    filepath = REPO_ROOT / "ml" / "yolo26_ppe" / "focal_patch.py"
     return _load_module_from_file("focal_patch", filepath)

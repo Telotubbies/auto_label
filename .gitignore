@@ -68,21 +68,24 @@ ml/sam3_auto_label/dinov3/
 /sam3_auto_label/
 
 # MLflow runs (auto-generated, not needed for handoff)
-yolo26_ppe/artifacts/mlflow/
+ml/yolo26_ppe/artifacts/mlflow/
 
 # Ultralytics runs (auto-generated, duplicated in models/)
-yolo26_ppe/artifacts/ultralytics_training_runs/
+ml/yolo26_ppe/artifacts/ultralytics_training_runs/
 
 # YOLO dataset images (large, keep labels/yaml only)
-yolo26_ppe/data/*/images/
-yolo26_ppe/data/combined_coco_dataset_version_2/images/
+ml/yolo26_ppe/data/*/images/
+ml/yolo26_ppe/data/combined_coco_dataset_version_2/images/
 
 # YOLO label cache files
-yolo26_ppe/data/*/labels/*.cache
+ml/yolo26_ppe/data/*/labels/*.cache
 
 # Logs
-yolo26_ppe/artifacts/logs/
+ml/yolo26_ppe/artifacts/logs/
 *.log
+
+# Pre-move residue: nothing tracked lives at the old path any more.
+/yolo26_ppe/
 
 # LaTeX build artifacts
 *.aux

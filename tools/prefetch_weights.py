@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PRETRAINED_DIR = REPO_ROOT / "yolo26_ppe" / "models" / "pretrained"
+DEFAULT_PRETRAINED_DIR = REPO_ROOT / "ml" / "yolo26_ppe" / "models" / "pretrained"
 WEIGHTS = (
     "rtdetr-l.pt",
     "yolov8s-worldv2.pt",

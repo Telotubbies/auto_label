@@ -3,8 +3,8 @@
 > **Note (current state)**: This document describes the original v1.0.0 release.
 > The current production cohort uses the **v3 dataset with 4 classes**
 > (`person`, `helmet`, `closed footwear`, `harness`) and **4 models**
-> (small + medium × detect/segment). See `yolo26_ppe/models/README.md` and
-> `yolo26_ppe/reports/final/report.pdf` for the current state.
+> (small + medium × detect/segment). See `ml/yolo26_ppe/models/README.md` and
+> `ml/yolo26_ppe/reports/final/report.pdf` for the current state.
 
 ## Overview
 
@@ -85,7 +85,7 @@ pip install -r requirements.txt
 python src/batch_segment.py --fresh --input input/ --output output/
 
 # YOLO26 training pipeline
-cd yolo26_ppe
+cd ml/yolo26_ppe
 python scripts/01b_prepare_data_v2.py
 python scripts/13_train_recipe_all.py
 python scripts/14_eval_and_failures.py
@@ -101,7 +101,7 @@ xelatex -interaction=nonstopmode report.tex
 - [README.md](README.md) — Project overview
 - [AGENTS.md](AGENTS.md) — Full project structure
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Developer guide
-- [yolo26_ppe/models/MODELS.md](yolo26_ppe/models/MODELS.md) — Model version guide
+- [ml/yolo26_ppe/models/MODELS.md](ml/yolo26_ppe/models/MODELS.md) — Model version guide
 
 ## Datasets
 
@@ -119,5 +119,5 @@ xelatex -interaction=nonstopmode report.tex
 ## License
 
 - SAM 3.1 code (`sam3/`): Meta SAM License
-- Project code (`src/`, `yolo26_ppe/`): Project-specific
+- Project code (`src/`, `ml/yolo26_ppe/`): Project-specific
 - Datasets: See respective source licenses

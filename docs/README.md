@@ -27,7 +27,7 @@ status: "Verified"
 | **RQ2** | Train YOLO26 on the PPE dataset | ✅ Completed | [pipeline/05-yolo26-training.md](pipeline/05-yolo26-training.md) |
 | **RQ3** | Generate ground truth from provided data | ✅ Completed | [pipeline/03-ground-truth-generation.md](pipeline/03-ground-truth-generation.md) |
 
-> Full report: `yolo26_ppe/reports/final/report.pdf`
+> Full report: `ml/yolo26_ppe/reports/final/report.pdf`
 
 ---
 
@@ -161,9 +161,9 @@ The documentation clearly indicates which parts are commonly found in general sy
 | `ml/sam3_auto_label/src/tracker.py` | SQLite experiment tracking |
 | `ml/sam3_auto_label/config/ppe_4class.yaml` | Actual config (4 classes, v3) |
 | `pipeline_cli.py` | Root CLI — 3 modes (sam/yolo/pred) |
-| `yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
-| `yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |
-| `yolo26_ppe/configs/mlflow.yaml` | MLflow config |
-| `yolo26_ppe/reports/final/report.pdf` | Full report |
-| `yolo26_ppe/reports/inputs/final_eval_results.json` | YOLO26 metrics |
-| `yolo26_ppe/reports/metrics/comparison_report.md` | Comparison summary |
+| `ml/yolo26_ppe/configs/production_train.yaml` | YOLO26 training config |
+| `ml/yolo26_ppe/configs/production_augmentation.yaml` | YOLO26 augmentation config |
+| `ml/yolo26_ppe/configs/mlflow.yaml` | MLflow config |
+| `ml/yolo26_ppe/reports/final/report.pdf` | Full report |
+| `ml/yolo26_ppe/reports/inputs/final_eval_results.json` | YOLO26 metrics |
+| `ml/yolo26_ppe/reports/metrics/comparison_report.md` | Comparison summary |

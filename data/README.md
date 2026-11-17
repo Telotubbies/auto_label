@@ -42,9 +42,9 @@ data/sam_outputs_ground_truth/<batch>/
     └── viz/
         └── <image>.jpg         # overlay visualization
         │
-        │  prepare dataset (yolo26_ppe/scripts/pipeline/01_prepare_dataset.py)
+        │  prepare dataset (ml/yolo26_ppe/scripts/pipeline/01_prepare_dataset.py)
         ▼
-yolo26_ppe/data/                # YOLO format dataset
+ml/yolo26_ppe/data/                # YOLO format dataset
 ```
 
 ## raw/

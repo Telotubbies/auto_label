@@ -168,10 +168,10 @@ The system is a CLI tool, not a long-running service. The only service component
 
 | Operation | Command |
 | --- | --- |
-| Start (background) | `bash yolo26_ppe/scripts/services/manage_mlflow_background.sh start` |
-| Stop | `bash yolo26_ppe/scripts/services/manage_mlflow_background.sh stop` |
-| Status | `bash yolo26_ppe/scripts/services/manage_mlflow_background.sh status` |
-| Start (foreground) | `bash yolo26_ppe/scripts/services/run_mlflow_foreground.sh` |
+| Start (background) | `bash ml/yolo26_ppe/scripts/services/manage_mlflow_background.sh start` |
+| Stop | `bash ml/yolo26_ppe/scripts/services/manage_mlflow_background.sh stop` |
+| Status | `bash ml/yolo26_ppe/scripts/services/manage_mlflow_background.sh status` |
+| Start (foreground) | `bash ml/yolo26_ppe/scripts/services/run_mlflow_foreground.sh` |
 | UI URL | `http://127.0.0.1:5000` |
 
 #### Common Operations
@@ -329,6 +329,6 @@ The system is a CLI tool, not a long-running service. The only service component
 - `docs/pipeline/01-pipeline-flow.md` - SAM 3.1 workflow
 - `docs/pipeline/05-yolo26-training.md` - YOLO26 training details
 - `docs/pipeline/04-quality-control.md` - Quality control and confidence
-- `yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
-- `yolo26_ppe/reports/inputs/final_eval_results.json` - Raw metrics
-- `yolo26_ppe/reports/metrics/comparison_report.md` - Comparison summary
+- `ml/yolo26_ppe/reports/final/report.pdf` - Full ML/DL report
+- `ml/yolo26_ppe/reports/inputs/final_eval_results.json` - Raw metrics
+- `ml/yolo26_ppe/reports/metrics/comparison_report.md` - Comparison summary

@@ -11,7 +11,7 @@ status: "Verified"
 >
 > Covers 3 requirements: (1) SAM 3.1 auto-labeling, (2) YOLO26 training, (3) ground-truth generation
 >
-> **Status**: Verified — verified against actual code in `ml/sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py` and the report `yolo26_ppe/reports/final/report.pdf`
+> **Status**: Verified — verified against actual code in `ml/sam3_auto_label/src/`, `ml/yolo26_ppe/`, `pipeline_cli.py` and the report `ml/yolo26_ppe/reports/final/report.pdf`
 
 ---
 
@@ -20,10 +20,10 @@ status: "Verified"
 | # | Requirement | Status | Module |
 |---|-------------|-------|-------|
 | **RQ1** | Auto-label PPE images with SAM 3.1 | ✅ Completed | `ml/sam3_auto_label/` |
-| **RQ2** | Train YOLO26 on the PPE dataset (person, helmet, closed footwear, harness) | ✅ Completed | `yolo26_ppe/` |
+| **RQ2** | Train YOLO26 on the PPE dataset (person, helmet, closed footwear, harness) | ✅ Completed | `ml/yolo26_ppe/` |
 | **RQ3** | Generate ground truth from provided data | ✅ Completed | `ml/sam3_auto_label/` → `data/sam_outputs_ground_truth/` |
 
-> The user has run auto-labeling and the full report is at `yolo26_ppe/reports/final/report.pdf`
+> The user has run auto-labeling and the full report is at `ml/yolo26_ppe/reports/final/report.pdf`
 
 ---
 
@@ -69,7 +69,7 @@ package "Requirement 2 — YOLO26 Training" #FCE8E6 {
   [ONNX Export] as ONNX
 }
 
-file "yolo26_ppe/reports/final/\nreport.pdf" as REPORT
+file "ml/yolo26_ppe/reports/final/\nreport.pdf" as REPORT
 
 RAW --> SAM : text prompt
 SAM --> EXP : mask + box + score
@@ -114,7 +114,7 @@ EVAL --> REPORT : comparison
 
 > Source: `ml/sam3_auto_label/config/ppe_4class.yaml` (filename is historical — it now defines 4 classes)
 >
-> **Note**: v3 merged `boots`+`shoes` into `closed footwear` and dropped `sandals` (non-PPE). The previous v2 five-class dataset and its nano/small models are archived under `yolo26_ppe/models/archive/version_2_5class/`.
+> **Note**: v3 merged `boots`+`shoes` into `closed footwear` and dropped `sandals` (non-PPE). The previous v2 five-class dataset and its nano/small models are archived under `ml/yolo26_ppe/models/archive/version_2_5class/`.
 
 ---
 
@@ -166,7 +166,7 @@ stop
 
 ## YOLO26 Training Results (RQ2)
 
-> Source: `yolo26_ppe/reports/inputs/final_eval_results.json` and `yolo26_ppe/reports/metrics/comparison_report.md`
+> Source: `ml/yolo26_ppe/reports/inputs/final_eval_results.json` and `ml/yolo26_ppe/reports/metrics/comparison_report.md`
 
 | Model | Task | mAP50 | mAP50-95 | Precision | Recall | Inference (ms) | Size (MB) |
 |-------|------|-------|----------|-----------|--------|----------------|-----------|
@@ -200,7 +200,7 @@ stop
 | Report | XeLaTeX + TH Sarabun New | — | RQ2 |
 | Hardware | AMD RX 7800 XT (ROCm, WSL2) | — | RQ1, RQ2 |
 
-> Source: `requirements.txt`, `setup.py`, `yolo26_ppe/configs/`
+> Source: `requirements.txt`, `setup.py`, `ml/yolo26_ppe/configs/`
 
 ---
 
@@ -216,7 +216,7 @@ stop
 - ✅ **RQ2**: ONNX export + inference benchmark
 - ✅ **RQ2**: Full comparison report (`report.pdf`)
 - ✅ **RQ3**: Generate ground truth from SAM 3.1 output
-- ✅ **RQ3**: Dataset versioning (current: v3, 4-class) in `yolo26_ppe/data/`
+- ✅ **RQ3**: Dataset versioning (current: v3, 4-class) in `ml/yolo26_ppe/data/`
 
 ## Out of Scope
 
@@ -235,7 +235,7 @@ stop
 - `ml/sam3_auto_label/src/inference.py:347-365` — SAM 3.1 model build
 - `ml/sam3_auto_label/config/ppe_4class.yaml` — 4 classes (v3) and thresholds
 - `pipeline_cli.py:263-265` — 3 modes (sam, yolo, pred)
-- `yolo26_ppe/reports/final/report.pdf` — Full report
-- `yolo26_ppe/reports/inputs/final_eval_results.json` — Metrics for 4 models
-- `yolo26_ppe/reports/metrics/comparison_report.md` — Comparison summary
-- `yolo26_ppe/reports/source/report.tex:260-309` — Introduction + 3 objectives
+- `ml/yolo26_ppe/reports/final/report.pdf` — Full report
+- `ml/yolo26_ppe/reports/inputs/final_eval_results.json` — Metrics for 4 models
+- `ml/yolo26_ppe/reports/metrics/comparison_report.md` — Comparison summary
+- `ml/yolo26_ppe/reports/source/report.tex:260-309` — Introduction + 3 objectives

@@ -60,7 +60,7 @@ Other groups:
 ## Directory map
 
 ```text
-yolo26_ppe/
+ml/yolo26_ppe/
 ├── configs/                         # Production and MLflow configuration
 ├── data/                            # Prepared training datasets
 ├── models/

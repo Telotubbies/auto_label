@@ -9,7 +9,7 @@ status: "Verified"
 
 > Architecture overview — covers 3 requirements (SAM auto-label, YOLO26 train, ground truth)
 >
-> **Status**: Verified — cross-checked against `ml/sam3_auto_label/src/`, `yolo26_ppe/`, `pipeline_cli.py`
+> **Status**: Verified — cross-checked against `ml/sam3_auto_label/src/`, `ml/yolo26_ppe/`, `pipeline_cli.py`
 
 ---
 
@@ -57,7 +57,7 @@ package "RQ2 — YOLO26 Training" as YOLO_PKG #FCE8E6 {
 package "RQ3 — Ground Truth" as GT_PKG #FFF8E1 {
   database "data/raw/" as RAW
   database "data/sam_outputs_ground_truth/" as GT
-  database "yolo26_ppe/data/\n(v3, 4-class)" as DS
+  database "ml/yolo26_ppe/data/\n(v3, 4-class)" as DS
 }
 
 USER --> ORCH : python pipeline_cli.py
@@ -138,7 +138,7 @@ skinparam component {
   BorderColor #EA4335
 }
 
-package "yolo26_ppe/" {
+package "ml/yolo26_ppe/" {
   [configs/\n(production_train.yaml)] as CONF
   [YOLO26 Train\n(Ultralytics CLI)] as TRAIN
   [MLflow Tracking] as MLF
@@ -147,9 +147,9 @@ package "yolo26_ppe/" {
   [Report Generator\n(XeLaTeX)] as REPORT
 }
 
-database "yolo26_ppe/data/\n(v3, 4-class)" as DS
-database "yolo26_ppe/models/" as MODELS
-database "yolo26_ppe/reports/\nfinal/report.pdf" as PDF
+database "ml/yolo26_ppe/data/\n(v3, 4-class)" as DS
+database "ml/yolo26_ppe/models/" as MODELS
+database "ml/yolo26_ppe/reports/\nfinal/report.pdf" as PDF
 
 CONF --> TRAIN
 DS --> TRAIN : train/val/test split
@@ -258,5 +258,5 @@ EXP is "Export img N+2"
 - `ml/sam3_auto_label/src/batch_segment.py:130-435` — `main()` loop
 - `ml/sam3_auto_label/src/exporters.py:577-589` — `EXPORTERS` registry
 - `ml/sam3_auto_label/src/tracker.py:23-229` — `ExperimentTracker`
-- `yolo26_ppe/configs/production_train.yaml` — YOLO26 training config
-- `yolo26_ppe/reports/final/report.pdf` — final report
+- `ml/yolo26_ppe/configs/production_train.yaml` — YOLO26 training config
+- `ml/yolo26_ppe/reports/final/report.pdf` — final report

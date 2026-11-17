@@ -74,7 +74,7 @@ Recipe: v4_recipe — two-stage (Stage 1 SGD 150 epochs → Stage 2 AdamW 50 epo
 - medium_segmentation stage 1 early-stopped at epoch 117 (best epoch 96) — normal early-stopping behavior.
 
 ## 7. Sources
-- Metrics: `yolo26_ppe/artifacts/evaluation/yolo/production_v4_recipe/all_metrics.json`
+- Metrics: `ml/yolo26_ppe/artifacts/evaluation/yolo/production_v4_recipe/all_metrics.json`
 - ONNX comparison: `artifacts/evaluation/yolo/production_v4_recipe/onnx/`
 - Failure analysis: `artifacts/evaluation/yolo/production_v4_recipe/*_failures.json`
 - Full report: `reports/final/report.pdf`

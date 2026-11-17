@@ -15,7 +15,7 @@ pytestmark = pytest.mark.static
 class TestMLflowLocalhost:
     """TC-09: MLflow must bind to 127.0.0.1, not 0.0.0.0 (ISO 27001 A.13.1.1)."""
 
-    MLFLOW_CONFIG = "yolo26_ppe/configs/mlflow.yaml"
+    MLFLOW_CONFIG = "ml/yolo26_ppe/configs/mlflow.yaml"
 
     def _load_mlflow_config(self, repo_root):
         config_path = repo_root / self.MLFLOW_CONFIG

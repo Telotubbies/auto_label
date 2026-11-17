@@ -35,7 +35,7 @@
 | T-SAM | smart polygon | POST /infer/sam-point {image_id, points[]} → mask→polygon | api → `ml/sam3_auto_label/src/inference.py` |
 | T-DS | dataset filters | filter by class/status/split + raw query | Browse.tsx + api |
 | T-VER | versions | preprocess+augment config → export 11 formats ผ่าน `exporters.py` | misc.tsx Versions, api /versions/{id}/export |
-| T-TRAIN | train | launch `yolo26_ppe` 02_train + mAP chart + confusion matrix (อ่าน `reports/inputs/final_eval_results.json`) | misc.tsx Train, api /jobs/train |
+| T-TRAIN | train | launch `ml/yolo26_ppe` 02_train + mAP chart + confusion matrix (อ่าน `reports/inputs/final_eval_results.json`) | misc.tsx Train, api /jobs/train |
 | T-DEP | deploy | ONNX download + test-image inference | misc.tsx ProjDeploy, api /models/{id}/infer |
 | T-DB | postgres+minio | SQLAlchemy models + presigned upload/download | api/db.py, api/storage.py |
 | T-JOBS | redis worker | enqueue sam/train/export jobs, poll status | api/worker.py, api/queue.py |

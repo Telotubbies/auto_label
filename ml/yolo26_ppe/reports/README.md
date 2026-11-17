@@ -1,4 +1,4 @@
-# yolo26_ppe/reports — PDF Report
+# ml/yolo26_ppe/reports — PDF Report
 
 Complete Thai-language report (XeLaTeX) for the YOLO26 PPE project.
 

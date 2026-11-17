@@ -139,7 +139,7 @@ any --> cpu : torch==2.5.1+cpu
 |----|---------|-------|
 | FR-20 | Generate ground truth from SAM 3.1 output | ✅ |
 | FR-21 | Human verification | ✅ (manual) |
-| FR-22 | Dataset versioning | ✅ (v3 in `yolo26_ppe/data/`) |
+| FR-22 | Dataset versioning | ✅ (v3 in `ml/yolo26_ppe/data/`) |
 | FR-23 | Train/val/test split | ✅ (566/48/48 on v3) |
 
 ### Not Implemented
@@ -188,7 +188,7 @@ any --> cpu : torch==2.5.1+cpu
 | Optimizer | SGD (lr0=0.01, lrf=0.01 cosine) |
 | Freeze | 10 (backbone frozen) |
 
-> Source: `yolo26_ppe/reports/source/report.tex:652-677`
+> Source: `ml/yolo26_ppe/reports/source/report.tex:652-677`
 
 ---
 
@@ -197,7 +197,7 @@ any --> cpu : torch==2.5.1+cpu
 - `ml/sam3_auto_label/requirements.txt:1-23`
 - `ml/sam3_auto_label/setup.py:1-405`
 - `ml/sam3_auto_label/Dockerfile:1-77`
-- `yolo26_ppe/reports/inputs/sam3_benchmark_results.json` — SAM 3.1 benchmark
-- `yolo26_ppe/reports/inputs/final_eval_results.json` — YOLO26 metrics
-- `yolo26_ppe/reports/source/report.tex:652-677` — training config
-- `yolo26_ppe/configs/production_train.yaml` — training config file
+- `ml/yolo26_ppe/reports/inputs/sam3_benchmark_results.json` — SAM 3.1 benchmark
+- `ml/yolo26_ppe/reports/inputs/final_eval_results.json` — YOLO26 metrics
+- `ml/yolo26_ppe/reports/source/report.tex:652-677` — training config
+- `ml/yolo26_ppe/configs/production_train.yaml` — training config file
