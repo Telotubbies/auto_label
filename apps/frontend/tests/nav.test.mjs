@@ -379,3 +379,13 @@ test('the compact project strip and the project panel derive from one role-filte
   assert.ok(projectLayoutSrc.includes('const items = projectNavGroups(canProject, projectRole'),
     'the strip must reuse its single items list instead of recomputing it')
 })
+
+// T-483: the project index is the overview while `task_470` (ui_v3) is on, and the old grid
+// redirect is what renders when the frame is off. One source assertion for both states.
+test('the project index renders the overview, not the dataset grid', () => {
+  const indexSrc = source('../src/routes/project/index.tsx')
+  assert.ok(indexSrc.includes("useFlag('task_470')"), 'the index must read the ui_v3 flag')
+  assert.ok(indexSrc.includes('<Overview />'), 'the index must render the overview')
+  assert.ok(indexSrc.includes('<Navigate to="browse" replace />'),
+    'flag off keeps the dataset-grid redirect exactly as today')
+})
