@@ -25,7 +25,7 @@ Binding for every contributor and agent. Reviewers check each item; a violation 
 ## 3. TypeScript / React (apps/frontend)
 
 - TS `strict`; no `any` except at untyped library edges with a comment.
-- Format and lint: Biome (`biome check`), 2-space indent, single quotes.
+- Format and lint: 2-space indent, single quotes; TypeScript is checked by `npm run build`.
 - Data fetching with TanStack Query; API calls only through `src/lib/api.ts`; types in `src/lib/types.ts`.
 - Components: function components, composition over boolean props, colocate feature code in `src/features/<area>/`.
 - No hard-coded colours, sizes or fonts in components — use Tailwind classes backed by tokens.
