@@ -1,6 +1,6 @@
 import type {
   EngineAvailability, EngineInstallIn, EnginePlan, InferenceCatalog, InferenceEstimate, InferenceEstimateIn,
-  InferenceHost, InferenceJob, Job,
+  InferenceHost, InferenceJob, InferenceModels, Job, ModelPlan, ModelPlanIn,
 } from '../types'
 import { get, post } from './client'
 
@@ -44,3 +44,10 @@ export const inferenceJob = (ws: string, id: string) =>
 /** Ask the worker to stop; a terminal job is a no-op and a foreign id is 404. */
 export const inferenceCancelJob = (ws: string, id: string) =>
   post<InferenceJob>(`/ws/${ws}/inference/jobs/${id}/cancel`, {})
+/** The model catalogue joined with one host's installed state, fit verdict and blocks (T-1010). */
+export const inferenceModels = (ws: string, host: string) =>
+  get<InferenceModels>(`/ws/${ws}/inference/models?host=${encodeURIComponent(host)}`)
+
+/** The download dry run: files, bytes, disk after, the gate and every block reason (T-1010). */
+export const inferencePlanModel = (ws: string, body: ModelPlanIn) =>
+  post<ModelPlan>(`/ws/${ws}/inference/models/plan`, body)

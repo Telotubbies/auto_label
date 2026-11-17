@@ -1858,6 +1858,36 @@
         "title": "ModelIn",
         "type": "object"
       },
+      "ModelPlanIn": {
+        "description": "One catalogue model and one of its variants, on one host.",
+        "properties": {
+          "host": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "variant": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "id",
+          "variant"
+        ],
+        "title": "ModelPlanIn",
+        "type": "object"
+      },
       "OcrExportIn": {
         "properties": {
           "format": {
@@ -8899,6 +8929,117 @@
           }
         ],
         "summary": "Cancel Job",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/models": {
+      "get": {
+        "description": "Catalogue rows joined with this host's installed state, fit verdict and block reasons.",
+        "operationId": "models_api_ws__ws__inference_models_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Models",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/api/ws/{ws}/inference/models/plan": {
+      "post": {
+        "description": "The dry run for one variant; the download job is T-1011's route and writes the files.",
+        "operationId": "plan_model_api_ws__ws__inference_models_plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelPlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Plan Model",
         "tags": [
           "inference"
         ]
