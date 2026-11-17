@@ -2,18 +2,14 @@ import { useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Glass } from '@/components/glass'
-import { Card, EmptyState, PageHeader, Select, Spinner, Tabs } from '@/components/ui'
+import { PageHeader, Select, Spinner, Tabs } from '@/components/ui'
 import { inferenceApi } from '@/lib/api/inference'
 import { useWorkspaceFlags } from '@/lib/flags'
-import { INFERENCE_TAB_LABELS, INFERENCE_TABS, tabFrom, type InferenceTab } from './tabs.ts'
+import { INFERENCE_TAB_LABELS, INFERENCE_TABS, tabFrom } from './tabs.ts'
 import CalculatorTab from './CalculatorTab'
 import EnginesTab from './EnginesTab'
 import ModelsTab from './ModelsTab'
-
-/** Each panel is a real empty state until its own card lands; calculator, engines and models have their own screens. */
-const PANEL_EMPTY: Record<Exclude<InferenceTab, 'calculator' | 'engines' | 'models'>, string> = {
-  segmentation: 'No segmentation model is provisioned on this host.',
-}
+import SegmentationTab from './SegmentationTab'
 
 /**
  * `/:ws/inference` — one admin-only page under the `task_inference` flag. The header owns the host
@@ -94,10 +90,8 @@ export default function InferenceHub() {
           <ModelsTab ws={ws} host={host} hostsLoading={hosts.isLoading} hostsError={hosts.isError}
             onRetryHosts={() => void hosts.refetch()} />
         ) : (
-          <Card className="p-4 sm:p-6">
-            <h2 className="text-sm font-medium">{INFERENCE_TAB_LABELS[tab]}</h2>
-            <EmptyState title={PANEL_EMPTY[tab]} />
-          </Card>
+          <SegmentationTab ws={ws} host={host} hostsLoading={hosts.isLoading} hostsError={hosts.isError}
+            onRetryHosts={() => void hosts.refetch()} />
         )}
       </div>
     </div>
