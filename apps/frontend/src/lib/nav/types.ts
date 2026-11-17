@@ -5,7 +5,7 @@ export type NavIcon =
   | 'integrations' | 'activity' | 'settings' | 'admin'
   | 'upload' | 'annotate' | 'dataset' | 'video' | 'versions' | 'classes' | 'insights' | 'suspects' | 'train'
   | 'modelInsights' | 'deploy' | 'qa' | 'streams' | 'access' | 'projectSettings'
-  | 'lineage' | 'dashboards' | 'streamAnalytics' | 'anomaly' | 'workflow'
+  | 'lineage' | 'dashboards' | 'streamAnalytics' | 'anomaly' | 'workflow' | 'search' | 'eventSearch'
 
 export interface WorkspaceNavItem {
   to: string

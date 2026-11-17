@@ -86,7 +86,7 @@ Kaggle ต้องเปิด Settings → Internet: On ด้วย worker �
 ถ้าต้องการให้รันงานเดียวแล้วจบ ให้ใส่ `--once`
 
 ### ไม่มี GPU เลย
-ตั้ง `LD_LOCAL_JOBS=version,export,export_engine,export_preset,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,batch_infer,insights_images,insights_leakage,insights_embedding,anomaly_train,train,autolabel` ใน `.env` แล้ว VM จะ train ด้วย CPU เอง
+ตั้ง `LD_LOCAL_JOBS=version,export,export_engine,export_preset,health,connector_sync,retention,extract_frames,track_forward,drift,active_learning,batch_infer,insights_images,insights_leakage,insights_embedding,anomaly_train,event_search,train,autolabel` ใน `.env` แล้ว VM จะ train ด้วย CPU เอง
 และตั้ง `LD_TRAIN_WORKER=local` ด้วย เพื่อบอก API ว่า `train`/`autolabel` รันบน worker ในเครื่องนี้ ไม่ใช่ `labeldesk-worker` บนเครื่อง GPU
 (ค่าเริ่มต้นคือ `remote` เมื่อ API ไม่ได้รัน worker เอง) มิฉะนั้นตัวเลือกตระกูลโมเดล non-YOLO, `max_minutes` และ `resume_from` จะยังถูกปฏิเสธ
 ช้ากว่า แต่โมเดล n/s ขนาดเล็กที่ 30–50 epochs บนรูปหลักร้อยใบยังพอรับได้

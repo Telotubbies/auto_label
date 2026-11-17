@@ -1,10 +1,12 @@
-"""One image-embedding seam: CLIP ViT-B/32 vectors for drift and insights.
+"""One CLIP seam: image vectors for drift/insights and text vectors for search.
 
 The model is optional — a CPU-only or offline install simply reports `available() == False` and
 callers fall back to their own cheap features. When Task 20a's `insights_embedding` module is
-importable its loaded backend is reused, so the process holds at most one CLIP model; vectors are
-cached per sha256 in this seam's own `clip-full` namespace (20a caches 64 px thumbnails, this seam
-embeds the full frame). `LD_CLIP=0` forces the fallback (deterministic tests).
+importable its loaded backend is reused for image vectors, so image embedding never loads a second
+copy; the text tower below is the one text encoder in the codebase, lives on the CPU and never takes
+the GPU lease. Vectors are cached per sha256 in this seam's own `clip-full` namespace (20a caches
+64 px thumbnails, this seam embeds the full frame). `LD_CLIP=0` forces the fallback (deterministic
+tests).
 
 The backend is a scheduler lease: a CUDA load goes through `app.gpu.scheduler`, so the VRAM ledger
 counts it and training's exclusive lease unloads it like any other model. The lease is optional
@@ -35,6 +37,12 @@ _COND = threading.Condition(_LOCK)  # _LOCK + the in-flight counter, so release(
 _STATE: tuple | bool | None = None  # None = untried, False = unavailable, else (torch, model, processor, device)
 _INFLIGHT = 0  # embed_image calls holding the current backend
 _RELEASING = False  # release() is unloading: new uses wait until the lease is gone
+
+# The one text tower. Search runs outside the GPU lease, so it always loads on the CPU.
+_TEXT: tuple | bool | None = None  # None = untried, False = unavailable, else (torch, model, processor)
+_TEXT_CACHE: dict[str, np.ndarray] = {}
+_TEXT_LOCK = threading.Lock()
+_TEXT_CACHE_MAX = 128
 
 
 def _insights():
@@ -244,6 +252,60 @@ def _store_cached(sha: str, vector: np.ndarray) -> None:
         np.save(path, vector)
     except Exception:  # noqa: BLE001 - an unwritable cache must not lose the vector
         log.debug("could not cache the CLIP vector for %s", sha, exc_info=True)
+
+
+def _text_backend() -> tuple | None:
+    """(torch, model, processor) with the CLIP text tower on the CPU, or None when unavailable."""
+    global _TEXT
+    if _TEXT is not None:
+        return _TEXT or None
+    with _TEXT_LOCK:
+        if _TEXT is not None:
+            return _TEXT or None
+        try:
+            import torch
+            from transformers import CLIPModel, CLIPProcessor
+
+            model = CLIPModel.from_pretrained(CLIP_MODEL_ID)
+            processor = CLIPProcessor.from_pretrained(CLIP_MODEL_ID)
+            model.eval()
+        except Exception:  # noqa: BLE001 - not installed / offline / no weights: search degrades
+            log.info("CLIP text embeddings are not available; search degrades to metadata filters",
+                     exc_info=True)
+            _TEXT = False
+            return None
+        _TEXT = (torch, model, processor)
+        return _TEXT
+
+
+def embed_text(text: str) -> np.ndarray:
+    """One L2-normalised CLIP text vector in the cached image-vector space.
+
+    Raises when CLIP is unavailable so search can fall back to metadata filters. Never takes the
+    GPU lease: the text tower is CPU-pinned, so a search request cannot displace a live model.
+    """
+    if os.environ.get("LD_CLIP", "auto") == "0":
+        raise RuntimeError("CLIP embeddings are disabled (LD_CLIP=0)")
+    key = (text or "").strip()
+    with _TEXT_LOCK:
+        hit = _TEXT_CACHE.get(key)
+    if hit is not None:
+        return hit
+    state = _text_backend()
+    if state is None:
+        raise RuntimeError("CLIP text embeddings are not available — install transformers and torch")
+    torch, model, processor = state
+    inputs = processor(text=[key], return_tensors="pt", padding=True, truncation=True)
+    with torch.no_grad():
+        out = model.get_text_features(**inputs)
+    vector = out.detach().cpu().numpy().astype(np.float32)[0]
+    norm = float(np.linalg.norm(vector)) or 1.0
+    vector = vector / norm
+    with _TEXT_LOCK:
+        _TEXT_CACHE[key] = vector
+        while len(_TEXT_CACHE) > _TEXT_CACHE_MAX:
+            _TEXT_CACHE.pop(next(iter(_TEXT_CACHE)))
+    return vector
 
 
 def embed_image(im: PImage.Image, sha: str | None = None) -> list[float]:

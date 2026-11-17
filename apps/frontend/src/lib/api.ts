@@ -7,6 +7,7 @@ import { modelApi } from './api/models'
 import { insightsApi, studioApi } from './api/insights'
 import { governanceApi } from './api/governance'
 import { qaApi } from './api/qa'
+import { searchApi } from './api/search'
 import { streamsApi } from './api/streams'
 import { otApi } from './api/ot'
 import { workflowApi } from './api/workflows'
@@ -23,6 +24,7 @@ export const api = {
   ...studioApi,
   ...governanceApi,
   ...qaApi,
+  ...searchApi,
   ...streamsApi,
   ...otApi,
   ...workflowApi,

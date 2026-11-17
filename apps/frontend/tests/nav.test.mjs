@@ -107,7 +107,8 @@ test('project nav has the six v2 groups in lifecycle order', () => {
 
 test('a manager sees every project group', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(MANAGER, 'manager')), [
-    ['DATA', ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights', 'Suspect labels']],
+    ['DATA', ['Upload', 'Dataset', 'Search', 'Event search', 'Video', 'Versions', 'Classes & Tags', 'Insights',
+              'Suspect labels']],
     ['LABEL', ['Annotate', 'Review & Quality']],
     ['MODELS', ['Train', 'Anomaly', 'Model insights', 'Models', 'Workflows']],
     ['STUDIO', ['Lineage', 'Dashboards', 'Stream analytics']],
@@ -120,7 +121,8 @@ test('a reviewer loses Train and the settings group', () => {
   const groups = visibleProjectNav(REVIEWER, 'reviewer')
   assert.deepEqual(groups.map((g) => g.id), ['data', 'label', 'models', 'studio', 'deploy'])
   assert.deepEqual(itemLabels(groups, 'data'),
-    ['Upload', 'Dataset', 'Video', 'Versions', 'Classes & Tags', 'Insights', 'Suspect labels'])
+    ['Upload', 'Dataset', 'Search', 'Event search', 'Video', 'Versions', 'Classes & Tags', 'Insights',
+     'Suspect labels'])
   assert.deepEqual(itemLabels(groups, 'label'), ['Annotate', 'Review & Quality'])
   assert.deepEqual(itemLabels(groups, 'models'), ['Anomaly', 'Model insights', 'Models', 'Workflows'])
   assert.deepEqual(itemLabels(groups, 'studio'), ['Lineage', 'Dashboards', 'Stream analytics'])
@@ -130,17 +132,18 @@ test('a reviewer loses Train and the settings group', () => {
 
 test('a labeler sees dataset, video and annotate only — the IA labeler view', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(LABELER, 'labeler')), [
-    ['DATA', ['Dataset', 'Video']],
+    ['DATA', ['Dataset', 'Search', 'Video']],
     ['LABEL', ['Annotate']],
-    // Streams carry camera footage and predictions: project.streams (manager/reviewer) only.
+    // Streams carry camera footage and predictions: project.streams (manager/reviewer) only, and
+    // event search reads the same footage, so a labeler gets neither.
   ])
   assert.deepEqual(visibleProjectNav(LABELER, 'labeler').flatMap((g) => g.items).map((i) => i.label),
-    ['Dataset', 'Video', 'Annotate'])
+    ['Dataset', 'Search', 'Video', 'Annotate'])
 })
 
 test('a viewer keeps the dataset and no stream list', () => {
   assert.deepEqual(groupLabels(visibleProjectNav(VIEWER, 'viewer')), [
-    ['DATA', ['Dataset']],
+    ['DATA', ['Dataset', 'Search']],
   ])
 })
 
@@ -149,7 +152,17 @@ test('no permission means no project nav at all', () => {
 })
 
 test('an unresolved project role falls back to the permission check', () => {
-  assert.deepEqual(itemLabels(visibleProjectNav(LABELER, null), 'data'), ['Dataset', 'Video', 'Classes & Tags'])
+  assert.deepEqual(itemLabels(visibleProjectNav(LABELER, null), 'data'), ['Dataset', 'Search', 'Video', 'Classes & Tags'])
+})
+
+test('search and event search stay hidden until their own flag is on', () => {
+  const labels = (flags) => visibleProjectNav(MANAGER, 'manager', flags).flatMap((g) => g.items).map((i) => i.label)
+  assert.equal(labels(new Set()).includes('Search'), false)
+  assert.equal(labels(new Set()).includes('Event search'), false)
+  assert.equal(labels(new Set(['task_27'])).includes('Search'), true)
+  assert.equal(labels(new Set(['task_27'])).includes('Event search'), false)
+  assert.equal(labels(new Set(['task_38'])).includes('Event search'), true)
+  assert.equal(labels(new Set(['task_23'])).includes('Review & Quality'), true)
 })
 
 test('the old access and analytics routes redirect into their new homes', () => {

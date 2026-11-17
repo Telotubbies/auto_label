@@ -70,7 +70,8 @@ export const get = <T>(path: string) => req<T>(path)
 export const post = json('POST')
 export const put = json('PUT')
 export const patch = json('PATCH')
-export const del = <T>(path: string) => req<T>(path, { method: 'DELETE' })
+export const del = <T>(path: string, body?: unknown) =>
+  req<T>(path, { method: 'DELETE', body: body === undefined ? undefined : JSON.stringify(body) })
 
 /** Upload with progress (fetch has no upload progress events). */
 export function upload<T>(path: string, form: FormData, onProgress: (f: number) => void): Promise<T> {

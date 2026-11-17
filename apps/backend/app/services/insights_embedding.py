@@ -177,6 +177,11 @@ def _load_feature(backend: str, sha: str):
         return None
 
 
+def load_feature(backend: str, sha: str):
+    """Cached feature vector from a previous scan, or None when the image was never embedded."""
+    return _load_feature(backend, sha)
+
+
 def _store_feature(backend: str, sha: str, vector: np.ndarray) -> None:
     if not sha:
         return
