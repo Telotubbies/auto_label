@@ -12,7 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Image, Project
-from . import health_scan, quality
+from . import quality
+from .boxes import box_iou
 from .health_scan import (  # re-exported for routers/worker/tests
     box,
     cached,
@@ -63,7 +64,7 @@ def _quality_flags(img: Image, anns: list[dict], imgsz: int) -> list[dict]:
                 if (
                     is_human(prev_ann)
                     and prev_ann.get("classId") == a.get("classId")
-                    and health_scan.iou(prev_box, b) >= DUPLICATE_IOU
+                    and box_iou(prev_box, b) >= DUPLICATE_IOU
                 ):
                     kind = "duplicate"
                     break

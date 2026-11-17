@@ -19,6 +19,7 @@ from pycocotools.cocoeval import COCOeval
 from ..adapters.catalog import resolve
 from ..models import Version
 from . import exporters, versioning
+from .boxes import box_iou
 
 COCO_KEYS = ("AP", "AP50", "AP75", "APs", "APm", "APl", "AR1", "AR10", "AR100", "ARs", "ARm", "ARl")
 SWEEP = [round(0.05 * i, 2) for i in range(1, 20)]      # 0.05 .. 0.95
@@ -247,16 +248,6 @@ def _stat(value: float) -> float:
     return round(min(value, 1.0), 4)
 
 
-def _iou(a: list[float], b: list[float]) -> float:
-    ax, ay, aw, ah = a
-    bx, by, bw, bh = b
-    x1, y1 = max(ax, bx), max(ay, by)
-    x2, y2 = min(ax + aw, bx + bw), min(ay + ah, by + bh)
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    union = aw * ah + bw * bh - inter
-    return inter / union if union > 0 else 0.0
-
-
 def _match(gt: list[dict], pred: list[dict], conf: float, same_class: bool = True) -> list[tuple[int, int]]:
     """Greedy (gt index, pred index) pairs at IoU >= 0.5, preds by descending score.
 
@@ -273,7 +264,7 @@ def _match(gt: list[dict], pred: list[dict], conf: float, same_class: bool = Tru
         for gi, g in enumerate(gt):
             if gi in used or (same_class and g["cls"] != p["cls"]):
                 continue
-            iou = _iou(g["bbox"], p["bbox"])
+            iou = box_iou(g["bbox"], p["bbox"])
             if iou >= best_iou:
                 best_iou, best_gi = iou, gi
         if best_gi >= 0:
@@ -366,7 +357,7 @@ def _pair_iou(rec: dict, iou_type: str):
     def iou(g: dict, p: dict) -> float:
         if iou_type == "segm":
             return _mask_iou(g.get("segm"), _polygon(p, p["bbox"]), *size)
-        return _iou(g["bbox"], p["bbox"])
+        return box_iou(g["bbox"], p["bbox"])
 
     return iou
 

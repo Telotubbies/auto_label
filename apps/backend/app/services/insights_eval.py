@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
 from ..models import Batch, Image, TrainedModel
+from .boxes import box_iou
 
 SWEEP = [
     round(0.05 * i, 2) for i in range(1, 20)
@@ -61,16 +62,6 @@ def classes_for(
     return list(dict.fromkeys(n for n in names if n)) or list(fallback or [])
 
 
-def _iou(a: list[float], b: list[float]) -> float:
-    ax, ay, aw, ah = a
-    bx, by, bw, bh = b
-    x1, y1 = max(ax, bx), max(ay, by)
-    x2, y2 = min(ax + aw, bx + bw), min(ay + ah, by + bh)
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    union = aw * ah + bw * bh - inter
-    return inter / union if union > 0 else 0.0
-
-
 def match(gt: list[dict], pred: list[dict], conf: float) -> list[tuple[int, int]]:
     """Greedy class-aware (gt index, pred index) pairs at IoU >= 0.5, predictions by score."""
     used: set[int] = set()
@@ -83,7 +74,7 @@ def match(gt: list[dict], pred: list[dict], conf: float) -> list[tuple[int, int]
         for gi, g in enumerate(gt):
             if gi in used or g.get("cls") != p.get("cls"):
                 continue
-            value = _iou(g.get("bbox") or [], p.get("bbox") or [])
+            value = box_iou(g.get("bbox") or [], p.get("bbox") or [])
             if value >= best_iou:
                 best_iou, best_gi = value, gi
         if best_gi >= 0:

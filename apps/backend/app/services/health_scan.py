@@ -17,6 +17,7 @@ from ..adapters.base import Cancelled
 from ..models import Image, Job, LabelClass, Project, TrainedModel
 from . import imaging, versioning
 from . import suspects as suspect_scoring
+from .boxes import box_iou
 
 DEFAULT_CONF = 0.4  # fallback when the model has no best-F1 confidence
 MISSING_IOU = 0.3
@@ -74,16 +75,6 @@ def job_summary(db: Session, project: Project) -> tuple[dict | None, bool]:
         "started": j.started,
         "finished": j.finished,
     }, stale
-
-
-def iou(a: tuple, b: tuple) -> float:
-    ax, ay, aw, ah = a
-    bx, by, bw, bh = b
-    x1, y1 = max(ax, bx), max(ay, by)
-    x2, y2 = min(ax + aw, bx + bw), min(ay + ah, by + bh)
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    union = aw * ah + bw * bh - inter
-    return inter / union if union > 0 else 0.0
 
 
 def box(ann: dict) -> tuple[float, float, float, float] | None:
@@ -166,7 +157,7 @@ def _model_checks(
                 p["width"] / img.width,
                 p["height"] / img.height,
             )
-            if all(iou(found, gt) < MISSING_IOU for gt in gts) and len(out) < MISSING_LIMIT:
+            if all(box_iou(found, gt) < MISSING_IOU for gt in gts) and len(out) < MISSING_LIMIT:
                 out.append({"image_id": img.id, "box": [round(v, 4) for v in found], "class": p.get("class")})
         if len(suspects) < SUSPECT_LIMIT:
             for item in suspect_scoring.score_image(img.annotations or [], usable, class_names, img.width, img.height):
