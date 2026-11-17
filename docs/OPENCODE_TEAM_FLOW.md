@@ -186,6 +186,27 @@ AI writes the code, the owner sets direction. Keep tasks small, review every res
 22. **Interleave 1:2.** After every two implementation cards, the queue runs one quality, security,
     monitoring or performance card.
 
+## 4f. Agent team contract (adopted 2026-11-18)
+
+Roles: Chief = Claude (R0, intake and merge into feat; main and releases stay with the owner). Lead = plan
+lanes (R2). Builder = implementation lanes (opencode, R3/R4). Reviewer = a fresh review lane (R6/R7/R9) that
+never wrote the code.
+
+23. **Verify, do not assume.** Every lane follows `docs/verify/VERIFY.md`: Launch, Doctor, Drive, Evidence,
+    Cleanup. A green typecheck is not evidence that a flow works.
+24. **Handoff fields.** Every report gives the base and head SHA, each command with its exit code, where the
+    evidence is, and what could NOT be verified. If a field is missing, the card counts as BLOCKED, not DONE.
+25. **Reviewer verdicts.** A review checks out the exact head SHA and answers PASS, FAIL or BLOCKED. A new
+    commit cancels the earlier verdict. FAIL goes back to the Builder with the command, the error and the
+    repro. After two failed correction rounds the Chief stops the card and reports it.
+26. **Turn corrections into checks.** When the Chief or a Reviewer has to fix the same kind of mistake twice,
+    the next card adds the strongest guard that fits, in this order: type, lint, test, gate step. Only then
+    does it go into docs.
+27. **CI must match the local gate.** After each push the Chief checks the GitHub CI run for that SHA. A red
+    CI blocks the next merge batch in the same way a red local gate does.
+28. **Measure.** The Chief logs one row per card in `B:/02_Projects/ld-tmp/lanes/metrics.csv`: card, correction
+    rounds, Chief fixes at merge, gate result, CI result.
+
 ## 5. Finish line
 
 `git branch` shows only `main` and `feat/labeldesk-v2`; `git worktree list` shows only the main

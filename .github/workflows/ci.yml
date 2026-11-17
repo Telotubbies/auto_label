@@ -97,25 +97,7 @@ jobs:
         working-directory: ${{ env.FRONTEND_APP }}
         run: npm test
 
-  pipeline:
-    name: pipeline tests (ml/)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install CPU torch
-        # focal_patch.py imports torch; the CPU wheel keeps the job small.
-        run: >-
-          python -m pip install --disable-pip-version-check torch
-          --index-url https://download.pytorch.org/whl/cpu
-      - name: Install test dependencies
-        run: python -m pip install --disable-pip-version-check pytest pyyaml questionary rich numpy
-      - name: Run the pipeline tests that ship with the ML code
-        working-directory: ml
-        run: python -m pytest -q
+  # The ML pipeline tests moved to Telotubbies/labeldesk-ml with ADR 0004 and run in that repo's CI.
 
   gate:
     name: gate
@@ -123,14 +105,14 @@ jobs:
     # skipped path-filtered workflow leaves a required check "Pending" and blocks
     # the PR, including the PR that reverts a bad merge.
     if: always()
-    needs: [tools, api, pipeline, web, large-files]
+    needs: [tools, api, web, large-files]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check every gate job result
         env:
           RESULTS: >-
-            ${{ needs.tools.result }} ${{ needs.api.result }} ${{ needs.pipeline.result }}
+            ${{ needs.tools.result }} ${{ needs.api.result }}
             ${{ needs.web.result }} ${{ needs.large-files.result }}
         run: |
           for result in $RESULTS; do
