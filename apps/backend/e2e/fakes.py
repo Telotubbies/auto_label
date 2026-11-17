@@ -28,6 +28,7 @@ METRICS = {"map50": 0.874, "map5095": 0.612, "precision": 0.83, "recall": 0.79}
 EPOCHS = 3
 FRAMES = 3
 FAMILIES = ("hf", "rfdetr", "sam3", "tensorrt", "ultralytics", "vlm")
+# Every family key the registry knows, so a resolve can never reach a real checkpoint.
 
 
 class FakeAdapter:

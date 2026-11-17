@@ -129,7 +129,7 @@ def _params(kind: str, s: dict) -> dict:
     if kind == "extract_frames":
         return {"video_id": s["video_id"]}
     if kind == "engine_apply":
-        return {"host": "e2e-gpu", "action": "install", "engines": [{"id": "vllm", "version": "0.6"}]}
+        return {"host": "e2e-gpu", "action": "install", "engines": [{"id": "engine-a", "version": "1.0"}]}
     if kind == "model_pull":
         return {"host": "e2e-gpu", "model": "qwen2.5-vl-7b", "variant": "awq"}
     return {}
@@ -184,7 +184,7 @@ def _assert_row(db, kind: str, job: Job, s: dict) -> None:
     elif kind == "infer_video":
         assert job.result["frames"] == 3
     elif kind == "engine_apply":
-        assert job.result["installed"] == ["vllm"]
+        assert job.result["installed"] == ["engine-a"]
     elif kind == "model_pull":
         assert job.result["model"] == "qwen2.5-vl-7b" and job.result["bytes"] == 0
 
