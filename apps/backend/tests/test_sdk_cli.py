@@ -39,6 +39,9 @@ EXPECTED_SCOPES = {
     "list_models": "read",
     "get_model": "read",
     "predict": "infer",
+    "run_auto_label": "write",
+    "create_version": "write",
+    "list_deployments": "read",
 }
 
 
