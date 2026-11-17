@@ -167,14 +167,14 @@ export function overviewFacts(input: OverviewInput): OverviewFacts {
     : { state: 'needs-you', count: 0, sentence: 'No images yet — upload to start the pipeline', action: 'upload', actionLabel: 'Upload images', to: 'upload' }
 
   // The header's one primary follows the earliest open step, in the same order as the board.
-  const primary = images === 0 ? { label: 'Upload images', to: 'upload' }
-    : !countsKnown ? { label: 'Open dataset', to: 'dataset' }
-    : inReview > 0 ? { label: `Review ${inReview} labels`, to: 'annotate' }
-    : toLabel > 0 ? { label: `Label ${toLabel} images`, to: 'annotate' }
-    : !versions || versions.length === 0 ? { label: 'Create a version', to: 'dataset?tab=versions' }
-    : readyModels.length > 0 ? { label: 'Test the model', to: 'deploy' }
-    : input.canTrain ? { label: `Train on ${latestLabel}`, to: 'train' }
-    : { label: 'Open dataset', to: 'dataset' }
+  let primary = { label: 'Open dataset', to: 'dataset' }
+  if (images === 0) primary = { label: 'Upload images', to: 'upload' }
+  else if (!countsKnown) primary = { label: 'Open dataset', to: 'dataset' }
+  else if (inReview > 0) primary = { label: `Review ${inReview} labels`, to: 'annotate' }
+  else if (toLabel > 0) primary = { label: `Label ${toLabel} images`, to: 'annotate' }
+  else if (!versions || versions.length === 0) primary = { label: 'Create a version', to: 'dataset?tab=versions' }
+  else if (readyModels.length > 0) primary = { label: 'Test the model', to: 'deploy' }
+  else if (input.canTrain) primary = { label: `Train on ${latestLabel}`, to: 'train' }
 
   return {
     stages: {
