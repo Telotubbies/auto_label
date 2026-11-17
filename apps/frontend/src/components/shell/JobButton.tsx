@@ -34,7 +34,7 @@ export function JobButton() {
   return (
     <>
       <button ref={buttonRef} type="button" onClick={() => { setOpen((o) => !o); setDot(false) }}
-        aria-label={active ? `Jobs, ${active} active` : dot ? 'Jobs, new result' : 'Jobs'} aria-expanded={open} aria-controls="job-panel"
+        aria-label={active ? `Jobs ${active} active` : dot ? 'Jobs new result' : 'Jobs'} aria-expanded={open} aria-controls="job-panel"
         className="relative flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-sm hover:bg-accent hover:text-accent-foreground">
         <ListChecks className="h-4 w-4" aria-hidden />
         <span className="hidden sm:inline">Jobs</span>

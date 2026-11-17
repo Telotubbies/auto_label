@@ -42,15 +42,16 @@ const facts = (over = {}, versions = [], jobs = []) => stageFacts({ project: pro
 const rowsOf = (groups) => groups.flatMap((g) => g.items)
 
 test('test_stage_dot_always_ships_a_label', () => {
-  // The dot is decoration: the row's accessible name carries the label, the count and the state
-  // word, so a screenshot, a high-contrast theme and a screen reader all read the same state.
+  // The dot is decoration: the row's own text carries the label, the state word and the count, so a
+  // screenshot, a high-contrast theme and a screen reader all read the same state. That text is also
+  // the accessible name, in reading order (WCAG 2.5.3, T-1107): no aria-label reorders the row.
   assert.match(itemSrc, /aria-hidden/)
-  assert.match(itemSrc, /`\$\{row\.label\}, \$\{countText\}, \$\{word\}`/,
-    'the accessible name is "label, count, state word"')
+  assert.match(itemSrc, /\{row\.label\}/, 'the label is visible text, not an invented name')
+  assert.doesNotMatch(itemSrc, /aria-label=\{/, 'no row renames itself over the row the eye reads')
   assert.match(itemSrc, /stageWord\(/, 'the state word comes from the shared vocabulary')
-  // Both render paths carry it: the link, and the locked button (which appends the lock sentence).
-  assert.equal((itemSrc.match(/aria-label=\{/g) ?? []).length, 2, 'link and locked row both name themselves')
-  assert.match(itemSrc, /locked, request access/)
+  // The lock keeps its "request access" meaning as a description, never as a rename.
+  assert.match(itemSrc, /aria-describedby=\{descId\}/)
+  assert.match(itemSrc, /Locked for your role/)
 })
 
 test('test_groups_render_in_order_and_are_not_all_caps', () => {

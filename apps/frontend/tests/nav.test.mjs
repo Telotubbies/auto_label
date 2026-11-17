@@ -561,3 +561,42 @@ test('test_inference_is_a_flag_gated_item_in_both_rails', () => {
     assert.deepEqual(item?.roles, ['owner', 'admin'])
   }
 })
+
+// --- T-1107: the rail and the Jobs trigger say what the eye reads (WCAG 2.5.3) ------------------
+// axe `label-content-name-mismatch`: the accessible name must contain the visible text, as one
+// contiguous string. The rail invented "Upload, 40, done" over a row that reads "1 Upload done 40";
+// the Jobs trigger wrote "Jobs, 1 active" over "Jobs 1". Both names now come from what is on screen.
+test('a rail row is named by its visible text, in reading order, number first', () => {
+  const item = source('../src/components/shell/StageItem.tsx')
+  // No row renames itself, so the name cannot disagree with the row.
+  assert.doesNotMatch(item, /aria-label=/, 'a rail row carries no aria-label')
+
+  // Reading order is the rendered order: number, label, state word, count.
+  const order = ['{row.number}', '{row.label}', '{word &&', "count === null ? '\u2014' : count"]
+  const at = order.map((token) => item.indexOf(token))
+  order.forEach((token, i) => assert.notEqual(at[i], -1, `${token} is rendered`))
+  for (let i = 1; i < at.length; i += 1) {
+    assert.ok(at[i] > at[i - 1], `"${order[i]}" must render after "${order[i - 1]}"`)
+  }
+
+  // The pipeline number is part of what the eye reads, so it is exposed to the name, not hidden.
+  assert.doesNotMatch(item, /aria-hidden className="w-4/, 'the stage number is not aria-hidden')
+})
+
+test('a locked rail row keeps the request-access meaning as a description, not a rename', () => {
+  const item = source('../src/components/shell/StageItem.tsx')
+  assert.match(item, /aria-describedby=\{descId\}/, 'the lock is described, not renamed')
+  assert.match(item, /id=\{descId\}/, 'the description the id points at exists')
+  assert.match(item, /Locked for your role/, 'the description says why the row is dimmed')
+  assert.match(item, /[Rr]equest access/, 'and how to ask for it')
+})
+
+test('the Jobs trigger names "Jobs <count>" as one contiguous string', () => {
+  const button = source('../src/components/shell/JobButton.tsx')
+  const label = button.match(/aria-label=\{([^\n]+)\}\s+aria-expanded/)?.[1] ?? ''
+  assert.ok(label, 'the trigger keeps a name for the icon-only width')
+  assert.doesNotMatch(label, /Jobs,/, 'a comma between "Jobs" and its count breaks the match')
+  // What the eye reads with a job running: the "Jobs" label plus the count badge.
+  const name = label.replaceAll('${active}', '1')
+  assert.ok(name.includes('Jobs 1'), `${name} must contain the visible "Jobs 1"`)
+})
