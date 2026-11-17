@@ -1120,14 +1120,14 @@ Eight files were declared exclusive by two cards each. The resolution is recorde
 
 | File | Cards | Resolution |
 | --- | --- | --- |
-| `apps/sdk/labeldesk/client.py` | T-022, T-075 (+T-344) | Shared; T-342 creates the methods, T-022/T-075 append, T-344 appends `batch/jobs/workflows` |
-| `apps/sdk/labeldesk/cli.py` | T-022, T-075, T-344 | T-344 owns the parser and exit codes; the other two register subcommands |
+| `packages/sdk/labeldesk/client.py` | T-022, T-075 (+T-344) | Shared; T-342 creates the methods, T-022/T-075 append, T-344 appends `batch/jobs/workflows` |
+| `packages/sdk/labeldesk/cli.py` | T-022, T-075, T-344 | T-344 owns the parser and exit codes; the other two register subcommands |
 | `apps/backend/tests/test_sdk_cli.py` | T-022, T-075, T-344 | Append-only sections, in that order |
 | `apps/backend/tests/test_folders.py` | T-024, T-094 | T-024 creates, T-094 appends |
 | `apps/frontend/src/features/workspace/FolderTree.tsx` | T-025, T-096 | T-025 creates and owns, T-096 adds drag-move and the access dialog |
 | `apps/frontend/tests/folder-tree.test.mjs` | T-025, T-096 | T-025 creates, T-096 appends |
 | `apps/backend/app/services/folder_access.py` | T-095, T-384 | T-095 creates the enforcement; T-384 adds the grant table |
-| `apps/sdk/labeldesk/config.py` | T-348, T-441 | T-348 creates the credential file module; T-441 stores the default workspace |
+| `packages/sdk/labeldesk/config.py` | T-348, T-441 | T-348 creates the credential file module; T-441 stores the default workspace |
 
 ### 7.2 Cross-area rows (one piece of work, one owner)
 
@@ -1191,7 +1191,7 @@ T-262 (PreflightList) → T-261 (DataBlock) → T-256 (RecipePanel) → T-255 (T
 ```
 
 Every other family merges ascending within its wave. Two path notes for the captain: `features/project/train/`
-and `features/project/versions/steps/` are new directories created by their first card, and `apps/sdk` files
+and `features/project/versions/steps/` are new directories created by their first card, and `packages/sdk` files
 are shared by id order T-022 → T-075 → T-344 → T-348 → T-441.
 
 ---

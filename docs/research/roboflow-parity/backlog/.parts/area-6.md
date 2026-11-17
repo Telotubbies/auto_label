@@ -79,8 +79,8 @@ Hours are attributed once, to the card's primary row; a row that only rides anot
 | `apps/backend/app/routers/edge.py` (owner T-358) | T-358, T-359 |
 | `apps/backend/app/jobs.py` | T-340, T-350, T-359 |
 | `apps/backend/app/config.py` | T-350 |
-| `apps/sdk/labeldesk/client.py` | T-342, T-343, T-344, T-348 |
-| `apps/sdk/labeldesk/cli.py` (owner T-344) | T-344, T-348 |
+| `packages/sdk/labeldesk/client.py` | T-342, T-343, T-344, T-348 |
+| `packages/sdk/labeldesk/cli.py` (owner T-344) | T-344, T-348 |
 | `apps/frontend/src/features/project/Deploy.tsx` (owner T-314) | T-314, T-311, T-318, T-349 |
 | `apps/frontend/src/features/project/Workflows.tsx` (owner T-322) | T-322, T-329, T-333, T-345 |
 | `apps/frontend/src/features/project/WorkflowBlocks.tsx` | T-331, T-332 |
@@ -138,13 +138,13 @@ Hours are attributed once, to the card's primary row; a row that only rides anot
 | T-339 | A human verdict on a production event | B | 3 | R3 | no | `services/event_feedback.py`, `tests/test_event_feedback.py`, `streams/EventVerdict.tsx`, `tests/event-verdict.test.mjs` |
 | T-340 | One reviewer at a time, and the lock releases itself | B | 3 | R3 | no | `models/review.py`, `services/review_session.py`, `routers/review.py`, `tests/test_review_session.py` |
 | T-341 | The review session screen | B | 2.5 | R4 | no | `streams/ReviewSession.tsx`, `streams/reviewKeys.ts`, `tests/review-session.test.mjs` |
-| T-342 | Run a workflow and load a model from Python | B | 3 | R5 | no | `apps/sdk/labeldesk/loader.py`, `tests/test_sdk_workflow.py`, `apps/sdk/README.md` |
-| T-343 | A video source object for a file, a webcam or a camera URL | B | 3 | R5 | no | `apps/sdk/labeldesk/pipeline.py`, `tests/test_sdk_pipeline.py` |
-| T-344 | Two command sets, one stated boundary | B | 3 | R5 | no | `apps/sdk/labeldesk/cli.py` |
+| T-342 | Run a workflow and load a model from Python | B | 3 | R5 | no | `packages/sdk/labeldesk/loader.py`, `tests/test_sdk_workflow.py`, `packages/sdk/README.md` |
+| T-343 | A video source object for a file, a webcam or a camera URL | B | 3 | R5 | no | `packages/sdk/labeldesk/pipeline.py`, `tests/test_sdk_pipeline.py` |
+| T-344 | Two command sets, one stated boundary | B | 3 | R5 | no | `packages/sdk/labeldesk/cli.py` |
 | T-345 | Hand a workflow to another project | C | 3 | R4+R3 | yes | `models/sharing.py`, `services/workflow_share.py`, `routers/workflow_sharing.py`, `workflow/ShareWorkflow.tsx`, `SharedWorkflow.tsx`, `FolderPicker.tsx` |
 | T-346 | Say what each camera source can and cannot become | C | 3 | R4+R3 | yes | `streams/discovery.py`, `tests/test_stream_discovery.py`, `streams/NewSourceDialog.tsx`, `streams/sources.ts` |
 | T-347 | Capture settings, and where they do nothing | C | 2 | R4 | no | `streams/capture.py`, `tests/test_stream_capture.py`, `streams/CaptureSettings.tsx`, `streams/capture.ts` |
-| T-348 | One key, three sources, one documented order | C | 2.5 | R5 | yes | `apps/sdk/labeldesk/config.py`, `tests/test_sdk_keys.py` |
+| T-348 | One key, three sources, one documented order | C | 2.5 | R5 | yes | `packages/sdk/labeldesk/config.py`, `tests/test_sdk_keys.py` |
 | T-349 | The rate table, next to the choice | D | 3 | R4+R3 | no | `services/credit_rates.py`, `tests/test_credit_rates.py`, `deploy/CostTable.tsx`, `deploy/costView.ts` |
 | T-350 | Collection limits: caps, cadence and what is kept | D | 3 | R3 | no | `tests/test_active_learning_caps.py` |
 | T-351 | The active-learning form, and who reviews the batch | D | 2.5 | R4 | no | `project/ActiveLearningForm.tsx`, `project/activeLearningView.ts`, `tests/active-learning-form.test.mjs` |

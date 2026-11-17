@@ -86,7 +86,7 @@ Gap rows: 20 (14 PARTIAL, 6 MISSING) of 27 rows · Cards: 35 · Hours: 102
 | T-019 | The editor shows only the tools the project type can learn from | B | 2 | R4 | no | `apps/frontend/src/features/editor/toolsForType.ts` |
 | T-020 | Shared class vocabulary: group table, project link, propagation | C | 3 | R3 | yes | `apps/backend/app/services/vocabulary.py` |
 | T-021 | Group picker on the create form and a shared-vocabulary panel | C | 3 | R4 | no | `apps/frontend/src/features/workspace/GroupPicker.tsx` |
-| T-022 | Create a project from the SDK and the CLI, same shape as the form | C | 3 | R5 | yes | `apps/sdk/labeldesk/client.py` |
+| T-022 | Create a project from the SDK and the CLI, same shape as the form | C | 3 | R5 | yes | `packages/sdk/labeldesk/client.py` |
 | T-023 | Project description and its public link, written where the author is | A | 3 | R4+R3 | yes | `apps/frontend/src/features/project/DescriptionCard.tsx` |
 | T-024 | Move projects and folders by drag, including a multi-selection | C | 3 | R4 | no | `apps/frontend/src/features/workspace/ProjectDnd.tsx` |
 | T-025 | Folders inside folders, with a cycle rule and a breadcrumb | C | 3 | R3+R4 | no | `apps/frontend/src/features/workspace/FolderTree.tsx` |

@@ -76,7 +76,7 @@ Shared files: 247. Migration-bearing cards: 57.
 | `apps/frontend/src/lib/api/billing.ts` | T-413, T-415, T-416, T-417, T-418, T-420 | 6 |
 | `apps/frontend/src/lib/api/workflows.ts` | T-316, T-319, T-320, T-328, T-330, T-345 | 6 |
 | `apps/frontend/src/routes/workspace.routes.tsx` | T-012, T-015, T-027, T-091, T-400, T-416 | 6 |
-| `apps/sdk/labeldesk/client.py` | T-022, T-075, T-342, T-343, T-344, T-348 | 6 |
+| `packages/sdk/labeldesk/client.py` | T-022, T-075, T-342, T-343, T-344, T-348 | 6 |
 | `apps/backend/app/handlers/__init__.py` | T-029, T-032, T-066, T-159, T-293 | 5 |
 | `apps/backend/app/handlers/versioning.py` | T-089, T-100, T-218, T-230, T-401 | 5 |
 | `apps/backend/app/services/connectors.py` | T-076, T-077, T-078, T-079, T-083 | 5 |
@@ -86,7 +86,7 @@ Shared files: 247. Migration-bearing cards: 57.
 | `apps/frontend/src/features/settings/keys/KeyMenu.tsx` | T-391, T-393, T-394, T-396, T-398 | 5 |
 | `apps/frontend/src/index.css` | T-470, T-472, T-473, T-489, T-491 | 5 |
 | `apps/frontend/tests/dashboard.test.mjs` | T-016, T-024, T-475, T-485, T-486 | 5 |
-| `apps/sdk/labeldesk/cli.py` | T-022, T-075, T-344, T-348, T-441 | 5 |
+| `packages/sdk/labeldesk/cli.py` | T-022, T-075, T-344, T-348, T-441 | 5 |
 | `apps/backend/app/apikeys.py` | T-095, T-390, T-394, T-395 | 4 |
 | `apps/backend/app/models/streams.py` | T-337, T-339, T-346, T-356 | 4 |
 | `apps/backend/app/routers/runtimes.py` | T-310, T-349, T-352, T-353 | 4 |
@@ -114,7 +114,7 @@ Shared files: 247. Migration-bearing cards: 57.
 | `apps/frontend/src/features/workspace/WorkspacePages.tsx` | T-257, T-336, T-355, T-358 | 4 |
 | `apps/frontend/src/lib/api/usage.ts` | T-408, T-409, T-410, T-411 | 4 |
 | `apps/frontend/src/routes/public.routes.tsx` | T-031, T-036, T-038, T-429 | 4 |
-| `apps/sdk/README.md` | T-342, T-343, T-344, T-348 | 4 |
+| `packages/sdk/README.md` | T-342, T-343, T-344, T-348 | 4 |
 | `apps/backend/app/adapters/refine.py` | T-130, T-141, T-158 | 3 |
 | `apps/backend/app/jobs.py` | T-340, T-350, T-359 | 3 |
 | `apps/backend/app/models/insights.py` | T-408, T-411, T-421 | 3 |
@@ -252,8 +252,8 @@ Shared files: 247. Migration-bearing cards: 57.
 | `apps/frontend/src/lib/theme.ts` | T-470, T-495 | 2 |
 | `apps/frontend/tests/editor-transform.test.mjs` | T-124, T-125 | 2 |
 | `apps/frontend/tests/folder-tree.test.mjs` | T-025, T-096 | 2 |
-| `apps/sdk/labeldesk/_generated.py` | T-342, T-343 | 2 |
-| `apps/sdk/labeldesk/config.py` | T-348, T-441 | 2 |
+| `packages/sdk/labeldesk/_generated.py` | T-342, T-343 | 2 |
+| `packages/sdk/labeldesk/config.py` | T-348, T-441 | 2 |
 | `tools/gen_sdk.py` | T-342, T-343 | 2 |
 
 ## Migration-bearing cards (one at a time)

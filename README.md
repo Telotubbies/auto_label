@@ -14,7 +14,7 @@ The first is a batch pipeline for turning raw PPE images into verified datasets,
 | LabelDesk frontend | `apps/frontend` | Implemented |
 | Remote GPU worker | `apps/worker` | Implemented |
 | Self-hosted inference | `apps/inference` | Implemented, optional |
-| Python SDK and CLI | `apps/sdk` | Implemented |
+| Python SDK and CLI | `packages/sdk` | Implemented |
 | SAM and YOLO batch pipeline | `sam3_auto_label`, `yolo26_ppe` | Implemented |
 
 The application has a working self-hosted deployment path. It is not a hardened multi-tenant service. The limits section below lists the known gaps.

@@ -173,7 +173,7 @@ area 6 can map its row to it instead of writing a second card.
 | T-438 | Notification cost metering and display | C | 3 | R3+R4 | no | `features/settings/alerts/ChannelCost.tsx`, `tests/test_notify_cost.py`, `tests/notify-cost.test.mjs` |
 | T-439 | Alert on silence and on camera offline | C | 3 | R3 | no | `services/alert_silence.py`, `features/settings/alerts/WatchBlock.tsx`, `tests/test_alert_silence.py`, `tests/watch-block.test.mjs` |
 | T-440 | External training handoff | C | 3 | R3 | yes | `routers/handoff.py`, `services/handoff.py`, `lib/api/handoff.ts`, `tests/test_training_handoff.py` |
-| T-441 | CLI login and a default workspace | C | 2 | R5 | yes | `apps/sdk/labeldesk/auth.py`, `config.py`, `apps/sdk/tests/test_auth.py` |
+| T-441 | CLI login and a default workspace | C | 2 | R5 | yes | `packages/sdk/labeldesk/auth.py`, `config.py`, `packages/sdk/tests/test_auth.py` |
 | T-442 | Rename a workspace with a URL-breakage warning | C | 2.5 | R4+R3 | yes | `features/settings/RenameWorkspace.tsx`, `slugify.ts`, `tests/test_ws_rename.py`, `tests/slugify.test.mjs` |
 | T-443 | Delete a workspace | D | 3 | R3 | yes | `services/workspace_delete.py`, `tests/test_ws_delete.py` |
 | T-444 | Delete an account and its data | D | 3 | R3 | yes | `routers/account.py`, `services/account_delete.py`, `tests/test_account_delete.py` |

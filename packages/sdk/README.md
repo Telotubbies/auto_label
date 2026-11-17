@@ -6,7 +6,7 @@ the operation map in `labeldesk/_generated.py` is generated from the FastAPI sch
 ## Install
 
 ```bash
-pip install -e apps/sdk
+pip install -e packages/sdk
 ```
 
 ## Auth

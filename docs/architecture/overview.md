@@ -29,7 +29,7 @@ The browser talks only to the frontend origin. In development Vite proxies `/api
 | Local worker | `apps/backend/app/worker.py` | Claims queued jobs in the API process (`LD_EMBEDDED_WORKER=1`) or as `python -m app.worker` in the Compose worker service |
 | Remote GPU worker | `apps/worker` | Outbound-only worker that claims `train` and `autolabel` jobs, runs them on its own GPU, and posts progress and results back |
 | Self-hosted inference | `apps/inference` | Standalone service that serves exported `.onnx`, `.pt`, or `.engine` files over `/predict`; it has no workspace, API key, or billing code |
-| SDK and CLI | `apps/sdk` | Python client for `/api/v1`; the operation map is generated from the API's OpenAPI schema |
+| SDK and CLI | `packages/sdk` | Python client for `/api/v1`; the operation map is generated from the API's OpenAPI schema |
 | Batch pipeline | `sam3_auto_label`, `yolo26_ppe` | SAM auto-labeling and YOLO26 training, evaluation, and export. The target layout moves both under `ml/` |
 
 The `packages/` directory in the target layout does not exist yet. Shared Python code currently lives under `apps/backend/app`. The frontend is self-contained.
@@ -76,7 +76,7 @@ The backend publishes the FastAPI OpenAPI document. `tools/export_openapi.py` wr
 
 Two generators read the same document:
 
-- `tools/gen_sdk.py` projects the operations into `apps/sdk/labeldesk/_generated.py`; `apps/backend/tests/test_sdk_cli.py` keeps it in lockstep.
+- `tools/gen_sdk.py` projects the operations into `packages/sdk/labeldesk/_generated.py`; `apps/backend/tests/test_sdk_cli.py` keeps it in lockstep.
 - `apps/frontend/scripts/gen-api-types.mjs` turns `components.schemas` into `apps/frontend/src/lib/api-types.gen.ts`. `npm run build` runs that generator in `--check` mode before `tsc -b`, so a schema change that was not regenerated into the types fails the frontend build. `apps/frontend/tests/api-types.test.mjs` covers the same rule under `npm test`.
 
 The generated types are additive. `apps/frontend/src/lib/types.ts` and `apps/frontend/src/lib/api.ts` are still maintained by hand, so a screen keeps working while it moves over. See [ADR 0002](../adr/0002-front-back-contract.md).

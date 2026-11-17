@@ -13,7 +13,7 @@
 /apps/backend/                  @OWNER-PLACEHOLDER
 /apps/worker/                   @OWNER-PLACEHOLDER
 /apps/inference/                @OWNER-PLACEHOLDER
-/apps/sdk/                      @OWNER-PLACEHOLDER
+/packages/sdk/                  @OWNER-PLACEHOLDER
 
 /deploy/                        @OWNER-PLACEHOLDER
 /.github/                       @OWNER-PLACEHOLDER

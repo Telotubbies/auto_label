@@ -115,7 +115,7 @@ and `2-F2.7`), so the Hours column overlaps and is not expected to add up to the
 | T-072 | Frame-extraction dialog with trim and hand-picked frames | B | 3 | R4 | no | `features/project/VideoExtractDialog.tsx`, `lib/extractPlan.ts`, `tests/video-extract.test.mjs` |
 | T-073 | Attach labels to a stored image, with a stale-write guard | C | 2.5 | R3 | yes | `routers/devapi.py`, `tests/test_api_attach.py` |
 | T-074 | Resumable upload sessions for archives and video | C | 3 | R3 | yes | `services/upload_sessions.py`, `tests/test_upload_sessions.py` |
-| T-075 | SDK and CLI upload: workers, retries, no-wait and JSON | C | 3 | R3 | no | `apps/sdk/labeldesk/client.py`, `apps/sdk/labeldesk/cli.py`, `tests/test_sdk_cli.py` |
+| T-075 | SDK and CLI upload: workers, retries, no-wait and JSON | C | 3 | R3 | no | `packages/sdk/labeldesk/client.py`, `packages/sdk/labeldesk/cli.py`, `tests/test_sdk_cli.py` |
 | T-076 | A reusable credential store for bucket access | C | 3 | R3 | yes | `models/storage.py`, `services/credentials.py`, `routers/credentials.py`, `tests/test_credentials.py` |
 | T-077 | Prove a bucket connection and get path-style right | C | 3 | R3 | yes | `services/connectors.py`, `routers/connectors.py`, `tests/test_connector_setup.py` |
 | T-078 | Mirror a bucket into a project: globs, naming, orphans | C | 3 | R3 | yes | `services/mirror.py`, `tests/test_mirror.py` |
