@@ -170,10 +170,12 @@ def test_metrics_route_is_200_with_the_token(c, token):
     assert 'labeldesk_build_info{version="' in r.text
 
 
-@pytest.mark.parametrize("headers", [{"Authorization": "Bearer wrong"}, {}])
+@pytest.mark.parametrize("headers", [{"Authorization": "Bearer wrong"},
+                                     {"Authorization": b"Bearer tok\xe9n"},  # a byte str-compare refuses
+                                     {}])
 def test_metrics_route_is_401_with_a_wrong_token(c, token, headers):
     r = c.get("/api/metrics", headers=headers)
-    assert r.status_code == 401
+    assert r.status_code == 401, "a malformed header is a wrong token, never a 500"
     assert r.json() == {"detail": "Unauthorized"}, "the body must not explain the token"
 
 

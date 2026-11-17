@@ -92,7 +92,8 @@ def metrics(authorization: str = Header(default="")):
         # Not 403: an unset token means "no metrics in this deployment", and the body says nothing.
         raise HTTPException(404, "Not Found")
     given = authorization[len("Bearer "):].strip() if authorization.startswith("Bearer ") else ""
-    if not hmac.compare_digest(given, token):
+    # Bytes: a header can carry a non-ASCII byte, and comparing str would raise instead of answering.
+    if not hmac.compare_digest(given.encode("utf-8"), token.encode("utf-8")):
         raise HTTPException(401, "Unauthorized")
     DB_UP.set(1 if health._db_ok() else 0)        # the same check `/api/readyz` answers with
     # Measured, but observed outside this call: the middleware records it after the body is sent.
