@@ -42,6 +42,7 @@ from .services.evaluate import evaluate            # noqa: F401  seam
 
 log = logging.getLogger("labeldesk.worker")
 POLL = 1.5
+BACKOFF_MAX_S = 30.0                        # a broken queue/DB may idle this long, never spin
 WATCHDOG_MIN_S = 120.0                      # later epochs: never call a run stalled sooner than this
 FIRST_EPOCH_MIN_S = 600.0                   # the first epoch also pays for export + model load
 WATCHDOG_POLL_S = 0.01                      # floor for the adaptive poll (tests shrink the limit)
@@ -267,6 +268,11 @@ def _schedule_ops() -> None:
         log.exception("could not schedule drift jobs")
 
 
+def _backoff(failures: int) -> float:
+    """Idle after a failed iteration: POLL, 2x, 4x … capped, so repeated failures cannot spin the CPU."""
+    return min(BACKOFF_MAX_S, POLL * 2 ** min(failures - 1, 16))
+
+
 def loop(stop: threading.Event | None = None):
     from .config import RETENTION_CHECK_S
     from .services import heartbeat, retention
@@ -274,6 +280,7 @@ def loop(stop: threading.Event | None = None):
     recover()
     heartbeat.beat(LOCAL_JOB_KINDS)
     next_cleanup = 0.0
+    failures = 0
     while not (stop and stop.is_set()):
         if time.monotonic() >= next_cleanup:
             try:
@@ -282,16 +289,25 @@ def loop(stop: threading.Event | None = None):
                 log.exception("could not enqueue the retention job")
             next_cleanup = time.monotonic() + RETENTION_CHECK_S
         _schedule_ops()           # self-throttled; long jobs must not starve the daily drift check
-        jid = _claim()
-        if jid:
-            heartbeat.beat(LOCAL_JOB_KINDS, current_job=jid)
-            try:
+        try:
+            jid = _claim()
+            if jid:
+                heartbeat.beat(LOCAL_JOB_KINDS, current_job=jid)
                 run_one(jid)
-            finally:
                 heartbeat.beat(LOCAL_JOB_KINDS)
+            else:
+                heartbeat.beat(LOCAL_JOB_KINDS)
+        except Exception:                     # one bad job or DB blip must not end the only executor
+            failures += 1
+            pause = _backoff(failures)
+            log.exception("worker iteration failed; idling %.1f s", pause)
         else:
-            heartbeat.beat(LOCAL_JOB_KINDS)
-            time.sleep(POLL)
+            failures, pause = 0, 0.0 if jid else POLL
+        if pause:
+            if stop:
+                stop.wait(pause)
+            else:
+                time.sleep(pause)
 
 
 def start_background() -> threading.Event:

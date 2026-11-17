@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 
 import pytest
 
@@ -37,6 +38,37 @@ def test_schedule_ops_runs_while_a_job_is_claimed(monkeypatch):
     monkeypatch.setattr(worker, "run_one", run_one)
     worker.loop(stop)
     assert calls == ["schedule", "job-1"]
+
+
+def test_loop_survives_a_failed_iteration_and_backs_off(monkeypatch):
+    """B1: one transient DB error must not end the only executor, and retries must not spin."""
+    attempts: list[float] = []
+    stop = threading.Event()
+    monkeypatch.setattr(worker, "recover", lambda: None)
+    monkeypatch.setattr(worker, "_schedule_ops", lambda: None)
+    monkeypatch.setattr(worker, "POLL", 0.05)
+    monkeypatch.setattr(worker, "BACKOFF_MAX_S", 0.2)
+
+    def claim():
+        attempts.append(time.monotonic())
+        if len(attempts) == 3:
+            stop.set()
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(worker, "_claim", claim)
+    worker.loop(stop)                          # must return, not raise
+    assert len(attempts) == 3
+    gaps = [b - a for a, b in zip(attempts, attempts[1:])]
+    assert gaps[0] >= 0.03 and gaps[1] > gaps[0], "a repeated failure must idle longer, not retry at full speed"
+    assert gaps[1] <= 0.5, "the idle must stay bounded"
+
+
+def test_backoff_is_bounded(monkeypatch):
+    monkeypatch.setattr(worker, "POLL", 1.5)
+    monkeypatch.setattr(worker, "BACKOFF_MAX_S", 30.0)
+    assert worker._backoff(1) == 1.5
+    assert worker._backoff(2) == 3.0
+    assert worker._backoff(10_000) == 30.0
 
 
 def test_over_budget_helper():
