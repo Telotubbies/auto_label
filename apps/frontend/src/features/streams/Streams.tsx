@@ -5,6 +5,7 @@ import { Cctv, Eye, MoreVertical, Play, Plus, Square, Trash2, TriangleAlert, Upl
 import { api } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { fmtBytes, fmtInt } from '@/lib/format'
+import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import type { RegistryItem, StreamItem, StreamStatus } from '@/lib/types'
 import { Button, Card, Dropdown, EmptyState, Field, Input, Modal, PageHeader, Select, Spinner, Switch, toast } from '@/components/ui'
@@ -90,7 +91,7 @@ function NewStreamDialog({ open, onClose, ws, project }: { open: boolean; onClos
       toast.ok('Stream created')
       setName(''); setSource(''); setUploaded(null); setFps(5); setTile({ on: false, size: 1024, overlap: 20 })
       onClose()
-      nav(`/${ws}/${project}/streams/${created.id}`)
+      nav(projectPath(ws, project, `streams/${created.id}`))
     } catch (e) { toast.err(e as Error) } finally { setBusy(false) }
   }
 
@@ -174,7 +175,7 @@ function StreamCard({ stream, admin, busy, onStart, onStop, onDelete }: {
 }) {
   const nav = useNavigate()
   const { ws = '', project = '' } = useParams()
-  const detail = `/${ws}/${project}/streams/${stream.id}`
+  const detail = projectPath(ws, project, `streams/${stream.id}`)
   const meta = metaOf(stream.status)
   return (
     <Card className="flex min-w-0 flex-col">
@@ -250,7 +251,7 @@ function StreamTable({ streams, admin, busyId, onStart, onStop, onDelete }: {
   onStart: (stream: StreamItem) => void; onStop: (stream: StreamItem) => void; onDelete: (stream: StreamItem) => void
 }) {
   const { ws = '', project = '' } = useParams()
-  const detail = (id: string) => `/${ws}/${project}/streams/${id}`
+  const detail = (id: string) => projectPath(ws, project, `streams/${id}`)
   return (
     <Card className="hidden overflow-hidden md:block">
       <div className="overflow-x-auto">

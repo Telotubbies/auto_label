@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Box, FolderOpen, FolderPlus, Globe, Lock, Plus, Scan, Search, Shapes, UserPlus } from 'lucide-react'
 import { api, del, fileUrl, get, patch, post } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import type { Project } from '@/lib/types'
@@ -36,7 +37,7 @@ function NewProject({ open, onClose, folders }: { open: boolean; onClose: () => 
         classes: f.classes.split(',').map((s) => s.trim()).filter(Boolean),
       })
       qc.invalidateQueries({ queryKey: ['projects', ws] }); qc.invalidateQueries({ queryKey: ['ws', ws] })
-      onClose(); nav(`/${ws}/${p.slug}/upload`)
+      onClose(); nav(projectPath(ws, p.slug, 'upload'))
     } catch (e) { toast.err(e as Error) } finally { setBusy(false) }
   }
   return (
@@ -130,7 +131,7 @@ export default function Home() {
           </Card>
         ))}
         {list.map((p) => (
-          <Link key={p.id} to={`/${ws}/${p.slug}/browse`}>
+          <Link key={p.id} to={projectPath(ws, p.slug)}>
             <Card className="lift overflow-hidden">
               <div className="flex gap-4 p-4">
                 <div className="h-24 w-36 shrink-0 overflow-hidden rounded-md bg-muted">{p.thumbnail && <img src={fileUrl(p.thumbnail)} alt="" className="h-full w-full object-cover" />}</div>

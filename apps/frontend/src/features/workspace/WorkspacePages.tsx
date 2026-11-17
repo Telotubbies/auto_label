@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Boxes, CheckCircle2, CircleAlert, CircleDashed, Rocket, Send, Undo2 } from 'lucide-react'
 import { api, get } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import type { DeploymentAlias, DeploymentProject, Job, ModelItem } from '@/lib/types'
 import { Button, Card, EmptyState, PageHeader, Progress, Select, StatusPill, fmtAgo, fmtDate, toast } from '@/components/ui'
@@ -21,7 +22,7 @@ export function WorkspaceModels() {
               <thead className="bg-muted/60 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2">Model</th><th>Project</th><th>Arch</th><th>Score</th><th>Status</th><th>Trained</th></tr></thead>
               <tbody>{q.data?.map((m) => (
                 <tr key={m.id} className="border-t">
-                  <td className="px-4 py-2.5 font-medium"><Link className="hover:text-primary" to={`/${ws}/${m.project}/models?model=${m.id}`}>{m.name}</Link></td>
+                  <td className="px-4 py-2.5 font-medium"><Link className="hover:text-primary" to={projectPath(ws, m.project ?? '', `models?model=${m.id}`)}>{m.name}</Link></td>
                   <td>{m.project_name}</td><td className="font-mono text-xs">{m.arch}</td><td>{headline(m)}</td><td><StatusPill status={m.status} /></td><td className="text-muted-foreground">{fmtDate(m.created)}</td>
                 </tr>
               ))}</tbody>
@@ -288,7 +289,7 @@ export function Deployments() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="flex min-w-0 items-center gap-2 font-semibold">
                   <Rocket className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-                  <Link className="truncate hover:text-primary" to={`/${ws}/${p.slug}/models`}>{p.name}</Link>
+                  <Link className="truncate hover:text-primary" to={projectPath(ws, p.slug, 'models')}>{p.name}</Link>
                 </h2>
                 <span className="text-xs text-muted-foreground">
                   {p.ready_models.length} ready model{p.ready_models.length === 1 ? '' : 's'}
@@ -343,7 +344,7 @@ export function Activity() {
               <div key={j.id} className="flex items-center gap-3 text-sm">
                 <StatusPill status={j.status} />
                 <span className="w-24 capitalize">{kindOf(j.kind).label}</span>
-                <Link to={`/${ws}/${j.project}/${kindOf(j.kind).page}`} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
+                <Link to={projectPath(ws, j.project ?? '', kindOf(j.kind).page)} className="w-48 truncate hover:text-primary">{j.project_name}</Link>
                 {['running', 'queued'].includes(j.status) ? <Progress className="flex-1" value={j.progress} /> : <span className="flex-1 truncate text-xs text-muted-foreground">{j.error || (j.result?.format ? `format ${j.result.format}` : '')}</span>}
                 <span className="w-24 text-right text-xs text-muted-foreground">{fmtAgo(j.created)}</span>
               </div>

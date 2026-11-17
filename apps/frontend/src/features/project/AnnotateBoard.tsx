@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, CheckCheck, Inbox, PencilLine, Send, Sparkles, UserPlus } from 'lucide-react'
 import { api, post } from '@/lib/api'
+import { editorPath, projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { BoardCard, Status } from '@/lib/types'
@@ -43,7 +44,7 @@ export default function AnnotateBoard() {
   const open = (card: BoardCard, status: Status, review = false) => {
     const q = new URLSearchParams({ status, ...(card.batchId ? { batch: card.batchId } : {}), ...(card.assigneeId ? { assignee: card.assigneeId } : {}), ...(review ? { review: 'true', sort: 'review' } : {}) })
     api.images(ws, project.slug, { status, ...(card.batchId ? { batch_id: card.batchId } : {}), ...(review ? { sort: 'review' } : {}), limit: 1 }).then((r) => {
-      if (r.items[0]) nav(`/${ws}/${project.slug}/images/${r.items[0].id}?${q}`)
+      if (r.items[0]) nav(editorPath(ws, project.slug, r.items[0].id, `?${q}`))
       else toast.err('No images in this card')
     })
   }
@@ -55,7 +56,7 @@ export default function AnnotateBoard() {
         actions={<>
           <Input className="w-56" placeholder="Filter batches" value={filter} onChange={(e) => setFilter(e.target.value)} />
           {canManage && <Button variant="outline" onClick={() => setAuto({ batchId: null })}><Sparkles className="h-4 w-4" /> Auto Label</Button>}
-          {canManage && <Button onClick={() => nav('../upload')}>Upload More</Button>}
+          {canManage && <Button onClick={() => nav(projectPath(ws, project.slug, 'upload'))}>Upload More</Button>}
         </>} />
       {running.map((j) => (
         <div key={j.id} className="mx-8 mb-3 flex items-center gap-3 rounded-lg border bg-accent/30 px-4 py-2 text-sm">
@@ -102,7 +103,7 @@ export default function AnnotateBoard() {
                       {col.id === 'review' && canManage && <Button size="sm" variant="outline" onClick={() => open(c, 'review', true)}>Review</Button>}
                       {col.id === 'review' && canManage && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => move(c, 'review', 'done')}><CheckCheck className="h-3.5 w-3.5" /> Approve all</Button>}
                       {col.id === 'review' && canManage && <Button size="sm" variant="ghost" onClick={() => move(c, 'review', 'annotating')}>Reject all</Button>}
-                      {col.id === 'done' && <Button size="sm" variant="outline" onClick={() => nav(`../browse?batch=${c.batchId ?? ''}`)}>View</Button>}
+                      {col.id === 'done' && <Button size="sm" variant="outline" onClick={() => nav(projectPath(ws, project.slug, `dataset?batch=${c.batchId ?? ''}`))}>View</Button>}
                     </div>
                   </Card>
                 ))}

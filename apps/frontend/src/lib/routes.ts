@@ -19,6 +19,11 @@ export function editorPath(ws: string, project: string, imageId: string, query =
   return `${projectPath(ws, project, `annotate/${imageId}`)}${query}`
 }
 
+/** Where the editor's back arrow goes: the board while reviewing, the dataset otherwise. */
+export function backPath(ws: string, project: string, { review }: { review: boolean }) {
+  return projectPath(ws, project, review ? 'annotate' : 'dataset')
+}
+
 /** Screens that moved: old first segment → the new relative path, `''` for the project root. */
 const MOVED_SEGMENTS = new Map<string, string>([
   ['index', ''], ['browse', 'dataset'], ['versions', 'dataset?tab=versions'],

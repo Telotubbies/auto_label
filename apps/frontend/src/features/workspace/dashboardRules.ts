@@ -1,6 +1,7 @@
 /** Pure rules for the workspace Home dashboard; the page only renders what these return. */
 
 import type { WorkspaceHome } from '@/lib/types'
+import { projectPath } from '../../lib/routes.ts'
 
 export type { WorkspaceHome }
 
@@ -33,7 +34,7 @@ export interface OnboardingStep {
 
 /** The checklist mirrors the real data lifecycle, so every tick is evidence in the workspace, not a saved flag. */
 export function onboardingSteps(f: OnboardingFacts): OnboardingStep[] {
-  const project = (path: string) => (f.firstProject ? `/${f.ws}/${f.firstProject}/${path}` : null)
+  const project = (path: string) => (f.firstProject ? projectPath(f.ws, f.firstProject, path) : null)
   const steps: OnboardingStep[] = [
     { key: 'project', title: 'Create a project', hint: 'A project holds the images, classes and versions for one model.',
       done: f.projects > 0, to: null, action: f.canCreateProject ? 'create-project' : null },

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Loader2, RotateCw, ShieldCheck } from 'lucide-react'
 import { api, fileUrl } from '@/lib/api'
 import { classColor } from '@/lib/theme'
+import { editorPath } from '@/lib/routes'
 import type { InsightLeakage } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Progress, toast } from '@/components/ui'
 import { axisChrome, ChartCard, cssColor, tooltipStyle, useChartTheme } from './Chart'
@@ -156,7 +157,7 @@ export function Leakage({ ws, slug, leakage, versionLabel, version }: {
                 <Card className="p-2">
                   <div className="grid grid-cols-2 gap-2">
                     {[a, b].map((img) => (
-                      <Link key={img.image_id} to={`/${ws}/${slug}/images/${img.image_id}`}
+                      <Link key={img.image_id} to={editorPath(ws, slug, img.image_id)}
                         className="group relative block overflow-hidden rounded-md border bg-muted"
                         aria-label={`Open ${img.name} (${img.split}) in the editor`}>
                         {img.thumb

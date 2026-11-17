@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, fileUrl } from '@/lib/api'
+import { editorPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { LabelerStat } from '@/lib/types'
@@ -142,10 +143,10 @@ function MyTasks({ ws, slug }: { ws: string; slug: string }) {
                 <img src={fileUrl(t.thumbnail)} alt="" loading="lazy"
                   className="h-16 w-24 shrink-0 rounded-md border bg-muted object-cover" />
                 <div className="min-w-0 flex-1">
-                  <Link to={`/${ws}/${slug}/images/${t.image_id}?status=annotating`}
+                  <Link to={editorPath(ws, slug, t.image_id, '?status=annotating')}
                     className="block truncate text-sm font-medium hover:underline">{t.name}</Link>
                   <p className="mt-0.5 text-xs text-muted-foreground">Assigned {fmtDate(t.created)}</p>
-                  <Link to={`/${ws}/${slug}/images/${t.image_id}?status=annotating`}
+                  <Link to={editorPath(ws, slug, t.image_id, '?status=annotating')}
                     className="mt-1.5 inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">
                     Open editor
                   </Link>

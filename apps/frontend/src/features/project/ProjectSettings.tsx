@@ -5,6 +5,7 @@ import { api, del, patch } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { useProjectPermissions } from '@/lib/perms'
+import { projectPath } from '@/lib/routes'
 import { Button, Card, Field, Input, PageHeader, Select, Spinner, Switch, Tabs, toast } from '@/components/ui'
 import { typeLabel } from '@/components/shell'
 import { ProjectPrivacySection } from '@/features/governance/Privacy'
@@ -41,13 +42,13 @@ export default function ProjectSettings() {
     .then(() => { qc.invalidateQueries({ queryKey: ['project', ws, project.slug] }); qc.invalidateQueries({ queryKey: ['projects', ws] }); toast.ok('Saved') }).catch(toast.err)
   const setTab = (id: string) => {
     // Canonicalise tab deep links onto /settings?tab=… so every tab shares one URL shape.
-    nav(`/${ws}/${project.slug}/settings?tab=${id}`, { replace: true })
+    nav(projectPath(ws, project.slug, `settings?tab=${id}`), { replace: true })
   }
 
   if (!admin && loading) {
     return <div className="flex h-full items-center justify-center text-muted-foreground"><Spinner /></div>
   }
-  if (!manager) return <Navigate to={`/${ws}/${project.slug}`} replace />
+  if (!manager) return <Navigate to={projectPath(ws, project.slug)} replace />
 
   return (
     <div className="anim-page max-w-3xl">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, LayoutDashboard, Loader2, Plus, Share2, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { Button, Card, EmptyState, Field, Input, Modal, PageHeader, toast, fmtAgo } from '@/components/ui'
 import { ErrorState, PageSkeleton } from '@/features/insights/charts'
 import { useProject } from '../project/ProjectLayout'
@@ -28,7 +29,7 @@ export default function Dashboards() {
       setCreating(false)
       setName('')
       toast.ok('Dashboard created')
-      navigate(`/${ws}/${slug}/dashboards/${dash.id}`)
+      navigate(projectPath(ws, slug, `dashboards/${dash.id}`))
     },
     onError: (e) => toast.err(e as Error),
   })
@@ -80,7 +81,7 @@ export default function Dashboards() {
                   ) : null}
                 </div>
                 <div className="mt-auto flex items-center gap-2 pt-4">
-                  <Button size="sm" onClick={() => navigate(`/${ws}/${slug}/dashboards/${dash.id}`)}>
+                  <Button size="sm" onClick={() => navigate(projectPath(ws, slug, `dashboards/${dash.id}`))}>
                     Open <ArrowRight className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="icon" className="ml-auto h-8 w-8 text-destructive"

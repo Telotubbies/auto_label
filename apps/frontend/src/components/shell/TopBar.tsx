@@ -5,6 +5,7 @@ import { ChevronRight, Cpu, Menu, Monitor, Moon, Sun } from 'lucide-react'
 import { api, get } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { RESERVED_WORKSPACE_SEGMENTS, WORKSPACE_PAGE_LABELS } from '@/lib/nav'
+import { projectPath } from '@/lib/routes'
 import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
 import { Glass } from '../glass'
 import { projNav } from './ProjectPanel'
@@ -56,7 +57,7 @@ export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
   const Icon = cur.icon
   // The workspace switcher already names the workspace; the breadcrumb root only appears on project pages.
   const crumbs = isProject
-    ? [{ label: wsName, to: `/${ws}` }, { label: proj.data?.name ?? slug, to: `/${ws}/${slug}` }, ...(page ? [{ label: page, to: '' }] : [])]
+    ? [{ label: wsName, to: `/${ws}` }, { label: proj.data?.name ?? slug, to: projectPath(ws, slug) }, ...(page ? [{ label: page, to: '' }] : [])]
     : page ? [{ label: page, to: '' }] : []
   return (
     <Glass as="header" className="absolute inset-x-2 top-2 z-20 flex h-11 items-center gap-3 rounded-2xl px-4 print:hidden">

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { FileText, Lock, ScanFace, ShieldCheck, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import { useApp } from '@/lib/store'
 import type { ProjectPrivacy, WorkspacePrivacyProject } from '@/lib/types'
@@ -123,7 +124,7 @@ function PrivacyRow({ ws, project }: { ws: string; project: WorkspacePrivacyProj
   return (
     <tr className="border-t align-top">
       <td className="px-4 py-3">
-        <Link to={`/${ws}/${project.slug}/settings?tab=privacy`} className="font-medium hover:text-primary">{project.name}</Link>
+        <Link to={projectPath(ws, project.slug, 'settings?tab=privacy')} className="font-medium hover:text-primary">{project.name}</Link>
         <div className="text-xs text-muted-foreground">{project.slug}</div>
       </td>
       <td className="px-4 py-3">

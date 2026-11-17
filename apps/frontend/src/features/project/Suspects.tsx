@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowUpRight, Check, Loader2, RotateCw, ScanSearch, ShieldCheck, ThumbsDown } from 'lucide-react'
 import { api } from '@/lib/api'
+import { editorPath, projectPath } from '@/lib/routes'
 import type { Job, SuspectItem, SuspectKind, SuspectQueue, SuspectVerdict } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, PageHeader, Progress, Spinner, Stat, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -214,7 +215,7 @@ export default function Suspects() {
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                             <ModelEvidence item={item} />
                             <span className="text-xs text-muted-foreground">Image {shortId(item.image_id)}</span>
-                            <Link to={`/${ws}/${project.slug}/images/${item.image_id}`}
+                            <Link to={editorPath(ws, project.slug, item.image_id)}
                               className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" aria-label={`Open image ${shortId(item.image_id)} in the editor`}>
                               Open in editor <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                             </Link>
@@ -253,7 +254,7 @@ export default function Suspects() {
                       ? 'Try another issue kind or show reviewed items.'
                       : 'The model agrees with every label it could score. Re-run the scan after adding data.'}
                 action={!data?.model
-                  ? <Button size="sm" onClick={() => nav(`/${ws}/${project.slug}/train`)}>Train a model</Button>
+                  ? <Button size="sm" onClick={() => nav(projectPath(ws, project.slug, 'train'))}>Train a model</Button>
                   : !data?.job_id
                     ? <Button size="sm" variant="outline" onClick={() => run.mutate()} disabled={run.isPending || !canRun}>Run scan</Button>
                     : undefined}

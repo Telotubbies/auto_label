@@ -5,6 +5,7 @@ import { ChevronLeft, ImageOff, Play, Plus, ScanLine, Send, Square, Trash2, Tria
 import { api, fileUrl } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { fmtInt } from '@/lib/format'
+import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import { classColor, dateLocale } from '@/lib/theme'
 import type { StreamCountOp, StreamEvent, StreamEventPage, StreamEventRule, StreamItem, StreamPrediction, StreamRule, StreamRuleKind, StreamZone } from '@/lib/types'
@@ -782,7 +783,7 @@ export default function StreamDetail() {
   if (!stream) {
     return (
       <EmptyState title="Stream not found" hint={(q.error as Error)?.message}
-        action={<Button size="sm" onClick={() => nav(`/${ws}/${project}/streams`)}>Back to streams</Button>} />
+        action={<Button size="sm" onClick={() => nav(projectPath(ws, project, 'streams'))}>Back to streams</Button>} />
     )
   }
 
@@ -803,7 +804,7 @@ export default function StreamDetail() {
       await api.deleteStream(ws, project, stream.id)
       qc.invalidateQueries({ queryKey: ['streams', ws, project] })
       toast.ok(`Deleted ${stream.name}`)
-      nav(`/${ws}/${project}/streams`)
+      nav(projectPath(ws, project, 'streams'))
     } catch (e) { toast.err(e as Error); setBusy(false) }
   }
 
@@ -821,7 +822,7 @@ export default function StreamDetail() {
         desc={<span className="[overflow-wrap:anywhere]"><span className="font-mono">{stream.modelRef}</span> · {displaySource(stream.source)}</span>}
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Link to={`/${ws}/${project}/streams`}>
+            <Link to={projectPath(ws, project, 'streams')}>
               <Button variant="ghost" size="sm"><ChevronLeft className="h-3.5 w-3.5" aria-hidden /> Streams</Button>
             </Link>
             {admin && (

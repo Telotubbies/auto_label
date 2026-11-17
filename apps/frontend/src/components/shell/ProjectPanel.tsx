@@ -4,6 +4,7 @@ import { api, fileUrl } from '@/lib/api'
 import { useWorkspaceFlags } from '@/lib/flags'
 import { useApp } from '@/lib/store'
 import { visibleProjectNav } from '@/lib/nav'
+import { projectPath } from '@/lib/routes'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Project, ProjectRole } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -56,7 +57,7 @@ export function ProjectPanel({ project }: { project: Project }) {
           <div key={g.group} role="group" aria-labelledby={`proj-nav-${g.group}`} className="mb-3">
             <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-sm font-semibold tracking-wider text-muted-foreground">{g.group}</div>
             {g.items.map(({ to, label, icon: Icon, count }) => (
-              <NavLink key={to} to={`/${ws}/${project.slug}/${to}`}
+              <NavLink key={to} to={projectPath(ws, project.slug, to)}
                 className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
                   isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
                 <Icon className="h-4 w-4 text-muted-foreground" />
