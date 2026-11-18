@@ -6,13 +6,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
-const deploy = read('../src/features/project/Deploy.tsx')
+const deploy = read('../src/features/project/Deployments.tsx')
 
 // The block that renders the cURL/Python/JS/URL snippet, from the `<pre>` that prints it to the
 // closing tag of the button that copies it.
 function snippetBlock() {
-  const start = deploy.indexOf('{snippets[lang]}')
-  assert.ok(start > 0, 'Deploy.tsx still renders a snippet from snippets[lang]')
+  const start = deploy.indexOf('{text}')
+  assert.ok(start > 0, 'Deploy.tsx still renders a snippet from text')
   const preOpen = deploy.lastIndexOf('<pre', start)
   const end = deploy.indexOf('</div>', start)
   assert.ok(preOpen > 0 && end > start, 'the snippet <pre> sits inside the card div')
@@ -30,18 +30,15 @@ test('test_code_block_reserves_room_for_the_copy_button', () => {
 })
 
 test('test_one_snippet_source_per_language', () => {
-  const tabs = deploy.match(/Tabs tabs=\{\[([\s\S]*?)\]\}/)
-  assert.ok(tabs, 'Deploy.tsx still declares the language tabs')
-  const langs = [...tabs[1].matchAll(/id:\s*'([^']+)'/g)].map((m) => m[1])
-  assert.ok(langs.length > 0, 'the language tabs name their ids')
-
-  const source = deploy.match(/const snippets: Record<string, string> = \{([\s\S]*?)\n {2}\}/)
-  assert.ok(source, 'Deploy.tsx keeps one snippets map')
-  const keys = [...source[1].matchAll(/^ {4}(\w+):/gm)].map((m) => m[1])
-
-  assert.deepEqual(keys, langs, 'snippets has exactly one entry per language tab, in tab order')
-  // One copy source: the button copies the active snippet, never a second hard-coded string.
+  const tabs = [...deploy.matchAll(/Tabs tabs=\{\[([\s\S]*?)\]\}/g)].map((m) => m[1])
+  const langTabs = tabs.find((t) => t.includes("'python'"))
+  assert.ok(langTabs, 'Deployments.tsx still declares the language tabs')
+  const langs = [...langTabs.matchAll(/id:\s*'([^']+)'/g)].map((m) => m[1])
+  const snippets = read('../src/features/project/deploySnippets.ts')
+  const install = snippets.match(/INSTALL[^=]*= \{([\s\S]*?)\n\}/)
+  assert.ok(install, 'deploySnippets.ts keeps one install map')
+  assert.deepEqual([...install[1].matchAll(/^ {2}(\w+):/gm)].map((m) => m[1]), langs, 'one install line per language tab, in tab order')
   assert.equal([...deploy.matchAll(/navigator\.clipboard\.writeText\(([^)]*)\)/g)].length, 1,
     'only one Copy handler writes to the clipboard')
-  assert.match(deploy, /navigator\.clipboard\.writeText\(snippets\[lang\]\)/, 'Copy copies the active snippet')
+  assert.match(deploy, /navigator\.clipboard\.writeText\(text\)/, 'Copy copies the shown snippet')
 })

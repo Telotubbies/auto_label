@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FolderGit2, Plus, Trash2 } from 'lucide-react'
+import { Download, Plus, Trash2 } from 'lucide-react'
+import { pct1 } from '@/lib/format'
 import { api, del, fileUrl, post } from '@/lib/api'
 import { useFlag } from '@/lib/flags'
 import { useProjectPermissions } from '@/lib/perms'
@@ -10,6 +11,7 @@ import type { Version } from '@/lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Progress, Select, StatusPill, Switch, fmtDate, toast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useProject } from './ProjectLayout'
+import { f1Score, preprocessSteps, resizeLabel } from './versionView'
 
 const AUGS: { key: string; label: string; kind: 'bool' | 'range'; max?: number; unit?: string }[] = [
   { key: 'flip_h', label: 'Horizontal flip', kind: 'bool' },
@@ -131,6 +133,46 @@ function Generate({ open, onClose }: { open: boolean; onClose: () => void }) {
   )
 }
 
+const Stat = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-md border px-3 py-2"><div className="text-xs text-muted-foreground">{label}</div><div className="text-lg font-bold tabular-nums">{value}</div></div>
+)
+
+/** The newest model trained on this version, its headline metrics and where to deploy it. */
+function TrainedModel({ versionId }: { versionId: string }) {
+  const { project, ws } = useProject()
+  const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug) })
+  const m = (models.data ?? []).filter((x) => x.versionId === versionId).sort((a, b) => b.created - a.created)[0]
+  if (!m) return null
+  const { precision, recall, map50 } = m.metrics
+  const deployOptions = [{ t: 'Hosted API', d: 'Call it over HTTP', to: `deploy?model=${m.id}` }, { t: 'Edge export', d: 'Device-targeted package', to: 'models' }, { t: 'Weights', d: 'Self-host the checkpoint', to: 'models' }]
+  return (
+    <Card className="space-y-3 p-4" data-testid="trained-model">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Trained model</div>
+          <div className="flex items-center gap-2 font-semibold">{m.name} <StatusPill status={m.status} /></div></div>
+        <div className="flex gap-2">
+          <Link to={projectPath(ws, project.slug, 'models')}><Button variant="outline" size="sm">View model</Button></Link>
+          {m.status === 'ready' && <Link to={projectPath(ws, project.slug, `deploy?model=${m.id}`)}><Button size="sm">Deploy</Button></Link>}
+        </div>
+      </div>
+      {m.status === 'ready' && (
+        <>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <Stat label="mAP@50" value={pct1(map50)} /><Stat label="Precision" value={pct1(precision)} />
+            <Stat label="Recall" value={pct1(recall)} /><Stat label="F1" value={pct1(f1Score(precision, recall))} />
+          </div>
+          <h4 className="text-sm font-semibold">Deploy your model</h4>
+          <div className="grid gap-2 md:grid-cols-3">
+            {deployOptions.map((o) => (
+              <Link key={o.t} to={projectPath(ws, project.slug, o.to)} className="rounded-lg border p-3 text-sm hover:bg-muted"><div className="font-medium">{o.t}</div><div className="text-xs text-muted-foreground">{o.d}</div></Link>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  )
+}
+
 function VersionDetail({ v }: { v: Version }) {
   const { project, ws } = useProject()
   const qc = useQueryClient()
@@ -145,9 +187,13 @@ function VersionDetail({ v }: { v: Version }) {
   const s = v.stats
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-bold">{v.name}</h2><p className="text-sm text-muted-foreground">Generated {fmtDate(v.created)}</p></div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="mb-1 flex items-center gap-2"><span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dataset version</span><Badge>{project.type}</Badge></div>
+          <h2 className="text-xl font-bold">{v.name}</h2><p className="text-sm text-muted-foreground">Generated {fmtDate(v.created)}</p>
+        </div>
         <div className="flex gap-2">
+          {v.status === 'ready' && <Button variant="outline" onClick={() => document.getElementById('version-download')?.scrollIntoView({ behavior: 'smooth' })}><Download className="h-4 w-4" /> Download</Button>}
           {v.status === 'ready' && can('project.train') && <Button onClick={() => nav(projectPath(ws, project.slug, `train?version=${v.id}`))}>Train a model</Button>}
           {isManager && <Button variant="ghost" size="icon" onClick={() => confirm('Delete this version?') && del(`${api.P(ws, project.slug)}/versions/${v.id}`).then(() => qc.invalidateQueries({ queryKey: ['versions', ws, project.slug] })).catch(toast.err)}><Trash2 className="h-4 w-4" /></Button>}
         </div>
@@ -172,7 +218,8 @@ function VersionDetail({ v }: { v: Version }) {
             </div>
             <div className="mt-2 flex flex-wrap gap-1">{Object.entries(s.classes ?? {}).map(([c, n]) => <Badge key={c}>{c}: {n}</Badge>)}</div>
           </Card>
-          <Card className="p-4">
+          <TrainedModel versionId={v.id} />
+          <Card id="version-download" className="p-4">
             <h3 className="mb-3 font-semibold">Download dataset</h3>
             <div className="flex flex-wrap items-center gap-2">
               <Select value={fmt} onChange={(e) => setFmt(e.target.value)}>{formats.data?.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</Select>
@@ -200,19 +247,29 @@ export default function Versions() {
   const [open, setOpen] = useState(false)
   const [selId, setSelId] = useState<string | null>(null)
   const list = versions.data ?? []
+  const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug) })
+  const archOf = (id: string) => models.data?.find((m) => m.versionId === id)?.arch
   const sel = list.find((v) => v.id === selId) ?? list[0]
   return (
     <div className="anim-page">
       <PageHeader title="Versions" desc="Frozen snapshots of your dataset with preprocessing and augmentation." actions={<Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Generate New Version</Button>} />
       <div className="flex gap-6 px-8 pb-10">
-        <div className="w-60 shrink-0 space-y-1.5">
-          {list.map((v) => (
-            <button key={v.id} onClick={() => setSelId(v.id)} className={cn('flex w-full cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm', sel?.id === v.id ? 'border-primary bg-accent/40' : 'hover:bg-muted')}>
-              <FolderGit2 className="h-4 w-4 text-muted-foreground" />
-              <div className="min-w-0 flex-1"><div className="truncate font-medium">{v.name}</div><div className="text-[11px] text-muted-foreground">{fmtDate(v.created)} · {v.stats.images ?? '…'} images</div></div>
-              {v.status !== 'ready' && <StatusPill status={v.status} />}
-            </button>
-          ))}
+        <div className="w-72 shrink-0 self-start overflow-hidden rounded-lg border">
+          <div className="bg-sidebar px-3 py-2 text-sm font-semibold text-sidebar-foreground">Versions</div>
+          <div className="space-y-1.5 p-1.5">
+            {list.map((v) => (
+              <button key={v.id} onClick={() => setSelId(v.id)} aria-current={sel?.id === v.id || undefined} className={cn('block w-full cursor-pointer rounded-lg border px-3 py-2.5 text-left text-sm', sel?.id === v.id ? 'border-primary bg-accent/40 ring-1 ring-primary' : 'hover:bg-muted')}>
+                <div className="flex items-center gap-2"><Badge className="bg-primary text-primary-foreground">v{v.number}</Badge><span className="min-w-0 flex-1 truncate font-medium">{v.name}</span>{v.status !== 'ready' && <StatusPill status={v.status} />}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{fmtDate(v.created)}</div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <Badge>{v.stats.images ?? '…'} images</Badge>
+                  {resizeLabel(v.settings) && <Badge>{resizeLabel(v.settings)}</Badge>}
+                  {preprocessSteps(v.settings).slice(0, 2).map((p) => <Badge key={p}>{p}</Badge>)}
+                  {archOf(v.id) && <Badge>{archOf(v.id)}</Badge>}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="min-w-0 flex-1">
           {sel ? <VersionDetail v={sel} /> : versions.isSuccess && <EmptyState title="No versions yet." hint="Generate a version to export your dataset or train a model." action={<Button size="sm" onClick={() => setOpen(true)}>Generate first version</Button>} />}

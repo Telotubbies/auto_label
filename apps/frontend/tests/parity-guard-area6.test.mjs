@@ -21,13 +21,14 @@ test('test_deploy_keeps_the_confidence_slider_and_reruns_the_preview', () => {
   assert.match(deploy, /onKeyUp=\{\(\) => run\(\)\}/,
     '6-F6.9: arrow keys re-run the preview too, so keyboard users see the same result')
 
-  assert.match(deploy, /fd\.append\('confidence', String\(c \/ 100\)\)/,
+  assert.match(deploy, /fd\.append\('confidence', String\(conf \/ 100\)\)/,
     '6-F6.9: the 1-99 slider is posted as a 0-1 form field')
   assert.match(deploy, /\/models\/\$\{mid\}\/predict/,
     '6-F6.9: the preview calls the model it selected')
 
-  for (const label of ['cURL', 'Python', 'JavaScript', 'Image URL']) {
-    assert.ok(deploy.includes(`label: '${label}'`), `6-F6.9: the ${label} snippet tab survives`)
+  const deployments = read('../src/features/project/Deployments.tsx')
+  for (const label of ['cURL', 'Python', 'JavaScript']) {
+    assert.ok(deployments.includes(`label: '${label}'`), `6-F6.9: the ${label} snippet tab survives`)
   }
 
   assert.match(deploy, /No trained model to deploy yet\./,

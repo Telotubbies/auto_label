@@ -30,6 +30,7 @@ import {
   type ShortcutId, type ShortcutMap,
 } from './shortcuts'
 
+const RAIL_BTN = 'flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg'
 const W = 1000                      // canvas width in stage units; height follows the image aspect
 const SMART = '#7c3aed'             // canvas stroke only — CSS tokens cannot resolve inside Konva
 const EPS_MIN = 0.0005              // matches segment.EPS_MIN / EPS_MAX in the API
@@ -824,6 +825,12 @@ export default function Editor() {
       ...(ocrOn ? [{ id: 'ocr', icon: ScanText, label: `OCR text (${keyHint('ocr')})` }] : []),
       { id: 'smart', icon: Sparkles, label: `Smart Polygon (${keyHint('smart')}) — click an object` },
     ]
+  // Rail sections: Pan / drawing tools / AI tools (Smart polygon).
+  const toolGroups = [
+    tools.filter((t) => t.id === 'pan'),
+    tools.filter((t) => t.id !== 'pan' && t.id !== 'smart'),
+    tools.filter((t) => t.id === 'smart'),
+  ].filter((g) => g.length > 0)
   const ready = (models.data ?? []).filter((m) => m.status === 'ready')
   const used = new Set(anns.map((a) => a.classId))
 
@@ -1221,13 +1228,19 @@ export default function Editor() {
             </div>
           )}
           <Glass strength="chrome" className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-xl p-1">
-            {tools.map(({ id, icon: Icon, label }) => (
-              <button key={id} data-testid={`tool-${id}`} onClick={() => setTool(id)} title={label} aria-label={label} aria-pressed={tool === id} className={cn('cursor-pointer rounded-lg p-2', tool === id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted')}><Icon className="h-4 w-4" /></button>
+            {toolGroups.map((group, gi) => (
+              <Fragment key={gi}>
+                {gi > 0 && <div className="my-1 h-px w-6 bg-border" />}
+                {group.map(({ id, icon: Icon, label }) => (
+                  <button key={id} data-testid={`tool-${id}`} onClick={() => setTool(id)} title={label} aria-label={label} aria-pressed={tool === id} className={cn(RAIL_BTN, tool === id ? 'bg-accent text-accent-foreground ring-1 ring-primary' : 'text-muted-foreground hover:bg-muted')}><Icon className="h-4 w-4" /></button>
+                ))}
+              </Fragment>
             ))}
             <div className="my-1 h-px w-6 bg-border" />
-            <button onClick={undo} title="Undo (Ctrl+Z)" aria-label="Undo" className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted"><Undo2 className="h-4 w-4" /></button>
-            <button onClick={redo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo" className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted"><Redo2 className="h-4 w-4" /></button>
-            <button onClick={() => selId && remove(selId)} title="Delete selected" aria-label="Delete selected" className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted"><Ban className="h-4 w-4" /></button>
+            <button onClick={undo} title="Undo (Ctrl+Z)" aria-label="Undo" className={cn(RAIL_BTN, 'text-muted-foreground hover:bg-muted')}><Undo2 className="h-4 w-4" /></button>
+            <button onClick={redo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo" className={cn(RAIL_BTN, 'text-muted-foreground hover:bg-muted')}><Redo2 className="h-4 w-4" /></button>
+            <div className="my-1 h-px w-6 bg-border" />
+            <button onClick={() => selId && remove(selId)} title="Delete selected" aria-label="Delete selected" className={cn(RAIL_BTN, 'text-muted-foreground hover:bg-muted')}><Ban className="h-4 w-4" /></button>
           </Glass>
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
             {displayOpen && (

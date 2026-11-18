@@ -18,7 +18,7 @@ test('the editor route and its shell regions survive', () => {
   assert.match(routes, /path=":project\/images\/:imageId"/)
   assert.match(routes, /import\('@\/features\/editor\/Editor'\)/)
   // The tool rail: bounding box, polygon, smart polygon, keypoints.
-  assert.match(editor, /tools\.map\(/)
+  assert.match(editor, /toolGroups.map\(/)
   for (const id of ['bbox', 'polygon', 'smart', 'keypoints']) {
     assert.match(editor, new RegExp(`id: '${id}'`), `tool ${id} is off the rail`)
   }
