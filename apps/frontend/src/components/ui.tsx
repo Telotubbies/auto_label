@@ -133,7 +133,8 @@ export function Modal({ open, onClose, title, children, wide, 'aria-label': aria
   useEffect(() => {
     if (!open) return
     restoreTo.current = document.activeElement as HTMLElement | null
-    root.current?.querySelector<HTMLElement>('[role="dialog"]')?.focus()
+    // A field that autoFocused on mount keeps its focus; only an empty landing goes to the panel.
+    if (!root.current?.contains(document.activeElement)) root.current?.querySelector<HTMLElement>('[role="dialog"]')?.focus()
     return () => restoreTo.current?.focus?.()
   }, [open])
   // Tab cycles inside the dialog; Escape closes it.

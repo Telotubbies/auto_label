@@ -99,8 +99,12 @@ def files(rel: str, exp: int, sig: str):
         raise HTTPException(403, "link expired")
     if "\x00" in rel:                       # not a stored path: Path.resolve() raises on a NUL
         raise HTTPException(404, "file not found")
-    f = (DATA_DIR / rel).resolve()
-    if DATA_DIR not in f.parents or not f.is_file():
+    try:                                    # Linux raises ENAMETOOLONG on a 4 KB name; that is "not ours", not a 500
+        f = (DATA_DIR / rel).resolve()
+        found = DATA_DIR in f.parents and f.is_file()
+    except OSError:
+        found = False
+    if not found:
         raise HTTPException(404, "file not found")
     # stored files never change (content is keyed by id), so cache until the link expires
     headers = {"Cache-Control": f"private, max-age={max(0, exp - int(time.time()))}, immutable"}
