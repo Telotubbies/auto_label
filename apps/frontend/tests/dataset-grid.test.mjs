@@ -45,3 +45,12 @@ test('test_grid_class_set_matches_the_helper', () => {
   assert.match(dataset, /colsForWidth\(/, 'the virtualiser slices the columns the helper returns')
   assert.match(dataset, /rowHeightForWidth\(/, 'the virtualiser estimates rows with the helper')
 })
+
+import { pageWindow } from '../src/features/project/datasetGrid.ts'
+
+test('pageWindow keeps ends and neighbours, with gaps as an ellipsis', () => {
+  assert.deepEqual(pageWindow(1, 7), [1, 2, '…', 7])
+  assert.deepEqual(pageWindow(4, 7), [1, '…', 3, 4, 5, '…', 7])
+  assert.deepEqual(pageWindow(1, 1), [1])
+  assert.deepEqual(pageWindow(2, 3), [1, 2, 3])
+})
