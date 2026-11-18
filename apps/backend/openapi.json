@@ -2444,6 +2444,22 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "PublishIn": {
+        "properties": {
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
+          "pii_ack": {
+            "default": false,
+            "title": "Pii Ack",
+            "type": "boolean"
+          }
+        },
+        "title": "PublishIn",
+        "type": "object"
+      },
       "QueryIn": {
         "properties": {
           "dimension": {
@@ -17731,6 +17747,70 @@
         ]
       }
     },
+    "/api/ws/{ws}/projects/{project}/publish": {
+      "post": {
+        "operationId": "publish_project_api_ws__ws__projects__project__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Project",
+        "tags": [
+          "publishing"
+        ]
+      }
+    },
     "/api/ws/{ws}/projects/{project}/roles": {
       "get": {
         "description": "Every workspace member with their effective project role (inherited when unassigned).",
@@ -19251,6 +19331,60 @@
         "summary": "Train Options",
         "tags": [
           "training"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/unpublish": {
+      "post": {
+        "operationId": "unpublish_project_api_ws__ws__projects__project__unpublish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unpublish Project",
+        "tags": [
+          "publishing"
         ]
       }
     },

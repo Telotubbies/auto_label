@@ -519,6 +519,11 @@ export interface ProjectPatch {
   visibility?: string | null
 }
 
+export interface PublishIn {
+  license?: string
+  pii_ack?: boolean
+}
+
 export interface QueryIn {
   dimension?: string
   dimension2?: string | null
