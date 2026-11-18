@@ -99,6 +99,22 @@ def run_train(srv: Server, job: dict, args):
         shutil.rmtree(work, ignore_errors=True)
 
 
+
+def _sam_context():
+    """``inference_mode`` + bf16 autocast on a GPU, exactly as sam3_auto_label/src/inference.py runs SAM.
+
+    Without it the SAM 3.1 multiplex weights (bf16) meet fp32 activations and every image fails with
+    "mat1 and mat2 must have the same dtype".
+    """
+    import contextlib
+
+    import torch
+    stack = contextlib.ExitStack()
+    stack.enter_context(torch.inference_mode())
+    if torch.cuda.is_available():
+        stack.enter_context(torch.autocast("cuda", dtype=torch.bfloat16))
+    return stack
+
 def _sam(args):
     root = Path(args.sam_root or os.environ.get("LD_SAM_ROOT", ""))
     if not root.exists():
@@ -162,22 +178,23 @@ def run_autolabel(srv: Server, job: dict, args):
                         anns.append({"id": "a" + secrets.token_hex(5), "classId": p["classes"][name], "shape": shape,
                                      "confidence": round(float(r.boxes.conf[k]), 4)})
             else:
-                state = proc.set_image(im)
-                for c in p["prompts"]:
-                    proc.reset_all_prompts(state)
-                    out = proc.set_text_prompt(state=state, prompt=c["name"])
-                    if out.get("masks") is None:
-                        continue
-                    for mk, sc in zip(out["masks"].float().cpu().numpy(), out["scores"].float().cpu().tolist()):
-                        poly = _poly(mk.squeeze() > 0.5, W, H) if sc >= conf else None
-                        if not poly:
+                with _sam_context():   # SAM 3.1 runs in bf16 like the batch pipeline; plain fp32 calls fail
+                    state = proc.set_image(im)
+                    for c in p["prompts"]:
+                        proc.reset_all_prompts(state)
+                        out = proc.set_text_prompt(state=state, prompt=c["name"])
+                        if out.get("masks") is None:
                             continue
-                        if p["project_type"] == "object-detection":
-                            xs, ys = poly[0::2], poly[1::2]
-                            shape = {"kind": "bbox", "x": min(xs), "y": min(ys), "w": max(xs) - min(xs), "h": max(ys) - min(ys)}
-                        else:
-                            shape = {"kind": "polygon", "points": poly}
-                        anns.append({"id": "a" + secrets.token_hex(5), "classId": c["id"], "shape": shape, "confidence": round(sc, 4)})
+                        for mk, sc in zip(out["masks"].float().cpu().numpy(), out["scores"].float().cpu().tolist()):
+                            poly = _poly(mk.squeeze() > 0.5, W, H) if sc >= conf else None
+                            if not poly:
+                                continue
+                            if p["project_type"] == "object-detection":
+                                xs, ys = poly[0::2], poly[1::2]
+                                shape = {"kind": "bbox", "x": min(xs), "y": min(ys), "w": max(xs) - min(xs), "h": max(ys) - min(ys)}
+                            else:
+                                shape = {"kind": "polygon", "points": poly}
+                            anns.append({"id": "a" + secrets.token_hex(5), "classId": c["id"], "shape": shape, "confidence": round(sc, 4)})
             srv.post(f"/api/worker/jobs/{job['id']}/annotations", json={"image_id": it["id"], "annotations": anns})
             if srv.post(f"/api/worker/jobs/{job['id']}/progress", json={"progress": (i + 1) / max(1, n) * 100}).get("cancel"):
                 break
