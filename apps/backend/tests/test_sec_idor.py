@@ -557,6 +557,7 @@ OMITTED = {
     "insights": "read-only analytics over A's own project; no id-addressed row",
     "insights_lineage": "read-only analytics over A's own project",
     "insights_models": "read-only analytics over A's own model",
+    "compute": "read-only dashboard scoped to the caller's own workspace via ws_ctx; no id-addressed row",
     "labeling": "project workflow, outside this card's kind list",
     "ocr": "project resource outside this card's kind list",
     "ops": "operator websocket, token-gated",
