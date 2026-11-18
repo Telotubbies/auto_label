@@ -14,3 +14,16 @@ export function rowHeightForWidth(width: number): number {
   const cols = colsForWidth(width)
   return cols === 2 ? 216 : cols === 3 ? 200 : cols === 4 ? 188 : 180
 }
+
+/** Page buttons for the footer pager: first, last and the neighbours of the current page, `…` for gaps. 1-based. */
+export function pageWindow(page: number, pages: number): (number | '…')[] {
+  const keep = new Set([1, pages, page - 1, page, page + 1].filter((n) => n >= 1 && n <= pages))
+  const out: (number | '…')[] = []
+  let last = 0
+  for (const n of [...keep].sort((a, b) => a - b)) {
+    if (n - last > 1) out.push('…')
+    out.push(n)
+    last = n
+  }
+  return out
+}

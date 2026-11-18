@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, CheckCheck, Inbox, PencilLine, Send, Sparkles, UserPlus } from 'lucide-react'
 import { api, post } from '@/lib/api'
@@ -11,6 +11,7 @@ import { Button, Card, Dropdown, EmptyState, Input, Modal, PageHeader, Progress,
 import { AutoLabelDialog } from './AutoLabelDialog'
 import { autolabelLabel } from './autolabelLabel'
 import { useProject } from './ProjectLayout'
+import { sortCards, type BoardSort } from './boardSort'
 
 const COLS: { id: Status; title: string; hint: string }[] = [
   { id: 'unassigned', title: 'Unassigned', hint: 'Uploaded, not yet assigned' },
@@ -34,6 +35,7 @@ export default function AnnotateBoard() {
   const [assign, setAssign] = useState<BoardCard | null>(null)
   const [assignee, setAssignee] = useState('')
   const [filter, setFilter] = useState('')
+  const [sort, setSort] = useState<BoardSort>('newest')
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['board', ws, project.slug] }); qc.invalidateQueries({ queryKey: ['project', ws, project.slug] })
@@ -58,6 +60,15 @@ export default function AnnotateBoard() {
           {canManage && <Button variant="outline" onClick={() => setAuto({ batchId: null })}><Sparkles className="h-4 w-4" /> Auto Label</Button>}
           {canManage && <Button onClick={() => nav(projectPath(ws, project.slug, 'upload'))}>Upload More</Button>}
         </>} />
+      <div className="mx-8 mb-3 flex flex-wrap items-center gap-3 border-b">
+        <nav aria-label="Annotate views" className="flex gap-1">
+          <span aria-current="page" className="-mb-px border-b-2 border-primary px-3 py-2 text-sm font-semibold">Board</span>
+          {canManage && <Link to={projectPath(ws, project.slug, 'insights')} className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Insights</Link>}
+        </nav>
+        <Select className="ml-auto mb-1.5" aria-label="Sort cards" value={sort} onChange={(e) => setSort(e.target.value as BoardSort)}>
+          <option value="newest">Newest</option><option value="name">Name</option><option value="images">Most images</option>
+        </Select>
+      </div>
       {running.map((j) => (
         <div key={j.id} className="mx-8 mb-3 flex items-center gap-3 rounded-lg border bg-accent/30 px-4 py-2 text-sm">
           <Bot className="h-4 w-4 text-primary" /> Auto-labeling ({autolabelLabel(j.params)}) <StatusPill status={j.status} />
@@ -69,13 +80,13 @@ export default function AnnotateBoard() {
       ))}
       <div className="grid gap-4 px-8 pb-10 lg:grid-cols-4">
         {COLS.map((col) => {
-          const cards = (board.data?.columns[col.id] ?? []).filter((c) => !filter || c.batchName.toLowerCase().includes(filter.toLowerCase()))
+          const cards = sortCards(board.data?.columns[col.id] ?? [], sort).filter((c) => !filter || c.batchName.toLowerCase().includes(filter.toLowerCase()))
           const n = cards.reduce((s, c) => s + c.images, 0)
           return (
             <div key={col.id} className="flex min-h-64 flex-col rounded-xl bg-muted/60 p-3">
               <div className="mb-3 flex items-baseline justify-between px-1">
                 <div><div className="text-sm font-semibold">{col.title}</div><div className="text-[11px] text-muted-foreground">{col.hint}</div></div>
-                <span className="text-xs font-semibold text-muted-foreground">{n}</span>
+                <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">{n}</span>
               </div>
               <div className="flex-1 space-y-2">
                 {cards.map((c) => (
@@ -83,8 +94,12 @@ export default function AnnotateBoard() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold">{c.batchName}</div>
-                        <div className="text-[11px] text-muted-foreground">{c.created ? fmtAgo(c.created) : ''}{c.assignee ? ` · ${c.assignee}` : ''}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="rounded-full bg-muted px-1.5 tabular-nums">{c.images} images</span>
+                          {c.created ? fmtAgo(c.created) : ''}
+                        </div>
                       </div>
+                      {c.assignee && <span title={c.assignee} className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{c.assignee[0]?.toUpperCase()}</span>}
                       {col.id === 'unassigned' && canManage && (
                         <Dropdown align="right" trigger={<button className="cursor-pointer px-1 text-muted-foreground">⋮</button>} items={[
                           { label: 'Auto Label batch', onClick: () => setAuto({ batchId: c.batchId }) },
