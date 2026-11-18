@@ -100,7 +100,7 @@ def test_compiled_condition_stays_inside_the_project():
         theirs = _project(db, "query-scope-b")
         in_mine = _image(db, mine, "forklift.jpg", tags=["night"])
         _image(db, theirs, "forklift.jpg", tags=["night"])
-        db.commit()
+        db.flush()   # never commit: this suite must not spend the demo workspace's project cap
 
         got = set(db.scalars(select(Image.id).where(compile(parse("tag:night forklift"), mine.id))))
 
@@ -116,7 +116,7 @@ def test_mixed_query_matches_the_legacy_split_and_class_filters():
         train_car = _image(db, project, "car-train.jpg", split="train")
         for row, name in ((train_helmet, "helmet"), (test_helmet, "helmet"), (train_car, "car")):
             set_annotations(db, row, [{"id": row.name, "classId": ids[name], "shape": {}}])
-        db.commit()
+        db.flush()   # never commit: this suite must not spend the demo workspace's project cap
 
         got = set(db.scalars(select(Image.id).where(compile(parse("split:train class:helmet"), project.id))))
         # the legacy parameters the grid already serves: split=train plus class_id=helmet
@@ -140,7 +140,7 @@ def test_mixed_query_with_parens_or_and_negation_returns_exact_rows():
         ):
             rows[name] = _image(db, project, name, split=split, tags=tags)
             set_annotations(db, rows[name], [{"id": name, "classId": ids[cls], "shape": {}}])
-        db.commit()
+        db.flush()   # never commit: this suite must not spend the demo workspace's project cap
 
         got = set(db.scalars(select(Image.id).where(
             compile(parse("split:test (tag:night OR class:helmet) -class:car"), project.id))))
