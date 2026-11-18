@@ -7,7 +7,7 @@ this order.
 """
 from fastapi import FastAPI
 
-from . import (admin, alerts, anomaly, audit, auth, batch_inference, connectors, dashboards, deployments, devapi,
+from . import (admin, alerts, anomaly, audit, auth, batch_inference, compute, connectors, dashboards, deployments, devapi,
                devapi_actions, devmail, event_search, flags, health, images, inference, insights, insights_lineage,
                insights_models, labeling, ocr, ops, ot, playground, privacy, projects, rbac, registry, remote, semantic,
                streams, training, versions, videos, webhooks, workflows, workspaces)
@@ -18,7 +18,7 @@ ROUTERS = (auth.router, workspaces.router, projects.router, images.router, video
            insights_lineage.router, dashboards.router, labeling.router, rbac.router, privacy.router,
            admin.router, audit.router, deployments.router, ops.router, flags.router, ot.router, ocr.router,
            streams.router, anomaly.router, alerts.router, workflows.router, batch_inference.router,
-           semantic.router, event_search.router, inference.router, health.router)
+           semantic.router, event_search.router, inference.router, health.router, compute.router)
 # A second router in the same module: the GPU API, the ops websocket, the dev mail inbox.
 EXTRA_ROUTERS = (registry.gpu_router, ops.ws_router, devmail.router)
 

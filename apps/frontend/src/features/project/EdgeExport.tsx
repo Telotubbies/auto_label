@@ -4,6 +4,7 @@ import { AlertTriangle, Download, Package } from 'lucide-react'
 import { api, ApiError, fileUrl, post } from '@/lib/api'
 import type { ModelItem } from '@/lib/types'
 import { Badge, Button, Card, Field, Progress, Select, Spinner, toast } from '@/components/ui'
+import { artifactLabel, buildBody, pickDtype } from './edgeDtype'
 
 /** Download sizes for deployment artifacts, compared in decimal GB, so this keeps its own rule. */
 const fmtPackageBytes = (n: number) =>
@@ -13,6 +14,7 @@ const fmtPackageBytes = (n: number) =>
 export default function EdgeExport({ ws, project, model }: { ws: string; project: string; model: ModelItem }) {
   const qc = useQueryClient()
   const [picked, setPicked] = useState('')
+  const [pickedDtype, setPickedDtype] = useState('')
   const presets = useQuery({
     queryKey: ['edge-presets', ws, project],
     queryFn: () => api.edgePresets(ws, project),
@@ -27,12 +29,16 @@ export default function EdgeExport({ ws, project, model }: { ws: string; project
 
   const list = presets.data ?? []
   const preset = list.find((p) => p.id === picked) ?? list[0]
+  const dtype = pickDtype(preset, pickedDtype)
   const modelJobs = (jobs.data ?? []).filter((j) => j.params.model_id === model.id)
   const building = modelJobs.find((j) => ['queued', 'running'].includes(j.status))
   const failed = building ? undefined : modelJobs.find((j) => j.params.preset === preset?.id && j.status === 'failed')
   const built = Object.entries(model.edgeExports ?? {})
-  const labelOf = (id: string) => list.find((p) => p.id === id)?.label ?? id
-  const runningLabel = building?.params.preset ? labelOf(String(building.params.preset)) : 'preset'
+  const labelOf = (key: string) => artifactLabel(list, key)
+  const runningLabel = building?.params.preset
+    ? labelOf(building.params.dtype ? `${building.params.preset}:${building.params.dtype}` : String(building.params.preset))
+    : 'preset'
+  const builtKey = preset ? (dtype && dtype !== preset.dtypes?.find((d) => d.default)?.id ? `${preset.id}:${dtype}` : preset.id) : ''
 
   // The build runs outside the model row, so pull the artifact in once the job is done.
   const doneIds = modelJobs.filter((j) => j.status === 'done').map((j) => j.id).join(',')
@@ -47,13 +53,16 @@ export default function EdgeExport({ ws, project, model }: { ws: string; project
 
   const build = () => {
     if (!preset) return
-    post(`${api.P(ws, project)}/models/${model.id}/export`, { preset: preset.id })
+    post(`${api.P(ws, project)}/models/${model.id}/export`, buildBody(preset, dtype))
       .then(() => {
-        toast.ok(`${preset.label} build queued`)
+        toast.ok(`${labelOf(builtKey)} build queued`)
         qc.invalidateQueries({ queryKey: ['edge-jobs', ws, project] })
       })
       .catch(toast.err)
   }
+
+  const chosen = preset?.dtypes?.find((d) => d.id === dtype)
+  const dtypeHint = chosen?.needs_data ? "INT8 calibrates on images from this model's dataset." : (preset?.dtypes?.length ?? 0) < 2 ? 'This preset builds one type.' : undefined
 
   if (presets.isLoading) return <Card className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><Spinner /> Loading edge presets…</Card>
   // Flag off answers 404: show nothing rather than a broken panel.
@@ -81,15 +90,22 @@ export default function EdgeExport({ ws, project, model }: { ws: string; project
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="sm:w-72">
           <Field label="Preset">
-            <Select className="w-full" value={preset?.id ?? ''} onChange={(e) => setPicked(e.target.value)} disabled={!preset}>
+            <Select className="w-full" value={preset?.id ?? ''} onChange={(e) => { setPicked(e.target.value); setPickedDtype('') }} disabled={!preset}>
               {list.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <div className="sm:w-52">
+          <Field label="Data type" hint={dtypeHint}>
+            <Select className="w-full" value={dtype} onChange={(e) => setPickedDtype(e.target.value)} disabled={!preset || (preset.dtypes?.length ?? 0) < 2}>
+              {(preset?.dtypes ?? []).map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
             </Select>
           </Field>
         </div>
         <Button variant="outline" className="w-full sm:w-auto" disabled={!!building || !preset} onClick={build}>
           {building
             ? <><Spinner className="h-3.5 w-3.5" /> Building…</>
-            : <><Package className="h-4 w-4" /> {model.edgeExports?.[preset?.id ?? ''] ? 'Rebuild' : 'Build'}</>}
+            : <><Package className="h-4 w-4" /> {model.edgeExports?.[builtKey] ? 'Rebuild' : 'Build'}</>}
         </Button>
       </div>
       {preset?.hint && <p className="mt-1.5 text-xs text-muted-foreground">{preset.hint}</p>}

@@ -332,6 +332,7 @@ export interface ExportIn {
 }
 
 export interface ExportModelIn {
+  dtype?: string | null
   format?: string
   preset?: string | null
 }
@@ -527,6 +528,7 @@ export interface ProgressIn {
   log?: string[] | null
   phase?: string | null
   progress: number
+  stages?: Record<string, unknown> | null
 }
 
 export interface ProjectIn {

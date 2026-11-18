@@ -1705,6 +1705,17 @@
       },
       "ExportModelIn": {
         "properties": {
+          "dtype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dtype"
+          },
           "format": {
             "default": "engine",
             "title": "Format",
@@ -2662,6 +2673,18 @@
           "progress": {
             "title": "Progress",
             "type": "number"
+          },
+          "stages": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stages"
           }
         },
         "required": [
@@ -8327,6 +8350,51 @@
         "summary": "Export Audit",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/api/ws/{ws}/compute": {
+      "get": {
+        "operationId": "compute_api_ws__ws__compute_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compute",
+        "tags": [
+          "compute"
         ]
       }
     },

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -15,6 +15,9 @@ import { EvalPanel } from '@/features/evaluation/EvalPanel'
 import { cn } from '@/lib/utils'
 import EdgeExport from './EdgeExport'
 import { useProject } from './ProjectLayout'
+import { liveScores, lossSeries, trainingEta, type LiveScores } from './trainingLive'
+import { ModelSearch } from './ModelSearch'
+import { tabFromParams, type ModelTab } from './modelFinder'
 
 export function headline(m: ModelItem) {
   return m.task === 'classify' ? pct1(m.metrics.accuracy_top1) : pct1(m.metrics.map50)
@@ -126,7 +129,7 @@ function Charts({ m }: { m: ModelItem }) {
     : ultralytics
       ? [[`metrics/mAP50${k}`, 'mAP50'], [`metrics/mAP50-95${k}`, 'mAP50-95'], [`metrics/precision${k}`, 'Precision'], [`metrics/recall${k}`, 'Recall']]
       : [['val/map50', 'mAP50'], ['val/map5095', 'mAP50-95'], ['val/precision', 'Precision'], ['val/recall', 'Recall']]
-  const loss = Object.keys(m.history[0] ?? {}).filter((x) => x.endsWith('/loss'))
+  const loss = lossSeries(m.history).keys
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card className="p-4"><h3 className="mb-2 text-sm font-semibold">Accuracy over epochs</h3>
@@ -135,7 +138,7 @@ function Charts({ m }: { m: ModelItem }) {
       <Card className="p-4"><h3 className="mb-2 text-sm font-semibold">Loss</h3>
         {loss.length ? (
           <div className="h-60"><ResponsiveContainer><LineChart data={m.history}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="epoch" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip formatter={(v: number) => v.toFixed(3)} /><Legend {...legendProps} />
-            {loss.map((key, i) => <Line key={key} dataKey={key} name={key.replace('val/', '')} stroke={seriesColor(i)} dot={false} strokeWidth={2} />)}</LineChart></ResponsiveContainer></div>
+            {loss.map(({ key, label }, i) => <Line key={key} dataKey={key} name={label} stroke={seriesColor(i)} dot={false} strokeWidth={2} strokeDasharray={key.startsWith('val') ? '5 3' : undefined} />)}</LineChart></ResponsiveContainer></div>
         ) : <SeriesEmpty title="No loss recorded for this run." />}
       </Card>
     </div>
@@ -149,7 +152,13 @@ export default function Models() {
   const qc = useQueryClient()
   const { can, isManager } = useProjectPermissions(ws, project.slug)
   const task34 = useFlag('task_34')
-  const [tab, setTab] = useState('evaluation')
+  // The tab lives in the URL, so `models?tab=search` (the rail's Model search row) opens the Search tab.
+  const tab = tabFromParams(sp)
+  const setTab = (t: string) => setSp((prev) => {
+    const next = new URLSearchParams(prev)
+    if (t === 'evaluation') next.delete('tab'); else next.set('tab', t)
+    return next
+  }, { replace: true })
 
   const models = useQuery({ queryKey: ['models', ws, project.slug], queryFn: () => api.models(ws, project.slug),
     refetchInterval: (q) => (q.state.data?.some((m) => ['queued', 'training'].includes(m.status)) ? 2500 : false) })
@@ -183,6 +192,13 @@ export default function Models() {
 
   const m = detail.data ?? sel
   const ev = m?.metrics.eval
+  const running = !!m && ['queued', 'training'].includes(m.status)
+  // While it trains the final metrics do not exist yet: show the latest epoch's scores instead, labelled as live.
+  const score: Partial<LiveScores> = (running && m ? liveScores(m.task, m.history) : null) ?? {}
+  const totalEpochs = (m?.job?.params.options?.epochs as number | undefined) ?? undefined
+  const eta = running && m && totalEpochs ? trainingEta({ started: m.job?.started ?? null, now: Date.now() / 1000, done: m.history.length, total: totalEpochs }) : null
+  const hasStages = Object.keys(m?.job?.result?.stages ?? {}).length > 0
+  const subLabel = running && m?.history.length ? `epoch ${m.history.length}, live` : undefined
   const engineJob = engineJobs.data?.find((j) => j.params.model_id === m?.id)
   const engine = m?.runtimeRefs?.engine
   const buildingEngine = !!engineJob && ['queued', 'running'].includes(engineJob.status)
@@ -203,7 +219,7 @@ export default function Models() {
     })
     .catch(toast.err)
 
-  const pick = (id: string) => { setSp({ model: id }); setTab('evaluation') }
+  const pick = (id: string) => setSp({ model: id })
 
   return (
     <div className="anim-page">
@@ -253,20 +269,25 @@ export default function Models() {
                 </div>
               </div>
 
-              {task34 && isManager && m.status === 'ready' && (
+              {task34 && isManager && m.status === 'ready' && tab !== 'search' && (
                 <EdgeExport ws={ws} project={project.slug} model={m} />
               )}
 
-              <Tabs tabs={[{ id: 'evaluation', label: 'Evaluation' }, { id: 'leaderboard', label: 'Leaderboard' }]} active={tab} onChange={setTab} />
+              <Tabs tabs={[{ id: 'evaluation', label: 'Evaluation' }, { id: 'leaderboard', label: 'Leaderboard' }, { id: 'search', label: 'Search' }]} active={tab} onChange={setTab} />
 
-              {tab === 'leaderboard' ? (
+              {tab === 'search' ? (
+                <ModelSearch models={list} onPick={pick} />
+              ) : tab === 'leaderboard' ? (
                 <LeaderboardTab rows={lb.data} loading={lb.isLoading} onPick={pick} />
               ) : (
                 <>
-                  {['queued', 'training'].includes(m.status) && (
+                  {running && (
                     <Card className="p-4">
-                      <StageStepper stages={m.job?.result?.stages} />
-                      <div className="mb-2 mt-4 flex items-center justify-between text-sm"><span>{m.status === 'queued' ? 'Waiting for a worker…' : `Epoch ${m.history.length} of ${m.job?.params.options?.epochs ?? '?'}`}</span><span className="tabular-nums">{Math.round(m.job?.progress ?? 0)}%</span></div>
+                      {hasStages && <StageStepper stages={m.job?.result?.stages} />}
+                      <div className={cn('mb-2 flex items-center justify-between gap-3 text-sm', hasStages && 'mt-4')} aria-live="polite">
+                        <span>{m.status === 'queued' ? 'Waiting for a worker…' : `Epoch ${m.history.length} of ${totalEpochs ?? '?'}`}{eta != null && <span className="text-muted-foreground"> · about {fmtSeconds(eta)} left</span>}</span>
+                        <span className="tabular-nums">{Math.round(m.job?.progress ?? 0)}%</span>
+                      </div>
                       <Progress value={m.job?.progress ?? 0} />
                       {m.status === 'queued' && <p className="mt-2 text-xs text-muted-foreground">Training needs a worker: the built-in one, or <code>labeldesk-worker</code> on a GPU machine.</p>}
                     </Card>
@@ -276,13 +297,13 @@ export default function Models() {
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {m.task === 'classify' ? <>
-                      <Stat label="Top-1 accuracy" value={pct1(m.metrics.accuracy_top1)} />
-                      <Stat label="Top-5 accuracy" value={pct1(m.metrics.accuracy_top5)} />
+                      <Stat label="Top-1 accuracy" value={pct1(score.top1 ?? m.metrics.accuracy_top1)} sub={subLabel} />
+                      <Stat label="Top-5 accuracy" value={pct1(score.top5 ?? m.metrics.accuracy_top5)} sub={subLabel} />
                     </> : <>
-                      <Stat label="mAP@50" value={pct1(m.metrics.map50)} />
-                      <Stat label="mAP@50-95" value={pct1(m.metrics.map5095)} />
-                      <Stat label="Precision" value={pct1(m.metrics.precision)} />
-                      <Stat label="Recall" value={pct1(m.metrics.recall)} />
+                      <Stat label="mAP@50" value={pct1(score.map50 ?? m.metrics.map50)} sub={subLabel} />
+                      <Stat label="mAP@50-95" value={pct1(score.map5095 ?? m.metrics.map5095)} sub={subLabel} />
+                      <Stat label="Precision" value={pct1(score.precision ?? m.metrics.precision)} sub={subLabel} />
+                      <Stat label="Recall" value={pct1(score.recall ?? m.metrics.recall)} sub={subLabel} />
                     </>}
                   </div>
 

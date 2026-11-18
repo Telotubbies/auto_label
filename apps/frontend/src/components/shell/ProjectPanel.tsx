@@ -94,17 +94,15 @@ export function useProjectRail(project: Project) {
 function Switcher({ project, approved }: { project: Project; approved: number | null }) {
   const { ws = '' } = useParams()
   return (
-    <div className="p-3">
-      <div className="overflow-hidden rounded-lg border">
-        <div className="relative h-20 bg-muted">
-          {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
-        </div>
-        <div className="px-2.5 py-2">
-          <Link to={projectPath(ws, project.slug)} className="block truncate text-sm font-semibold hover:underline">{project.name}</Link>
-          <p className="text-sm text-muted-foreground">
-            {`${typeLabel(project.type).toLowerCase()} ${SEP} ${approved ?? '—'} approved`}
-          </p>
-        </div>
+    <div className="flex items-center gap-2.5 border-b px-3 py-3">
+      <span className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-muted">
+        {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
+      </span>
+      <div className="min-w-0">
+        <Link to={projectPath(ws, project.slug)} className="block truncate text-sm font-semibold hover:underline">{project.name}</Link>
+        <p className="truncate text-sm text-muted-foreground">
+          {`${typeLabel(project.type).toLowerCase()} ${SEP} ${approved ?? '—'} approved`}
+        </p>
       </div>
     </div>
   )
@@ -171,10 +169,10 @@ export function ProjectPanel({ project }: { project: Project }) {
             {secondary.map((i) => (
               <Link key={i.id} to={projectPath(ws, project.slug, i.to)}
                 aria-current={i.id === activeId ? 'page' : undefined}
-                className={cn('flex h-8 items-center gap-2 rounded-md border px-2 text-sm',
+                className={cn('flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm',
                   i.id === activeId
-                    ? 'border border-primary bg-accent font-medium text-accent-foreground'
-                    : 'border border-transparent text-foreground hover:bg-sidebar-accent/60')}>
+                    ? 'bg-accent font-semibold text-accent-foreground ring-1 ring-primary/40'
+                    : 'text-foreground hover:bg-sidebar-accent/60')}>
                 {i.label}
               </Link>
             ))}

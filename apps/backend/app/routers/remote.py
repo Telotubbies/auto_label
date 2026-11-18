@@ -155,11 +155,33 @@ def _redact(text: str) -> str:
     return _TOKEN.sub("hf_***", text)
 
 
+STAGE_NAMES = ("queue", "acquire_gpu", "materialise", "resolve_weights", "build_config", "train", "evaluate",
+               "register", "release")
+STAGE_STATUS = ("done", "running", "failed")
+
+
+def _clean_stages(raw: dict) -> dict:
+    """Worker text is an input boundary: keep known stage names, known statuses and numeric timings only."""
+    out: dict[str, dict] = {}
+    for name, entry in raw.items():
+        if name not in STAGE_NAMES or not isinstance(entry, dict) or entry.get("status") not in STAGE_STATUS:
+            continue
+        t = entry.get("t")
+        if isinstance(t, bool) or not isinstance(t, (int, float)):
+            continue
+        clean = {"status": entry["status"], "t": round(float(t), 2)}
+        if isinstance(entry.get("note"), str) and entry["note"]:
+            clean["note"] = _redact(entry["note"])[:200]
+        out[name] = clean
+    return out
+
+
 class ProgressIn(BaseModel):
     progress: float
     history: list[dict] | None = None
     log: list[str] | None = None        # T-1008: an install's log tail, one entry per output line
     phase: str | None = None            # T-1008: "installing vllm"
+    stages: dict | None = None          # a train worker's stage timings, shown by the Models page
 
 
 @router.post("/jobs/{jid}/progress", dependencies=[Depends(worker_auth)])
@@ -179,6 +201,8 @@ def progress(jid: str, body: ProgressIn, db: Session = Depends(get_db)):
         if body.phase:
             result["phase"] = _redact(body.phase)[:120]
         j.result = result
+    if body.stages and j.kind == "train":
+        j.result = {**(j.result or {}), "stages": {**((j.result or {}).get("stages") or {}), **_clean_stages(body.stages)}}
     if body.history is not None and j.kind == "train":
         tm = db.get(TrainedModel, j.params["model_id"])
         tm.history = body.history

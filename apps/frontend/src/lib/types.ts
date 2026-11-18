@@ -163,6 +163,8 @@ export interface Version {
 export interface EdgePreset {
   id: string; label: string; hint: string; device: string | null
   verified: boolean; status: 'VERIFIED' | 'UNVERIFIED'; needs_data: boolean; requires: string | null
+  /** What the preset can build, default first (fp32 / fp16 / int8). */
+  dtypes: { id: string; label: string; default: boolean; needs_data: boolean }[]
 }
 /** A built preset archive: signed zip path plus what the build recorded about it. */
 export interface ModelEdgeExport {

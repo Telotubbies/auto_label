@@ -22,14 +22,14 @@ export function RailGroup({ id, label, summary, holdsActive, children }: {
   const listId = `rail-group-${id}`
   const expanded = open || holdsActive
   return (
-    <div className="mt-3">
+    <div className="mt-4 first:mt-1">
       <button type="button" aria-expanded={expanded} aria-controls={listId} onClick={() => setOpen(!open)}
-        className="flex w-full cursor-pointer items-center gap-1 rounded px-2 pb-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+        className="flex w-full cursor-pointer items-center gap-1.5 rounded px-2 pb-1.5 text-sm font-semibold text-foreground hover:text-primary">
         <span>{label}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !expanded && '-rotate-90')} aria-hidden />
-        {!expanded && summary && <span>{`${SEP} ${summary}`}</span>}
+        {!expanded && summary && <span className="font-normal text-muted-foreground">{`${SEP} ${summary}`}</span>}
+        <ChevronDown className={cn('ml-auto h-4 w-4 text-muted-foreground transition-transform', !expanded && '-rotate-90')} aria-hidden />
       </button>
-      <ul id={listId} hidden={!expanded} className="space-y-1">{children}</ul>
+      <ul id={listId} hidden={!expanded} className="space-y-0.5">{children}</ul>
     </div>
   )
 }

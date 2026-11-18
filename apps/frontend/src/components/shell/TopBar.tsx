@@ -10,6 +10,9 @@ import { setThemePrefs, useThemePrefs, type ModePref } from '@/lib/theme'
 import { Glass } from '../glass'
 import { JobButton } from './JobButton'
 import { projNav } from './ProjectPanel'
+import { useCompute } from '@/features/compute/useCompute'
+import { STATE_VIEW } from '@/features/compute/computeView'
+import { cn } from '@/lib/utils'
 
 const THEME_CYCLE: { id: ModePref; icon: typeof Sun; label: string }[] = [
   { id: 'system', icon: Monitor, label: 'System theme' },
@@ -17,21 +20,32 @@ const THEME_CYCLE: { id: ModePref; icon: typeof Sun; label: string }[] = [
   { id: 'dark', icon: Moon, label: 'Dark theme' },
 ]
 
-/** Shows who holds the GPU. GET /api/gpu may not exist yet: on any error the badge renders nothing and stops polling. */
+/** The compute state, one click from the Compute page. It reads the workers and running jobs, not only this
+ *  server's own GPU lease, so a pip worker training elsewhere no longer shows "GPU idle". */
 export function GpuBadge() {
-  const q = useQuery({
-    queryKey: ['gpu'], retry: false, staleTime: 5_000,
+  const { ws = '' } = useParams()
+  const compute = useCompute(ws)
+  const lease = useQuery({
+    queryKey: ['gpu'], retry: false, staleTime: 5_000, enabled: !ws,
     queryFn: () => get<{ label?: string; holder?: string; state?: string }>('/gpu'),
     refetchInterval: (query) => (query.state.status === 'error' ? false : 10_000),
   })
-  const text = q.data && (q.data.label ?? q.data.holder ?? q.data.state)
+  const text = compute.data?.label ?? (lease.data && (lease.data.label ?? lease.data.holder ?? lease.data.state))
   if (!text) return null
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title="GPU holder">
+  const tone = compute.data ? STATE_VIEW[compute.data.state].tone : 'success'
+  const body = (
+    <>
+      <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', BADGE_DOT[tone], compute.data?.state === 'training' && 'motion-safe:animate-pulse')} />
       <Cpu className="h-3.5 w-3.5" aria-hidden />{text}
-    </span>
+    </>
   )
+  const cls = 'inline-flex items-center gap-1.5 rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground'
+  return ws
+    ? <Link to={`/${ws}/compute`} className={cn(cls, 'hover:bg-accent')} title="Open the Compute page">{body}</Link>
+    : <span className={cls} title="GPU holder">{body}</span>
 }
+
+const BADGE_DOT = { primary: 'bg-primary', success: 'bg-success', destructive: 'bg-destructive', warning: 'bg-warning' } as const
 
 export function TopBar({ onMenu, menuOpen = false, menuButtonRef }: {
   onMenu?: () => void

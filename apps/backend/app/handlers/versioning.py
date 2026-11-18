@@ -122,6 +122,8 @@ def run_export_preset(job: Job):
         preset = job.params["preset"]
         try:
             spec = edge.get_preset(preset)
+            dtype = edge.resolve_dtype(preset, job.params.get("dtype"))
+            key = edge.artifact_key(preset, dtype)
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
         mid, family, variant = tm.id, tm.family or "ultralytics", tm.variant or tm.arch
@@ -134,21 +136,21 @@ def run_export_preset(job: Job):
     if build is None:
         raise RuntimeError(f"{family} models cannot be exported")
     data = None
-    if spec["needs_data"]:
+    if edge.needs_data(preset, dtype):
         if version is None:
             raise RuntimeError("model has no dataset version for INT8 calibration")
         data = edge.calibration_data(version, task)
-    fmt, options = edge.export_plan(preset)
+    fmt, options = edge.export_plan(preset, dtype)
     w._set(job.id, progress=10.0)
     if fmt == "engine":                                # TensorRT builds own the whole card
         with w.scheduler.exclusive(f"edge export {variant}"):
-            out = Path(build(str(src), fmt, half=True, options=options))
+            out = Path(build(str(src), fmt, half=dtype == "fp16", options=options, data=data))
     else:
         out = Path(build(str(src), fmt, options=options, data=data))
     if w._cancelled(job.id):                                       # I22: never register a cancelled build
         _discard(out)
         raise Cancelled("edge build cancelled")
-    zip_path = _zip_edge_artifact(mid, preset, out)
+    zip_path = _zip_edge_artifact(mid, key.replace(":", "-"), out)
     rel = zip_path.relative_to(DATA_DIR).as_posix()
     entry = {"file": rel, "bytes": zip_path.stat().st_size, "verified": bool(spec["verified"]),
              "device": spec["device"], "built": time.time()}
@@ -157,10 +159,10 @@ def run_export_preset(job: Job):
         if tm is None:
             raise RuntimeError("model was deleted during the export")
         refs = dict(tm.runtime_refs or {})
-        refs["edge"] = {**(refs.get("edge") or {}), preset: entry}
+        refs["edge"] = {**(refs.get("edge") or {}), key: entry}
         tm.runtime_refs = refs
         db.commit()
-    return {"model_id": mid, "preset": preset, "file": rel, "bytes": entry["bytes"], "verified": entry["verified"]}
+    return {"model_id": mid, "preset": key, "file": rel, "bytes": entry["bytes"], "verified": entry["verified"]}
 
 
 HANDLERS = {"version": run_version, "export": run_export, "export_engine": run_export_engine,

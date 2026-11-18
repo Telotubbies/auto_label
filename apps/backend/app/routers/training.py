@@ -367,9 +367,10 @@ async def test_predict(mid: str, file: UploadFile = File(...), confidence: float
 class ExportModelIn(BaseModel):
     format: str = "engine"
     preset: str | None = None                              # Task 34 edge target; wins over the legacy format
+    dtype: str | None = None                               # fp32 | fp16 | int8, when the preset can build it
 
 
-def _export_edge(c: Ctx, m: TrainedModel, preset: str) -> dict:
+def _export_edge(c: Ctx, m: TrainedModel, preset: str, dtype: str | None = None) -> dict:
     """Validate and queue one edge preset; the worker builds and zips the artifact."""
     if not is_enabled("task_34", c.db, c.ws.id):
         raise HTTPException(404, "not found")
@@ -385,7 +386,12 @@ def _export_edge(c: Ctx, m: TrainedModel, preset: str) -> dict:
         raise HTTPException(400, "edge presets are not available for open-vocabulary models")
     if spec["requires"] == "yolo26" and not (m.variant or "").startswith("yolo26"):
         raise HTTPException(400, "this preset requires a YOLO26 model")
-    if spec["needs_data"]:
+    try:
+        key = edge.artifact_key(preset, dtype)
+        chosen = edge.resolve_dtype(preset, dtype)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if edge.needs_data(preset, chosen):
         v = c.db.get(Version, m.version_id)
         if v is None or v.status != "ready":
             raise HTTPException(409, "the dataset version behind this model is not ready for INT8 calibration")
@@ -401,13 +407,13 @@ def _export_edge(c: Ctx, m: TrainedModel, preset: str) -> dict:
     active = c.db.scalars(select(Job).where(Job.project_id == c.project.id, Job.kind == "export_preset",
                                             Job.status.in_(("queued", "running")))).all()
     existing = next((j for j in active if j.params.get("model_id") == m.id
-                     and j.params.get("preset") == preset), None)
+                     and edge.artifact_key(preset, j.params.get("dtype")) == key), None)
     if existing is not None:                              # a double click must not queue a second build
         return job_out(existing)
     j = Job(workspace_id=c.ws.id, project_id=c.project.id, kind="export_preset", created_by=c.uid,
-            params={"model_id": m.id, "preset": preset})
+            params={"model_id": m.id, "preset": preset, **({"dtype": chosen} if key != preset else {})})
     c.db.add(j)
-    audit(c.db, c.ws.id, c.uid, "model.export", m.name, preset=preset)
+    audit(c.db, c.ws.id, c.uid, "model.export", m.name, preset=key)
     c.db.commit()
     return job_out(j)
 
@@ -418,7 +424,7 @@ def export_model(mid: str, body: ExportModelIn, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     m = _model(c, mid)
     if body.preset:
-        return _export_edge(c, m, body.preset)
+        return _export_edge(c, m, body.preset, body.dtype)
     if body.format != "engine":
         raise HTTPException(400, "only format=engine is supported")
     if m.status != "ready" or not m.weights:

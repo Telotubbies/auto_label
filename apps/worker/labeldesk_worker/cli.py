@@ -57,30 +57,78 @@ def base_weights(task: str, size: str, pretrained_dir: str | None) -> str:
     return f"yolo11{size}{suffix}.pt"
 
 
+class StageClock:
+    """Seconds since the job started, per stage, in the shape the Models page reads (`status`, `t`, `note`)."""
+
+    def __init__(self, now=time.monotonic):
+        self._now = now
+        self._t0 = now()
+        self.stages: dict[str, dict] = {}
+
+    def mark(self, name: str, status: str = "done", note: str | None = None) -> None:
+        entry = {"status": status, "t": round(self._now() - self._t0, 2)}
+        if note:
+            entry["note"] = note
+        self.stages[name] = entry
+
+    def snapshot(self) -> dict[str, dict]:
+        return {k: dict(v) for k, v in self.stages.items()}
+
+
+def loss_row(trainer) -> dict[str, float]:
+    """The train losses of the epoch just finished. Ultralytics keeps validation losses in ``trainer.metrics``
+    but the running train loss only on ``trainer.tloss``, so ask the trainer to name them."""
+    tloss = getattr(trainer, "tloss", None)
+    namer = getattr(trainer, "label_loss_items", None)
+    if tloss is None or namer is None:
+        return {}
+    try:
+        return {k: float(v) for k, v in namer(tloss, prefix="train").items()}
+    except (TypeError, ValueError):
+        return {}
+
+
 def run_train(srv: Server, job: dict, args):
     from ultralytics import YOLO
     p = job["payload"]; opts = p["options"]; task = p["task"]
     work = Path(tempfile.mkdtemp(prefix=f"ld-{job['id']}-"))
     try:
+        clock = StageClock()
+        clock.mark("queue")
+
+        def report(**body):
+            try:
+                srv.post(f"/api/worker/jobs/{job['id']}/progress", json={**body, "stages": clock.snapshot()})
+            except requests.RequestException as e:
+                log.warning("stage report failed: %s", e)
+
+        clock.mark("materialise", "running", "downloading the dataset")
+        report(progress=0)
         z = srv.download(p["dataset_url"], work / "ds.zip")
         ds = work / "ds"
         zipfile.ZipFile(z).extractall(ds)
+        clock.mark("materialise")
         if task == "classify" and (ds / "valid").exists():
             (ds / "valid").rename(ds / "val")
         data = str(ds) if task == "classify" else str(ds / "data.yaml")
         epochs = int(opts.get("epochs", 30))
         history = []
+        clock.mark("resolve_weights", "running")
         model = YOLO(base_weights(task, opts.get("size", "n"), args.pretrained_dir))
+        clock.mark("resolve_weights")
+        clock.mark("train", "running", f"epoch 0 of {epochs}")
         # Download, extract and model load are silent; report before the first epoch so a slow
         # start is not mistaken for a dead worker (I9/Important 1).
-        srv.post(f"/api/worker/jobs/{job['id']}/progress", json={"progress": 0})
+        report(progress=0)
 
         def cb(trainer):
             m = {k: float(v) for k, v in (trainer.metrics or {}).items() if isinstance(v, (int, float))}
-            history[:] = [h for h in history if h["epoch"] != trainer.epoch + 1] + [{"epoch": trainer.epoch + 1, **m}]
+            history[:] = [h for h in history if h["epoch"] != trainer.epoch + 1] + [{"epoch": trainer.epoch + 1, **loss_row(trainer), **m}]
+            clock.mark("train", "running", f"epoch {trainer.epoch + 1} of {epochs}")
             try:
                 if srv.post(f"/api/worker/jobs/{job['id']}/progress",
-                            json={"progress": (trainer.epoch + 1) / epochs * 100, "history": history}).get("cancel"):
+                            json={"progress": (trainer.epoch + 1) / epochs * 100, "history": history,
+                                  "stages": clock.snapshot()}).get("cancel"):
                     trainer.stop = True
             except requests.RequestException as e:
                 log.warning("progress report failed: %s", e)
@@ -90,6 +138,9 @@ def run_train(srv: Server, job: dict, args):
         if args.device:
             kw["device"] = args.device
         model.train(**kw)
+        clock.mark("train")
+        clock.mark("evaluate", "running")
+        report(progress=100)
         best = work / "runs" / "run" / "weights" / "best.pt"
         if not best.exists():
             best = best.with_name("last.pt")

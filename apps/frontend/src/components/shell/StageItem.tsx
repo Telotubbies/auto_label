@@ -8,17 +8,17 @@ import type { StageFacts } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Button, Modal } from '../ui'
 
-/** The shipped roles carry the state; no ring, no second palette. */
-const DOT: Record<StageStateWord, string> = {
-  done: 'bg-success',
-  'needs-you': 'bg-warning',
-  blocked: 'bg-destructive',
-  running: 'bg-warning',
-  'not-started': 'bg-muted-foreground',
-  unknown: 'bg-muted-foreground',
+/** The pipeline number sits in a round badge; its tint repeats the state word beside it, never replaces it. */
+const BADGE: Record<StageStateWord, string> = {
+  done: 'bg-success/15 text-success',
+  'needs-you': 'bg-warning/20 text-foreground',
+  blocked: 'bg-destructive/15 text-destructive',
+  running: 'bg-warning/20 text-foreground',
+  'not-started': 'bg-muted text-muted-foreground',
+  unknown: 'bg-muted text-muted-foreground',
 }
 
-const ROW = 'group relative flex h-8 items-center gap-2 rounded-md border px-2 text-sm transition-colors'
+const ROW = 'group relative flex min-h-10 items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors'
 const PILL = 'shrink-0 rounded-full px-1.5 text-xs tabular-nums'
 
 /**
@@ -64,23 +64,27 @@ export function StageItem({ row, facts, ws, slug, active, loading }: {
     ROW,
     'before:absolute before:-inset-y-1.5 before:inset-x-0 before:content-[""]',
     active
-      ? 'border border-primary bg-accent font-medium text-accent-foreground'
-      : 'border border-transparent text-foreground hover:bg-sidebar-accent/60',
+      ? 'bg-accent font-semibold text-accent-foreground ring-1 ring-primary/40'
+      : 'text-foreground hover:bg-sidebar-accent/60',
   )
 
   const body = (
     <>
-      <span className="w-4 shrink-0 text-xs tabular-nums text-muted-foreground">{row.number}</span>
-      <span className="min-w-0 flex-1 truncate">{row.label}</span>
-      {word && <span className="shrink-0 text-xs text-muted-foreground">{word}</span>}
+      {stage
+        ? (
+          <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums',
+            state ? BADGE[state] : BADGE.unknown, active && 'bg-primary text-primary-foreground',
+            pulse && 'animate-pulse motion-reduce:animate-none')}>{row.number}</span>
+        )
+        : <span aria-hidden className="w-6 shrink-0" />}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate leading-tight">{row.label}</span>
+        {word && <span className={cn('block text-xs leading-tight', state === 'needs-you' || state === 'blocked' ? 'font-medium text-foreground' : 'text-muted-foreground')}>{word}</span>}
+      </span>
       {row.locked && <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />}
-      {state && (
-        <span aria-hidden
-          className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT[state], pulse && 'animate-pulse motion-reduce:animate-none')} />
-      )}
       {pending
         ? <span aria-hidden className={cn(PILL, 'h-4 w-6 animate-pulse bg-muted')} />
-        : <span className={cn(PILL, 'bg-muted text-muted-foreground')}>{count === null ? '—' : count}</span>}
+        : <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{count === null ? '—' : count}</span>}
     </>
   )
 

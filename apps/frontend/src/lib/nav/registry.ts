@@ -40,7 +40,7 @@ export const LEGACY_PROJECT_PATHS = {
  * destination has to be listed here — see `tests/nav.test.mjs`.
  */
 export const RESERVED_WORKSPACE_SEGMENTS = new Set([
-  'models', 'playground', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal', 'inference',
+  'models', 'playground', 'deployments', 'activity', 'settings', 'audit', 'admin', 'legal', 'inference', 'compute',
   // The `/p/` project prefix: the segment after it is the project, never `p` itself.
   'p',
 ])
@@ -48,7 +48,7 @@ export const RESERVED_WORKSPACE_SEGMENTS = new Set([
 /** Breadcrumb names for workspace routes; project pages use their project nav label instead. */
 export const WORKSPACE_PAGE_LABELS: Record<string, string> = {
   models: 'Models', playground: 'Playground', deployments: 'Deployments', activity: 'Activity',
-  audit: 'Audit log', admin: 'Admin console', settings: 'Settings', legal: 'Legal', inference: 'Inference',
+  audit: 'Audit log', admin: 'Admin console', settings: 'Settings', legal: 'Legal', inference: 'Inference', compute: 'Compute',
   p: 'Project',
   'settings/members': 'Members & Roles', 'settings/usage': 'Usage & Billing', 'settings/api': 'Integrations',  'settings/roles': 'Roles', 'settings/trash': 'Trash',
 }
