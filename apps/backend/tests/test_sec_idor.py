@@ -563,6 +563,8 @@ OMITTED = {
     "ot": "project resource outside this card's kind list",
     "playground": "inference-only surface; no persisted tenant row",
     "privacy": "workspace/project settings, not an id-addressed row",
+    "public": "anonymous read-only dataset page; no tenant caller, its 404-on-private is in tests/test_public_dataset.py",
+    "publishing": "project settings, gated by task_a1_publish; its foreign-slug 404 is in tests/test_publishing.py",
     "rbac": "roles are workspace settings; the key kind proves key tenancy",
     "registry": "read-only catalogue of A's own models",
     "remote": "remote-GPU worker, worker-token only",

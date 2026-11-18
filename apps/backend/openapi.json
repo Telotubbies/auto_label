@@ -2863,6 +2863,22 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "PublishIn": {
+        "properties": {
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
+          "pii_ack": {
+            "default": false,
+            "title": "Pii Ack",
+            "type": "boolean"
+          }
+        },
+        "title": "PublishIn",
+        "type": "object"
+      },
       "QueryIn": {
         "properties": {
           "dimension": {
@@ -5880,6 +5896,113 @@
         "summary": "Metrics",
         "tags": [
           "monitoring"
+        ]
+      }
+    },
+    "/api/public/datasets/{ws}/{project}": {
+      "get": {
+        "operationId": "dataset_api_public_datasets__ws___project__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dataset",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/public/datasets/{ws}/{project}/images/{image_id}": {
+      "get": {
+        "operationId": "sample_api_public_datasets__ws___project__images__image_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sample",
+        "tags": [
+          "public"
         ]
       }
     },
@@ -18195,6 +18318,70 @@
         ]
       }
     },
+    "/api/ws/{ws}/projects/{project}/publish": {
+      "post": {
+        "operationId": "publish_project_api_ws__ws__projects__project__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Project",
+        "tags": [
+          "publishing"
+        ]
+      }
+    },
     "/api/ws/{ws}/projects/{project}/roles": {
       "get": {
         "description": "Every workspace member with their effective project role (inherited when unassigned).",
@@ -19715,6 +19902,60 @@
         "summary": "Train Options",
         "tags": [
           "training"
+        ]
+      }
+    },
+    "/api/ws/{ws}/projects/{project}/unpublish": {
+      "post": {
+        "operationId": "unpublish_project_api_ws__ws__projects__project__unpublish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ws",
+            "required": true,
+            "schema": {
+              "title": "Ws",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unpublish Project",
+        "tags": [
+          "publishing"
         ]
       }
     },
