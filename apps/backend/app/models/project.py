@@ -35,6 +35,7 @@ class Project(Base):
     face_blur: Mapped[bool] = mapped_column(Boolean, default=True)
     biometrics: Mapped[bool] = mapped_column(Boolean, default=False)      # face recognition — opt-in only
     legal_basis: Mapped[str] = mapped_column(Text, default="")            # documented PDPA s.26 basis
+    description: Mapped[str] = mapped_column(Text, default="")            # the blurb visitors read
     created: Mapped[float] = mapped_column(Float, default=now)
     updated: Mapped[float] = mapped_column(Float, default=now)
     deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -58,6 +58,7 @@ export interface LabelClass { id: string; name: string; color: string; count: nu
 export interface Project {
   id: string; slug: string; name: string; type: ProjectType; visibility: 'public' | 'private'; license: string
   annotationGroup: string; multilabel: boolean; folderId: string | null; images: number; models: number
+  description: string; publicPath: string | null
   created: number; updated: number; thumbnail: string | null; settings: Record<string, any>
   classes?: LabelClass[]; statusCounts?: Partial<Record<Status, number>>; role?: Role
 }

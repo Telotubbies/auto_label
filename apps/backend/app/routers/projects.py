@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import REMOTE_JOB_KINDS
 from ..deps import Ctx, audit, plan, project_ctx, ws_ctx
 from ..models import (PROJECT_TYPES, Batch, Image, ImageClass, Job, LabelClass, Project, Stream, TrainedModel,
-                      Version, now, set_annotations)
+                      Version, Workspace, now, set_annotations)
 from ..naming import clean_class_name
 from ..security import sign_path
 from ..services import flags, health, suspect_queue
@@ -70,6 +70,9 @@ def project_out(db: Session, p: Project, detail: bool = False, counts: tuple | N
     imgs, models, covers = counts or _counts(db, [p.id])
     cover = covers.get(p.id)
     out = {"id": p.id, "slug": p.slug, "name": p.name, "type": p.type, "visibility": p.visibility, "license": p.license,
+           "description": p.description or "",
+           # Derived, never stored: the visitor address exists only while the project is public.
+           "publicPath": f"/d/{db.get(Workspace, p.workspace_id).slug}/{p.slug}" if p.visibility == "public" else None,
            "annotationGroup": p.annotation_group, "multilabel": p.multilabel, "folderId": p.folder_id,
            "images": imgs.get(p.id, 0), "models": models.get(p.id, 0), "created": p.created, "updated": p.updated,
            "thumbnail": sign_path(cover) if cover else None, "settings": p.settings or {}}
@@ -164,6 +167,7 @@ def get_project(c: Ctx = Depends(project_ctx)):
 
 class ProjectPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=600)
     visibility: str | None = None
     license: str | None = None
     annotation_group: str | None = None
@@ -175,7 +179,7 @@ class ProjectPatch(BaseModel):
 def patch_project(body: ProjectPatch, c: Ctx = Depends(project_ctx)):
     c.need("admin")
     p = c.project
-    for k in ("name", "visibility", "license", "annotation_group"):
+    for k in ("name", "description", "visibility", "license", "annotation_group"):
         v = getattr(body, k)
         if v is not None:
             setattr(p, k, v.strip() if isinstance(v, str) else v)
