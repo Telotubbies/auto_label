@@ -38,6 +38,7 @@ FLAGS: dict[str, str] = {
     "task_60": "Dataset query language: chips, boolean terms, class counts and date ranges",
     "task_992": "MCP endpoint: agents connect over the developer API",
     "task_a1_plan_choice": "First-run plan choice: start a new workspace on Free, Pro or Enterprise",
+    "task_a1_public_page": "Public dataset page: anonymous payload and sample thumbnails",
     "task_a1_workspace_create": "Name the workspace and show its address before submit",
     "task_a1_types": "Eight project types with outcome wording, plus a request form",
     "task_inference": "Inference hub: engines, model catalogue, VRAM calculator and segmentation handoff",

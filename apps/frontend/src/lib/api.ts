@@ -11,6 +11,7 @@ import { searchApi } from './api/search'
 import { streamsApi } from './api/streams'
 import { otApi } from './api/ot'
 import { workflowApi } from './api/workflows'
+import { publicApi } from './api/public'
 
 export {
   API_ORIGIN, ApiError, del, download, fileUrl, get, patch, post, put, req, tokens, upload,
@@ -28,5 +29,6 @@ export const api = {
   ...streamsApi,
   ...otApi,
   ...workflowApi,
+  ...publicApi,
   P,
 }
