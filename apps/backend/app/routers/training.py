@@ -16,7 +16,8 @@ from ..deps import Ctx, audit, charge, project_ctx
 from ..errors import safe_error, safe_reason
 from ..models import DeploymentAlias, Image, Job, LabelClass, Project, TrainedModel, Version, Workspace
 from ..security import sign_path
-from ..services import active_learning, deployments, drift, edge, imaging, metering, ml, safefetch, topology
+from ..services import active_learning, deployments, drift, edge, imaging, metering, ml, safefetch, sahi, topology
+from .infer_options import infer_form, resolve_options
 from ..services.flags import is_enabled, require_flag
 from ..services.tiling import Tiling, sliced_predict
 from .projects import job_out
@@ -340,21 +341,26 @@ def _tiling_or_404(c: Ctx, tile_size: int, tile_overlap: float) -> Tiling | None
 @router.post(P + "/models/{mid}/predict")
 async def test_predict(mid: str, file: UploadFile = File(...), confidence: float | None = Form(None),
                        overlap: float = Form(0.5), tile_size: int = Form(0), tile_overlap: float = Form(0.2),
-                       c: Ctx = Depends(project_ctx)):
+                       form: dict = Depends(infer_form), c: Ctx = Depends(project_ctx)):
     c.perm("project.infer")
     m = _model(c, mid)
     if m.status != "ready":
         raise HTTPException(409, "model is not ready")
-    tiling = _tiling_or_404(c, tile_size, tile_overlap)      # before the credit: off looks missing
+    slicing, infer_opts = resolve_options(form, c.db, c.ws.id)    # a bad option costs nothing
+    tiling = None if slicing else _tiling_or_404(c, tile_size, tile_overlap)   # before the credit: off looks missing
+    model = resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id)
+    if infer_opts and model.adapter.family != "ultralytics":
+        raise HTTPException(400, "these inference options need an Ultralytics model")
     charge(c.db, c.ws, CREDIT_COST["infer"]); c.db.commit()
     im = imaging.open_image(await file.read())
-    kw = {"iou": overlap, "classes": m.classes}
+    kw = {"iou": overlap, "classes": m.classes, **infer_opts}
     if confidence is not None:                     # no slider value: Resolved uses the model's best-F1 threshold
         kw["conf"] = confidence
-    model = resolve(f"trained:{m.id}", c.db, workspace_id=c.ws.id)
     try:
+        if slicing:
+            return sahi.sahi_predict(model, im, slicing, **kw)
         return sliced_predict(model, im, tiling, **kw) if tiling else model.predict(im, **kw)
-    except ValueError as e:                        # a too-large grid: the user fixes the tile settings
+    except ValueError as e:                        # a too-large grid: the user fixes the slice settings
         raise HTTPException(400, str(e)) from e
 
 

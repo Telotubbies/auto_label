@@ -12,6 +12,8 @@ import { groupModels } from './modelGroups'
 import { RuntimeStates } from './RuntimeStates'
 import { SampleStrip } from './SampleStrip'
 import { useCamera } from './useCamera'
+import { InferenceOptions } from './InferenceOptions'
+import { DEFAULT_OPTIONS, optionFields, type InferOptions } from './inferOptions'
 
 const MAX_MODELS = 3
 const COLORS = ['#8b5cf6', '#22c55e', '#3b82f6', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#ef4444']
@@ -169,7 +171,7 @@ export default function Playground() {
   const [prompt, setPrompt] = useState('')
   const [confidence, setConfidence] = useState(0.25)
   const tilingOn = useFlag('task_30')
-  const [tile, setTile] = useState({ on: false, size: 1024, overlap: 20 })
+  const [options, setOptions] = useState<InferOptions>(DEFAULT_OPTIONS)
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<PlaygroundResult[] | null>(null)
   const img = useHtmlImage(preview)
@@ -212,7 +214,7 @@ export default function Playground() {
     fd.append('confidence', String(confidence))
     if (classes.trim()) fd.append('classes', classes.trim())
     if (prompt.trim()) fd.append('prompt', prompt.trim())
-    if (tile.on) { fd.append('tile_size', String(tile.size)); fd.append('tile_overlap', String(tile.overlap / 100)) }
+    for (const [key, value] of optionFields(options)) fd.append(key, value)
     setBusy(true)
     try { setResults((await api.playgroundPredict(ws, fd)).results) } catch (e) { toast.err(e as Error) } finally {
       setBusy(false)
@@ -289,27 +291,7 @@ export default function Playground() {
             <input type="range" min={1} max={99} value={Math.round(confidence * 100)}
               onChange={(e) => setConfidence(+e.target.value / 100)} className="w-full accent-primary" aria-label="Confidence threshold" />
           </Field>
-          {tilingOn && (
-            <div className="space-y-3 rounded-lg border p-3">
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={tile.on} onChange={(v) => setTile({ ...tile, on: v })} /> Tiled inference (SAHI)
-              </label>
-              {tile.on && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Tile size (px)">
-                    <Input type="number" min={64} max={4096} value={tile.size}
-                      onChange={(e) => setTile({ ...tile, size: +e.target.value })} />
-                  </Field>
-                  <Field label={`Overlap ${tile.overlap}%`}>
-                    <input type="range" min={0} max={80} value={tile.overlap}
-                      onChange={(e) => setTile({ ...tile, overlap: +e.target.value })} className="w-full accent-primary"
-                      aria-label="Tile overlap" />
-                  </Field>
-                  <p className="col-span-2 text-xs text-muted-foreground">Runs the model on overlapping crops and merges boxes. Best for large images with small objects.</p>
-                </div>
-              )}
-            </div>
-          )}
+          <InferenceOptions value={options} onChange={setOptions} slicingOn={tilingOn} />
           <Button className="w-full" disabled={!file || !refs.length || busy || blocked} onClick={run}>
             {busy ? <><Spinner /> Running…</> : <><Play className="h-4 w-4" /> Run {refs.length || ''} model{refs.length === 1 ? '' : 's'}</>}
           </Button>

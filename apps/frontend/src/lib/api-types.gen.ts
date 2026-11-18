@@ -143,19 +143,55 @@ export interface BodyPredict {
 }
 
 export interface BodyPredictApiWsWsPlaygroundPredictPost {
+  agnostic_nms?: boolean | null
+  augment?: boolean | null
+  auto_slice?: boolean | null
+  class_ids?: string | null
   classes?: string | null
   confidence?: number | null
   file: string
+  half?: boolean | null
+  imgsz?: number | null
+  max_det?: number | null
+  min_area_ratio?: number | null
   model_refs?: string
+  overlap_height_ratio?: number | null
+  overlap_width_ratio?: number | null
+  perform_standard_pred?: boolean | null
+  postprocess_class_agnostic?: boolean | null
+  postprocess_match_metric?: string | null
+  postprocess_match_threshold?: number | null
+  postprocess_type?: string | null
   prompt?: string | null
+  retina_masks?: boolean | null
+  slice_height?: number | null
+  slice_width?: number | null
   tile_overlap?: number
   tile_size?: number
 }
 
 export interface BodyTestPredictApiWsWsProjectsProjectModelsMidPredictPost {
+  agnostic_nms?: boolean | null
+  augment?: boolean | null
+  auto_slice?: boolean | null
+  class_ids?: string | null
   confidence?: number | null
   file: string
+  half?: boolean | null
+  imgsz?: number | null
+  max_det?: number | null
+  min_area_ratio?: number | null
   overlap?: number
+  overlap_height_ratio?: number | null
+  overlap_width_ratio?: number | null
+  perform_standard_pred?: boolean | null
+  postprocess_class_agnostic?: boolean | null
+  postprocess_match_metric?: string | null
+  postprocess_match_threshold?: number | null
+  postprocess_type?: string | null
+  retina_masks?: boolean | null
+  slice_height?: number | null
+  slice_width?: number | null
   tile_overlap?: number
   tile_size?: number
 }

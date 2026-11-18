@@ -538,6 +538,50 @@
       },
       "Body_predict_api_ws__ws__playground_predict_post": {
         "properties": {
+          "agnostic_nms": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agnostic Nms"
+          },
+          "augment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Augment"
+          },
+          "auto_slice": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Slice"
+          },
+          "class_ids": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Ids"
+          },
           "classes": {
             "anyOf": [
               {
@@ -565,10 +609,131 @@
             "title": "File",
             "type": "string"
           },
+          "half": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half"
+          },
+          "imgsz": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imgsz"
+          },
+          "max_det": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Det"
+          },
+          "min_area_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Area Ratio"
+          },
           "model_refs": {
             "default": "",
             "title": "Model Refs",
             "type": "string"
+          },
+          "overlap_height_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlap Height Ratio"
+          },
+          "overlap_width_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlap Width Ratio"
+          },
+          "perform_standard_pred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perform Standard Pred"
+          },
+          "postprocess_class_agnostic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Class Agnostic"
+          },
+          "postprocess_match_metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Match Metric"
+          },
+          "postprocess_match_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Match Threshold"
+          },
+          "postprocess_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Type"
           },
           "prompt": {
             "anyOf": [
@@ -580,6 +745,39 @@
               }
             ],
             "title": "Prompt"
+          },
+          "retina_masks": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retina Masks"
+          },
+          "slice_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slice Height"
+          },
+          "slice_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slice Width"
           },
           "tile_overlap": {
             "default": 0.2,
@@ -600,6 +798,50 @@
       },
       "Body_test_predict_api_ws__ws__projects__project__models__mid__predict_post": {
         "properties": {
+          "agnostic_nms": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agnostic Nms"
+          },
+          "augment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Augment"
+          },
+          "auto_slice": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Slice"
+          },
+          "class_ids": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Ids"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -616,10 +858,164 @@
             "title": "File",
             "type": "string"
           },
+          "half": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half"
+          },
+          "imgsz": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imgsz"
+          },
+          "max_det": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Det"
+          },
+          "min_area_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Area Ratio"
+          },
           "overlap": {
             "default": 0.5,
             "title": "Overlap",
             "type": "number"
+          },
+          "overlap_height_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlap Height Ratio"
+          },
+          "overlap_width_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlap Width Ratio"
+          },
+          "perform_standard_pred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perform Standard Pred"
+          },
+          "postprocess_class_agnostic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Class Agnostic"
+          },
+          "postprocess_match_metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Match Metric"
+          },
+          "postprocess_match_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Match Threshold"
+          },
+          "postprocess_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postprocess Type"
+          },
+          "retina_masks": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retina Masks"
+          },
+          "slice_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slice Height"
+          },
+          "slice_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slice Width"
           },
           "tile_overlap": {
             "default": 0.2,

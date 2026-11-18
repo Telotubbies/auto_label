@@ -123,10 +123,16 @@ def _load(weights: str, cls_name: str = "YOLO"):
     return scheduler.lease(f"{cls_name}|{weights}", VRAM_MB, _make, _drop)
 
 
-def _run(m, im: PImage.Image, confidence: float, overlap: float) -> dict:
-    """Roboflow-style response: centre-based boxes in pixels + optional polygon points."""
+def _run(m, im: PImage.Image, confidence: float, overlap: float, **opts) -> dict:
+    """Roboflow-style response: centre-based boxes in pixels + optional polygon points.
+
+    ``opts`` are the inference-time options the Playground offers (imgsz, max_det, agnostic_nms, augment,
+    half, retina_masks); ``class_ids`` is Ultralytics' own ``classes`` filter, renamed because the adapter's
+    ``classes`` already means a YOLO-World vocabulary."""
     t0 = time.time()
-    r = m.predict(im, conf=confidence, iou=overlap, verbose=False)[0]
+    if "class_ids" in opts:
+        opts["classes"] = opts.pop("class_ids")
+    r = m.predict(im, conf=confidence, iou=overlap, verbose=False, **opts)[0]
     names = r.names or {}                     # model's own index -> class name
     name = lambda i: names.get(i, str(i))
     preds = []
@@ -267,7 +273,7 @@ class UltralyticsAdapter:
             raise
         return dest
 
-    def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5) -> dict:
+    def predict(self, variant, im, *, classes=None, prompt=None, weights=None, conf=0.4, iou=0.5, **opts) -> dict:
         cls = _cls_name(variant)
         if cls == "YOLOWorld" and not classes:
             raise ValueError("YOLO-World needs classes")
@@ -275,9 +281,9 @@ class UltralyticsAdapter:
         if cls == "YOLOWorld":
             with _lock:                                # vocabulary lives on the cached model: set + run atomically
                 m.set_classes(list(classes))
-                out = _run(m, im, conf, iou)
+                out = _run(m, im, conf, iou, **opts)
         else:
-            out = _run(m, im, conf, iou)
+            out = _run(m, im, conf, iou, **opts)
         out["model"] = f"{self.family}:{variant}"
         return out
 

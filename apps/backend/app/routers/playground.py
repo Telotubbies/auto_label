@@ -12,7 +12,8 @@ from ..deps import Ctx, ws_ctx
 from ..gpu import GpuBusy
 from ..models import Image, Project, ProjectMember
 from ..security import sign_path
-from ..services import runtime_state
+from ..services import runtime_state, sahi
+from .infer_options import infer_form, resolve_options
 from ..services.flags import is_enabled
 from ..services.imaging import open_image
 from ..services.tiling import Tiling, sliced_predict
@@ -36,7 +37,7 @@ def _message(e: Exception) -> str:
 
 
 def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | None,
-         conf: float | None, tiling: Tiling | None) -> dict:
+         conf: float | None, tiling: Tiling | None, slicing=None, infer_opts: dict | None = None) -> dict:
     t0 = time.perf_counter()
     out = {"ref": ref, "prediction": None, "latency_ms": 0.0, "error": None}
     try:
@@ -54,7 +55,15 @@ def _run(ref: str, im, db, workspace_id: str, classes: list[str], prompt: str | 
             kw["prompt"] = prompt
         if needs_classes:
             kw["classes"] = classes
-        pred = sliced_predict(r, im, tiling, **kw) if tiling else r.predict(im, **kw)
+        if infer_opts:
+            if r.adapter.family == "ultralytics":
+                kw.update(infer_opts)
+            else:                           # a mixed comparison: only the YOLO models take these options
+                out["note"] = "Inference options were skipped: this is not an Ultralytics model."
+        if slicing:
+            pred = sahi.sahi_predict(r, im, slicing, **kw)
+        else:
+            pred = sliced_predict(r, im, tiling, **kw) if tiling else r.predict(im, **kw)
         validate_prediction(pred)
         out["prediction"] = pred
     except GpuBusy:         # training owns the card: every model is unavailable, so 503 the request
@@ -75,10 +84,12 @@ def _refs(model_refs: list[str]) -> list[str]:
 @router.post("/predict")
 def predict(file: UploadFile = File(...), model_refs: str = Form(""), prompt: str | None = Form(None),
             classes: str | None = Form(None), confidence: float | None = Form(None),
-            tile_size: int = Form(0), tile_overlap: float = Form(0.2), c: Ctx = Depends(ws_ctx)):
+            tile_size: int = Form(0), tile_overlap: float = Form(0.2),
+            form: dict = Depends(infer_form), c: Ctx = Depends(ws_ctx)):
     refs = _refs(model_refs.split(","))
+    slicing, infer_opts = resolve_options(form, c.db, c.ws.id)
     try:
-        tiling = Tiling.parse({"tile_size": tile_size, "overlap": tile_overlap}) if tile_size else None
+        tiling = None if slicing else (Tiling.parse({"tile_size": tile_size, "overlap": tile_overlap}) if tile_size else None)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if tiling and not is_enabled("task_30", c.db, c.ws.id):
@@ -90,14 +101,16 @@ def predict(file: UploadFile = File(...), model_refs: str = Form(""), prompt: st
         im = open_image(data)             # EXIF auto-orient, like the rest of the ingest path
     except Exception:
         raise HTTPException(400, "not a valid image")
-    if tiling:
-        try:
-            tiling.boxes(im.width, im.height)   # the grid cap: refuse before any inference runs
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
+    try:                                    # the grid cap: refuse before any inference runs
+        if tiling:
+            tiling.boxes(im.width, im.height)
+        if slicing:
+            slicing.resolve(im.width, im.height).boxes(im.width, im.height)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     cls = [x.strip() for x in (classes or "").split(",") if x.strip()]
     q = (prompt or "").strip() or None
-    return {"results": [_run(r, im, c.db, c.ws.id, cls, q, confidence, tiling) for r in refs]}
+    return {"results": [_run(r, im, c.db, c.ws.id, cls, q, confidence, tiling, slicing, infer_opts) for r in refs]}
 
 
 class PreflightIn(BaseModel):
