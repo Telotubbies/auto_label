@@ -59,7 +59,8 @@ async def gpu_busy(_request, exc: GpuBusy):
 
 # MJPEG is an endless stream: compressing it would delay the live view.
 app.add_middleware(GZipMiddleware, minimum_size=1024,
-                   exclude_content_types=(*DEFAULT_EXCLUDED_CONTENT_TYPES, "multipart/x-mixed-replace"))
+                   exclude_content_types=(*DEFAULT_EXCLUDED_CONTENT_TYPES, "multipart/x-mixed-replace",
+                                          "application/zip", "application/x-zip-compressed"))   # already compressed
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                    allow_credentials=CORS_ORIGINS != ["*"])
 

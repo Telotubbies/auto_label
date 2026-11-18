@@ -40,6 +40,7 @@ class Server:
     def download(self, rel_url: str, dst: Path) -> Path:
         with self.s.get(self.url + rel_url, stream=True, timeout=600) as r:
             r.raise_for_status()
+            r.raw.decode_content = True       # a gzipping server or proxy must not corrupt the zip
             with open(dst, "wb") as f:
                 shutil.copyfileobj(r.raw, f)
         return dst
