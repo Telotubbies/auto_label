@@ -435,7 +435,17 @@ function Usage() {
   return (
     <div className="space-y-4">
       <Card className="flex items-center justify-between p-5">
-        <div><div className="text-xs text-muted-foreground">Current plan</div><div className="text-2xl font-bold">{u.plan_label}</div><div className="text-xs text-muted-foreground">Credits reset monthly · period {u.period}</div></div>
+        <div>
+          <div className="text-xs text-muted-foreground">Current plan</div>
+          <div className="text-2xl font-bold">{u.plan_label}</div>
+          <div className="text-xs text-muted-foreground">Credits reset monthly · period {u.period}</div>
+          {u.requested_plan && u.requested_plan !== u.plan ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              Requested {u.requested_plan.charAt(0).toUpperCase() + u.requested_plan.slice(1)}. Not applied —
+              billing is not available on this deployment.
+            </div>
+          ) : null}
+        </div>
         <p className="max-w-xs text-right text-xs text-muted-foreground">To change plans, contact your LabelDesk operator. Plan limits are enforced on every upload, training run and API call.</p>
       </Card>
       <div className="grid gap-3 md:grid-cols-4">
@@ -572,6 +582,7 @@ function FirstRun() {
   const nav = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
+  const [plan, setPlan] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const cfg = useQuery({
@@ -584,8 +595,9 @@ function FirstRun() {
     setBusy(true); setErr('')
     try {
       const on = cfg.data?.workspace_create
-      const w = await post<{ slug: string }>('/workspaces', { name: name.trim(), slug: on ? workspaceSlug(name) : undefined })
+      const w = await post<{ slug: string }>('/workspaces', { name: name.trim(), slug: on ? workspaceSlug(name) : undefined, plan: plan || 'free' })
       await qc.invalidateQueries({ queryKey: ['me'] })
+      sessionStorage.setItem('startedPlan', 'free')
       nav(`/${w.slug}`)
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -607,6 +619,8 @@ function FirstRun() {
           <WorkspaceForm
             value={name}
             onChange={setName}
+            plan={plan}
+            onPlan={setPlan}
             enabled={cfg.data?.workspace_create}
             disabled={busy}
             error={err}

@@ -2124,6 +2124,39 @@
         "title": "PlanIn",
         "type": "object"
       },
+      "PlanOut": {
+        "properties": {
+          "credits": {
+            "title": "Credits",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "projects",
+          "credits",
+          "seats"
+        ],
+        "title": "PlanOut",
+        "type": "object"
+      },
       "PreflightIn": {
         "properties": {
           "model_refs": {
@@ -2657,6 +2690,17 @@
             "minLength": 8,
             "title": "Password",
             "type": "string"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
           },
           "workspace": {
             "anyOf": [
@@ -3315,6 +3359,17 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
           },
           "slug": {
             "anyOf": [
@@ -7104,6 +7159,32 @@
           }
         ],
         "summary": "New Workspace",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/workspaces/plans": {
+      "get": {
+        "description": "The tiers and the limits they grant. No tenant data and no price: none has been set.",
+        "operationId": "workspace_plans_api_workspaces_plans_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanOut"
+                  },
+                  "title": "Response Workspace Plans Api Workspaces Plans Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Workspace Plans",
         "tags": [
           "auth"
         ]

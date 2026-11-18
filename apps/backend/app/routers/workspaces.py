@@ -26,7 +26,7 @@ def usage(db: Session, ws: Workspace) -> dict:
     pids = select(Project.id).where(Project.workspace_id == ws.id, Project.deleted_at.is_(None))
     lim = plan(ws)
     return {
-        "plan": ws.plan, "plan_label": lim["label"], "limits": lim,
+        "plan": ws.plan, "plan_label": lim["label"], "requested_plan": ws.requested_plan, "limits": lim,
         "credits_used": round(ws.credits_used, 3), "credits_left": round(credits_left(ws), 3), "period": ws.credits_period,
         "projects": db.scalar(select(func.count()).select_from(pids.subquery())),
         "images": db.scalar(select(func.count(Image.id)).where(Image.project_id.in_(pids), Image.deleted_at.is_(None))),

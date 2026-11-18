@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .. import mailer, oidc, totp
-from ..config import MAX_UPLOAD_MB, PUBLIC_URL, SIGNUP_ENABLED
+from ..config import MAX_UPLOAD_MB, PLANS, PUBLIC_URL, SIGNUP_ENABLED
 from ..db import get_db
 from ..deps import audit, current_user, plan
 from ..models import EmailToken, Invite, LoginEvent, Member, RefreshToken, User, Workspace
@@ -72,14 +72,34 @@ def workspace_create_enabled() -> bool:
     return "task_a1_workspace_create" in flags.forced_on()
 
 
+def plan_choice_enabled() -> bool:
+    """Creation-time surfaces are process-gated for the same reason: no workspace exists yet."""
+    return "task_a1_plan_choice" in flags.forced_on()
+
+
+# A new workspace starts here. Billing is not wired, so a paid tier is never granted at creation.
+START_PLAN = "trial" if "trial" in PLANS else "free"
+
+
+def requested_plan(chosen: str | None) -> str | None:
+    """The tier a buyer asked for, recorded for Settings → Plan; never the tier they get."""
+    if not chosen or not plan_choice_enabled():
+        return None
+    if chosen not in PLANS:
+        raise HTTPException(422, "unknown plan")
+    return chosen
+
+
 def unique_ws_slug(db: Session, name: str) -> str:
     if workspace_create_enabled():
         return _free_slug(db, slugify_workspace(name), 40)
     return _free_slug(db, slugify(name), 80)
 
 
-def create_workspace(db: Session, owner: User, name: str, slug: str | None = None) -> Workspace:
-    ws = Workspace(slug=slug or unique_ws_slug(db, name), name=name, owner_id=owner.id, credits_period=time.strftime("%Y-%m"))
+def create_workspace(db: Session, owner: User, name: str, slug: str | None = None,
+                     requested: str | None = None) -> Workspace:
+    ws = Workspace(slug=slug or unique_ws_slug(db, name), name=name, owner_id=owner.id, plan=START_PLAN,
+                   requested_plan=requested, credits_period=time.strftime("%Y-%m"))
     db.add(ws); db.flush()
     db.add(Member(workspace_id=ws.id, user_id=owner.id, role="admin"))
     audit(db, ws.id, owner.id, "workspace.create", name)
@@ -183,7 +203,7 @@ def public_config():
             "sam": segment.sam_status(),
             "vlm": {"configured": capabilities.vlm_configured()},
             "addons": {"available": capabilities.addons_available()},
-            "workspace_create": workspace_create_enabled()}
+            "workspace_create": workspace_create_enabled(), "plan_choice": plan_choice_enabled()}
 
 
 class SignupIn(BaseModel):
@@ -191,6 +211,7 @@ class SignupIn(BaseModel):
     email: str = Field(pattern=EMAIL, max_length=255)
     password: str = Field(min_length=8, max_length=200)
     workspace: str | None = None
+    plan: str | None = None
     invite: str | None = None
 
 
@@ -206,6 +227,7 @@ def signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(409, "an account with this email already exists")
     workspace_name = body.workspace or f"{body.name.split()[0]}'s Workspace"
+    requested = requested_plan(body.plan)
     slug = None
     if workspace_create_enabled() and not inv:
         slug = slugify_workspace(workspace_name)
@@ -218,7 +240,7 @@ def signup(body: SignupIn, request: Request, db: Session = Depends(get_db)):
     if inv and not inv.accepted:
         _accept(db, inv, u)
     else:
-        create_workspace(db, u, workspace_name, slug=slug)
+        create_workspace(db, u, workspace_name, slug=slug, requested=requested)
     db.commit()
     _send_link(u, "verify", _email_token(db, u, "verify", VERIFY_TTL))
     return tokens(db, u, request)
@@ -523,6 +545,24 @@ def invite_accept(token: str, u: User = Depends(current_user), db: Session = Dep
 class WorkspaceIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     slug: str | None = None
+    plan: str | None = None
+
+
+class PlanOut(BaseModel):
+    id: str
+    label: str
+    projects: int
+    credits: int
+    seats: int
+
+
+@router.get("/workspaces/plans", response_model=list[PlanOut])
+def workspace_plans():
+    """The tiers and the limits they grant. No tenant data and no price: none has been set."""
+    if not plan_choice_enabled():
+        raise HTTPException(404, "not found")
+    return [{"id": key, "label": value["label"], "projects": value["projects"],
+             "credits": value["credits"], "seats": value["seats"]} for key, value in PLANS.items()]
 
 
 @router.get("/workspaces/slug")
@@ -543,6 +583,7 @@ def workspace_slug(name: str, u: User = Depends(current_user), db: Session = Dep
 @router.post("/workspaces")
 def new_workspace(body: WorkspaceIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     name = body.name.strip()
+    requested = requested_plan(body.plan)
     wanted = body.slug if workspace_create_enabled() else None
     if wanted is not None:
         if wanted in RESERVED_WORKSPACE_SLUGS or not WORKSPACE_SLUG.fullmatch(wanted):
@@ -550,5 +591,5 @@ def new_workspace(body: WorkspaceIn, u: User = Depends(current_user), db: Sessio
         if slug_taken(db, wanted):
             return JSONResponse(status_code=409, content={"detail": "that address is taken",
                                                           "suggestion": suggest_workspace_slug(db, wanted)})
-    ws = create_workspace(db, u, name, slug=wanted); db.commit()
+    ws = create_workspace(db, u, name, slug=wanted, requested=requested); db.commit()
     return {"slug": ws.slug, "name": ws.name}
