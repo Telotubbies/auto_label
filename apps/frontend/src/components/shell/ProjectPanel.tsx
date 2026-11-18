@@ -1,4 +1,5 @@
-import { Link, NavLink, useLocation, useParams } from 'react-router-dom'
+import { ArrowLeft, MoreVertical } from 'lucide-react'
+import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, fileUrl } from '@/lib/api'
 import { projectPath } from '@/lib/routes'
@@ -8,11 +9,12 @@ import { typeLabel } from '@/features/project/projectTypes'
 import {
   canSeeProjectItem, groupSummary, SECONDARY, stageFacts, visibleProjectNav, visibleStageGroups,
 } from '@/lib/nav'
+import { panelSections } from '@/lib/nav/project/panelLayout.ts'
 import { useProjectPermissions } from '@/lib/perms'
 import type { Project, ProjectRole } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Glass } from '../glass'
-import { Button } from '../ui'
+import { Button, Dropdown } from '../ui'
 import { ICONS } from './icons'
 import { RailGroup, SEP } from './RailGroup'
 import { StageItem } from './StageItem'
@@ -108,42 +110,68 @@ function Switcher({ project, approved }: { project: Project; approved: number | 
   )
 }
 
+/** The shipped panel (flag off): back link, project card, then DATA / MODELS / DEPLOY collapsible groups. */
+function ClassicPanel({ project, legacy }: { project: Project; legacy: ReturnType<typeof projectNavGroups> }) {
+  const { ws = '' } = useParams()
+  const nav = useNavigate()
+  const { pathname } = useLocation()
+  const me = useApp((s) => s.me)
+  const wsName = me?.workspaces.find((w) => w.slug === ws)?.name ?? ws
+  const deployments = { to: `/${ws}/deployments`, label: 'Deployments', icon: ICONS.deployments, perm: 'project.read' }
+  const sections = panelSections(legacy, deployments)
+  const hrefOf = (to: string) => (to.startsWith('/') ? to : projectPath(ws, project.slug, to))
+  const isActive = (to: string) => pathname === hrefOf(to) || pathname.startsWith(`${hrefOf(to)}/`)
+  const settings = sections.flatMap((s) => s.entries).find((e) => e !== 'divider' && e.to === 'settings')
+  return (
+    <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
+      <Link to={`/${ws}`} className="flex items-center gap-1.5 px-3 pt-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+        <span className="truncate">{wsName}</span>
+      </Link>
+      <div className="p-3">
+        <div className="overflow-hidden rounded-lg border">
+          <div className="relative h-20 bg-muted">
+            {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
+            <span className="absolute left-2 top-2 rounded bg-scrim/70 px-1.5 py-0.5 text-xs text-white">{typeLabel(project.type)}</span>
+          </div>
+          <div className="flex items-center gap-1 px-2.5 py-1.5">
+            <Link to={projectPath(ws, project.slug)} className="min-w-0 flex-1 truncate text-sm font-semibold hover:underline">{project.name}</Link>
+            {settings && (
+              <Dropdown align="right"
+                trigger={<button type="button" aria-label="Project menu" className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent"><MoreVertical className="h-4 w-4" /></button>}
+                items={[{ label: 'Project settings', onClick: () => nav(projectPath(ws, project.slug, 'settings')) }]} />
+            )}
+          </div>
+        </div>
+      </div>
+      <nav aria-label="Project sections" className="flex-1 px-2 pb-4">
+        {sections.map((sec) => (
+          <RailGroup key={sec.id} id={sec.id} label={sec.label} summary={null}
+            holdsActive={sec.entries.some((e) => e !== 'divider' && isActive(e.to))}>
+            {sec.entries.map((e, i) => e === 'divider' ? <li key={i} role="separator" className="my-1.5 border-t" /> : (
+              <li key={e.to}>
+                <NavLink to={hrefOf(e.to)} end={false}
+                  className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm',
+                    isActive(e.to) ? 'border-primary font-medium text-foreground' : 'border-transparent text-foreground hover:bg-sidebar-accent/60')}>
+                  <e.icon className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1">{e.label}</span>
+                  {"count" in e && e.count === true && <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">{project.images}</span>}
+                </NavLink>
+              </li>
+            ))}
+          </RailGroup>
+        ))}
+      </nav>
+    </Glass>
+  )
+}
+
 export function ProjectPanel({ project }: { project: Project }) {
   const { ws, facts, groups, secondary, activeId, legacy, loading, failed, retry } = useProjectRail(project)
   // `task_470` (`ui_v3`): off keeps the shipped grouped panel exactly as it renders today.
   const uiV3 = useFlag('task_470')
 
-  if (!uiV3) {
-    return (
-      <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-56 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
-        <div className="p-3">
-          <div className="overflow-hidden rounded-lg border">
-            <div className="relative h-20 bg-muted">
-              {project.thumbnail && <img src={fileUrl(project.thumbnail)} alt="" className="h-full w-full object-cover" />}
-              <span className="absolute left-2 top-2 rounded bg-scrim/70 px-1.5 py-0.5 text-xs text-white">{typeLabel(project.type)}</span>
-            </div>
-            <Link to={projectPath(ws, project.slug)} className="block px-2.5 py-2 text-sm font-semibold hover:underline">{project.name}</Link>
-          </div>
-        </div>
-        <nav aria-label="Project sections" className="flex-1 px-2 pb-4">
-          {legacy.map((g) => (
-            <div key={g.group} role="group" aria-labelledby={`proj-nav-${g.group}`} className="mb-3">
-              <div id={`proj-nav-${g.group}`} className="px-2 pb-1 text-sm font-semibold tracking-wider text-muted-foreground">{g.group}</div>
-              {g.items.map(({ to, label, icon: Icon, count }) => (
-                <NavLink key={to} to={projectPath(ws, project.slug, to)}
-                  className={({ isActive }) => cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
-                    isActive ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' : 'text-foreground hover:bg-sidebar-accent/60')}>
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span className="flex-1">{label}</span>
-                  {count && <span className="text-sm text-muted-foreground">{project.images}</span>}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-      </Glass>
-    )
-  }
+  if (!uiV3) return <ClassicPanel project={project} legacy={legacy} />
 
   return (
     <Glass as="div" className="glass-sidebar m-2 mr-0 mt-16 hidden h-[calc(100%-4.5rem)] w-60 shrink-0 flex-col overflow-y-auto rounded-2xl md:flex">
