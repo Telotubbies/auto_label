@@ -5,7 +5,7 @@ import { pctOf } from '@/lib/format'
 import { classColor } from '@/lib/theme'
 import { editorPath } from '@/lib/routes'
 import type { InsightLabeling, InsightVersionDiff, Version } from '@/lib/types'
-import { Badge, Card, EmptyState, Select } from '@/components/ui'
+import { Badge, Card, EmptyState, Select, Stat } from '@/components/ui'
 import { axisChrome, ChartCard, cssColor, PanelError, tooltipStyle, useChartTheme } from './Chart'
 
 const fmt = (n: number) => n.toLocaleString()
@@ -184,9 +184,9 @@ export function VersionsOps({ ws, slug, versions, base, target, onBase, onTarget
         <Card className="p-6"><EmptyState title="Choose two versions to compare." hint="Pick a base and a target above; the newest two are selected by default." /></Card>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Card className="border-l-4 border-l-primary p-4"><div className="text-xs font-medium text-muted-foreground">Added in target</div><div className="mt-1 text-2xl font-bold tabular-nums">{fmt(diff.summary.added)}</div></Card>
-          <Card className="border-l-4 border-l-destructive p-4"><div className="text-xs font-medium text-muted-foreground">Removed</div><div className="mt-1 text-2xl font-bold tabular-nums">{fmt(diff.summary.removed)}</div></Card>
-          <Card className="border-l-4 border-l-warning p-4"><div className="text-xs font-medium text-muted-foreground">Split moves</div><div className="mt-1 text-2xl font-bold tabular-nums">{fmt(diff.summary.moved)}</div></Card>
+          <Stat label="Added in target" value={fmt(diff.summary.added)} tone="primary" />
+          <Stat label="Removed" value={fmt(diff.summary.removed)} tone="destructive" />
+          <Stat label="Split moves" value={fmt(diff.summary.moved)} tone="warning" />
           <Card className="p-4"><div className="text-xs font-medium text-muted-foreground">Version hash match</div><div className="mt-1 truncate text-sm font-semibold">{diff.base.version_hash && diff.target.version_hash ? (diff.base.version_hash === diff.target.version_hash ? 'Identical' : 'Different') : '—'}</div><div className="mt-1 text-xs text-muted-foreground">v{diff.base.number} → v{diff.target.number}</div></Card>
         </div>
       )}

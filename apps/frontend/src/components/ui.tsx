@@ -216,12 +216,21 @@ export function PageHeader({ title, desc, actions }: { title: ReactNode; desc?: 
   )
 }
 
-export function Stat({ label, value, sub }: { label: ReactNode; value: ReactNode; sub?: ReactNode }) {
+const TONE_DOT = { primary: 'bg-primary', destructive: 'bg-destructive', warning: 'bg-warning', success: 'bg-success' } as const
+
+/** A data tile: label, value, optional note. A `tone` adds a dot beside the label; the label itself already
+ *  names the meaning, so colour is never the only carrier. A static tile has no shadow: the border is its edge. */
+export function Stat({ label, value, sub, tone }: { label: ReactNode; value: ReactNode; sub?: ReactNode; tone?: keyof typeof TONE_DOT }) {
   return (
-    <Card className="border-l-4 border-l-primary p-4">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-bold tracking-tight">{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
+    <Card className="p-4 shadow-none">
+      <dl>
+        <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {tone && <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', TONE_DOT[tone])} />}
+          {label}
+        </dt>
+        <dd className="mt-1 text-2xl font-bold leading-tight tracking-tight tabular-nums">{value}</dd>
+        {sub && <dd className="mt-1 text-xs text-muted-foreground">{sub}</dd>}
+      </dl>
     </Card>
   )
 }
