@@ -139,10 +139,11 @@ judgement the owner makes (must not block a hotfix), and dev-only npm advisories
 
 ### 4.2 Threat model shape
 
-`docs/ops/THREAT-MODEL.md` is a STRIDE table per trust boundary — nine boundaries, five columns
+`docs/ops/THREAT-MODEL.md` is a STRIDE table per trust boundary — eleven boundaries, five columns
 (threat, impact, existing control, residual risk, card). Boundaries: auth/session, RBAC and workspace
 isolation, API keys, uploads, safefetch/SSRF, webhooks and connectors, PLC/OT, MCP, workers and
-installers, secrets, dependency supply chain. The inference hub's §5 table is folded in as the
+installers, secrets, dependency supply chain. Each row's limits are in
+[`THREAT-MODEL.md`](THREAT-MODEL.md). The inference hub's §5 table is folded in as the
 installer boundary rather than duplicated.
 
 ### 4.3 Adversarial suites
