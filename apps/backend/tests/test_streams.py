@@ -77,6 +77,16 @@ def create_stream(c, **kw) -> str:
     return r.json()["id"]
 
 
+class _UnopenableCap:
+    """A capture that fails immediately: no socket, no decoder timeout, no machine-load dependency."""
+
+    def isOpened(self):
+        return False
+
+    def release(self):
+        pass
+
+
 def _write_video(name: str, seconds: float = 4.0, fps: int = 10, size=(160, 120)):
     (DATA_DIR / "videos").mkdir(parents=True, exist_ok=True)
     base = DATA_DIR / "videos" / name
@@ -134,13 +144,17 @@ def _fake_resolve(ref, db=None, workspace_id=None):
     return _FakeModel()
 
 
-def test_stop_returns_when_source_never_opens(c):
+def test_stop_returns_when_source_never_opens(c, monkeypatch):
     # A globally routable but unreachable address: the source allowlist resolves and rejects
     # private/link-local hosts (I2), so tests cannot use an internal address as a bad camera.
+    # The capture is made to fail at once: this test is about stop's bounded wait, and a real
+    # network open would hand it the machine's and the decoder's latency (T-1112).
+    import app.streams.manager as mgr
+    monkeypatch.setattr(mgr.cv2, "VideoCapture", lambda *a, **k: _UnopenableCap())
     sid = create_stream(c, source="rtsp://8.8.8.8:554/none")
     assert c.post(f"{BASE}/{sid}/start").status_code == 200
     # Review Focus 4: the bad source must be visible before stop, not just a final "stopped".
-    j = _poll(_status_is(c, sid, "reconnecting"), timeout=20)
+    j = _poll(_status_is(c, sid, "reconnecting"), timeout=60)
     assert "8.8.8.8" in j["lastError"]
     t = time.time()
     assert c.post(f"{BASE}/{sid}/stop").status_code == 200
@@ -148,7 +162,7 @@ def test_stop_returns_when_source_never_opens(c):
     assert c.get(f"{BASE}/{sid}").json()["status"] == "stopped"
     from app.streams.manager import manager
     assert manager.status(sid) is None
-    _poll(lambda: not any(t.name.startswith(f"stream-{sid}-") for t in threading.enumerate()), timeout=5)
+    _poll(lambda: not any(t.name.startswith(f"stream-{sid}-") for t in threading.enumerate()), timeout=30)
 
 
 def test_deleted_video_reports_error(c):
@@ -546,8 +560,10 @@ class _FakeVlm:
     def __init__(self, sleeping: bool = False, answer: bool = True):
         self.sleeping, self.answer = sleeping, answer
         self.asked: list[str] = []
+        self.probes = 0
 
     def is_sleeping(self) -> bool:
+        self.probes += 1
         return self.sleeping
 
     def ask_yes_no(self, im, question: str) -> bool:
@@ -564,13 +580,15 @@ def test_vlm_rule_fires_on_yes_and_skips_while_sleeping(c, monkeypatch, video):
     sid = create_stream(c, source=video, sample_fps=10,
                         rules=[{"kind": "vlm", "question": question, "every_s": 1}])
     assert c.post(f"{BASE}/{sid}/start").status_code == 200
-    _poll(_status_is(c, sid, "live"), timeout=10)
-    time.sleep(2.5)                                 # two full intervals while vLLM sleeps
+    _poll(_status_is(c, sid, "live"), timeout=60)
+    # Two full intervals while vLLM sleeps, counted rather than timed: 2.5 s of wall clock is a
+    # fraction of one interval on a loaded machine (T-1112).
+    _poll(lambda: fake.probes >= 2, timeout=60)
     assert fake.asked == []                         # asleep: the question is skipped, not queued
     assert c.get(f"{BASE}/{sid}/events").json()["total"] == 0
 
     fake.sleeping, fake.answer = False, True
-    events = _poll(lambda: c.get(f"{BASE}/{sid}/events").json()["items"] or None, timeout=8)
+    events = _poll(lambda: c.get(f"{BASE}/{sid}/events").json()["items"] or None, timeout=60)
     ev = events[0]
     assert ev["rule"]["kind"] == "vlm"
     assert ev["summary"] == f"{question} → yes"
@@ -1720,6 +1738,7 @@ def test_stop_records_stream_hours(c, monkeypatch, video):
 def test_start_enforces_the_plan_stream_cap(c, monkeypatch, video):
     """I8: starting streams is capped per plan instead of spawning unbounded threads."""
     from app import config
+    from app.streams.manager import manager
 
     monkeypatch.setattr("app.streams.manager.resolve", _fake_resolve)
     monkeypatch.setitem(config.PLANS["free"], "streams", 1)
@@ -1732,11 +1751,14 @@ def test_start_enforces_the_plan_stream_cap(c, monkeypatch, video):
         old_plan = db.query(Workspace).filter_by(slug=WS).one().plan
         db.query(Workspace).filter_by(slug=WS).update({"plan": "free"})
         db.commit()
+        ws_id = db.query(Workspace).filter_by(slug=WS).one().id
     first = create_stream(c, name="First cam", source=video)
     second = create_stream(c, name="Second cam", source=video)
     try:
         assert c.post(f"{BASE}/{first}/start").status_code == 200
-        _poll(_status_is(c, first, "live"), timeout=15)
+        # The cap reads active_count(), not "live": wait for the worker to be counted rather than
+        # for its first frame, which is host-speed dependent (T-1112).
+        _poll(lambda: manager.active_count(ws_id) >= 1, timeout=60)
         assert c.post(f"{BASE}/{second}/start").status_code == 402
     finally:
         c.post(f"{BASE}/{first}/stop")
